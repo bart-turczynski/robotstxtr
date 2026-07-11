@@ -145,10 +145,9 @@ test_that("the canonical matched value is surfaced for a wildcard rule", {
 test_that("an empty Disallow value allows everything", {
   body <- "user-agent: FooBot\ndisallow:"
   # Empty Disallow = allow all; the canonical, uncontested decision is TRUE for
-  # every path. (The engine reports a positive matching_line for the empty
-  # disallow rule here, which the R metadata layer surfaces as a rule_allow with
-  # a disallow-typed callback value; that metadata edge case is recorded as a
-  # finding in the R9b worklog and is deliberately not asserted here.)
+  # every path. (The empty-path directive is ignored by the matcher, so its
+  # corrected metadata is default_allow/none/NA/NA; that is asserted in
+  # test-empty-path-directives-r9.R. Here only the decision is checked.)
   expect_identical(
     dec(body, c("http://e/", "http://e/anything/at/all", "http://e/x")),
     c(TRUE, TRUE, TRUE)
