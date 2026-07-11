@@ -29,6 +29,14 @@ new_robots_decisions <- function(results, robots) {
 #' @param ... Ignored; present for S3 compatibility.
 #'
 #' @return `x`, invisibly.
+#' @examples
+#' # allowed_by_robots_text() matches a supplied body with no network access.
+#' decisions <- allowed_by_robots_text(
+#'   "user-agent: *\nDisallow: /private\n",
+#'   c("https://example.com/page", "https://example.com/private"),
+#'   "my-bot"
+#' )
+#' print(decisions)
 #' @export
 print.robots_decisions <- function(x, ...) {
   results <- x$results

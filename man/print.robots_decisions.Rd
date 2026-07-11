@@ -19,3 +19,12 @@ Prints a compact one-line header (result and source counts), an
 allow/disallow/unknown tally, and a preview of up to ten result rows. Large
 body values are never shown. Returns the object invisibly.
 }
+\examples{
+# allowed_by_robots_text() matches a supplied body with no network access.
+decisions <- allowed_by_robots_text(
+  "user-agent: *\nDisallow: /private\n",
+  c("https://example.com/page", "https://example.com/private"),
+  "my-bot"
+)
+print(decisions)
+}

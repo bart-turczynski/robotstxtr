@@ -19,3 +19,17 @@ Prints a compact one-line header (input and source counts) and a preview of
 up to ten input-map rows. Body values are never shown. Returns the object
 invisibly.
 }
+\examples{
+# A robots_fetches object comes from robots_fetch(); the transport is mocked
+# here so the example runs offline.
+fetches <- httr2::with_mocked_responses(
+  function(req) {
+    httr2::response(
+      status_code = 200L, url = req$url,
+      body = charToRaw("user-agent: *\nDisallow: /private\n")
+    )
+  },
+  robots_fetch("https://example.com/page")
+)
+print(fetches)
+}

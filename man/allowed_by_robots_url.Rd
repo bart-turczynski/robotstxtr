@@ -88,9 +88,21 @@ callbacks of the same source body (the canonical value the matcher used,
 after upstream \code{MaybeEscapePattern} canonicalization).
 }
 \examples{
-\dontrun{
-allowed_by_robots_url("http://example.com/private", "bot")
-}
+# allowed_by_robots_url() fetches /robots.txt over HTTP and matches in one
+# step. The transport is mocked here so the example runs offline; a real call
+# needs no such wrapper.
+httr2::with_mocked_responses(
+  function(req) {
+    httr2::response(
+      status_code = 200L, url = req$url,
+      body = charToRaw("user-agent: *\nDisallow: /private\n")
+    )
+  },
+  allowed_by_robots_url(
+    c("https://example.com/page", "https://example.com/private"),
+    "my-bot"
+  )
+)
 
 }
 \seealso{

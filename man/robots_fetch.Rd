@@ -71,3 +71,24 @@ compressed entity is never fully downloaded before the check. A body over the
 limit ends as \code{body_too_large} with no stored body (never a truncated body);
 a body at or under the limit is stored normally as a \code{fetched} result.
 }
+\examples{
+# robots_fetch() performs live HTTP. To keep this example offline and
+# deterministic, the transport is mocked with httr2 so every request returns
+# the same robots.txt; a real call needs no such wrapper.
+httr2::with_mocked_responses(
+  function(req) {
+    httr2::response(
+      status_code = 200L, url = req$url,
+      body = charToRaw("user-agent: *\nDisallow: /private\n")
+    )
+  },
+  {
+    # Both URLs share one fetch-origin, so /robots.txt is fetched once.
+    robots_fetch(c("https://example.com/", "https://example.com/private"))
+  }
+)
+
+}
+\seealso{
+\code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} to fetch and match in one step.
+}
