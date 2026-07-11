@@ -2,5 +2,6 @@
 
 S3method(print,robots_decisions)
 export(allowed_by_robots_text)
+export(robots_body)
 export(scaffold_ready)
 useDynLib(robotstxtr, .registration = TRUE)
