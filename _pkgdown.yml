@@ -1,0 +1,67 @@
+url: https://bart-turczynski.github.io/robotstxtr/
+
+template:
+  bootstrap: 5
+
+authors:
+  "Bart Turczynski":
+    href: https://turczynski.pl
+
+home:
+  title: "robotstxtr — Faithful robots.txt Parsing with Google's Matcher"
+  description: >
+    Evaluate whether URLs may be crawled according to robots.txt rules, using a
+    vendored, upstream-test-validated snapshot of Google's open-source C++
+    robots.txt matcher so allow and disallow decisions match Googlebot's
+    behavior. Fetches robots.txt under a deterministic, conservative httr2
+    policy and returns richly typed, vectorized decisions with per-rule match
+    metadata.
+
+navbar:
+  structure:
+    left: [reference, articles, news]
+    right: [search, github]
+  components:
+    github:
+      icon: fab fa-github
+      href: https://github.com/bart-turczynski/robotstxtr
+
+footer:
+  structure:
+    left: developed_by
+    right: [built_with, related]
+  components:
+    related: >
+      Related:
+      <a href="https://bart-turczynski.github.io/rurl/">rurl</a> ·
+      <a href="https://github.com/google/robotstxt">google/robotstxt</a>
+
+reference:
+  - title: "Crawl decisions"
+    desc: >
+      The headline paths: evaluate whether URLs may be crawled, either against a
+      robots.txt body you already have or by fetching it for you.
+    contents:
+      - allowed_by_robots_text
+      - allowed_by_robots_url
+
+  - title: "Fetching"
+    desc: >
+      Fetch robots.txt documents under the deterministic policy without
+      matching, and read back a stored body.
+    contents:
+      - robots_fetch
+      - robots_body
+
+  - title: "Methods"
+    desc: "Printing for the returned S3 objects."
+    contents:
+      - print.robots_decisions
+      - print.robots_fetches
+
+  - title: "Package scaffold"
+    desc: >
+      Placeholder shipped with the project scaffold; slated for removal before
+      release.
+    contents:
+      - scaffold_ready
