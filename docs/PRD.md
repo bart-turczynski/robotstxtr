@@ -443,7 +443,7 @@ Required `results` columns:
 | `error_message` | character | diagnostic message, or `NA` |
 | `matched_line` | integer | upstream one-based matching line, or `NA` |
 | `matched_rule_type` | character | `allow`, `disallow`, `none`, or `unknown` |
-| `matched_rule_value` | character | callback value for the matched directive, or `NA` |
+| `matched_rule_value` | character | canonical (post-escape) callback value for the matched directive, or `NA` |
 
 Required `robots` columns:
 
@@ -520,8 +520,10 @@ Match metadata rules:
   `"disallow"`; `default_allow` requires `"none"`; `missing_allow`,
   `fetch_unknown`, and `input_unknown` require `"unknown"`.
 - `matched_rule_value` is the exact directive value emitted by the upstream
-  parse callback for `matched_line`, before matcher escaping. R must not
-  reconstruct it by reserializing the URL or rule.
+  parse callback for `matched_line` — the canonical value the matcher actually
+  uses, i.e. after `MaybeEscapePattern` canonicalization (see the note below). R
+  must not reconstruct it by reserializing the URL or rule, and must not attempt
+  to recover a pre-escape form by re-parsing the raw directive text.
 - When matching ran but no rule matched, `matched_rule_type = "none"`. When
   matching did not run, `matched_rule_type = "unknown"`.
 - `matched_line` and `matched_rule_value` are `NA` unless a rule matched.
@@ -537,9 +539,18 @@ Correlation mechanism:
 - `RobotsParsedLine` and `RobotsParsingReporter` remain preserved public
   surfaces, but v1 must not assume that `RobotsParsedLine` itself stores the
   directive value.
-- At the pinned SHA, the callback value has already undergone upstream comment
-  removal and whitespace stripping performed by `ParseRobotsTxt()`, but not
-  matcher pattern escaping. That callback value is the result contract.
+- At the pinned SHA, for Allow/Disallow keys the callback value has already
+  undergone upstream comment removal and whitespace stripping performed by
+  `ParseRobotsTxt()`, **and** `MaybeEscapePattern` canonicalization (non-ASCII
+  bytes percent-escaped, existing `%xx` escapes upper-cased) — this was verified
+  in `robots.cc` `ParseAndEmitLine` (the `NeedEscapeValueForKey` branch escapes
+  the value before emitting it to the handler). That canonical callback value is
+  the result contract. This corrects an earlier draft that assumed the callback
+  value was pre-escape; the engine's real behavior is authoritative and is not
+  altered (fidelity, §6.1). For plain-ASCII directives canonicalization is a
+  no-op, so this is observable only for non-ASCII or lowercase-hex-escape
+  directives. C4's callback-contract test and C5's differential harness both
+  gate this against pristine upstream.
 - A positive matching line missing from the callback lookup is an internal
   invariant failure and must raise a package error, not `allowed = NA`.
 
