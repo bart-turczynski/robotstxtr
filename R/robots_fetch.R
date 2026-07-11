@@ -206,8 +206,8 @@ new_robots_fetches <- function(map, robots) {
 #' up to ten input-map rows. Body values are never shown. Returns the object
 #' invisibly.
 #'
+#' @inheritParams print.robots_decisions
 #' @param x A `robots_fetches` object.
-#' @param ... Ignored; present for S3 compatibility.
 #'
 #' @return `x`, invisibly.
 #' @examples
