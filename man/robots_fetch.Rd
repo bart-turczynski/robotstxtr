@@ -13,8 +13,11 @@ result is returned). A wrong R type is a call-level error.}
 \item{timeout}{A single positive, finite numeric total timeout in seconds per
 origin, including redirects. Defaults to \code{10}.}
 
-\item{max_bytes}{A single whole-number byte limit, recorded on each source
-row. Defaults to \code{524288L}.}
+\item{max_bytes}{A single positive, finite, whole-number decoded-body byte
+limit no greater than \code{.Machine$integer.max}, coerced to integer and
+recorded on each source row. A whole-number double (for example \code{524288})
+is accepted; fractional, non-positive, out-of-range, or non-scalar values
+are call-level errors. Defaults to \code{524288L}.}
 
 \item{fetch_user_agent}{\code{NULL} (use the package fetch user agent) or a single
 non-empty character HTTP user agent to send instead.}
@@ -61,7 +64,10 @@ retries. Each response is classified into a stable \code{fetch_outcome}. For a
 vector in the source row's \code{body} (an empty body is valid); all other
 outcomes store no body.
 
-\code{max_bytes} is accepted and recorded but its decoded-byte streaming limit is
-not enforced here (that enforcement, and the \code{body_too_large} outcome, is a
-later slice).
+\code{max_bytes} caps the decoded response body. The limit is enforced on decoded
+entity bytes (after any HTTP content decoding, such as gzip) by a streaming
+read that stops the moment the decoded byte count exceeds the limit; the
+compressed entity is never fully downloaded before the check. A body over the
+limit ends as \code{body_too_large} with no stored body (never a truncated body);
+a body at or under the limit is stored normally as a \code{fetched} result.
 }

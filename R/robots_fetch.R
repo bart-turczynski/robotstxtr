@@ -34,16 +34,22 @@
 #' vector in the source row's `body` (an empty body is valid); all other
 #' outcomes store no body.
 #'
-#' `max_bytes` is accepted and recorded but its decoded-byte streaming limit is
-#' not enforced here (that enforcement, and the `body_too_large` outcome, is a
-#' later slice).
+#' `max_bytes` caps the decoded response body. The limit is enforced on decoded
+#' entity bytes (after any HTTP content decoding, such as gzip) by a streaming
+#' read that stops the moment the decoded byte count exceeds the limit; the
+#' compressed entity is never fully downloaded before the check. A body over the
+#' limit ends as `body_too_large` with no stored body (never a truncated body);
+#' a body at or under the limit is stored normally as a `fetched` result.
 #'
 #' @param url A character vector of target URLs. May have length zero (an empty
 #'   result is returned). A wrong R type is a call-level error.
 #' @param timeout A single positive, finite numeric total timeout in seconds per
 #'   origin, including redirects. Defaults to `10`.
-#' @param max_bytes A single whole-number byte limit, recorded on each source
-#'   row. Defaults to `524288L`.
+#' @param max_bytes A single positive, finite, whole-number decoded-body byte
+#'   limit no greater than `.Machine$integer.max`, coerced to integer and
+#'   recorded on each source row. A whole-number double (for example `524288`)
+#'   is accepted; fractional, non-positive, out-of-range, or non-scalar values
+#'   are call-level errors. Defaults to `524288L`.
 #' @param fetch_user_agent `NULL` (use the package fetch user agent) or a single
 #'   non-empty character HTTP user agent to send instead.
 #'
@@ -59,7 +65,7 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
   validate_url_type(url)
   timeout <- validate_timeout(timeout)
   validate_fetch_user_agent(fetch_user_agent)
-  max_bytes_int <- coerce_max_bytes(max_bytes)
+  max_bytes_int <- validate_max_bytes(max_bytes)
   fetch_ua <- if (is.null(fetch_user_agent)) {
     package_fetch_user_agent()
   } else {
@@ -86,7 +92,9 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
   # Fetch each distinct origin sequentially in first-occurrence order.
   results <- vector("list", n_src)
   for (i in seq_len(n_src)) {
-    results[[i]] <- perform_fetch(distinct_origins[[i]], timeout, fetch_ua)
+    results[[i]] <- perform_fetch(
+      distinct_origins[[i]], timeout, fetch_ua, max_bytes_int
+    )
   }
 
   # --- robots source table (one row per fetched source). --------------------

@@ -1,8 +1,11 @@
 # Deterministic fetch policy for robots_fetch() (PRD 6.4 request/response
 # behavior, 6.5 grouping). This file holds the request builder, the HTTP status
-# and transport-condition classifiers, the manual redirect loop, and the
-# per-outcome error-metadata mapping. It performs NO matching (slice R8) and no
-# decoded-byte streaming abort (slice R7); max_bytes is carried, not enforced.
+# and transport-condition classifiers, the manual redirect loop, the streaming
+# decoded-byte limit enforcement (slice R7), and the per-outcome error-metadata
+# mapping. It performs NO matching (slice R8). The redirect loop drives each hop
+# over a streaming connection so the final body can be read chunk-by-chunk and
+# reading aborted the moment decoded bytes exceed `max_bytes` (PRD 6.4 streaming
+# note); the compressed entity is never fully downloaded before the check.
 
 # --- Call-level validators (whole call aborts on violation, PRD 6.6) --------
 
@@ -36,16 +39,26 @@ validate_fetch_user_agent <- function(fetch_user_agent) {
   invisible(fetch_user_agent)
 }
 
-# Minimal, safe `max_bytes` handling for R6: strict whole-number coercion and
-# fractional/overflow call-level errors are slice R7's scope. Here we only store
-# the value, coercing to integer when it is already a valid whole number.
-coerce_max_bytes <- function(max_bytes) {
-  if (is.numeric(max_bytes) && length(max_bytes) == 1L && !is.na(max_bytes) &&
-        is.finite(max_bytes) && max_bytes == trunc(max_bytes) &&
-        max_bytes <= .Machine$integer.max) {
-    return(as.integer(max_bytes))
+# `max_bytes` must be one non-missing, finite, POSITIVE, WHOLE-NUMBER value no
+# greater than `.Machine$integer.max` (PRD 6.6 shared fetch controls). An R
+# double that represents a valid whole number (e.g. `524288` or `1e5`) is
+# accepted; fractional, non-positive, non-scalar, non-numeric, NA/Inf, or
+# out-of-range values are call-level errors (not a silent NA). Coerced to
+# integer exactly once, after validation.
+validate_max_bytes <- function(max_bytes) {
+  if (!is.numeric(max_bytes) || length(max_bytes) != 1L || is.na(max_bytes) ||
+        !is.finite(max_bytes) || max_bytes <= 0 ||
+        max_bytes != trunc(max_bytes) ||
+        max_bytes > .Machine$integer.max) {
+    robots_abort(
+      paste(
+        "`max_bytes` must be a single, positive, finite, whole-number value",
+        "no greater than `.Machine$integer.max`."
+      ),
+      "robotstxtr_invalid_max_bytes"
+    )
   }
-  NA_integer_
+  as.integer(max_bytes)
 }
 
 # The package fetch user agent (PRD 6.4): package name and version. Never the
@@ -109,6 +122,7 @@ fetch_error_meta <- function(outcome) {
     missing = c(stage = NA_character_, class = NA_character_),
     partial_response = c(stage = "response", class = "robots_partial_response"),
     http_error = c(stage = "response", class = "robots_http_error"),
+    body_too_large = c(stage = "response", class = "robots_body_too_large"),
     redirect_error = c(stage = "redirect", class = "robots_redirect_error"),
     timeout = c(stage = "request", class = "robots_timeout"),
     network_error = c(stage = "request", class = "robots_network_error"),
@@ -160,19 +174,87 @@ build_fetch_request <- function(url, timeout, fetch_ua) {
   httr2::req_error(req, is_error = function(resp) FALSE)
 }
 
+# --- Streaming decoded-byte limit enforcement (PRD 6.4 streaming note) -------
+
+# Pure decoded-byte accumulator. `read_chunk` is a nullary closure returning the
+# next raw chunk of the DECODED entity (or a zero-length raw vector at stream
+# end). Chunks are accumulated until the stream ends or the running total
+# EXCEEDS `max_bytes`. A total at or under the limit yields the assembled body
+# (empty stream -> raw(0)); the moment the total crosses the limit it stops
+# pulling chunks and returns no body, so a truncated body is never assembled or
+# stored. Factored out (and unit-tested with synthetic chunks) to prove the
+# count/abort/no-store contract independently of any HTTP transport.
+accumulate_within_limit <- function(read_chunk, max_bytes) {
+  acc <- list()
+  total <- 0
+  repeat {
+    chunk <- read_chunk()
+    if (length(chunk) == 0L) {
+      break
+    }
+    total <- total + length(chunk)
+    if (total > max_bytes) {
+      return(list(exceeded = TRUE, body = NULL))
+    }
+    acc[[length(acc) + 1L]] <- chunk
+  }
+  list(
+    exceeded = FALSE,
+    body = if (length(acc) > 0L) do.call(c, acc) else raw(0)
+  )
+}
+
+# Close a streaming-connection response. A mocked/buffered response (its `body`
+# is a raw vector, not a live `StreamingBody`) has no connection to close, so
+# this is a no-op there. Guarded so teardown never errors on any exit path.
+close_stream_response <- function(resp) {
+  if (inherits(resp$body, "StreamingBody")) {
+    try(close(resp), silent = TRUE)
+  }
+  invisible(NULL)
+}
+
+# Read the final response body enforcing the decoded-byte limit. Real fetches
+# yield a live `StreamingBody`, streamed chunk-by-chunk so reading aborts as
+# soon as the DECODED total crosses `max_bytes` (curl decompresses before its
+# write callback, so streamed chunks are already decoded). A mocked/buffered
+# response (test harness) has its decoded bytes already in memory; there is no
+# live transfer to abort, so its materialized length is measured directly.
+read_body_within_limit <- function(resp, max_bytes) {
+  if (inherits(resp$body, "StreamingBody")) {
+    return(accumulate_within_limit(
+      function() httr2::resp_stream_raw(resp, kb = 32L), max_bytes
+    ))
+  }
+  buffered <- if (httr2::resp_has_body(resp)) {
+    httr2::resp_body_raw(resp)
+  } else {
+    raw(0)
+  }
+  if (length(buffered) > max_bytes) {
+    list(exceeded = TRUE, body = NULL)
+  } else {
+    list(exceeded = FALSE, body = buffered)
+  }
+}
+
 # --- Manual redirect loop + fetch of one origin -----------------------------
 
 # Fetch a single robots URL under the deterministic policy and return a source
 # result (see make_source_result). Grouping is by the ORIGINAL requested URL
 # (PRD 6.5): the caller keys on `robots_url`, not on the final destination.
-perform_fetch <- function(robots_url, timeout, fetch_ua) {
+# Each hop is driven over a streaming connection (`req_perform_connection`) so
+# the final body can be read chunk-by-chunk under the decoded-byte limit; the
+# connection is closed on every exit path. `max_bytes` is the validated integer
+# limit enforced on decoded entity bytes.
+perform_fetch <- function(robots_url, timeout, fetch_ua, max_bytes) {
   current_url <- robots_url
   redirect_count <- 0L
   visited <- character(0)
 
   repeat {
     req <- build_fetch_request(current_url, timeout, fetch_ua)
-    resp <- tryCatch(httr2::req_perform(req), error = function(e) e)
+    resp <- tryCatch(httr2::req_perform_connection(req), error = function(e) e)
 
     # Transport failure (DNS/connection/TLS/timeout): classify and stop.
     if (inherits(resp, "condition")) {
@@ -185,9 +267,11 @@ perform_fetch <- function(robots_url, timeout, fetch_ua) {
     status <- httr2::resp_status(resp)
 
     # Redirect handling (PRD 6.4). Any 3xx we cannot legally follow, a loop, or
-    # exceeding five redirects is a `redirect_error`.
+    # exceeding five redirects is a `redirect_error`. Read the Location header
+    # (no body needed) and close the connection before continuing or returning.
     if (status >= 300L && status <= 399L) {
       loc <- httr2::resp_header(resp, "Location")
+      close_stream_response(resp)
       if (is.null(loc) || !nzchar(loc)) {
         return(make_source_result(
           "redirect_error", NULL, NULL, redirect_count, NULL,
@@ -233,15 +317,33 @@ perform_fetch <- function(robots_url, timeout, fetch_ua) {
 
     # Final (non-3xx) response: classify by status.
     outcome <- classify_status(status)
-    # An empty 2xx body is a valid `fetched` result (stored as raw(0)); httr2
-    # errors on resp_body_raw() for an empty body, so guard with resp_has_body.
-    body <- if (identical(outcome, "fetched")) {
-      if (httr2::resp_has_body(resp)) httr2::resp_body_raw(resp) else raw(0)
-    } else {
-      NULL
+
+    # A non-`fetched` final outcome stores no body; close and return.
+    if (!identical(outcome, "fetched")) {
+      close_stream_response(resp)
+      return(make_source_result(
+        outcome, status, current_url, redirect_count, NULL, NA_character_
+      ))
+    }
+
+    # `fetched`: read the decoded body under the byte limit, aborting the read
+    # the moment decoded bytes cross `max_bytes` (PRD 6.4). An empty body is a
+    # valid `fetched` result (stored as raw(0)). Crossing the limit is
+    # `body_too_large`: no body is stored (never a truncated body) and never
+    # matched, but the real final status and effective URL are recorded.
+    read <- read_body_within_limit(resp, max_bytes)
+    close_stream_response(resp)
+    if (isTRUE(read$exceeded)) {
+      return(make_source_result(
+        "body_too_large", status, current_url, redirect_count, NULL,
+        sprintf(
+          "Decoded response body exceeded the %d-byte limit (max_bytes).",
+          max_bytes
+        )
+      ))
     }
     return(make_source_result(
-      outcome, status, current_url, redirect_count, body, NA_character_
+      "fetched", status, current_url, redirect_count, read$body, NA_character_
     ))
   }
 }
