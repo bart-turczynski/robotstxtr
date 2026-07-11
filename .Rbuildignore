@@ -29,9 +29,12 @@
 ^FP_AGENTS\.md$
 ^_scratch$
 ^docs$
+^design$
 ^CLAUDE\.md$
 ^AGENTS\.md$
 ^CONTRIBUTING\.md$
 ^SECURITY\.md$
 ^CHANGELOG\.md$
 ^\.DS_Store$
+^_pkgdown\.yml$
+^pkgdown$
