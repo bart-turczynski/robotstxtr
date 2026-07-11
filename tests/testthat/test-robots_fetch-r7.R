@@ -56,8 +56,8 @@ test_that("gzip body under limit but decoded over limit is body_too_large", {
   # compressed-byte check would wrongly pass; only decoded counting fails it.
   decoded <- charToRaw(strrep("user-agent: *\ndisallow: /private\n", 3000L))
   gz <- memCompress(decoded, type = "gzip")
-  expect_true(length(gz) < 50000L)
-  expect_true(length(decoded) > 50000L)
+  expect_lt(length(gz), 50000L)
+  expect_gt(length(decoded), 50000L)
 
   with_body_server(gz, list("Content-Encoding" = "gzip"), function(srv) {
     if (!srv$ready) {

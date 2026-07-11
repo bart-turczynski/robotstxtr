@@ -33,7 +33,7 @@ test_that("robots carries the full contract schema with a raw body column", {
     "fetch_outcome", "redirect_count", "body_size", "timeout", "max_bytes",
     "error_stage", "error_class", "error_message", "body"
   ))
-  expect_equal(nrow(x$robots), 1L)
+  expect_identical(nrow(x$robots), 1L)
   expect_type(x$robots$body, "list")
   expect_type(x$robots$body[[1]], "raw")
   expect_identical(x$robots$source_type, "supplied")
@@ -56,7 +56,7 @@ test_that("rule_allow: an Allow that wins yields TRUE", {
   expect_true(x$results$allowed)
   expect_identical(x$results$decision_source, "rule_allow")
   expect_identical(x$results$matched_rule_type, "allow")
-  expect_true(x$results$matched_line > 0L)
+  expect_gt(x$results$matched_line, 0L)
 })
 
 test_that("default_allow: no match yields TRUE and matched_line NA", {
@@ -83,7 +83,7 @@ test_that("a scalar user agent expands across every URL", {
     c("http://a/x", "http://a/y", "http://a/z"),
     "bot"
   )
-  expect_equal(nrow(x$results), 3L)
+  expect_identical(nrow(x$results), 3L)
   expect_identical(x$results$user_agent, rep("bot", 3L))
   expect_identical(x$results$input_id, 1:3)
   expect_identical(
@@ -99,7 +99,7 @@ test_that("equal-length url and user_agent vectors match per row", {
     c("http://a/x", "http://a/x"),
     c("alpha", "beta")
   )
-  expect_equal(nrow(x$results), 2L)
+  expect_identical(nrow(x$results), 2L)
   expect_identical(x$results$user_agent, c("alpha", "beta"))
   # alpha is disallowed on /x; beta is allowed everywhere.
   expect_identical(x$results$allowed, c(FALSE, TRUE))
@@ -110,16 +110,16 @@ test_that("equal-length url and user_agent vectors match per row", {
 test_that("zero-length url returns an empty results frame", {
   x <- allowed_by_robots_text("user-agent: *\ndisallow: /x", character(0), "b")
   expect_s3_class(x, "robots_decisions")
-  expect_equal(nrow(x$results), 0L)
+  expect_identical(nrow(x$results), 0L)
   # The supplied body is still recorded as a source.
-  expect_equal(nrow(x$robots), 1L)
+  expect_identical(nrow(x$robots), 1L)
 })
 
 test_that("zero-length url tolerates a zero-length user_agent", {
   x <- allowed_by_robots_text(
     "user-agent: *\ndisallow: /x", character(0), character(0)
   )
-  expect_equal(nrow(x$results), 0L)
+  expect_identical(nrow(x$results), 0L)
 })
 
 # --- Call-level type and length errors --------------------------------------
@@ -178,7 +178,7 @@ test_that("invalid rows are detached and input order is preserved", {
     "bot"
   )
 
-  expect_equal(nrow(x$results), 4L)
+  expect_identical(nrow(x$results), 4L)
   expect_identical(x$results$input_id, 1:4)
 
   # Rows 1 and 4 are valid; rows 2 (empty) and 3 (NA) are invalid.
@@ -203,7 +203,7 @@ test_that("invalid rows are detached and input order is preserved", {
     x$results$error_stage, c(NA, "origin", "origin", NA)
   )
   # The supplied body still exists in the robots table (single source).
-  expect_equal(nrow(x$robots), 1L)
+  expect_identical(nrow(x$robots), 1L)
   expect_identical(x$robots$source_id, "supplied")
 })
 
@@ -254,7 +254,7 @@ test_that("the supplied body is stored once as UTF-8 bytes", {
   body <- "user-agent: *\ndisallow: /café"
   x <- allowed_by_robots_text(body, "http://a/x", "b")
   expect_identical(x$robots$body[[1]], charToRaw(enc2utf8(body)))
-  expect_equal(x$robots$body_size, length(charToRaw(enc2utf8(body))))
+  expect_identical(x$robots$body_size, length(charToRaw(enc2utf8(body))))
 })
 
 test_that("a byte-encoded body is handled and matches, value stays NA", {

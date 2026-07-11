@@ -57,7 +57,7 @@ test_that("a mid-stream transport drop is classified, not aborted", {
   x <- robots_fetch("http://a/x")
 
   expect_s3_class(x, "robots_fetches")
-  expect_equal(nrow(x$robots), 1L)
+  expect_identical(nrow(x$robots), 1L)
   expect_true(x$robots$fetch_outcome %in%
                 c("network_error", "tls_error", "timeout"))
   # curl_error_partial_file -> network_error, with request-stage metadata.
@@ -89,7 +89,7 @@ test_that("a mid-stream drop does not abort allowed_by_robots_url()", {
   # so the decision is fetch_unknown (allowed NA), never a crash.
   x <- allowed_by_robots_url("http://a/private", "bot")
   expect_s3_class(x, "robots_decisions")
-  expect_equal(nrow(x$results), 1L)
+  expect_identical(nrow(x$results), 1L)
   expect_identical(x$results$fetch_outcome, "network_error")
   expect_identical(x$results$decision_source, "fetch_unknown")
   expect_true(is.na(x$results$allowed))

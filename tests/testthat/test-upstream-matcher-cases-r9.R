@@ -164,7 +164,7 @@ test_that("an empty supplied body allows everything (default_allow)", {
   expect_true(is.na(x$results$matched_line))
   # The empty body is still recorded as a zero-length raw source.
   expect_identical(x$robots$body[[1]], raw(0))
-  expect_equal(x$robots$body_size, 0L)
+  expect_identical(x$robots$body_size, 0L)
 })
 
 # --- User-agent group selection & case-insensitive UA matching --------------
