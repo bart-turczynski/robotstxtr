@@ -31,6 +31,8 @@ Imports:
 LinkingTo:
     cpp11
 SystemRequirements: C++17
+Remotes:
+    bart-turczynski/rurl@v2.2.1
 Suggests:
     callr,
     cucumber (>= 2.0.0),
