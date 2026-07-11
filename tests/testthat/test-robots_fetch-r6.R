@@ -92,8 +92,8 @@ test_that("shared origin is fetched exactly once (tracer bullet)", {
   expect_s3_class(x, "robots_fetches")
   expect_length(rec$urls, 1L)
   expect_identical(rec$urls, "http://a/robots.txt")
-  expect_equal(nrow(x$robots), 1L)
-  expect_equal(nrow(x$map), 2L)
+  expect_identical(nrow(x$robots), 1L)
+  expect_identical(nrow(x$map), 2L)
   expect_identical(x$map$source_id, c("robots_1", "robots_1"))
   expect_identical(x$map$robots_url,
                    c("http://a/robots.txt", "http://a/robots.txt"))
@@ -343,7 +343,7 @@ test_that("an invalid URL is detached and never fetched, order preserved", {
   ))
   x <- robots_fetch(c("http://a/x", "not-a-url", "http://a/y"))
 
-  expect_equal(nrow(x$map), 3L)
+  expect_identical(nrow(x$map), 3L)
   expect_identical(x$map$input_id, 1:3)
   expect_identical(
     x$map$fetch_outcome, c("fetched", "input_invalid", "fetched")
@@ -357,7 +357,7 @@ test_that("an invalid URL is detached and never fetched, order preserved", {
   expect_identical(x$map$error_stage[[2]], "origin")
   expect_identical(x$map$error_class[[2]], "robots_invalid_url")
   # Exactly one source row exists (the invalid input added none).
-  expect_equal(nrow(x$robots), 1L)
+  expect_identical(nrow(x$robots), 1L)
 })
 
 test_that("distinct origins get robots_1, robots_2 in first-occurrence order", {
@@ -385,8 +385,8 @@ test_that("distinct origins get robots_1, robots_2 in first-occurrence order", {
 test_that("zero-length url yields correctly typed empty frames", {
   x <- robots_fetch(character(0))
   expect_s3_class(x, "robots_fetches")
-  expect_equal(nrow(x$map), 0L)
-  expect_equal(nrow(x$robots), 0L)
+  expect_identical(nrow(x$map), 0L)
+  expect_identical(nrow(x$robots), 0L)
   expect_type(x$map$input_id, "integer")
   expect_type(x$map$url, "character")
   expect_type(x$robots$body, "list")

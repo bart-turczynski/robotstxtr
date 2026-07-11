@@ -67,7 +67,7 @@ test_that("tracer: a disallowed path is FALSE / rule_disallow", {
   x <- allowed_by_robots_url("http://a/private", "bot")
 
   expect_s3_class(x, "robots_decisions")
-  expect_equal(nrow(x$results), 1L)
+  expect_identical(nrow(x$results), 1L)
   expect_false(x$results$allowed)
   expect_identical(x$results$decision_source, "rule_disallow")
   expect_identical(x$results$fetch_outcome, "fetched")
@@ -145,7 +145,7 @@ test_that("one fetch is reused across rows sharing an origin", {
   # Exactly one request for the shared origin.
   expect_length(rec$urls, 1L)
   expect_identical(rec$urls, "http://a/robots.txt")
-  expect_equal(nrow(x$robots), 1L)
+  expect_identical(nrow(x$robots), 1L)
   # Both rows reference the same source, with correct per-URL decisions.
   expect_identical(x$results$source_id, c("robots_1", "robots_1"))
   expect_identical(x$results$allowed, c(FALSE, TRUE))
@@ -202,7 +202,7 @@ test_that("an invalid UA is detached with no sibling and never fetched", {
   x <- allowed_by_robots_url("http://a/x", "")
 
   expect_length(rec$urls, 0L) # no request at all
-  expect_equal(nrow(x$robots), 0L)
+  expect_identical(nrow(x$robots), 0L)
   expect_true(is.na(x$results$allowed))
   expect_identical(x$results$decision_source, "input_unknown")
   expect_identical(x$results$fetch_outcome, "input_invalid")
@@ -227,7 +227,7 @@ test_that("an invalid-UA row detaches while a valid sibling still fetches", {
 
   # The valid sibling still triggers exactly one fetch.
   expect_length(rec$urls, 1L)
-  expect_equal(nrow(x$robots), 1L)
+  expect_identical(nrow(x$robots), 1L)
   # Row 1 gets a real decision from the fetched body.
   expect_false(x$results$allowed[[1]])
   expect_identical(x$results$decision_source[[1]], "rule_disallow")
@@ -252,7 +252,7 @@ test_that("a malformed / non-HTTP URL is input_unknown, never fetched", {
   x <- allowed_by_robots_url(c("not-a-url", NA, "", "ftp://a/x"), "bot")
 
   expect_length(rec$urls, 0L)
-  expect_equal(nrow(x$robots), 0L)
+  expect_identical(nrow(x$robots), 0L)
   expect_true(all(is.na(x$results$allowed)))
   expect_identical(x$results$decision_source, rep("input_unknown", 4L))
   expect_identical(x$results$fetch_outcome, rep("input_invalid", 4L))
@@ -298,7 +298,7 @@ test_that("combined fetch+match preserves input order across origins", {
   )
   # a fetched once, b fetched once (a reused by rows 1 and 4).
   expect_identical(rec$urls, c("http://a/robots.txt", "http://b/robots.txt"))
-  expect_equal(nrow(x$robots), 2L)
+  expect_identical(nrow(x$robots), 2L)
 })
 
 # --- match metadata carried through a fetched body --------------------------
@@ -339,8 +339,8 @@ test_that("an empty fetched body is default_allow", {
 test_that("zero-length url yields an empty robots_decisions object", {
   x <- allowed_by_robots_url(character(0), "bot")
   expect_s3_class(x, "robots_decisions")
-  expect_equal(nrow(x$results), 0L)
-  expect_equal(nrow(x$robots), 0L)
+  expect_identical(nrow(x$results), 0L)
+  expect_identical(nrow(x$robots), 0L)
   expect_type(x$results$input_id, "integer")
   expect_type(x$results$allowed, "logical")
   expect_named(x$results, c(

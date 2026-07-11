@@ -9,7 +9,7 @@ test_that("Disallow that wins yields rule_disallow / FALSE (R1 acceptance)", {
 
   expect_s3_class(x, "robots_decisions")
   expect_named(x, c("results", "robots"))
-  expect_equal(nrow(x$results), 1L)
+  expect_identical(nrow(x$results), 1L)
   expect_false(x$results$allowed)
   expect_identical(x$results$decision_source, "rule_disallow")
 })
@@ -39,10 +39,10 @@ test_that("the exact supplied body round-trips through robots$body as raw", {
   x <- allowed_by_robots_text(body, "http://a/x", "bot")
 
   expect_type(x$robots$body, "list")
-  expect_equal(nrow(x$robots), 1L)
+  expect_identical(nrow(x$robots), 1L)
   expect_identical(x$robots$body[[1]], charToRaw(body))
   expect_identical(rawToChar(x$robots$body[[1]]), body)
-  expect_equal(x$robots$body_size, length(charToRaw(body)))
+  expect_identical(x$robots$body_size, length(charToRaw(body)))
 })
 
 test_that("results and robots carry the R1 skeleton shape", {
@@ -82,7 +82,7 @@ test_that("url is vectorized with a scalar user agent", {
     "bot"
   )
 
-  expect_equal(nrow(x$results), 2L)
+  expect_identical(nrow(x$results), 2L)
   expect_identical(x$results$input_id, c(1L, 2L))
   expect_identical(x$results$allowed, c(FALSE, TRUE))
   expect_identical(
