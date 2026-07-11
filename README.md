@@ -1,5 +1,9 @@
 # robotstxtr
 
+<!-- badges: start -->
+[![R-CMD-check](https://github.com/bart-turczynski/robotstxtr/actions/workflows/R-CMD-check.yml/badge.svg)](https://github.com/bart-turczynski/robotstxtr/actions/workflows/R-CMD-check.yml)
+<!-- badges: end -->
+
 Faithful `robots.txt` parsing and URL-allowed decisions for R, powered by
 Google's own matcher.
 
