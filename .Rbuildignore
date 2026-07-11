@@ -9,6 +9,8 @@
 ^\.lintr$
 ^cran-comments\.md$
 ^CRAN-SUBMISSION$
+^LICENSE\.md$
+^THIRD_PARTY_NOTICES\.md$
 ^doc$
 ^Meta$
 # Shared scaffold layer: everything below is dev tooling, not package content,
