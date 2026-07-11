@@ -45,14 +45,11 @@
 #' callbacks of the same source body (the canonical value the matcher used,
 #' after upstream `MaybeEscapePattern` canonicalization).
 #'
+#' @inheritParams allowed_by_robots_text
+#' @inheritParams robots_fetch
 #' @param url A character vector of target URLs. May have length zero (an empty
 #'   result is returned). The original string is passed to the matcher
 #'   unchanged. A wrong R type is a call-level error.
-#' @param user_agent A matcher user-agent string, length one or `length(url)`,
-#'   passed to the matcher unchanged (upstream extraction semantics apply, so
-#'   e.g. `"Googlebot/2.1"` is not pre-trimmed by R).
-#' @param timeout A single positive, finite numeric total timeout in seconds per
-#'   origin, including redirects. Defaults to `10`.
 #' @param max_bytes A single positive, finite, whole-number decoded-body byte
 #'   limit no greater than `.Machine$integer.max`, coerced to integer. A
 #'   whole-number double (for example `524288`) is accepted; fractional,

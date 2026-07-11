@@ -25,7 +25,7 @@ new_robots_decisions <- function(results, robots) {
 #' allow/disallow/unknown tally, and a preview of up to ten result rows. Large
 #' body values are never shown. Returns the object invisibly.
 #'
-#' @param x A `robots_decisions` object.
+#' @inheritParams robots_body
 #' @param ... Ignored; present for S3 compatibility.
 #'
 #' @return `x`, invisibly.
