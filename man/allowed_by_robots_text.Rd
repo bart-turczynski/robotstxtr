@@ -52,11 +52,18 @@ Such an invalid row is detached from the supplied body: its \code{source_id},
 \code{"input_invalid"}. When both the URL and the user agent of a row are invalid,
 the URL error is reported (URL validity is checked first).
 
-Match metadata is partially populated by this slice: \code{matched_line} carries
-the upstream one-based matching line (or \code{NA} when no rule matched) and
-\code{matched_rule_type} is derived from the decision. \code{matched_rule_value} and
-callback-derived \code{matched_rule_type} correlation arrive in a later slice and
-remain \code{NA} here.
+Match metadata is fully populated on the text path. \code{matched_line} carries
+the upstream one-based matching line (or \code{NA} when no rule matched). For a
+matched row, \code{matched_rule_type} and \code{matched_rule_value} are correlated from
+the parse callbacks: the type (\code{"allow"}/\code{"disallow"}) and the canonical rule
+value the matcher actually used, i.e. the value after upstream
+\code{MaybeEscapePattern} canonicalization (non-ASCII bytes percent-escaped,
+existing \verb{\%xx} escapes upper-cased). R does not reconstruct a pre-escape
+form. A non-UTF-8 callback value is returned with \code{Encoding = "bytes"}.
+Rows where no rule matched keep \code{matched_rule_value = NA} and a
+decision-derived
+\code{matched_rule_type} (\code{"none"} for \code{default_allow}, \code{"unknown"} for
+\code{input_unknown}).
 }
 \examples{
 allowed_by_robots_text("user-agent: *\ndisallow: /x", "http://a/x", "bot")

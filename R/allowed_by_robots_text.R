@@ -22,11 +22,18 @@
 #' `"input_invalid"`. When both the URL and the user agent of a row are invalid,
 #' the URL error is reported (URL validity is checked first).
 #'
-#' Match metadata is partially populated by this slice: `matched_line` carries
-#' the upstream one-based matching line (or `NA` when no rule matched) and
-#' `matched_rule_type` is derived from the decision. `matched_rule_value` and
-#' callback-derived `matched_rule_type` correlation arrive in a later slice and
-#' remain `NA` here.
+#' Match metadata is fully populated on the text path. `matched_line` carries
+#' the upstream one-based matching line (or `NA` when no rule matched). For a
+#' matched row, `matched_rule_type` and `matched_rule_value` are correlated from
+#' the parse callbacks: the type (`"allow"`/`"disallow"`) and the canonical rule
+#' value the matcher actually used, i.e. the value after upstream
+#' `MaybeEscapePattern` canonicalization (non-ASCII bytes percent-escaped,
+#' existing `%xx` escapes upper-cased). R does not reconstruct a pre-escape
+#' form. A non-UTF-8 callback value is returned with `Encoding = "bytes"`.
+#' Rows where no rule matched keep `matched_rule_value = NA` and a
+#' decision-derived
+#' `matched_rule_type` (`"none"` for `default_allow`, `"unknown"` for
+#' `input_unknown`).
 #'
 #' @param robots_txt A single, non-missing character scalar holding the
 #'   robots.txt body. An empty body is valid. It is converted to UTF-8 once and
@@ -111,16 +118,38 @@ allowed_by_robots_text <- function(robots_txt, url, user_agent,
     !is.na(matching_line) & matching_line > 0L, matching_line, NA_integer_
   )
 
-  # matched_rule_type is derived from the decision this slice (correlation with
-  # the parse callback is deferred). matched_rule_value stays NA (later slice).
+  # matched_rule_type starts decision-derived; for rows with a positive matching
+  # line it is replaced below by the CALLBACK-derived type (§6.6, R3). Rows that
+  # never match (default_allow) or never ran (input_unknown) keep this value.
   type_by_decision <- c(
     rule_allow = "allow", rule_disallow = "disallow",
     default_allow = "none", input_unknown = "unknown"
   )
   matched_rule_type <- unname(type_by_decision[decision_source])
+  matched_rule_value <- rep(NA_character_, n)
 
-  # --- Detachment: invalid rows do not reference the supplied body (§6.6).
+  # --- Detachment: invalid rows do not reference the supplied body (§6.6). Set
+  # here (before correlation) so the join keys matched rows to their source.
   source_id_col <- ifelse(valid, source_id, NA_character_)
+
+  # --- Match-metadata correlation (§6.6, R3). Run the parse collector once per
+  # DISTINCT source body (here a single supplied body) and join each positive
+  # matching line to its per-source lookup, filling the canonical callback value
+  # and the callback-derived type. Skipped entirely when nothing matched (e.g.
+  # zero-length input or all default_allow), so the collector never runs need-
+  # lessly. A positive matching line absent from the lookup is a package error.
+  if (any(!is.na(matching_line) & matching_line > 0L)) {
+    lookups <- stats::setNames(
+      list(collect_directive_lookup(body_utf8)), source_id
+    )
+    correlated <- correlate_match_metadata(
+      matching_line, source_id_col, matched_rule_type, matched_rule_value,
+      lookups
+    )
+    matched_rule_type <- correlated$matched_rule_type
+    matched_rule_value <- correlated$matched_rule_value
+  }
+
   fetch_outcome <- ifelse(valid, "supplied", "input_invalid")
 
   # Per-row error metadata: URL invalidity takes precedence over user-agent
@@ -154,8 +183,7 @@ allowed_by_robots_text <- function(robots_txt, url, user_agent,
     error_message = error_message,
     matched_line = matched_line,
     matched_rule_type = matched_rule_type,
-    # matched_rule_value: callback correlation is a later slice.
-    matched_rule_value = rep(NA_character_, n),
+    matched_rule_value = matched_rule_value,
     stringsAsFactors = FALSE
   )
 

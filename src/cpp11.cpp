@@ -5,6 +5,13 @@
 #include "cpp11/declarations.hpp"
 #include <R_ext/Visibility.h>
 
+// collector_binding.cpp
+cpp11::list robotstxtr_collect_directives_(std::string body);
+extern "C" SEXP _robotstxtr_robotstxtr_collect_directives_(SEXP body) {
+  BEGIN_CPP11
+    return cpp11::as_sexp(robotstxtr_collect_directives_(cpp11::as_cpp<cpp11::decay_t<std::string>>(body)));
+  END_CPP11
+}
 // matcher_binding.cpp
 cpp11::writable::logicals robotstxtr_allowed_text_(std::string body, cpp11::strings url, std::string user_agent);
 extern "C" SEXP _robotstxtr_robotstxtr_allowed_text_(SEXP body, SEXP url, SEXP user_agent) {
@@ -23,6 +30,7 @@ extern "C" SEXP _robotstxtr_robotstxtr_matching_line_text_(SEXP body, SEXP url, 
 extern "C" {
 static const R_CallMethodDef CallEntries[] = {
     {"_robotstxtr_robotstxtr_allowed_text_",       (DL_FUNC) &_robotstxtr_robotstxtr_allowed_text_,       3},
+    {"_robotstxtr_robotstxtr_collect_directives_", (DL_FUNC) &_robotstxtr_robotstxtr_collect_directives_, 1},
     {"_robotstxtr_robotstxtr_matching_line_text_", (DL_FUNC) &_robotstxtr_robotstxtr_matching_line_text_, 3},
     {NULL, NULL, 0}
 };
