@@ -527,6 +527,14 @@ Match metadata rules:
 - When matching ran but no rule matched, `matched_rule_type = "none"`. When
   matching did not run, `matched_rule_type = "unknown"`.
 - `matched_line` and `matched_rule_value` are `NA` unless a rule matched.
+- An `allow`/`disallow` directive with an empty path is ignored by the matcher
+  (per Google; verified against upstream `robots_test.cc:317-323`), so it wins
+  nothing: such a row surfaces as `default_allow` with `matched_rule_type =
+  "none"` and `matched_line`/`matched_rule_value` `NA` (and `allowed` stays
+  `TRUE`), even though the reporting layer may report a positive matching line
+  for the ignored empty-path directive. A real rule always has a non-empty path
+  (even `/`), so a correlated callback value of exactly `""` uniquely
+  identifies this ignored-empty-path case.
 
 Correlation mechanism:
 

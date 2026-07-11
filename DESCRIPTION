@@ -1,13 +1,26 @@
 Package: robotstxtr
 Type: Package
-Title: One Line Description in Title Case
-Version: 0.0.0.9000
+Title: Faithful 'robots.txt' Parsing Using Google's Matcher Algorithm
+Version: 0.1.0
+Language: en-US
 Authors@R:
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
-Description: A single paragraph describing what the package does and why it is
-    useful. End the description with a full stop. Replace this placeholder text
-    before submitting to CRAN.
+    person("Bart", "Turczynski", email = "bartek@turczynski.pl", role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0002-8788-7980"))
+Description: Evaluates whether URLs may be crawled according to 'robots.txt'
+    rules, using a vendored, upstream-test-validated snapshot of Google's
+    open-source C++ 'robots.txt' matcher so that allow and disallow decisions
+    match Googlebot behavior. Fetches 'robots.txt' documents with a
+    deterministic, conservative policy built on 'httr2', constructs fetch
+    origins with 'rurl', and returns richly typed, vectorized decisions with
+    per-rule match metadata. All network access in tests, examples, and
+    vignettes is mocked or served locally, so no internet connection is
+    required to install, test, or check the package. The bundled matcher
+    derives from Google's 'robotstxt' project
+    <https://github.com/google/robotstxt>, distributed under the Apache License
+    2.0; see the package NOTICE.
 License: MIT + file LICENSE
+URL: https://github.com/bart-turczynski/robotstxtr
+BugReports: https://github.com/bart-turczynski/robotstxtr/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Depends:

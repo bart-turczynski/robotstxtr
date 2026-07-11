@@ -230,6 +230,18 @@ allowed_by_robots_url <- function(url, user_agent, timeout = 10,
     )
     matched_rule_type <- correlated$matched_rule_type
     matched_rule_value <- correlated$matched_rule_value
+
+    # --- Ignored empty-path directives (PRD 6.6, R9). A matched row whose sole
+    # matched directive has an empty path (callback value "") was ignored by
+    # the matcher per Google, so restate it as default_allow/none/NA/NA. Runs
+    # AFTER correlation and never changes `allowed`. Shared with the text path.
+    normalized <- normalize_ignored_empty_path(
+      decision_source, matched_rule_type, matched_line, matched_rule_value
+    )
+    decision_source <- normalized$decision_source
+    matched_rule_type <- normalized$matched_rule_type
+    matched_line <- normalized$matched_line
+    matched_rule_value <- normalized$matched_rule_value
   }
 
   results <- data.frame(

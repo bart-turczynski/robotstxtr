@@ -66,3 +66,41 @@ correlate_match_metadata <- function(matching_line, source_id,
     matched_rule_value = matched_rule_value
   )
 }
+
+# Normalize matched rows whose sole matched directive has an EMPTY PATH (R9).
+#
+# Per Google's robots.txt spec (and the vendored upstream test
+# robots_test.cc:317-323), an `allow` or `disallow` rule WITHOUT a path is
+# ignored by the matcher: it imposes no restriction and no rule actually "wins".
+# The engine correctly returns `allowed = TRUE` for such a body, but its
+# reporting layer still surfaces a positive matching line pointing at the
+# ignored empty-path directive. After correlation that row carries a
+# `matched_rule_value` of exactly "" (a real rule always has a non-empty path,
+# e.g. "/"), so an empty callback value uniquely identifies the ignored case.
+#
+# For each such row, restate the metadata per Google's "no rule matched"
+# semantics: `decision_source = "default_allow"`, `matched_rule_type = "none"`,
+# `matched_line = NA`, `matched_rule_value = NA`. This applies whether the
+# ignored directive was an Allow or a Disallow. It never touches the crawl
+# decision (`allowed` stays TRUE) and never touches rows with an NA
+# `matched_rule_value` (missing_allow / fetch_unknown / input_unknown / already
+# default). Called from BOTH matching entry points so they cannot drift.
+#
+# Returns a list with the normalized `decision_source`, `matched_rule_type`,
+# `matched_line`, and `matched_rule_value` vectors.
+normalize_ignored_empty_path <- function(decision_source, matched_rule_type,
+                                         matched_line, matched_rule_value) {
+  ignored <- !is.na(matched_rule_value) & matched_rule_value == ""
+  if (any(ignored)) {
+    decision_source[ignored] <- "default_allow"
+    matched_rule_type[ignored] <- "none"
+    matched_line[ignored] <- NA_integer_
+    matched_rule_value[ignored] <- NA_character_
+  }
+  list(
+    decision_source = decision_source,
+    matched_rule_type = matched_rule_type,
+    matched_line = matched_line,
+    matched_rule_value = matched_rule_value
+  )
+}
