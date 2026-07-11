@@ -18,9 +18,165 @@ knitr::opts_chunk$set(
 library(robotstxtr)
 ```
 
-Replace this vignette with a real introduction to your package: what it does,
-the problem it solves, and a worked example or two.
+## What robotstxtr does
+
+`robotstxtr` decides whether a URL may be crawled according to a site's
+`robots.txt` rules. It answers one question — *"is this URL allowed for this
+crawler?"* — and answers it exactly the way Google's own crawler would, because
+the matching engine is a vendored, upstream-test-validated snapshot of Google's
+open-source C++ `robots.txt` parser and matcher.
+
+The core value is **fidelity**. `robots.txt` matching has many quirks — longest
+rule wins, `Allow` beats `Disallow` on an equal-length tie, `*` and `$`
+wildcards, case-sensitive paths but case-insensitive user-agent groups,
+percent-escape canonicalization. Re-implementing those rules by hand is a common
+source of subtle bugs. `robotstxtr` sidesteps that by running the real Google
+algorithm and returning a stable, machine-readable decision for every URL.
+
+This is a faithful, upstream-test-validated replica of the pinned open-source
+matcher. It is not a claim of universal behavioral identity with Googlebot,
+which has crawl policy beyond this matcher.
+
+## The two entry points
+
+There are two ways to get a decision, depending on whether you already have the
+`robots.txt` text:
+
+- `allowed_by_robots_text()` — you supply the `robots.txt` body yourself. No
+  network access is performed. This is the pure matching path.
+- `allowed_by_robots_url()` — you supply only the target URL(s). The package
+  works out the governing `robots.txt` origin, fetches it under a deterministic
+  and conservative HTTP policy, and matches.
+
+Both return an S3 `robots_decisions` object with one row per input URL.
+
+## Matching against a supplied body
+
+`allowed_by_robots_text()` needs a `robots.txt` body, one or more URLs, and a
+crawler user-agent token. Everything below runs offline, so it is safe to
+evaluate in this vignette.
 
 ```{r}
-scaffold_ready()
+robots <- "user-agent: *
+disallow: /private
+allow: /private/public
+"
+
+allowed_by_robots_text(robots, "https://example.com/private/report", "mybot")
 ```
+
+The result is a data-frame-backed object. Pull out the pieces you need from its
+`results` table:
+
+```{r}
+decision <- allowed_by_robots_text(
+  robots,
+  c(
+    "https://example.com/index.html",     # not disallowed, allowed
+    "https://example.com/private/report", # under /private, disallowed
+    "https://example.com/private/public"  # re-allowed by the Allow rule
+  ),
+  "mybot"
+)
+
+decision$results[c("url", "allowed", "decision_source")]
+```
+
+`allowed` is the headline `TRUE`/`FALSE`/`NA` answer. `decision_source` explains
+*why*: `rule_disallow`, `rule_allow`, `default_allow` (matching ran and nothing
+matched), `missing_allow` (the file was absent), or one of the `*_unknown`
+values when no safe decision was possible.
+
+### Vectorized, with per-URL user agents
+
+A scalar user agent expands across every URL, or you can pass one user agent per
+URL. Invalid rows (a missing URL, an empty user agent) never abort the call;
+they come back as a per-row `input_unknown` decision in their original position.
+
+```{r}
+allowed_by_robots_text(
+  "user-agent: newsbot\ndisallow: /\nuser-agent: *\nallow: /",
+  c("https://example.com/a", "https://example.com/a"),
+  c("newsbot", "otherbot")
+)$results[c("url", "user_agent", "allowed")]
+```
+
+### Rich match metadata
+
+For a matched row the object also records which rule won: the one-based
+`matched_line`, the `matched_rule_type` (`allow`/`disallow`), and the canonical
+`matched_rule_value` — the exact directive value the matcher used, after
+upstream escaping canonicalization.
+
+```{r}
+m <- allowed_by_robots_text(
+  "user-agent: *\ndisallow: /*.pdf$",
+  "https://example.com/manual.pdf",
+  "mybot"
+)
+cols <- c("allowed", "matched_line", "matched_rule_type", "matched_rule_value")
+m$results[cols]
+```
+
+### Inspecting the stored body
+
+The supplied (or fetched) `robots.txt` body is stored once per source. Preview
+or extract it with `robots_body()`:
+
+```{r}
+robots_body(decision, n = 40)
+```
+
+## Fetching robots.txt for a URL
+
+When you do not already have the `robots.txt` text, `allowed_by_robots_url()`
+does the whole job: it derives the `scheme://host[:port]/robots.txt` origin for
+each URL (handling IDN hosts, ports, IPv6 literals, and userinfo stripping via
+`rurl`), fetches each distinct origin exactly once under a conservative `httr2`
+policy (10-second timeout, at most five redirects, no HTTPS-to-HTTP downgrades,
+no cookies or credentials forwarded), and matches every URL against the body it
+retrieved.
+
+```{r, eval = FALSE}
+# Not evaluated here: this call performs a network request, which vignettes
+# must never require. Run it in an interactive session against a real site.
+allowed_by_robots_url("https://example.com/some/page", "mybot")
+```
+
+The returned object has exactly the same `robots_decisions` shape as
+`allowed_by_robots_text()`, with additional fetch metadata populated per row:
+`fetch_outcome` (for example `fetched`, `missing`, `redirect_error`,
+`timeout`), `http_status`, and `robots_url`. A `404`/`410` origin yields
+`missing_allow` (`TRUE`, because an absent file allows everything); any fetch
+failure yields `fetch_unknown` (`NA`), so a transport problem never silently
+looks like an allow.
+
+If you only want the fetch stage without matching, `robots_fetch()` returns the
+grouped fetch results on their own.
+
+## The URL you pass is the URL that is matched
+
+`robots.txt` matching is sensitive to the exact URL bytes: path case, query
+strings, fragments, and percent escapes all matter. `robotstxtr` passes your
+original URL string to the matcher unchanged — it never cleans, decodes, or
+reserializes it. The upstream matcher expects an appropriately encoded, RFC 3986
+`%`-escaped full URL, so supplying the URL in that form is the caller's
+responsibility.
+
+```{r}
+# Path case is significant: /Private is disallowed, /private is not.
+allowed_by_robots_text(
+  "user-agent: *\ndisallow: /Private",
+  c("https://example.com/Private", "https://example.com/private"),
+  "mybot"
+)$results[c("url", "allowed")]
+```
+
+## Summary
+
+- `allowed_by_robots_text()` matches against a body you supply, fully offline.
+- `allowed_by_robots_url()` fetches and matches under a deterministic policy.
+- Both return a stable, vectorized `robots_decisions` object with `allowed`,
+  `decision_source`, fetch metadata, and per-rule match metadata.
+- Decisions come from a vendored snapshot of Google's own matcher, so the quirky
+  parts of `robots.txt` semantics are handled faithfully.
