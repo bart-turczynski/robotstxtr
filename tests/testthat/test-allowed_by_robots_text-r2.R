@@ -230,15 +230,21 @@ test_that("URL invalidity takes precedence when both elements are invalid", {
   expect_identical(x$results$error_stage, "origin")
 })
 
-# --- matched_rule_value pending R3 ------------------------------------------
+# --- matched_rule_value: filled for matched rows, NA otherwise (R3) ---------
 
-test_that("matched_rule_value is NA across decision sources (pending R3)", {
+test_that("matched_rule_value is filled for matched rows, NA otherwise", {
   x <- allowed_by_robots_text(
     "user-agent: *\ndisallow: /x\nallow: /ok",
     c("http://a/x", "http://a/ok", "http://a/y", ""),
     "bot"
   )
-  expect_true(all(is.na(x$results$matched_rule_value)))
+  # R3 populates matched rows (disallow /x, allow /ok) with the canonical
+  # callback value; unmatched (default_allow) and invalid (input_unknown) rows
+  # stay NA.
+  expect_identical(
+    x$results$matched_rule_value,
+    c("/x", "/ok", NA_character_, NA_character_)
+  )
   expect_type(x$results$matched_rule_value, "character")
 })
 

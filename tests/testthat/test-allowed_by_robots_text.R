@@ -66,12 +66,13 @@ test_that("results and robots carry the R1 skeleton shape", {
   expect_true(is.na(x$results$robots_url))
   expect_true(is.na(x$results$http_status))
 
-  # R2 elevates match metadata on the text path: matched_line is the upstream
-  # one-based matching line (the disallow sits on line 2) and matched_rule_type
-  # is derived from the decision. matched_rule_value stays NA pending R3.
+  # Match metadata on the text path: matched_line is the upstream one-based
+  # matching line (the disallow sits on line 2), matched_rule_type is the
+  # callback-derived type, and R3 fills matched_rule_value with the canonical
+  # callback value for the matched directive.
   expect_identical(x$results$matched_line, 2L)
   expect_identical(x$results$matched_rule_type, "disallow")
-  expect_true(is.na(x$results$matched_rule_value))
+  expect_identical(x$results$matched_rule_value, "/x")
 })
 
 test_that("url is vectorized with a scalar user agent", {
