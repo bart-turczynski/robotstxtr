@@ -3,6 +3,7 @@
 S3method(print,robots_decisions)
 S3method(print,robots_fetches)
 export(allowed_by_robots_text)
+export(allowed_by_robots_url)
 export(robots_body)
 export(robots_fetch)
 export(scaffold_ready)
