@@ -19,7 +19,9 @@ LinkingTo:
     cpp11
 SystemRequirements: C++17
 Suggests:
+    callr,
     cucumber (>= 2.0.0),
+    httpuv,
     knitr,
     rmarkdown,
     testthat (>= 3.0.0)
