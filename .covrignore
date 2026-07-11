@@ -1,0 +1,12 @@
+# Vendored upstream: Google's open-source robots.txt matcher
+# (https://github.com/google/robotstxt, Apache-2.0). Carried verbatim and
+# validated by the upstream-conformance test suite (tests/testthat/
+# test-upstream-matcher-cases-r9.R, test-cucumber.R), not by this package's own
+# line coverage. reporting_robots.{cc,h} is the upstream reporting layer, which
+# the package deliberately does not use (it collects directives via its own
+# DirectiveCollector in src/collector_binding.cpp). Excluded so coverage
+# reflects the package's own code.
+src/robots.cc
+src/robots.h
+src/reporting_robots.cc
+src/reporting_robots.h

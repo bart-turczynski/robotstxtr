@@ -7,6 +7,7 @@
 ^.*\.Rcheck$
 ^.*\.tar\.gz$
 ^\.lintr$
+^\.covrignore$
 ^cran-comments\.md$
 ^CRAN-SUBMISSION$
 ^LICENSE\.md$

@@ -153,3 +153,53 @@ test_that("a positive matching line with no collected directive errors", {
     class = "robotstxtr_missing_collected_line"
   )
 })
+
+# --- Collector: every directive callback is recorded ------------------------
+
+test_that("sitemap and unknown-action directives are collected", {
+  # The collector stores every directive kind, not just Allow/Disallow, so its
+  # per-line lookup is complete. Sitemap and unknown-action lines exercise the
+  # HandleSitemap / HandleUnknownAction callbacks.
+  body <- paste(
+    "user-agent: *",
+    "sitemap: http://a/sitemap.xml",
+    "somethingelse: value-here",
+    sep = "\n"
+  )
+  d <- collect_directive_lookup(body)
+  expect_identical(d$type[d$line == 2L], "sitemap")
+  expect_identical(d$value[d$line == 2L], "http://a/sitemap.xml")
+  expect_identical(d$type[d$line == 3L], "unknown")
+  expect_identical(d$value[d$line == 3L], "value-here")
+})
+
+# --- Collector: callback-value encoding marking -----------------------------
+
+test_that("multi-byte UTF-8 directive values are marked UTF-8", {
+  # Sitemap/user-agent values are NOT run through MaybeEscapePattern, so raw 2-,
+  # 3-, and 4-byte UTF-8 sequences reach the collector verbatim and must be
+  # marked Encoding = "UTF-8" (exercises the multi-byte branches of the
+  # binding's is_valid_utf8 well-formedness check).
+  body <- paste(
+    "user-agent: bot-é",               # two-byte sequence
+    "sitemap: http://a/€",             # three-byte sequence
+    "sitemap: http://a/\U0001D11E",    # four-byte sequence
+    sep = "\n"
+  )
+  d <- collect_directive_lookup(body)
+  vals <- d$value[d$line %in% 1:3]
+  expect_identical(Encoding(vals), rep("UTF-8", 3L))
+  expect_true(any(grepl("€", vals, fixed = TRUE)))
+})
+
+test_that("a non-UTF-8 directive value is surfaced as Encoding = bytes", {
+  # A body force-marked UTF-8 but carrying malformed bytes (an invalid leading
+  # byte) must not trigger a translation error: the collector detects the
+  # ill-formed value and surfaces it verbatim with Encoding = "bytes".
+  body <- rawToChar(c(charToRaw("sitemap: http://a/"), as.raw(c(0xff, 0xfe))))
+  Encoding(body) <- "UTF-8"
+  d <- collect_directive_lookup(body)
+  sm <- d$value[d$type == "sitemap"]
+  expect_identical(Encoding(sm), "bytes")
+  expect_identical(nchar(sm, type = "bytes"), 11L)
+})

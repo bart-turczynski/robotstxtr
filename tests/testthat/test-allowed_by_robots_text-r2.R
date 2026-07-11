@@ -286,3 +286,13 @@ test_that("print.robots_decisions summarizes and returns invisibly", {
   expect_output(print(x), "allowed: 1")
   expect_invisible(print(x))
 })
+
+test_that("print.robots_decisions truncates the preview beyond ten rows", {
+  # The printer previews at most ten rows and reports the remainder as a
+  # "... and N more rows" footer.
+  urls <- sprintf("http://a/p%02d", seq_len(12))
+  x <- allowed_by_robots_text("user-agent: *\ndisallow: /x", urls, "bot")
+  expect_output(print(x), "12 results")
+  expect_output(print(x), "[.][.][.] and 2 more rows")
+  expect_invisible(print(x))
+})
