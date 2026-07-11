@@ -331,7 +331,23 @@ perform_fetch <- function(robots_url, timeout, fetch_ua, max_bytes) {
     # valid `fetched` result (stored as raw(0)). Crossing the limit is
     # `body_too_large`: no body is stored (never a truncated body) and never
     # matched, but the real final status and effective URL are recorded.
-    read <- read_body_within_limit(resp, max_bytes)
+    #
+    # A transport failure raised DURING the body stream (e.g. the server drops
+    # the connection mid-body) escapes the accumulator here; catch it at this
+    # call site so the pure accumulator stays transport-unaware. Classify it
+    # exactly like a connection-open failure (timeout / tls_error /
+    # network_error): the fetch did not complete, so store no body and, like the
+    # connection-open transport rows above, no http_status or effective_url.
+    read <- tryCatch(
+      read_body_within_limit(resp, max_bytes), error = function(e) e
+    )
+    if (inherits(read, "condition")) {
+      close_stream_response(resp)
+      return(make_source_result(
+        classify_transport_condition(read), NULL, NULL, redirect_count, NULL,
+        conditionMessage(read)
+      ))
+    }
     close_stream_response(resp)
     if (isTRUE(read$exceeded)) {
       return(make_source_result(
