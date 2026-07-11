@@ -9,28 +9,41 @@
 #' callers are responsible for supplying it in that form. R does not clean,
 #' decode, canonicalize, or reserialize the URL before matching.
 #'
-#' This is the slice R1 surface: it implements the happy path only. It expects a
-#' single non-missing `robots_txt` scalar, a character `url` vector, and a
-#' single matcher `user_agent`, and returns the `rule_allow`, `rule_disallow`,
-#' and `default_allow` decisions. Full input validation and the per-row
-#' `input_unknown` contract (R2), match-metadata correlation (R3), and all
-#' fetching (R5-R8) are added by later slices; the columns those slices own are
-#' present but filled with `NA` / `"unknown"`.
+#' `url` may have length zero (an empty result is returned). `user_agent` must
+#' be a character vector of length one or `length(url)`: a scalar user agent
+#' expands across every URL, and no other recycling is allowed. A wrong R type
+#' for any argument, a `user_agent` length mismatch, a non-scalar or missing
+#' `robots_txt`, or an empty/missing `source_id` are call-level errors.
 #'
-#' @param robots_txt A single character scalar holding the robots.txt body. An
-#'   empty body is valid.
+#' A missing (`NA`) or empty (`""`) URL or user-agent element does not abort the
+#' call: that row yields a per-row `input_unknown` decision with `allowed = NA`.
+#' Such an invalid row is detached from the supplied body: its `source_id`,
+#' `robots_url`, and `http_status` are `NA` and its `fetch_outcome` is
+#' `"input_invalid"`. When both the URL and the user agent of a row are invalid,
+#' the URL error is reported (URL validity is checked first).
+#'
+#' Match metadata is partially populated by this slice: `matched_line` carries
+#' the upstream one-based matching line (or `NA` when no rule matched) and
+#' `matched_rule_type` is derived from the decision. `matched_rule_value` and
+#' callback-derived `matched_rule_type` correlation arrive in a later slice and
+#' remain `NA` here.
+#'
+#' @param robots_txt A single, non-missing character scalar holding the
+#'   robots.txt body. An empty body is valid. It is converted to UTF-8 once and
+#'   the exact bytes are stored in the returned `robots$body` and passed to the
+#'   matcher; a body already carrying `Encoding = "bytes"` is used verbatim.
 #' @param url A character vector of URL strings to match, passed to the matcher
-#'   unchanged.
-#' @param user_agent A single matcher user-agent string, passed to the matcher
-#'   unchanged (upstream extraction semantics apply, so e.g. `"Googlebot/2.1"`
-#'   is not pre-trimmed by R).
+#'   unchanged. May have length zero.
+#' @param user_agent A matcher user-agent string, length one or `length(url)`,
+#'   passed to the matcher unchanged (upstream extraction semantics apply, so
+#'   e.g. `"Googlebot/2.1"` is not pre-trimmed by R).
 #' @param source_id A single non-empty character scalar identifying the supplied
 #'   body within the returned object. Defaults to `"supplied"`.
 #'
 #' @return An S3 object of class `robots_decisions`: a named list with two
 #'   components, `results` (one row per input URL, in input order) and `robots`
-#'   (one row per supplied source body). The supplied body is stored once as a
-#'   raw vector in `robots$body`.
+#'   (one row for the supplied source body). The supplied body is stored once as
+#'   a raw vector in `robots$body`.
 #'
 #' @examples
 #' allowed_by_robots_text("user-agent: *\ndisallow: /x", "http://a/x", "bot")
@@ -39,46 +52,110 @@
 #' @export
 allowed_by_robots_text <- function(robots_txt, url, user_agent,
                                    source_id = "supplied") {
-  # Slice R1 happy-path surface. Full input validation is slice R2; here we make
-  # the minimal shape assumptions explicit rather than silently mis-handling.
-  body_chr <- enc2utf8(as.character(robots_txt))
-  user_agent <- as.character(user_agent)
-  url <- as.character(url)
+  # --- Call-level input validation (§6.6). Wrong type / shape aborts. --------
+  validate_robots_txt(robots_txt)
+  validate_source_id(source_id)
+  validate_url_type(url)
   n <- length(url)
+  user_agent <- expand_user_agent(user_agent, n)
 
-  # Store the exact supplied body once, as raw UTF-8 bytes (§6.6 body handling).
-  raw_body <- charToRaw(body_chr)
+  # --- Body: convert to UTF-8 once, store those exact bytes, and pass the same
+  # byte sequence to C++ (§6.6 body handling). A body already flagged as
+  # `Encoding = "bytes"` is used verbatim (it cannot be UTF-8-translated). The
+  # matcher input is rebuilt from the raw bytes and marked UTF-8 so cpp11
+  # forwards the exact bytes without a translation error or re-encoding.
+  if (identical(Encoding(robots_txt), "bytes")) {
+    raw_body <- charToRaw(robots_txt)
+  } else {
+    raw_body <- charToRaw(enc2utf8(robots_txt))
+  }
+  body_utf8 <- rawToChar(raw_body)
+  Encoding(body_utf8) <- "UTF-8"
 
-  allowed <- robotstxtr_allowed_text_(body_chr, url, user_agent)
-  matching_line <- robotstxtr_matching_line_text_(body_chr, url, user_agent)
+  # --- Per-element validity (§6.6, text path): a URL or user agent is invalid
+  # only when missing (`NA`) or empty (`""`). Other URL strings pass through to
+  # the matcher unchanged. URL validity is checked before user-agent validity
+  # so each invalid row has one deterministic primary error class.
+  url_valid <- !is.na(url) & url != ""
+  ua_valid <- !is.na(user_agent) & user_agent != ""
+  valid <- url_valid & ua_valid
 
-  # Happy-path decision_source (§6.6):
-  #   Disallow won            -> rule_disallow  (allowed == FALSE)
-  #   Allow won               -> rule_allow     (allowed, a rule matched)
-  #   matching ran, no match  -> default_allow  (allowed, no rule matched)
+  # --- Matcher runs only on fully valid rows (detachment rule, §6.6). Group by
+  # user agent so the vectorized binding runs once per distinct agent; invalid
+  # rows never reach the matcher and keep `allowed = NA`.
+  allowed <- rep(NA, n)
+  matching_line <- rep(NA_integer_, n)
+  if (any(valid)) {
+    idx_valid <- which(valid)
+    groups <- split(idx_valid, user_agent[idx_valid])
+    for (g in groups) {
+      ua <- user_agent[[g[[1L]]]]
+      allowed[g] <- robotstxtr_allowed_text_(body_utf8, url[g], ua)
+      matching_line[g] <- robotstxtr_matching_line_text_(body_utf8, url[g], ua)
+    }
+  }
+
+  # --- decision_source (§6.6). Invalid rows are input_unknown; valid rows split
+  # by matcher result: disallow won, allow won (a rule matched), or default.
   decision_source <- ifelse(
-    !allowed, "rule_disallow",
-    ifelse(matching_line > 0L, "rule_allow", "default_allow")
+    !valid, "input_unknown",
+    ifelse(
+      !allowed, "rule_disallow",
+      ifelse(matching_line > 0L, "rule_allow", "default_allow")
+    )
+  )
+
+  # `matching_line() == 0` (or NA for detached rows) maps to matched_line = NA;
+  # positive lines are already one-based and returned unchanged.
+  matched_line <- ifelse(
+    !is.na(matching_line) & matching_line > 0L, matching_line, NA_integer_
+  )
+
+  # matched_rule_type is derived from the decision this slice (correlation with
+  # the parse callback is deferred). matched_rule_value stays NA (later slice).
+  type_by_decision <- c(
+    rule_allow = "allow", rule_disallow = "disallow",
+    default_allow = "none", input_unknown = "unknown"
+  )
+  matched_rule_type <- unname(type_by_decision[decision_source])
+
+  # --- Detachment: invalid rows do not reference the supplied body (§6.6).
+  source_id_col <- ifelse(valid, source_id, NA_character_)
+  fetch_outcome <- ifelse(valid, "supplied", "input_invalid")
+
+  # Per-row error metadata: URL invalidity takes precedence over user-agent
+  # invalidity (§6.6 error mapping).
+  error_stage <- ifelse(
+    !url_valid, "origin", ifelse(!ua_valid, "input", NA_character_)
+  )
+  error_class <- ifelse(
+    !url_valid, "robots_invalid_url",
+    ifelse(!ua_valid, "robots_invalid_user_agent", NA_character_)
+  )
+  error_message <- ifelse(
+    !url_valid, "URL is missing or empty.",
+    ifelse(!ua_valid, "User agent is missing or empty.", NA_character_)
   )
 
   results <- data.frame(
     input_id = seq_len(n),
     url = url,
-    user_agent = rep(user_agent, length.out = n),
+    user_agent = user_agent,
     allowed = allowed,
     decision_source = decision_source,
-    source_id = rep(source_id, length.out = n),
-    # Fetch/network columns owned by later slices (R5-R8): not applicable here.
-    robots_url = NA_character_,
-    http_status = NA_integer_,
-    fetch_outcome = "supplied",
-    error_stage = NA_character_,
-    error_class = NA_character_,
-    error_message = NA_character_,
-    # Match-metadata columns owned by slice R3: not yet correlated.
-    matched_line = NA_integer_,
-    matched_rule_type = "unknown",
-    matched_rule_value = NA_character_,
+    source_id = source_id_col,
+    # Fetch/network columns owned by later slices (R5-R8): text path has none.
+    # Constant columns use rep() so a zero-length input yields zero rows.
+    robots_url = rep(NA_character_, n),
+    http_status = rep(NA_integer_, n),
+    fetch_outcome = fetch_outcome,
+    error_stage = error_stage,
+    error_class = error_class,
+    error_message = error_message,
+    matched_line = matched_line,
+    matched_rule_type = matched_rule_type,
+    # matched_rule_value: callback correlation is a later slice.
+    matched_rule_value = rep(NA_character_, n),
     stringsAsFactors = FALSE
   )
 
@@ -101,9 +178,5 @@ allowed_by_robots_text <- function(robots_txt, url, user_agent,
   # `body` is a list-of-raw column: the supplied body stored exactly once.
   robots$body <- list(raw_body)
 
-  structure(
-    list(results = results, robots = robots),
-    class = "robots_decisions",
-    package_version = as.character(getNamespaceVersion("robotstxtr"))
-  )
+  new_robots_decisions(results, robots)
 }

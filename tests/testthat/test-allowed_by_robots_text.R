@@ -62,11 +62,15 @@ test_that("results and robots carry the R1 skeleton shape", {
   expect_identical(x$robots$source_type, "supplied")
   expect_identical(x$robots$redirect_count, 0L)
 
-  # Later-slice columns present but not yet applicable.
+  # Fetch/network columns owned by later slices remain NA on the text path.
   expect_true(is.na(x$results$robots_url))
   expect_true(is.na(x$results$http_status))
-  expect_true(is.na(x$results$matched_line))
-  expect_identical(x$results$matched_rule_type, "unknown")
+
+  # R2 elevates match metadata on the text path: matched_line is the upstream
+  # one-based matching line (the disallow sits on line 2) and matched_rule_type
+  # is derived from the decision. matched_rule_value stays NA pending R3.
+  expect_identical(x$results$matched_line, 2L)
+  expect_identical(x$results$matched_rule_type, "disallow")
   expect_true(is.na(x$results$matched_rule_value))
 })
 

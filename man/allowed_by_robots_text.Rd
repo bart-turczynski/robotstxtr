@@ -7,15 +7,17 @@
 allowed_by_robots_text(robots_txt, url, user_agent, source_id = "supplied")
 }
 \arguments{
-\item{robots_txt}{A single character scalar holding the robots.txt body. An
-empty body is valid.}
+\item{robots_txt}{A single, non-missing character scalar holding the
+robots.txt body. An empty body is valid. It is converted to UTF-8 once and
+the exact bytes are stored in the returned \code{robots$body} and passed to the
+matcher; a body already carrying \code{Encoding = "bytes"} is used verbatim.}
 
 \item{url}{A character vector of URL strings to match, passed to the matcher
-unchanged.}
+unchanged. May have length zero.}
 
-\item{user_agent}{A single matcher user-agent string, passed to the matcher
-unchanged (upstream extraction semantics apply, so e.g. \code{"Googlebot/2.1"}
-is not pre-trimmed by R).}
+\item{user_agent}{A matcher user-agent string, length one or \code{length(url)},
+passed to the matcher unchanged (upstream extraction semantics apply, so
+e.g. \code{"Googlebot/2.1"} is not pre-trimmed by R).}
 
 \item{source_id}{A single non-empty character scalar identifying the supplied
 body within the returned object. Defaults to \code{"supplied"}.}
@@ -23,8 +25,8 @@ body within the returned object. Defaults to \code{"supplied"}.}
 \value{
 An S3 object of class \code{robots_decisions}: a named list with two
 components, \code{results} (one row per input URL, in input order) and \code{robots}
-(one row per supplied source body). The supplied body is stored once as a
-raw vector in \code{robots$body}.
+(one row for the supplied source body). The supplied body is stored once as
+a raw vector in \code{robots$body}.
 }
 \description{
 Matches one supplied robots.txt body against one or more URLs using the
@@ -37,13 +39,24 @@ requires an appropriately encoded, \verb{\%}-escaped full URL (per RFC 3986);
 callers are responsible for supplying it in that form. R does not clean,
 decode, canonicalize, or reserialize the URL before matching.
 
-This is the slice R1 surface: it implements the happy path only. It expects a
-single non-missing \code{robots_txt} scalar, a character \code{url} vector, and a single
-matcher \code{user_agent}, and returns the \code{rule_allow}, \code{rule_disallow}, and
-\code{default_allow} decisions. Full input validation and the per-row
-\code{input_unknown} contract (R2), match-metadata correlation (R3), and all
-fetching (R5-R8) are added by later slices; the columns those slices own are
-present but filled with \code{NA} / \code{"unknown"}.
+\code{url} may have length zero (an empty result is returned). \code{user_agent} must
+be a character vector of length one or \code{length(url)}: a scalar user agent
+expands across every URL, and no other recycling is allowed. A wrong R type
+for any argument, a \code{user_agent} length mismatch, a non-scalar or missing
+\code{robots_txt}, or an empty/missing \code{source_id} are call-level errors.
+
+A missing (\code{NA}) or empty (\code{""}) URL or user-agent element does not abort the
+call: that row yields a per-row \code{input_unknown} decision with \code{allowed = NA}.
+Such an invalid row is detached from the supplied body: its \code{source_id},
+\code{robots_url}, and \code{http_status} are \code{NA} and its \code{fetch_outcome} is
+\code{"input_invalid"}. When both the URL and the user agent of a row are invalid,
+the URL error is reported (URL validity is checked first).
+
+Match metadata is partially populated by this slice: \code{matched_line} carries
+the upstream one-based matching line (or \code{NA} when no rule matched) and
+\code{matched_rule_type} is derived from the decision. \code{matched_rule_value} and
+callback-derived \code{matched_rule_type} correlation arrive in a later slice and
+remain \code{NA} here.
 }
 \examples{
 allowed_by_robots_text("user-agent: *\ndisallow: /x", "http://a/x", "bot")
