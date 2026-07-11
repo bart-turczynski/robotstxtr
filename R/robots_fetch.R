@@ -58,6 +58,24 @@
 #'   row per fetched source, with the fetched body stored once as a raw vector
 #'   in `robots$body`).
 #'
+#' @examples
+#' # robots_fetch() performs live HTTP. To keep this example offline and
+#' # deterministic, the transport is mocked with httr2 so every request returns
+#' # the same robots.txt; a real call needs no such wrapper.
+#' httr2::with_mocked_responses(
+#'   function(req) {
+#'     httr2::response(
+#'       status_code = 200L, url = req$url,
+#'       body = charToRaw("user-agent: *\nDisallow: /private\n")
+#'     )
+#'   },
+#'   {
+#'     # Both URLs share one fetch-origin, so /robots.txt is fetched once.
+#'     robots_fetch(c("https://example.com/", "https://example.com/private"))
+#'   }
+#' )
+#'
+#' @seealso [allowed_by_robots_url()] to fetch and match in one step.
 #' @export
 robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
                          fetch_user_agent = NULL) {
@@ -192,6 +210,19 @@ new_robots_fetches <- function(map, robots) {
 #' @param ... Ignored; present for S3 compatibility.
 #'
 #' @return `x`, invisibly.
+#' @examples
+#' # A robots_fetches object comes from robots_fetch(); the transport is mocked
+#' # here so the example runs offline.
+#' fetches <- httr2::with_mocked_responses(
+#'   function(req) {
+#'     httr2::response(
+#'       status_code = 200L, url = req$url,
+#'       body = charToRaw("user-agent: *\nDisallow: /private\n")
+#'     )
+#'   },
+#'   robots_fetch("https://example.com/page")
+#' )
+#' print(fetches)
 #' @export
 print.robots_fetches <- function(x, ...) {
   n <- nrow(x$map)
