@@ -58,10 +58,3 @@ reference:
     contents:
       - print.robots_decisions
       - print.robots_fetches
-
-  - title: "Package scaffold"
-    desc: >
-      Placeholder shipped with the project scaffold; slated for removal before
-      release.
-    contents:
-      - scaffold_ready
