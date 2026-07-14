@@ -43,6 +43,23 @@ open -na "Google Chrome" --args \
   --no-first-run
 ```
 
+After launch, poll the endpoint instead of assuming that `open` made CDP
+available. When working from the sibling `robotstxtyandex` repository, use its
+checked helper with host-local network permission:
+
+```bash
+python3 tools/probe_browser_readiness.py --timeout 45 launch \
+  --profile ../robotstxtr/_scratch/yandex-browser
+python3 tools/probe_browser_readiness.py --timeout 10 check
+```
+
+The helper distinguishes a genuinely absent listener from a sandboxed HTTP
+failure while Chrome is already listening. A
+`listener_visible_http_unreachable` result must be rechecked outside the
+network sandbox; do not treat it as evidence that Chrome failed to start. If a
+user enables Chrome's visible remote-debugging server, poll the endpoint and
+resume automatically without asking for another confirmation.
+
 Run browser-harness commands with the explicit endpoint:
 
 ```bash

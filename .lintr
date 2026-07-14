@@ -1,8 +1,8 @@
 linters: linters_with_defaults(
-    # Cucumber step files and testthat helpers use a DSL (when/then/context,
-    # expect_*) that the static usage linter misreads as undefined globals.
-    # Disable it here so the scaffold lints clean out of the box; re-enable it
-    # once the package has real code if you want the extra coverage.
+    # object_usage_linter misreads cross-file package internals (e.g. the
+    # validate_*/perform_fetch helpers) and testthat's expect_* DSL as
+    # undefined globals, producing false positives. Disabled to keep the lint
+    # gate clean.
     object_usage_linter = NULL
   )
 encoding: "UTF-8"

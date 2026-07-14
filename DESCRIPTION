@@ -35,7 +35,6 @@ Remotes:
     bart-turczynski/rurl@v2.2.1
 Suggests:
     callr,
-    cucumber (>= 2.0.0),
     httpuv,
     knitr,
     rmarkdown,
