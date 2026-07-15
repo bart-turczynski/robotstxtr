@@ -16,6 +16,21 @@
 # present to trip the copy. This makes the local gate a truer mirror of CI.
 set -euo pipefail
 
+# 0) Preflight: surface non-regular files (sockets/FIFOs) in the working tree.
+#    These come from live processes — most often a browser profile under
+#    _scratch/ (e.g. _scratch/yandex-browser/SingletonSocket). They can't be
+#    committed, so `git archive` never includes them and the build below is
+#    unaffected; this is a non-fatal heads-up (you can still push with a browser
+#    open) so an unexpected special file elsewhere is visible rather than silent.
+specials="$(find . -path ./.git -prune -o \( -type s -o -type p \) -print 2>/dev/null || true)"
+if [ -n "$specials" ]; then
+  {
+    echo "verify: note — non-regular files (sockets/FIFOs) present in the working tree:"
+    echo "$specials" | sed 's/^/  /'
+    echo "verify: not committable, so the git-archive build export excludes them; continuing."
+  } >&2
+fi
+
 # 1) Lint the working tree. lintr reads source files in place (no tree copy), so
 #    it is safe to run against the working dir and gives fast, local feedback.
 Rscript -e 'lints <- lintr::lint_package(); if (length(lints)) { print(lints); quit(status = 1) }'
