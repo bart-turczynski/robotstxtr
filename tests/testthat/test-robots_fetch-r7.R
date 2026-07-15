@@ -12,6 +12,13 @@
 # every request, poll until it is ready, run `fn(srv)`, and always kill the
 # server afterwards (on.exit fires even if an expectation inside `fn` fails).
 with_body_server <- function(body_raw, headers, fn) {
+  # This harness binds a real localhost server on 127.0.0.1, which the SSRF
+  # guard (ROBO-quovenef) refuses by default. Override the guard binding for the
+  # duration of this harness ONLY (test-scoped, no production disable path) so
+  # the real fetch/streaming machinery can be exercised against loopback.
+  testthat::local_mocked_bindings(
+    robots_ssrf_check = function(url) list(allowed = TRUE, reason = NA)
+  )
   port <- httpuv::randomPort()
   proc <- callr::r_bg(
     function(port, body_raw, headers) {

@@ -195,7 +195,7 @@ allowed_by_robots_url <- function(url, user_agent, timeout = 10,
   decision_source[fetch_outcome_col == "missing"] <- "missing_allow"
   fail_outcomes <- c(
     "http_error", "redirect_error", "timeout", "network_error",
-    "tls_error", "partial_response", "body_too_large"
+    "tls_error", "partial_response", "body_too_large", "ssrf_blocked"
   )
   decision_source[fetch_outcome_col %in% fail_outcomes] <- "fetch_unknown"
   fm <- fetch_outcome_col == "fetched"

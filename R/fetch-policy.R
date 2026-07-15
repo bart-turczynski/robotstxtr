@@ -123,6 +123,7 @@ fetch_error_meta <- function(outcome) {
     partial_response = c(stage = "response", class = "robots_partial_response"),
     http_error = c(stage = "response", class = "robots_http_error"),
     body_too_large = c(stage = "response", class = "robots_body_too_large"),
+    ssrf_blocked = c(stage = "request", class = "robots_ssrf_blocked"),
     redirect_error = c(stage = "redirect", class = "robots_redirect_error"),
     timeout = c(stage = "request", class = "robots_timeout"),
     network_error = c(stage = "request", class = "robots_network_error"),
@@ -253,6 +254,20 @@ perform_fetch <- function(robots_url, timeout, fetch_ua, max_bytes) {
   visited <- character(0)
 
   repeat {
+    # SSRF guard (ROBO-quovenef): structurally reject fetches aimed at private/
+    # loopback/link-local/metadata targets BEFORE any request is issued. One
+    # check at the top of the loop covers both the initial origin and every
+    # redirect target, because `current_url` is reassigned to each redirect hop
+    # and the loop re-enters here before the next request. Pure + no-network, so
+    # a blocked URL never opens a socket.
+    ssrf <- robots_ssrf_check(current_url)
+    if (!isTRUE(ssrf$allowed)) {
+      return(make_source_result(
+        "ssrf_blocked", NULL, NULL, redirect_count, NULL,
+        sprintf("Blocked by SSRF guard (%s).", ssrf$reason)
+      ))
+    }
+
     req <- build_fetch_request(current_url, timeout, fetch_ua)
     resp <- tryCatch(httr2::req_perform_connection(req), error = function(e) e)
 

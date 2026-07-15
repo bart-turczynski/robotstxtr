@@ -56,7 +56,10 @@ The request policy is deterministic and intentionally conservative: HTTP
 \code{GET}; TLS verified with platform defaults; a total timeout per origin
 including redirects; at most five redirects; redirects allowed only to
 \code{http}/\code{https}; HTTP-to-HTTPS upgrades allowed but every HTTPS-to-HTTP
-downgrade rejected as \code{redirect_error}; no URL userinfo, authorization,
+downgrade rejected as \code{redirect_error}; a structural SSRF guard that refuses,
+before any request, both the initial origin and every redirect target that
+resolves to a private, loopback, link-local, or cloud-metadata address
+(outcome \code{ssrf_blocked}, no socket opened); no URL userinfo, authorization,
 cookies, or caller session state forwarded; a package fetch user agent
 (\verb{robotstxtr/<version>}) unless the caller supplies one; and no automatic
 retries. Each response is classified into a stable \code{fetch_outcome}. For a
