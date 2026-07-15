@@ -117,7 +117,7 @@ test_that("validate_ssrf_guard rejects non-logical / non-scalar / NA input", {
   expect_invisible(validate_ssrf_guard(TRUE))
 })
 
-test_that("ssrf_guard = FALSE opts out: a private host is fetched, not blocked", {
+test_that("ssrf_guard = FALSE opts out and a private host is fetched", {
   # The caller escape hatch (ROBO-quovenef): with the guard disabled the private
   # target is fetched normally instead of short-circuiting to ssrf_blocked. The
   # mock stands in for the intranet host that would answer in production.
