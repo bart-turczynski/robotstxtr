@@ -1,7 +1,7 @@
-# Overrides the shared config: the shared `verify` hook wraps the command in a
-# bash invocation that breaks on R's verify command (it contains the double
-# quotes from the rcmdcheck --as-cran argument). Here the R code is passed as a
-# single argv element, so no shell quoting is involved.
+# Overrides the shared config's `verify` hook. The build/check runs against a
+# clean `git archive HEAD` export (see dev/verify.sh) rather than the working
+# tree, so a live browser socket under _scratch/ can no longer break R CMD
+# build's copy step and block the push.
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -18,9 +18,7 @@ repos:
     hooks:
       - id: verify
         name: verify (mirrors CI)
-        entry: Rscript -e
-        args:
-          - 'lints <- lintr::lint_package(); if (length(lints)) { print(lints); quit(status = 1) }; rcmdcheck::rcmdcheck(args = "--as-cran", error_on = "warning")'
+        entry: dev/verify.sh
         language: system
         pass_filenames: false
         always_run: true
