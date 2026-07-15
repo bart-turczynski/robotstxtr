@@ -7,6 +7,9 @@
   IPv4-in-IPv6 embeddings, and numeric/hex/octal literal obfuscation). Such a
   URL is reported with the new `ssrf_blocked` fetch outcome and yields a
   `fetch_unknown` (`NA`) decision, never a silent allow (#ROBO-quovenef).
+* The guard can be disabled per call with the new `ssrf_guard` argument
+  (`TRUE` by default) on `robots_fetch()` and `allowed_by_robots_url()`, for
+  deliberate use against trusted intranet hosts (#ROBO-quovenef).
 
 # robotstxtr 0.1.0
 

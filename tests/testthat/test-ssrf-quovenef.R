@@ -100,3 +100,48 @@ test_that("allowed_by_robots_url maps ssrf_blocked to fetch_unknown/NA", {
   expect_true(is.na(x$results$allowed))
   expect_identical(x$results$decision_source, "fetch_unknown")
 })
+
+test_that("validate_ssrf_guard rejects non-logical / non-scalar / NA input", {
+  expect_error(
+    validate_ssrf_guard("yes"),
+    class = "robotstxtr_invalid_ssrf_guard"
+  )
+  expect_error(
+    validate_ssrf_guard(c(TRUE, FALSE)),
+    class = "robotstxtr_invalid_ssrf_guard"
+  )
+  expect_error(
+    validate_ssrf_guard(NA),
+    class = "robotstxtr_invalid_ssrf_guard"
+  )
+  expect_invisible(validate_ssrf_guard(TRUE))
+})
+
+test_that("ssrf_guard = FALSE opts out: a private host is fetched, not blocked", {
+  # The caller escape hatch (ROBO-quovenef): with the guard disabled the private
+  # target is fetched normally instead of short-circuiting to ssrf_blocked. The
+  # mock stands in for the intranet host that would answer in production.
+  httr2::local_mocked_responses(function(req) {
+    httr2::response(
+      status_code = 200L, url = req$url,
+      body = charToRaw("user-agent: *\ndisallow: /private\n")
+    )
+  })
+
+  guarded <- robots_fetch("http://169.254.169.254/robots.txt")
+  expect_identical(guarded$robots$fetch_outcome, "ssrf_blocked")
+
+  opted_out <- robots_fetch(
+    "http://169.254.169.254/robots.txt",
+    ssrf_guard = FALSE
+  )
+  expect_identical(opted_out$robots$fetch_outcome, "fetched")
+
+  # It also threads through the URL-first path to a real allow/deny decision.
+  decided <- allowed_by_robots_url(
+    "http://169.254.169.254/private", "bot",
+    ssrf_guard = FALSE
+  )
+  expect_false(decided$results$allowed)
+  expect_identical(decided$results$decision_source, "rule_disallow")
+})

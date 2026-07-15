@@ -61,6 +61,20 @@ validate_max_bytes <- function(max_bytes) {
   as.integer(max_bytes)
 }
 
+# `ssrf_guard` must be one non-missing logical value. It defaults to TRUE at the
+# public surface; passing FALSE is a deliberate caller opt-out of the structural
+# SSRF guard (e.g. fetching robots.txt from a trusted intranet host).
+validate_ssrf_guard <- function(ssrf_guard) {
+  if (!is.logical(ssrf_guard) || length(ssrf_guard) != 1L ||
+        is.na(ssrf_guard)) {
+    robots_abort(
+      "`ssrf_guard` must be a single, non-missing logical (`TRUE`/`FALSE`).",
+      "robotstxtr_invalid_ssrf_guard"
+    )
+  }
+  invisible(ssrf_guard)
+}
+
 # The package fetch user agent (PRD 6.4): package name and version. Never the
 # matcher user_agent (robots_fetch has no matcher user agent anyway).
 package_fetch_user_agent <- function() {
@@ -248,7 +262,8 @@ read_body_within_limit <- function(resp, max_bytes) {
 # the final body can be read chunk-by-chunk under the decoded-byte limit; the
 # connection is closed on every exit path. `max_bytes` is the validated integer
 # limit enforced on decoded entity bytes.
-perform_fetch <- function(robots_url, timeout, fetch_ua, max_bytes) {
+perform_fetch <- function(robots_url, timeout, fetch_ua, max_bytes,
+                          ssrf_guard = TRUE) {
   current_url <- robots_url
   redirect_count <- 0L
   visited <- character(0)
@@ -259,13 +274,16 @@ perform_fetch <- function(robots_url, timeout, fetch_ua, max_bytes) {
     # check at the top of the loop covers both the initial origin and every
     # redirect target, because `current_url` is reassigned to each redirect hop
     # and the loop re-enters here before the next request. Pure + no-network, so
-    # a blocked URL never opens a socket.
-    ssrf <- robots_ssrf_check(current_url)
-    if (!isTRUE(ssrf$allowed)) {
-      return(make_source_result(
-        "ssrf_blocked", NULL, NULL, redirect_count, NULL,
-        sprintf("Blocked by SSRF guard (%s).", ssrf$reason)
-      ))
+    # a blocked URL never opens a socket. `ssrf_guard = FALSE` is the caller's
+    # deliberate opt-out (validated at the public surface); it skips the check.
+    if (isTRUE(ssrf_guard)) {
+      ssrf <- robots_ssrf_check(current_url)
+      if (!isTRUE(ssrf$allowed)) {
+        return(make_source_result(
+          "ssrf_blocked", NULL, NULL, redirect_count, NULL,
+          sprintf("Blocked by SSRF guard (%s).", ssrf$reason)
+        ))
+      }
     }
 
     req <- build_fetch_request(current_url, timeout, fetch_ua)
