@@ -9,7 +9,8 @@ allowed_by_robots_url(
   user_agent,
   timeout = 10,
   max_bytes = 524288L,
-  fetch_user_agent = NULL
+  fetch_user_agent = NULL,
+  ssrf_guard = TRUE
 )
 }
 \arguments{
@@ -33,6 +34,14 @@ Defaults to \code{524288L}.}
 \item{fetch_user_agent}{\code{NULL} (use the package fetch user agent) or a single
 non-empty character HTTP user agent to send instead. This is never the
 matcher \code{user_agent}.}
+
+\item{ssrf_guard}{A single logical. When \code{TRUE} (the default) a structural
+SSRF guard refuses, before any request, both the initial origin and every
+redirect target that resolves to a private, loopback, link-local, or
+cloud-metadata address (outcome \code{ssrf_blocked}, no socket opened). Set to
+\code{FALSE} to deliberately opt out — for example to fetch \code{robots.txt} from a
+trusted intranet host. Opting out removes that protection; only disable it
+for hosts you control and trust.}
 }
 \value{
 An S3 object of class \code{robots_decisions}: a named list with two

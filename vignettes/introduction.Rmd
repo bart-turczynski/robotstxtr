@@ -149,7 +149,9 @@ The returned object has exactly the same `robots_decisions` shape as
 `timeout`), `http_status`, and `robots_url`. A `404`/`410` origin yields
 `missing_allow` (`TRUE`, because an absent file allows everything); any fetch
 failure yields `fetch_unknown` (`NA`), so a transport problem never silently
-looks like an allow.
+looks like an allow. A URL that structurally resolves to a private, loopback,
+link-local, or cloud-metadata address is refused before any request as
+`ssrf_blocked`, which also yields `fetch_unknown` (`NA`).
 
 If you only want the fetch stage without matching, `robots_fetch()` returns the
 grouped fetch results on their own.

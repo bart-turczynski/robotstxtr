@@ -26,7 +26,10 @@
 #' `GET`; TLS verified with platform defaults; a total timeout per origin
 #' including redirects; at most five redirects; redirects allowed only to
 #' `http`/`https`; HTTP-to-HTTPS upgrades allowed but every HTTPS-to-HTTP
-#' downgrade rejected as `redirect_error`; no URL userinfo, authorization,
+#' downgrade rejected as `redirect_error`; a structural SSRF guard that refuses,
+#' before any request, both the initial origin and every redirect target that
+#' resolves to a private, loopback, link-local, or cloud-metadata address
+#' (outcome `ssrf_blocked`, no socket opened); no URL userinfo, authorization,
 #' cookies, or caller session state forwarded; a package fetch user agent
 #' (`robotstxtr/<version>`) unless the caller supplies one; and no automatic
 #' retries. Each response is classified into a stable `fetch_outcome`. For a
@@ -52,6 +55,13 @@
 #'   are call-level errors. Defaults to `524288L`.
 #' @param fetch_user_agent `NULL` (use the package fetch user agent) or a single
 #'   non-empty character HTTP user agent to send instead.
+#' @param ssrf_guard A single logical. When `TRUE` (the default) a structural
+#'   SSRF guard refuses, before any request, both the initial origin and every
+#'   redirect target that resolves to a private, loopback, link-local, or
+#'   cloud-metadata address (outcome `ssrf_blocked`, no socket opened). Set to
+#'   `FALSE` to deliberately opt out — for example to fetch `robots.txt` from a
+#'   trusted intranet host. Opting out removes that protection; only disable it
+#'   for hosts you control and trust.
 #'
 #' @return An S3 object of class `robots_fetches`: a named list with two
 #'   components, `map` (one row per input URL, in input order) and `robots` (one
@@ -78,12 +88,13 @@
 #' @seealso [allowed_by_robots_url()] to fetch and match in one step.
 #' @export
 robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
-                         fetch_user_agent = NULL) {
+                         fetch_user_agent = NULL, ssrf_guard = TRUE) {
   # --- Call-level input validation / shared fetch controls (PRD 6.6). --------
   validate_url_type(url)
   timeout <- validate_timeout(timeout)
   validate_fetch_user_agent(fetch_user_agent)
   max_bytes_int <- validate_max_bytes(max_bytes)
+  validate_ssrf_guard(ssrf_guard)
   fetch_ua <- if (is.null(fetch_user_agent)) {
     package_fetch_user_agent()
   } else {
@@ -111,7 +122,7 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
   results <- vector("list", n_src)
   for (i in seq_len(n_src)) {
     results[[i]] <- perform_fetch(
-      distinct_origins[[i]], timeout, fetch_ua, max_bytes_int
+      distinct_origins[[i]], timeout, fetch_ua, max_bytes_int, ssrf_guard
     )
   }
 
