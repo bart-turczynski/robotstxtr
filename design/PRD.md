@@ -1010,3 +1010,46 @@ Acceptance checks are green. The slice-to-outcome mapping:
 - `R CMD check --as-cran` and the required platform matrix pass — R9.
 - Licensing and bundled-source provenance complete before any distributable
   artifact — C6, R9.
+
+## 13. Amendment A — Per-engine ruleset-aware entry points (ADR-009, 2026-07-17)
+
+This amendment expands the product **version scope** to record that per-engine,
+ruleset-aware behavior is now in scope for robotstxtr, governed by sitemapr
+`docs/decisions/ADR-009-per-engine-validation-profiles.md` and specified on the
+robotstxtr side by `design/engine-profiles.md`. It is a scope amendment, not a
+rewrite of the v1 contracts above.
+
+**Added to scope (additive, versioned):**
+
+- A `robots_policy_ruleset` axis (`rfc9309` | `google` | `yandex`; `bing` = gap)
+  that maps a completed fetch outcome to a robots decision as **data** — always
+  available, independent of any matcher.
+- A `matcher_backend` capability, negotiated separately from the policy ruleset
+  (ADR-009 §4): `google` is available (the vendored parser); `rfc9309`/`yandex`
+  are `capability_unavailable` until the ADR-009 §4 gating (reproducible
+  differential + conformance corpus + ABI/provenance/licensing review) is met.
+- The neutral fetch-outcome contract, per-engine status→policy, user-agent group
+  selection, and current policy/matcher limits, all with per-cell provenance —
+  see `design/engine-profiles.md`.
+- Exposure through **parallel, versioned** entry points / result contracts. New
+  ruleset-aware entry points require an **explicit** `robots_policy_ruleset`.
+
+**Preserved unchanged (still binding):**
+
+- The pinned v1 public surface and result contract (§6, esp. §6.6). Existing
+  functions and their result schemas are unchanged; ruleset context is additive
+  via a versioned schema, never a silent widening. **There is no silent switch to
+  `google`;** the legacy default behavior is preserved by a repo-specific
+  compatibility adapter, and any change of default ruleset rides an explicit,
+  documented **major-version** migration.
+- Every §3 non-goal. In particular, robotstxtr remains **not a robots.txt
+  authoring or validation tool** (§3): content/grammar validation is out of scope
+  this release (ADR-009 §8). If ever needed it is a separate project or an
+  explicit robotstxtr v2, not smuggled in here.
+- Matcher fidelity (§6.1): the Google matcher stays **not RFC-corrected**. A
+  ruleset name is not a matcher; selecting `rfc9309`/`yandex` policy does not
+  imply a matcher exists, and a ruleset request MUST NOT fall through to another
+  engine's matcher.
+- **Bing** robots status/redirect/network policy stays undocumented and is **not**
+  synthesised from RFC under Bing's name; an explicit `assumed_rfc9309`
+  application policy is the only RFC-shaped fallback (ADR-009 §8).
