@@ -54,6 +54,9 @@ jobs:
           r-version: ${{ matrix.config.r }}
           http-user-agent: ${{ matrix.config.http-user-agent }}
           use-public-rspm: true
+          # Temporary CRAN-like staging repo: CRAN does not yet provide the
+          # required rurl release. Remove once ROBO-ufxrxxga is unblocked.
+          extra-repositories: https://bart-turczynski.r-universe.dev
 
       # Compile the vendored C++ with Clang on the designated Linux entry so the
       # matrix covers "Linux with GCC and Clang" (§9). All other Linux entries

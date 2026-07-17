@@ -63,6 +63,17 @@ jobs:
         with:
           token: ${{ secrets.RHUB_TOKEN }}
           job-config: ${{ matrix.config.job-config }}
+      # r-hub's dependency action reads repositories from the R profile.
+      # This staging repo is temporary; remove it under ROBO-ufxrxxga once a
+      # compatible rurl release is live on CRAN.
+      - name: Configure staging repository
+        run: |
+          cat(
+            'options(repos = c("bart-turczynski" = "https://bart-turczynski.r-universe.dev", getOption("repos")))\n',
+            file = "~/.Rprofile",
+            append = TRUE
+          )
+        shell: Rscript {0}
       - uses: r-hub/actions/setup-deps@v1
         with:
           token: ${{ secrets.RHUB_TOKEN }}
@@ -92,6 +103,17 @@ jobs:
         with:
           token: ${{ secrets.RHUB_TOKEN }}
           job-config: ${{ matrix.config.job-config }}
+      # r-hub's dependency action reads repositories from the R profile.
+      # This staging repo is temporary; remove it under ROBO-ufxrxxga once a
+      # compatible rurl release is live on CRAN.
+      - name: Configure staging repository
+        run: |
+          cat(
+            'options(repos = c("bart-turczynski" = "https://bart-turczynski.r-universe.dev", getOption("repos")))\n',
+            file = "~/.Rprofile",
+            append = TRUE
+          )
+        shell: Rscript {0}
       - uses: r-hub/actions/setup-deps@v1
         with:
           job-config: ${{ matrix.config.job-config }}
