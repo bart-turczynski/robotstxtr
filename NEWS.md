@@ -1,4 +1,21 @@
-# robotstxtr (development version)
+# robotstxtr 0.2.0
+
+* Added the parallel `robotstxtr.engine-aware/v1` evaluation contract through
+  `robots_evaluate_text_v1()` and `robots_evaluate_url_v1()`. Policy rulesets,
+  matcher backends, robots product tokens, HTTP User-Agents, and acquisition
+  limits are explicit, independent, and persisted in every result
+  (#ROBO-unowhvjx).
+* Added neutral acquisition evidence and explicit non-decision states for
+  safety refusal, incomplete or partial evidence, crawler lifecycle context,
+  documentation gaps, and unavailable matchers. The pinned Google matcher is
+  the first available end-to-end backend; it applies its 500 KiB prefix limit
+  without relabeling itself as another engine (#ROBO-unowhvjx).
+* Added `robots_engine_contract_v1()` for revision/capability negotiation and
+  `as_legacy_robots_decisions_v1()` as the explicit bridge to the unchanged
+  Google-oriented legacy schema (#ROBO-unowhvjx).
+* Development installs and CI now resolve the pre-CRAN `rurl` dependency chain
+  through the author's CRAN-like R-universe instead of nested GitHub remotes
+  (#ROBO-yasmzyhl).
 
 * The fetch policy now enforces a structural SSRF guard: `robots_fetch()` and
   `allowed_by_robots_url()` refuse — before opening any socket — both the

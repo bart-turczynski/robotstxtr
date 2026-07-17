@@ -149,8 +149,21 @@ fetch_error_meta <- function(outcome) {
 # Assemble one source-fetch result (the fields a `robots` row needs, minus the
 # grouping-assigned source_id). `body` is a raw vector for `fetched`, else NULL.
 make_source_result <- function(outcome, http_status, effective_url,
-                               redirect_count, body, error_message) {
+                               redirect_count, body, error_message,
+                               redirect_hops = list(),
+                               terminal_redirect_reason = "none",
+                               location_header = NA_character_,
+                               observed_bytes = NULL,
+                               body_truncated = FALSE,
+                               transport_error_kind = NA_character_,
+                               safety_block_reason = NA_character_,
+                               termination_reason = "none",
+                               final_http_status = NULL) {
   meta <- fetch_error_meta(outcome)
+  stored_bytes <- if (is.null(body)) 0L else length(body)
+  if (is.null(observed_bytes)) {
+    observed_bytes <- if (is.null(body)) NA_integer_ else stored_bytes
+  }
   list(
     fetch_outcome = outcome,
     http_status = if (is.null(http_status)) {
@@ -158,14 +171,28 @@ make_source_result <- function(outcome, http_status, effective_url,
     } else {
       as.integer(http_status)
     },
+    final_http_status = if (is.null(final_http_status)) {
+      if (is.null(http_status)) NA_integer_ else as.integer(http_status)
+    } else {
+      as.integer(final_http_status)
+    },
     effective_url = if (is.null(effective_url)) {
       NA_character_
     } else {
       effective_url
     },
     redirect_count = as.integer(redirect_count),
+    redirect_hops = redirect_hops,
+    terminal_redirect_reason = terminal_redirect_reason,
+    location_header = location_header,
     body = body,
     body_size = if (is.null(body)) NA_integer_ else length(body),
+    observed_bytes = as.integer(observed_bytes),
+    stored_bytes = as.integer(stored_bytes),
+    body_truncated = body_truncated,
+    transport_error_kind = transport_error_kind,
+    safety_block_reason = safety_block_reason,
+    termination_reason = termination_reason,
     error_stage = unname(meta[["stage"]]),
     error_class = unname(meta[["class"]]),
     error_message = if (is.null(error_message)) NA_character_ else error_message
@@ -209,13 +236,14 @@ accumulate_within_limit <- function(read_chunk, max_bytes) {
     }
     total <- total + length(chunk)
     if (total > max_bytes) {
-      return(list(exceeded = TRUE, body = NULL))
+      return(list(exceeded = TRUE, body = NULL, observed_bytes = total))
     }
     acc[[length(acc) + 1L]] <- chunk
   }
   list(
     exceeded = FALSE,
-    body = if (length(acc) > 0L) do.call(c, acc) else raw(0)
+    body = if (length(acc) > 0L) do.call(c, acc) else raw(0),
+    observed_bytes = total
   )
 }
 
@@ -247,9 +275,11 @@ read_body_within_limit <- function(resp, max_bytes) {
     raw(0)
   }
   if (length(buffered) > max_bytes) {
-    list(exceeded = TRUE, body = NULL)
+    list(exceeded = TRUE, body = NULL, observed_bytes = length(buffered))
   } else {
-    list(exceeded = FALSE, body = buffered)
+    list(
+      exceeded = FALSE, body = buffered, observed_bytes = length(buffered)
+    )
   }
 }
 
@@ -267,6 +297,7 @@ perform_fetch <- function(robots_url, timeout, fetch_ua, max_bytes,
   current_url <- robots_url
   redirect_count <- 0L
   visited <- character(0)
+  redirect_hops <- list()
 
   repeat {
     # SSRF guard (ROBO-quovenef): structurally reject fetches aimed at private/
@@ -281,7 +312,9 @@ perform_fetch <- function(robots_url, timeout, fetch_ua, max_bytes,
       if (!isTRUE(ssrf$allowed)) {
         return(make_source_result(
           "ssrf_blocked", NULL, NULL, redirect_count, NULL,
-          sprintf("Blocked by SSRF guard (%s).", ssrf$reason)
+          sprintf("Blocked by SSRF guard (%s).", ssrf$reason),
+          redirect_hops = redirect_hops,
+          safety_block_reason = ssrf$reason
         ))
       }
     }
@@ -293,7 +326,9 @@ perform_fetch <- function(robots_url, timeout, fetch_ua, max_bytes,
     if (inherits(resp, "condition")) {
       outcome <- classify_transport_condition(resp)
       return(make_source_result(
-        outcome, NULL, NULL, redirect_count, NULL, conditionMessage(resp)
+        outcome, NULL, NULL, redirect_count, NULL, conditionMessage(resp),
+        redirect_hops = redirect_hops,
+        transport_error_kind = outcome
       ))
     }
 
@@ -306,18 +341,35 @@ perform_fetch <- function(robots_url, timeout, fetch_ua, max_bytes,
       loc <- httr2::resp_header(resp, "Location")
       close_stream_response(resp)
       if (is.null(loc) || !nzchar(loc)) {
+        redirect_hops[[length(redirect_hops) + 1L]] <- list(
+          from_url = current_url,
+          status = as.integer(status),
+          location_target = NA_character_
+        )
         return(make_source_result(
           "redirect_error", NULL, NULL, redirect_count, NULL,
-          sprintf("HTTP %d redirect without a usable Location header.", status)
-        ))
-      }
-      if (redirect_count >= 5L) {
-        return(make_source_result(
-          "redirect_error", NULL, NULL, redirect_count, NULL,
-          "Exceeded the maximum of five redirects."
+          sprintf("HTTP %d redirect without a usable Location header.", status),
+          redirect_hops = redirect_hops,
+          terminal_redirect_reason = "no_location",
+          final_http_status = status
         ))
       }
       target <- httr2::url_modify_relative(current_url, loc)
+      redirect_hops[[length(redirect_hops) + 1L]] <- list(
+        from_url = current_url,
+        status = as.integer(status),
+        location_target = target
+      )
+      if (redirect_count >= 5L) {
+        return(make_source_result(
+          "redirect_error", NULL, NULL, redirect_count, NULL,
+          "Exceeded the maximum of five redirects.",
+          redirect_hops = redirect_hops,
+          terminal_redirect_reason = "over_budget",
+          location_header = loc,
+          final_http_status = status
+        ))
+      }
       target_scheme <- tolower(as.character(httr2::url_parse(target)$scheme))
       current_scheme <- tolower(
         as.character(httr2::url_parse(current_url)$scheme)
@@ -326,20 +378,34 @@ perform_fetch <- function(robots_url, timeout, fetch_ua, max_bytes,
             !target_scheme %in% c("http", "https")) {
         return(make_source_result(
           "redirect_error", NULL, NULL, redirect_count, NULL,
-          sprintf("Redirect to a non-HTTP(S) target (%s).", loc)
+          sprintf("Redirect to a non-HTTP(S) target (%s).", loc),
+          redirect_hops = redirect_hops,
+          terminal_redirect_reason = "non_http_target",
+          location_header = loc,
+          safety_block_reason = "scheme",
+          final_http_status = status
         ))
       }
       if (identical(current_scheme, "https") &&
             identical(target_scheme, "http")) {
         return(make_source_result(
           "redirect_error", NULL, NULL, redirect_count, NULL,
-          "Rejected an HTTPS-to-HTTP downgrade redirect."
+          "Rejected an HTTPS-to-HTTP downgrade redirect.",
+          redirect_hops = redirect_hops,
+          terminal_redirect_reason = "downgrade",
+          location_header = loc,
+          safety_block_reason = "https_downgrade",
+          final_http_status = status
         ))
       }
       if (target %in% c(visited, current_url)) {
         return(make_source_result(
           "redirect_error", NULL, NULL, redirect_count, NULL,
-          "Redirect loop detected."
+          "Redirect loop detected.",
+          redirect_hops = redirect_hops,
+          terminal_redirect_reason = "loop",
+          location_header = loc,
+          final_http_status = status
         ))
       }
       visited <- c(visited, current_url)
@@ -355,7 +421,8 @@ perform_fetch <- function(robots_url, timeout, fetch_ua, max_bytes,
     if (!identical(outcome, "fetched")) {
       close_stream_response(resp)
       return(make_source_result(
-        outcome, status, current_url, redirect_count, NULL, NA_character_
+        outcome, status, current_url, redirect_count, NULL, NA_character_,
+        redirect_hops = redirect_hops
       ))
     }
 
@@ -378,7 +445,9 @@ perform_fetch <- function(robots_url, timeout, fetch_ua, max_bytes,
       close_stream_response(resp)
       return(make_source_result(
         classify_transport_condition(read), NULL, NULL, redirect_count, NULL,
-        conditionMessage(read)
+        conditionMessage(read),
+        redirect_hops = redirect_hops,
+        transport_error_kind = classify_transport_condition(read)
       ))
     }
     close_stream_response(resp)
@@ -388,11 +457,17 @@ perform_fetch <- function(robots_url, timeout, fetch_ua, max_bytes,
         sprintf(
           "Decoded response body exceeded the %d-byte limit (max_bytes).",
           max_bytes
-        )
+        ),
+        redirect_hops = redirect_hops,
+        observed_bytes = read$observed_bytes,
+        body_truncated = TRUE,
+        termination_reason = "ceiling"
       ))
     }
     return(make_source_result(
-      "fetched", status, current_url, redirect_count, read$body, NA_character_
+      "fetched", status, current_url, redirect_count, read$body, NA_character_,
+      redirect_hops = redirect_hops,
+      observed_bytes = read$observed_bytes
     ))
   }
 }

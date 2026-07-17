@@ -86,3 +86,24 @@ allowed_by_robots_url("https://example.com/some/page", "mybot")
 See the "Introduction to robotstxtr" vignette for the full walkthrough,
 including match metadata, the fetch policy, and body inspection with
 `robots_body()`.
+
+## Engine-aware v1 contract
+
+Multi-engine integrations should use the parallel versioned facade and select
+both axes explicitly:
+
+```r
+robots_evaluate_text_v1(
+  robots,
+  "https://example.com/private/report",
+  robots_product_token = "Googlebot",
+  robots_policy_ruleset = "google",
+  matcher_backend = "google"
+)
+```
+
+The result distinguishes neutral fetch evidence, engine policy, matcher
+availability, and the final URL decision. Unsupported RFC 9309, Yandex, or Bing
+matchers return `capability_unavailable` rather than silently falling back to
+Google. See [the engine-aware contract](design/engine-contract-v1.md) and
+`robots_engine_contract_v1()` for schema revisions and capability metadata.
