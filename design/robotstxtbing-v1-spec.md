@@ -1,6 +1,8 @@
 # robotstxtbing compatibility contract v1
 
-- Status: **draft for owner review; not implementation-authorizing**
+- Status: **superseded by
+  [`robotstxtbing-v2-spec.md`](robotstxtbing-v2-spec.md); not
+  implementation-authorizing**
 - Contract ID: `robotstxtbing.compatibility/v1`
 - Draft revision: `2026-07-17.1`
 - Evidence cutoff: 2026-07-17

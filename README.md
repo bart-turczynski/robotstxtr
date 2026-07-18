@@ -87,6 +87,30 @@ See the "Introduction to robotstxtr" vignette for the full walkthrough,
 including match metadata, the fetch policy, and body inspection with
 `robots_body()`.
 
+## Validate a robots.txt document
+
+Document validation is separate from URL allow/disallow evaluation. Validate
+supplied text (or raw acquisition bytes) with `robots_validate_text()`:
+
+```r
+validation <- robots_validate_text(
+  "user-agent: *\ndisallow: /private\nunknown-field: value\n"
+)
+
+validation$documents
+validation$diagnostics
+```
+
+Use `robots_validate_url()` when the document must first be fetched. It calls
+the same deterministic `robots_fetch()` path and validates each distinct stored
+raw body once; acquisition limits and failures remain explicit evidence.
+
+The profile is deliberately named `google-parser-compatible`. It describes the
+pinned parser plus conservative structural checks, not universal crawler or
+RFC 9309 validity. Validation reports file syntax and structure only: it does
+not answer whether a particular URL is allowed, infer whether rules match the
+webmaster's intent, or fetch and check remote sitemap resources.
+
 ## Engine-aware v1 contract
 
 Multi-engine integrations should use the parallel versioned facade and select
