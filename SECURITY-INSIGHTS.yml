@@ -1,0 +1,120 @@
+header:
+  schema-version: 2.2.0
+  last-updated: '2026-07-18'
+  last-reviewed: '2026-07-18'
+  url: https://github.com/bart-turczynski/robotstxtr/raw/main/SECURITY-INSIGHTS.yml
+  comment: |
+    OpenSSF Security Insights self-report for robotstxtr, an R package that
+    evaluates robots.txt crawl policy using a vendored snapshot of Google's
+    open-source C++ robots.txt matcher. Maintained alongside SECURITY.md
+    (human-readable policy).
+
+project:
+  name: robotstxtr
+  homepage: https://bart-turczynski.github.io/robotstxtr/
+  administrators:
+    - name: Bart Turczynski
+      email: bartek@turczynski.pl
+      social: https://orcid.org/0000-0002-8788-7980
+      primary: true
+  documentation:
+    quickstart-guide: https://bart-turczynski.github.io/robotstxtr/
+    detailed-guide: https://bart-turczynski.github.io/robotstxtr/reference/index.html
+    release-process: https://github.com/bart-turczynski/robotstxtr/blob/main/CONTRIBUTING.md
+  repositories:
+    - name: robotstxtr
+      url: https://github.com/bart-turczynski/robotstxtr
+      comment: |
+        Sole repository for the robotstxtr package. The URL-matching engine is a
+        vendored, upstream-test-validated snapshot of Google's open-source C++
+        robots.txt matcher (Apache-2.0); fetch origins are constructed with the
+        sibling rurl package.
+  vulnerability-reporting:
+    reports-accepted: true
+    bug-bounty-available: false
+    contact:
+      name: Bart Turczynski
+      email: bartek@turczynski.pl
+      primary: true
+    policy: https://github.com/bart-turczynski/robotstxtr/blob/main/SECURITY.md
+    in-scope:
+      - Unsafe handling of untrusted robots.txt bodies or URLs passed to the
+        parsing, matching, and validation functions.
+      - Memory-safety defects in the vendored C++ matcher as compiled and
+        exercised through this package's bindings.
+    out-of-scope:
+      - Vulnerabilities in dependencies (httr2, rurl); report those upstream.
+    comment: |
+      Please do not report vulnerabilities through public GitHub issues. Use
+      GitHub private vulnerability reporting (repository Security tab -> "Report
+      a vulnerability"), or email the maintainer if that channel is unavailable.
+      Acknowledgment is targeted within 7 days. robotstxtr performs robots.txt
+      fetches under a deterministic, conservative httr2 policy and handles no
+      credentials; all network access in tests, examples, and vignettes is
+      mocked or served locally.
+
+repository:
+  url: https://github.com/bart-turczynski/robotstxtr
+  status: active
+  bug-fixes-only: false
+  accepts-change-request: true
+  accepts-automated-change-request: false
+  no-third-party-packages: false
+  core-team:
+    - name: Bart Turczynski
+      email: bartek@turczynski.pl
+      social: https://orcid.org/0000-0002-8788-7980
+      primary: true
+  documentation:
+    contributing-guide: https://github.com/bart-turczynski/robotstxtr/blob/main/CONTRIBUTING.md
+    security-policy: https://github.com/bart-turczynski/robotstxtr/blob/main/SECURITY.md
+  license:
+    url: https://github.com/bart-turczynski/robotstxtr/blob/main/LICENSE
+    expression: MIT
+  release:
+    changelog: https://github.com/bart-turczynski/robotstxtr/blob/main/NEWS.md
+    automated-pipeline: false
+    distribution-points:
+      - uri: https://github.com/bart-turczynski/robotstxtr/releases
+        comment: Tagged GitHub Releases.
+      - uri: https://bart-turczynski.r-universe.dev
+        comment: R-universe build (also the staging repo for the rurl dependency until it reaches CRAN).
+  security:
+    tools:
+      - name: rosv (OSV)
+        type: SCA
+        rulesets:
+          - default
+        integration:
+          adhoc: true
+          ci: true
+          release: false
+        results: {}
+        comment: |
+          Weekly and on-push audit of the runtime dependency closure against the
+          OSV database (osv.dev). No account or secrets required. See
+          .github/workflows/osv-audit.yml.
+      - name: oysteR (Sonatype OSS Index)
+        type: SCA
+        rulesets:
+          - default
+        integration:
+          adhoc: true
+          ci: true
+          release: false
+        results: {}
+        comment: |
+          Weekly and on-push audit of declared dependencies against the Sonatype
+          OSS Index. See .github/workflows/security-audit.yml.
+      - name: AddressSanitizer / valgrind
+        type: SAST
+        rulesets:
+          - default
+        integration:
+          adhoc: true
+          ci: true
+          release: false
+        results: {}
+        comment: |
+          ASAN/UBSAN and valgrind runs over the vendored C++ matcher and its
+          bindings. See .github/workflows/sanitizers.yml.

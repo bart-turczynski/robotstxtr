@@ -1,0 +1,179 @@
+{
+  "@context": "https://doi.org/10.5063/schema/codemeta-2.0",
+  "@type": "SoftwareSourceCode",
+  "identifier": "robotstxtr",
+  "description": "Evaluates whether URLs may be crawled according to 'robots.txt' rules. A versioned engine-aware facade keeps neutral fetch evidence, per-engine status policy, robots product tokens, and matcher capabilities separate, returning explicit non-decisions when policy is undocumented or a matcher is unavailable. The available matcher is a vendored, upstream-test-validated snapshot of Google's open-source C++ 'robots.txt' matcher, preserving Googlebot behavior. Fetches use a deterministic, conservative policy built on 'httr2', with fetch origins constructed by 'rurl'. All network access in tests, examples, and vignettes is mocked or served locally, so no internet connection is required to install, test, or check the package. The bundled matcher derives from Google's 'robotstxt' project <https://github.com/google/robotstxt>, distributed under the Apache License 2.0; see the package NOTICE.",
+  "name": "robotstxtr: Engine-Aware 'robots.txt' Policy with Google's Matcher Algorithm",
+  "relatedLink": "https://bart-turczynski.github.io/robotstxtr/",
+  "codeRepository": "https://github.com/bart-turczynski/robotstxtr",
+  "issueTracker": "https://github.com/bart-turczynski/robotstxtr/issues",
+  "license": "https://spdx.org/licenses/MIT",
+  "version": "0.2.0",
+  "programmingLanguage": {
+    "@type": "ComputerLanguage",
+    "name": "R",
+    "url": "https://r-project.org"
+  },
+  "runtimePlatform": "R version 4.6.0 (2026-04-24)",
+  "author": [
+    {
+      "@type": "Person",
+      "givenName": "Bart",
+      "familyName": "Turczynski",
+      "email": "bartek@turczynski.pl",
+      "@id": "https://orcid.org/0000-0002-8788-7980"
+    }
+  ],
+  "maintainer": [
+    {
+      "@type": "Person",
+      "givenName": "Bart",
+      "familyName": "Turczynski",
+      "email": "bartek@turczynski.pl",
+      "@id": "https://orcid.org/0000-0002-8788-7980"
+    }
+  ],
+  "softwareSuggestions": [
+    {
+      "@type": "SoftwareApplication",
+      "identifier": "callr",
+      "name": "callr",
+      "provider": {
+        "@id": "https://cran.r-project.org",
+        "@type": "Organization",
+        "name": "Comprehensive R Archive Network (CRAN)",
+        "url": "https://cran.r-project.org"
+      },
+      "sameAs": "https://CRAN.R-project.org/package=callr"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "identifier": "httpuv",
+      "name": "httpuv",
+      "provider": {
+        "@id": "https://cran.r-project.org",
+        "@type": "Organization",
+        "name": "Comprehensive R Archive Network (CRAN)",
+        "url": "https://cran.r-project.org"
+      },
+      "sameAs": "https://CRAN.R-project.org/package=httpuv"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "identifier": "knitr",
+      "name": "knitr",
+      "provider": {
+        "@id": "https://cran.r-project.org",
+        "@type": "Organization",
+        "name": "Comprehensive R Archive Network (CRAN)",
+        "url": "https://cran.r-project.org"
+      },
+      "sameAs": "https://CRAN.R-project.org/package=knitr"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "identifier": "oysteR",
+      "name": "oysteR",
+      "provider": {
+        "@id": "https://cran.r-project.org",
+        "@type": "Organization",
+        "name": "Comprehensive R Archive Network (CRAN)",
+        "url": "https://cran.r-project.org"
+      },
+      "sameAs": "https://CRAN.R-project.org/package=oysteR"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "identifier": "rmarkdown",
+      "name": "rmarkdown",
+      "provider": {
+        "@id": "https://cran.r-project.org",
+        "@type": "Organization",
+        "name": "Comprehensive R Archive Network (CRAN)",
+        "url": "https://cran.r-project.org"
+      },
+      "sameAs": "https://CRAN.R-project.org/package=rmarkdown"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "identifier": "rosv",
+      "name": "rosv",
+      "provider": {
+        "@id": "https://cran.r-project.org",
+        "@type": "Organization",
+        "name": "Comprehensive R Archive Network (CRAN)",
+        "url": "https://cran.r-project.org"
+      },
+      "sameAs": "https://CRAN.R-project.org/package=rosv"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "identifier": "testthat",
+      "name": "testthat",
+      "version": ">= 3.0.0",
+      "provider": {
+        "@id": "https://cran.r-project.org",
+        "@type": "Organization",
+        "name": "Comprehensive R Archive Network (CRAN)",
+        "url": "https://cran.r-project.org"
+      },
+      "sameAs": "https://CRAN.R-project.org/package=testthat"
+    }
+  ],
+  "softwareRequirements": {
+    "1": {
+      "@type": "SoftwareApplication",
+      "identifier": "R",
+      "name": "R",
+      "version": ">= 4.1.0"
+    },
+    "2": {
+      "@type": "SoftwareApplication",
+      "identifier": "httr2",
+      "name": "httr2",
+      "provider": {
+        "@id": "https://cran.r-project.org",
+        "@type": "Organization",
+        "name": "Comprehensive R Archive Network (CRAN)",
+        "url": "https://cran.r-project.org"
+      },
+      "sameAs": "https://CRAN.R-project.org/package=httr2"
+    },
+    "3": {
+      "@type": "SoftwareApplication",
+      "identifier": "rurl",
+      "name": "rurl",
+      "version": ">= 2.2.1",
+      "provider": {
+        "@id": "https://cran.r-project.org",
+        "@type": "Organization",
+        "name": "Comprehensive R Archive Network (CRAN)",
+        "url": "https://cran.r-project.org"
+      },
+      "sameAs": "https://CRAN.R-project.org/package=rurl"
+    },
+    "SystemRequirements": "C++17"
+  },
+  "fileSize": "1953.197KB",
+  "citation": [
+    {
+      "@type": "SoftwareSourceCode",
+      "datePublished": "2026",
+      "author": [
+        {
+          "@type": "Person",
+          "givenName": "Bart",
+          "familyName": "Turczynski",
+          "@id": "https://orcid.org/0000-0002-8788-7980"
+        }
+      ],
+      "name": "{robotstxtr}: Engine-Aware 'robots.txt' Policy with Google's Matcher Algorithm",
+      "url": "https://github.com/bart-turczynski/robotstxtr",
+      "description": "R package version 0.2.0"
+    }
+  ],
+  "releaseNotes": "https://github.com/bart-turczynski/robotstxtr/blob/main/NEWS.md",
+  "readme": "https://github.com/bart-turczynski/robotstxtr/blob/main/README.md",
+  "contIntegration": ["https://github.com/bart-turczynski/robotstxtr/actions/workflows/verify.yml", "https://app.codecov.io/gh/bart-turczynski/robotstxtr", "https://github.com/bart-turczynski/robotstxtr/actions/workflows/security-audit.yml", "https://github.com/bart-turczynski/robotstxtr/actions/workflows/osv-audit.yml"],
+  "developmentStatus": "https://lifecycle.r-lib.org/articles/stages.html#maturing"
+}
