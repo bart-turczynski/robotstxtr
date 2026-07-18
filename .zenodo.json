@@ -1,0 +1,45 @@
+{
+  "upload_type": "software",
+  "title": "robotstxtr: Engine-Aware 'robots.txt' Policy with Google's Matcher Algorithm",
+  "version": "0.2.0",
+  "language": "eng",
+  "access_right": "open",
+  "license": "MIT",
+  "description": "<p>Evaluates whether URLs may be crawled according to <code>robots.txt</code> rules in R. A versioned engine-aware facade keeps neutral fetch evidence, per-engine status policy, robots product tokens, and matcher capabilities separate, returning explicit non-decisions when policy is undocumented or a matcher is unavailable. The available matcher is a vendored, upstream-test-validated snapshot of Google's open-source C++ <code>robots.txt</code> matcher, preserving Googlebot behavior. Fetches use a deterministic, conservative policy built on <code>httr2</code>, with fetch origins constructed by <code>rurl</code>.</p>",
+  "creators": [
+    {
+      "name": "Turczynski, Bart",
+      "orcid": "0000-0002-8788-7980"
+    }
+  ],
+  "keywords": [
+    "robots.txt",
+    "robots exclusion protocol",
+    "web crawling",
+    "Googlebot",
+    "URL matching",
+    "web scraping",
+    "SEO",
+    "R",
+    "rstats"
+  ],
+  "notes": "The bundled matcher derives from Google's robotstxt project (https://github.com/google/robotstxt), distributed under the Apache License 2.0; see the package NOTICE. Fetch origins are constructed with the sibling rurl package.",
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/google/robotstxt",
+      "relation": "isDerivedFrom",
+      "resource_type": "software",
+      "scheme": "url"
+    },
+    {
+      "identifier": "https://bart-turczynski.github.io/robotstxtr/",
+      "relation": "isDocumentedBy",
+      "resource_type": "publication-softwaredocumentation",
+      "scheme": "url"
+    }
+  ],
+  "references": [
+    "Koster, M., Illyes, G., Zeller, H., & Sassman, L. (2022). RFC 9309: Robots Exclusion Protocol. IETF.",
+    "Google LLC. Google Robots.txt Parser and Matcher Library. https://github.com/google/robotstxt"
+  ]
+}

@@ -39,3 +39,9 @@
 ^\.DS_Store$
 ^_pkgdown\.yml$
 ^pkgdown$
+^README\.Rmd$
+^codemeta\.json$
+^CITATION\.cff$
+^\.zenodo\.json$
+^SECURITY-INSIGHTS\.yml$
+^CODE_OF_CONDUCT\.md$

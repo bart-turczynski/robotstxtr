@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "robotstxtr: Engine-Aware 'robots.txt' Policy with Google's Matcher Algorithm"
+version: 0.2.0
+abstract: >-
+  Evaluates whether URLs may be crawled according to robots.txt rules. A
+  versioned engine-aware facade keeps neutral fetch evidence, per-engine status
+  policy, robots product tokens, and matcher capabilities separate, returning
+  explicit non-decisions when policy is undocumented or a matcher is
+  unavailable. The available matcher is a vendored, upstream-test-validated
+  snapshot of Google's open-source C++ robots.txt matcher, preserving Googlebot
+  behavior.
+authors:
+  - family-names: Turczynski
+    given-names: Bart
+    orcid: "https://orcid.org/0000-0002-8788-7980"
+repository-code: "https://github.com/bart-turczynski/robotstxtr"
+url: "https://bart-turczynski.github.io/robotstxtr/"
+license: MIT
+keywords:
+  - robots.txt
+  - robots exclusion protocol
+  - web crawling
+  - Googlebot
+  - URL matching
+  - web scraping
+  - SEO

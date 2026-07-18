@@ -1,27 +1,30 @@
-# Cross-platform R CMD check matrix — the CRAN and platform gate (PRD.md §9).
+# Full cross-platform R CMD check matrix (macOS = 10x, Windows = 2x Actions
+# minute multipliers). Runs ONLY on demand (workflow_dispatch) or when preparing
+# a CRAN submission (release tags matching 'v*'). Routine merges to main and PRs
+# do NOT trigger it. Fast per-PR feedback (lint + one Ubuntu --as-cran check +
+# coverage + README-sync) lives in verify.yml.
 #
-# Covers the required platform/toolchain matrix for a package that ships a
-# VENDORED C++ engine (LinkingTo: cpp11, SystemRequirements: C++17), so every
-# entry exercises the native compile:
-#   - Linux (ubuntu-latest) on R devel, release, and oldrel-1  [default GCC]
-#   - Linux (ubuntu-latest) on R release with the Clang toolchain
-#   - macOS (macos-latest)  on R release                        [Apple Clang]
-#   - Windows (windows-latest) on R release                     [UCRT]
-# Runs --as-cran and treats warnings as errors. The package needs NO live
-# network for install/tests/examples/vignettes, so no network steps are added;
-# Suggests are installed (needs: check) so the full test + vignette gate runs.
-name: R-CMD-check
+# Because this package ships a VENDORED C++ engine (LinkingTo: cpp11,
+# SystemRequirements: C++17), every entry exercises the native compile, and one
+# Linux entry pins the Clang toolchain so the matrix covers "Linux with GCC and
+# Clang". Deeper C++ correctness (ASAN/UBSAN, valgrind) lives in sanitizers.yml.
+#
+# rurl is not yet on CRAN in the required version, so setup-r points at the
+# author's R-universe staging repo via `extra-repositories`. Remove once
+# ROBO-ufxrxxga is unblocked.
+name: Full platform check
 
 on:
+  # CRAN-submission prep: release tags matching 'v*'.
   push:
-    branches: [main]
-  pull_request:
+    tags: ['v*']
+  # On demand.
   workflow_dispatch:
 
 permissions: read-all
 
 concurrency:
-  group: R-CMD-check-${{ github.workflow }}-${{ github.ref }}
+  group: full-check-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -32,23 +35,18 @@ jobs:
       fail-fast: false
       matrix:
         config:
+          - {os: macos-latest,   r: 'release'}
+          - {os: windows-latest, r: 'release'}
           - {os: ubuntu-latest,  r: 'devel', http-user-agent: 'release'}
           - {os: ubuntu-latest,  r: 'release'}
           - {os: ubuntu-latest,  r: 'oldrel-1'}
           - {os: ubuntu-latest,  r: 'release', compiler: 'clang'}
-          - {os: macos-latest,   r: 'release'}
-          - {os: windows-latest, r: 'release'}
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
-      # Suggests are installed below, so keep the strict default. Left explicit
-      # to document that the test/vignette gate is expected to run in full.
-      _R_CHECK_FORCE_SUGGESTS_: true
     steps:
       - uses: actions/checkout@v4
-
       - uses: r-lib/actions/setup-pandoc@v2
-
       - uses: r-lib/actions/setup-r@v2
         with:
           r-version: ${{ matrix.config.r }}
@@ -59,9 +57,9 @@ jobs:
           extra-repositories: https://bart-turczynski.r-universe.dev
 
       # Compile the vendored C++ with Clang on the designated Linux entry so the
-      # matrix covers "Linux with GCC and Clang" (§9). All other Linux entries
-      # use the default GCC toolchain. Written before dependency install/check
-      # so the package's own native code builds under clang/clang++.
+      # matrix covers "Linux with GCC and Clang". All other Linux entries use
+      # the default GCC toolchain. Written before dependency install/check so
+      # the package's own native code builds under clang/clang++.
       - name: Use Clang toolchain
         if: matrix.config.compiler == 'clang'
         run: |
@@ -79,15 +77,13 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          # rcmdcheck drives the check; Suggests (httpuv, callr, cucumber,
-          # knitr, rmarkdown, testthat) come in via needs: check so tests and
-          # vignettes run.
           extra-packages: any::rcmdcheck
           needs: check
 
       - uses: r-lib/actions/check-r-package@v2
         with:
-          # Strict CRAN-grade pass on every platform, warnings fatal.
+          # The strict CRAN-grade pass: --as-cran across every platform. This is
+          # what CRAN itself runs, so it is the gate before a release.
           args: 'c("--no-manual", "--as-cran")'
           error-on: '"warning"'
           upload-snapshots: true

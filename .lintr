@@ -3,6 +3,11 @@ linters: linters_with_defaults(
     # validate_*/perform_fetch helpers) and testthat's expect_* DSL as
     # undefined globals, producing false positives. Disabled to keep the lint
     # gate clean.
-    object_usage_linter = NULL
+    object_usage_linter = NULL,
+    # lintr 3.4.0 changed assignment_linter's default to flag `<<-`. This
+    # package uses cascading assignment deliberately (outer-scope accumulators
+    # in R/, mock counters in tests), so keep it allowed to preserve the
+    # pre-3.4.0 clean-gate behavior without editing source.
+    assignment_linter = lintr::assignment_linter(operator = c("<-", "<<-"))
   )
 encoding: "UTF-8"
