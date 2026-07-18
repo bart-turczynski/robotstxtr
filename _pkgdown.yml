@@ -61,6 +61,16 @@ reference:
       - robots_validate_text
       - robots_validate_url
 
+  - title: "Engine-aware v1 contract"
+    desc: >
+      Negotiate matcher capabilities, evaluate with explicit policy and backend
+      selections, and bridge v1 results to the legacy decision schema.
+    contents:
+      - robots_engine_contract_v1
+      - robots_evaluate_text_v1
+      - robots_evaluate_url_v1
+      - as_legacy_robots_decisions_v1
+
   - title: "Methods"
     desc: "Printing for the returned S3 objects."
     contents:
