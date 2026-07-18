@@ -255,14 +255,15 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     parsed <- parsed[parsed$line <= line_count, , drop = FALSE]
   }
 
-  diagnostics <- list()
+  diag_env <- new.env(parent = emptyenv())
+  diag_env$items <- list()
   add_diagnostic <- function(line, severity, code, directive, message) {
     raw_text <- if (!is.na(line) && line <= line_count) {
       render_validation_line(raw_lines[[line]])
     } else {
       NA_character_
     }
-    diagnostics[[length(diagnostics) + 1L]] <<- validation_diagnostic(
+    diag_env$items[[length(diag_env$items) + 1L]] <- validation_diagnostic(
       source_id, line, severity, code, directive, raw_text, message
     )
   }
@@ -362,23 +363,23 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         group_open <- FALSE
         group_has_rule <- FALSE
       }
-      if (!nzchar(value)) {
+      if (nzchar(value)) {
+        group_open <- TRUE
+        nonempty_user_agents <- nonempty_user_agents + 1L
+      } else {
         add_diagnostic(
           line, "error", "empty_user_agent", type,
           "User-agent directive has an empty value."
         )
-      } else {
-        group_open <- TRUE
-        nonempty_user_agents <- nonempty_user_agents + 1L
       }
     } else if (type %in% c("allow", "disallow")) {
-      if (!group_open) {
+      if (group_open) {
+        group_has_rule <- TRUE
+      } else {
         add_diagnostic(
           line, "error", "rule_without_user_agent", type,
           "Allow or Disallow appears before a non-empty User-agent group."
         )
-      } else {
-        group_has_rule <- TRUE
       }
       if (!nzchar(value)) {
         add_diagnostic(
@@ -401,10 +402,10 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     )
   }
 
-  diagnostic_frame <- if (length(diagnostics) == 0L) {
+  diagnostic_frame <- if (length(diag_env$items) == 0L) {
     empty_validation_diagnostics()
   } else {
-    do.call(rbind, diagnostics)
+    do.call(rbind, diag_env$items)
   }
   core_recognized <- parsed$has_directive & parsed$type != "unknown"
   recognized <- sum(core_recognized) + sum(unsupported)
@@ -490,7 +491,7 @@ render_validation_line <- function(bytes) {
   if (length(bytes) == 0L) {
     return("")
   }
-  paste0(vapply(as.integer(bytes), function(byte) {
+  paste(vapply(as.integer(bytes), function(byte) {
     if (byte >= 0x20 && byte <= 0x7e) {
       rawToChar(as.raw(byte))
     } else if (byte == 0x09) {

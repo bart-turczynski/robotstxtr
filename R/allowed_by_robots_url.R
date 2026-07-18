@@ -201,10 +201,9 @@ allowed_by_robots_url <- function(url, user_agent, timeout = 10,
   )
   decision_source[fetch_outcome_col %in% fail_outcomes] <- "fetch_unknown"
   fm <- fetch_outcome_col == "fetched"
-  decision_source[fm] <- ifelse(
-    !allowed[fm], "rule_disallow",
-    ifelse(matching_line[fm] > 0L, "rule_allow", "default_allow")
-  )
+  decision_source[fm & !allowed] <- "rule_disallow"
+  decision_source[fm & allowed & matching_line > 0L] <- "rule_allow"
+  decision_source[fm & allowed & matching_line <= 0L] <- "default_allow"
 
   # `matching_line() == 0` (or NA for non-fetched rows) maps to matched_line =
   # NA; positive lines are one-based and returned unchanged.

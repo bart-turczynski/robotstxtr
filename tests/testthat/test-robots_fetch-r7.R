@@ -151,10 +151,11 @@ test_that("a small uncompressed body under the limit is fetched", {
 
 test_that("accumulate_within_limit assembles a body under the limit", {
   chunks <- list(as.raw(1:10), as.raw(11:20), as.raw(21:30))
-  i <- 0L
+  state <- new.env(parent = emptyenv())
+  state$i <- 0L
   read_chunk <- function() {
-    i <<- i + 1L
-    if (i > length(chunks)) raw(0) else chunks[[i]]
+    state$i <- state$i + 1L
+    if (state$i > length(chunks)) raw(0) else chunks[[state$i]]
   }
   res <- accumulate_within_limit(read_chunk, max_bytes = 100L)
   expect_false(res$exceeded)
@@ -163,10 +164,11 @@ test_that("accumulate_within_limit assembles a body under the limit", {
 
 test_that("accumulate_within_limit accepts a body exactly at the limit", {
   chunks <- list(as.raw(1:10), as.raw(11:20))
-  i <- 0L
+  state <- new.env(parent = emptyenv())
+  state$i <- 0L
   read_chunk <- function() {
-    i <<- i + 1L
-    if (i > length(chunks)) raw(0) else chunks[[i]]
+    state$i <- state$i + 1L
+    if (state$i > length(chunks)) raw(0) else chunks[[state$i]]
   }
   res <- accumulate_within_limit(read_chunk, max_bytes = 20L)
   expect_false(res$exceeded)
@@ -176,17 +178,18 @@ test_that("accumulate_within_limit accepts a body exactly at the limit", {
 test_that("accumulate_within_limit aborts early and stores no body when over", {
   # Total would be 30 bytes; limit is 15. Reading must stop as soon as the
   # running total crosses the limit and never assemble a truncated body.
-  reads <- 0L
+  state <- new.env(parent = emptyenv())
+  state$reads <- 0L
   chunks <- list(as.raw(1:10), as.raw(11:20), as.raw(21:30))
   read_chunk <- function() {
-    reads <<- reads + 1L
-    if (reads > length(chunks)) raw(0) else chunks[[reads]]
+    state$reads <- state$reads + 1L
+    if (state$reads > length(chunks)) raw(0) else chunks[[state$reads]]
   }
   res <- accumulate_within_limit(read_chunk, max_bytes = 15L)
   expect_true(res$exceeded)
   expect_null(res$body)
   # It crossed the limit on the second chunk and stopped pulling further chunks.
-  expect_identical(reads, 2L)
+  expect_identical(state$reads, 2L)
 })
 
 test_that("accumulate_within_limit yields raw(0) for an empty stream", {

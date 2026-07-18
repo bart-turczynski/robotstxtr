@@ -83,10 +83,13 @@ engine_policy_table_v1 <- function() {
   table$policy_provenance <- "documentation_gap"
   table$policy_source <- "design/engine-profiles.md"
 
+  acc <- new.env(parent = emptyenv())
+  acc$table <- table
+
   set <- function(category, ruleset, status, action, reason, provenance,
                   source) {
-    table <<- policy_rows_set_v1(
-      table, category, ruleset, status, action, reason, provenance, source
+    acc$table <- policy_rows_set_v1(
+      acc$table, category, ruleset, status, action, reason, provenance, source
     )
   }
 
@@ -175,7 +178,7 @@ engine_policy_table_v1 <- function() {
     "redirect_over_budget_as_404", "documented",
     "design/engine-profiles.md#redirect-handling"
   )
-  table
+  acc$table
 }
 
 #' Inspect the versioned engine-aware robots contract
@@ -230,7 +233,7 @@ expand_engine_argument_v1 <- function(x, n, argument, choices) {
     robots_abort(
       sprintf(
         "`%s` must contain only: %s.",
-        argument, paste(choices, collapse = ", ")
+        argument, toString(choices)
       ),
       paste0("robotstxtr_invalid_", argument)
     )
@@ -639,14 +642,14 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
   matched_rule_value <- rep(NA_character_, n)
   matcher_input_bytes <- rep(NA_integer_, n)
   matcher_body_truncated <- rep(NA, n)
-  error_stage <- ifelse(!url_valid, "origin", "input")
+  error_stage <- ifelse(url_valid, "input", "origin")
   error_class <- ifelse(
-    !url_valid, "robots_invalid_url", "robots_invalid_product_token"
+    url_valid, "robots_invalid_product_token", "robots_invalid_url"
   )
   error_message <- ifelse(
-    !url_valid,
-    "URL is missing, empty, malformed, or not HTTP(S).",
-    "Robots product token is missing or empty."
+    url_valid,
+    "Robots product token is missing or empty.",
+    "URL is missing, empty, malformed, or not HTTP(S)."
   )
 
   valid <- url_valid & token_valid

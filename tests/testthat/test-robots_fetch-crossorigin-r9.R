@@ -6,9 +6,10 @@
 # requested robots URL. Offline via httr2::local_mocked_responses().
 
 test_that("a cross-origin redirect to another host is followed", {
-  seen <- character(0)
+  state <- new.env(parent = emptyenv())
+  state$seen <- character(0)
   httr2::local_mocked_responses(function(req) {
-    seen[[length(seen) + 1L]] <<- req$url
+    state$seen[[length(state$seen) + 1L]] <- req$url
     if (identical(req$url, "http://a/robots.txt")) {
       httr2::response(
         status_code = 301L, url = req$url,
@@ -32,5 +33,5 @@ test_that("a cross-origin redirect to another host is followed", {
   expect_identical(x$robots$effective_url, "http://b/robots.txt")
   # Grouping key stays the ORIGINAL requested robots URL, not the destination.
   expect_identical(x$robots$robots_url, "http://a/robots.txt")
-  expect_identical(seen, c("http://a/robots.txt", "http://b/robots.txt"))
+  expect_identical(state$seen, c("http://a/robots.txt", "http://b/robots.txt"))
 })
