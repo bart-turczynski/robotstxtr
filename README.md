@@ -1,32 +1,48 @@
+
+<!-- README.md is generated from README.Rmd. Please edit that file and run
+     devtools::build_readme() to regenerate README.md. -->
+
 # robotstxtr
 
 <!-- badges: start -->
-[![R-CMD-check](https://github.com/bart-turczynski/robotstxtr/actions/workflows/R-CMD-check.yml/badge.svg)](https://github.com/bart-turczynski/robotstxtr/actions/workflows/R-CMD-check.yml)
+
+[![R-CMD-check](https://github.com/bart-turczynski/robotstxtr/actions/workflows/verify.yml/badge.svg)](https://github.com/bart-turczynski/robotstxtr/actions/workflows/verify.yml)
+[![CRAN
+status](https://www.r-pkg.org/badges/version/robotstxtr)](https://CRAN.R-project.org/package=robotstxtr)
+[![Codecov
+coverage](https://codecov.io/gh/bart-turczynski/robotstxtr/branch/main/graph/badge.svg)](https://app.codecov.io/gh/bart-turczynski/robotstxtr)
+[![Lifecycle:
+maturing](https://img.shields.io/badge/lifecycle-maturing-blue.svg)](https://lifecycle.r-lib.org/articles/stages.html#maturing)
+[![Security
+audit](https://github.com/bart-turczynski/robotstxtr/actions/workflows/security-audit.yml/badge.svg)](https://github.com/bart-turczynski/robotstxtr/actions/workflows/security-audit.yml)
+[![OSV
+audit](https://github.com/bart-turczynski/robotstxtr/actions/workflows/osv-audit.yml/badge.svg)](https://github.com/bart-turczynski/robotstxtr/actions/workflows/osv-audit.yml)
 <!-- badges: end -->
 
-Faithful `robots.txt` parsing and URL-allowed decisions for R, powered by
-Google's own matcher.
+Faithful `robots.txt` parsing and URL-allowed decisions for R, powered
+by Google’s own matcher.
 
-`robotstxtr` evaluates whether a URL may be crawled according to a site's
-`robots.txt` rules. It wraps a vendored, upstream-test-validated snapshot of
-Google's open-source C++ `robots.txt` parser and matcher, so allow and disallow
-decisions match Googlebot's behavior — including the quirky parts (longest-match
-wins, `Allow`-beats-`Disallow` ties, `*`/`$` wildcards, case-sensitive paths,
-percent-escape canonicalization). It can also fetch `robots.txt` for you under a
-deterministic, conservative `httr2` policy, construct fetch origins with `rurl`,
-and return richly typed, vectorized decisions with per-rule match metadata.
+`robotstxtr` evaluates whether a URL may be crawled according to a
+site’s `robots.txt` rules. It wraps a vendored, upstream-test-validated
+snapshot of Google’s open-source C++ `robots.txt` parser and matcher, so
+allow and disallow decisions match Googlebot’s behavior — including the
+quirky parts (longest-match wins, `Allow`-beats-`Disallow` ties, `*`/`$`
+wildcards, case-sensitive paths, percent-escape canonicalization). It
+can also fetch `robots.txt` for you under a deterministic, conservative
+`httr2` policy, construct fetch origins with `rurl`, and return richly
+typed, vectorized decisions with per-rule match metadata.
 
-This is a faithful, upstream-test-validated replica of the pinned matcher, not a
-claim of universal behavioral identity with Googlebot.
+This is a faithful, upstream-test-validated replica of the pinned
+matcher, not a claim of universal behavioral identity with Googlebot.
 
 ## Installation
 
-`robotstxtr` is not on CRAN yet. Its required `rurl` version is temporarily
-available from the author's R-universe while the coordinated dependency updates
-progress through CRAN. Configure that repository before installing the
-development version from GitHub:
+`robotstxtr` is not on CRAN yet. Its required `rurl` version is
+temporarily available from the author’s R-universe while the coordinated
+dependency updates progress through CRAN. Configure that repository
+before installing the development version from GitHub:
 
-```r
+``` r
 # Temporary until rurl >= 2.2.1 is live on CRAN.
 options(repos = c(
   bart_turczynski = "https://bart-turczynski.r-universe.dev",
@@ -40,16 +56,16 @@ pak::pak("bart-turczynski/robotstxtr")
 remotes::install_github("bart-turczynski/robotstxtr")
 ```
 
-Installation compiles the vendored C++ matcher and requires a C++17 toolchain.
-Once dependencies have been obtained, installing, testing, and checking the
-package does not make live network requests.
+Installation compiles the vendored C++ matcher and requires a C++17
+toolchain. Once dependencies have been obtained, installing, testing,
+and checking the package does not make live network requests.
 
 ## Usage
 
-Match one or more URLs against a `robots.txt` body you already have, fully
-offline, with `allowed_by_robots_text()`:
+Match one or more URLs against a `robots.txt` body you already have,
+fully offline, with `allowed_by_robots_text()`:
 
-```r
+``` r
 library(robotstxtr)
 
 robots <- "user-agent: *
@@ -74,25 +90,28 @@ x$results[c("url", "allowed", "decision_source")]
 #> 3 https://example.com/private/public    TRUE      rule_allow
 ```
 
-`allowed` is the `TRUE`/`FALSE`/`NA` answer; `decision_source` explains why.
+`allowed` is the `TRUE`/`FALSE`/`NA` answer; `decision_source` explains
+why.
 
-If you do not already have the `robots.txt` text, `allowed_by_robots_url()`
-derives the governing origin, fetches it once per origin, and matches:
+If you do not already have the `robots.txt` text,
+`allowed_by_robots_url()` derives the governing origin, fetches it once
+per origin, and matches:
 
-```r
+``` r
 allowed_by_robots_url("https://example.com/some/page", "mybot")
 ```
 
-See the "Introduction to robotstxtr" vignette for the full walkthrough,
+See the “Introduction to robotstxtr” vignette for the full walkthrough,
 including match metadata, the fetch policy, and body inspection with
 `robots_body()`.
 
 ## Validate a robots.txt document
 
-Document validation is separate from URL allow/disallow evaluation. Validate
-supplied text (or raw acquisition bytes) with `robots_validate_text()`:
+Document validation is separate from URL allow/disallow evaluation.
+Validate supplied text (or raw acquisition bytes) with
+`robots_validate_text()`:
 
-```r
+``` r
 validation <- robots_validate_text(
   "user-agent: *\ndisallow: /private\nunknown-field: value\n"
 )
@@ -101,22 +120,24 @@ validation$documents
 validation$diagnostics
 ```
 
-Use `robots_validate_url()` when the document must first be fetched. It calls
-the same deterministic `robots_fetch()` path and validates each distinct stored
-raw body once; acquisition limits and failures remain explicit evidence.
+Use `robots_validate_url()` when the document must first be fetched. It
+calls the same deterministic `robots_fetch()` path and validates each
+distinct stored raw body once; acquisition limits and failures remain
+explicit evidence.
 
-The profile is deliberately named `google-parser-compatible`. It describes the
-pinned parser plus conservative structural checks, not universal crawler or
-RFC 9309 validity. Validation reports file syntax and structure only: it does
-not answer whether a particular URL is allowed, infer whether rules match the
-webmaster's intent, or fetch and check remote sitemap resources.
+The profile is deliberately named `google-parser-compatible`. It
+describes the pinned parser plus conservative structural checks, not
+universal crawler or RFC 9309 validity. Validation reports file syntax
+and structure only: it does not answer whether a particular URL is
+allowed, infer whether rules match the webmaster’s intent, or fetch and
+check remote sitemap resources.
 
 ## Engine-aware v1 contract
 
-Multi-engine integrations should use the parallel versioned facade and select
-both axes explicitly:
+Multi-engine integrations should use the parallel versioned facade and
+select both axes explicitly:
 
-```r
+``` r
 robots_evaluate_text_v1(
   robots,
   "https://example.com/private/report",
@@ -127,7 +148,9 @@ robots_evaluate_text_v1(
 ```
 
 The result distinguishes neutral fetch evidence, engine policy, matcher
-availability, and the final URL decision. Unsupported RFC 9309, Yandex, or Bing
-matchers return `capability_unavailable` rather than silently falling back to
-Google. See [the engine-aware contract](design/engine-contract-v1.md) and
-`robots_engine_contract_v1()` for schema revisions and capability metadata.
+availability, and the final URL decision. Unsupported RFC 9309, Yandex,
+or Bing matchers return `capability_unavailable` rather than silently
+falling back to Google. See [the engine-aware
+contract](design/engine-contract-v1.md) and
+`robots_engine_contract_v1()` for schema revisions and capability
+metadata.
