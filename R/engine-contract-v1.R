@@ -33,24 +33,11 @@ engine_policy_revisions_v1 <- function() {
 }
 
 engine_matcher_revisions_v1 <- function() {
-  c(
-    google = paste0(
-      "google-robotstxt-",
-      "22b355ff855419e6a3ff8ff09c0ad7fdb17116f9"
-    ),
-    yandex = "capability-unavailable-v1",
-    rfc9309 = "capability-unavailable-v1",
-    bing = "capability-unavailable-v1"
-  )
+  matcher_registry_field_v1(validated_matcher_registry_v1(), "revision")
 }
 
 engine_matcher_availability_v1 <- function() {
-  c(
-    google = "available",
-    yandex = "capability_unavailable",
-    rfc9309 = "capability_unavailable",
-    bing = "capability_unavailable"
-  )
+  matcher_registry_field_v1(validated_matcher_registry_v1(), "availability")
 }
 
 policy_rows_set_v1 <- function(table, category, ruleset, policy_status,
@@ -191,13 +178,18 @@ engine_policy_table_v1 <- function() {
 #'   `robots_engine_contract_v1`.
 #' @export
 robots_engine_contract_v1 <- function() {
+  matcher_registry <- validated_matcher_registry_v1()
   structure(
     list(
       contract_id = engine_contract_id_v1(),
       schema_revision = engine_schema_revision_v1(),
       policy_revisions = engine_policy_revisions_v1(),
-      matcher_revisions = engine_matcher_revisions_v1(),
-      matcher_availability = engine_matcher_availability_v1(),
+      matcher_revisions = matcher_registry_field_v1(
+        matcher_registry, "revision"
+      ),
+      matcher_availability = matcher_registry_field_v1(
+        matcher_registry, "availability"
+      ),
       robots_policy_rulesets = engine_rulesets_v1(),
       matcher_backends = engine_matchers_v1(),
       policy_table = engine_policy_table_v1(),
@@ -598,6 +590,134 @@ match_google_v1 <- function(body, url, product_token) {
   )
 }
 
+engine_matcher_registry_v1 <- function() {
+  list(
+    google = list(
+      revision = paste0(
+        "google-robotstxt-",
+        "22b355ff855419e6a3ff8ff09c0ad7fdb17116f9"
+      ),
+      availability = "available",
+      callable = match_google_v1
+    ),
+    yandex = list(
+      revision = "capability-unavailable-v1",
+      availability = "capability_unavailable",
+      callable = NULL
+    ),
+    rfc9309 = list(
+      revision = "capability-unavailable-v1",
+      availability = "capability_unavailable",
+      callable = NULL
+    ),
+    bing = list(
+      revision = "capability-unavailable-v1",
+      availability = "capability_unavailable",
+      callable = NULL
+    )
+  )
+}
+
+matcher_registry_abort_v1 <- function(detail) {
+  robots_abort(
+    sprintf("Matcher registry invariant failed: %s", detail),
+    "robotstxtr_matcher_registry_invariant"
+  )
+}
+
+validate_matcher_registry_v1 <- function(registry) {
+  expected_backends <- engine_matchers_v1()
+  if (!is.list(registry) ||
+        !identical(names(registry), expected_backends)) {
+    matcher_registry_abort_v1(sprintf(
+      "registry names must be exactly: %s.", toString(expected_backends)
+    ))
+  }
+
+  expected_fields <- c("revision", "availability", "callable")
+  for (backend in expected_backends) {
+    entry <- registry[[backend]]
+    if (!is.list(entry) || !identical(names(entry), expected_fields)) {
+      matcher_registry_abort_v1(sprintf(
+        "backend `%s` must define revision, availability, and callable.",
+        backend
+      ))
+    }
+
+    revision <- entry$revision
+    if (!is.character(revision) || length(revision) != 1L ||
+          is.na(revision) || !nzchar(revision)) {
+      matcher_registry_abort_v1(sprintf(
+        "backend `%s` must have one non-empty revision.", backend
+      ))
+    }
+
+    availability <- entry$availability
+    if (!is.character(availability) || length(availability) != 1L ||
+          is.na(availability) ||
+          !availability %in% c("available", "capability_unavailable")) {
+      matcher_registry_abort_v1(sprintf(
+        "backend `%s` has an invalid availability state.", backend
+      ))
+    }
+
+    registered <- is.function(entry$callable)
+    if (identical(availability, "available") && !registered) {
+      matcher_registry_abort_v1(sprintf(
+        "available backend `%s` must have a registered callable.", backend
+      ))
+    }
+    if (identical(availability, "capability_unavailable") && registered) {
+      matcher_registry_abort_v1(sprintf(
+        "unavailable backend `%s` must not have a registered callable.",
+        backend
+      ))
+    }
+
+    unavailable_revision <- identical(
+      revision, "capability-unavailable-v1"
+    )
+    if (!identical(
+      unavailable_revision,
+      identical(availability, "capability_unavailable")
+    )) {
+      matcher_registry_abort_v1(sprintf(
+        "backend `%s` revision and availability disagree.", backend
+      ))
+    }
+  }
+  registry
+}
+
+validated_matcher_registry_v1 <- function() {
+  validate_matcher_registry_v1(engine_matcher_registry_v1())
+}
+
+matcher_registry_field_v1 <- function(registry, field) {
+  vapply(registry, `[[`, character(1L), field)
+}
+
+match_backend_v1 <- function(backend, body, url, product_token,
+                             registry = engine_matcher_registry_v1()) {
+  registry <- validate_matcher_registry_v1(registry)
+  if (!is.character(backend) || length(backend) != 1L ||
+        is.na(backend) || !nzchar(backend) || !backend %in% names(registry)) {
+    robots_abort(
+      "Matcher backend is unavailable or unregistered.",
+      "robotstxtr_matcher_backend_unavailable"
+    )
+  }
+  entry <- registry[[backend]]
+  if (!identical(entry$availability, "available") ||
+        !is.function(entry$callable)) {
+    robots_abort(
+      sprintf("Matcher backend `%s` is unavailable or unregistered.", backend),
+      "robotstxtr_matcher_backend_unavailable"
+    )
+  }
+  entry$callable(body, url, product_token)
+}
+
 policy_limit_v1 <- function(ruleset) {
   out <- rep(NA_integer_, length(ruleset))
   out[ruleset == "google"] <- 524288L
@@ -624,8 +744,13 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
                              fetch_ua, timeout, max_bytes, ssrf_guard) {
   n <- length(url)
   policy_revisions <- engine_policy_revisions_v1()
-  matcher_revisions <- engine_matcher_revisions_v1()
-  matcher_availability <- engine_matcher_availability_v1()
+  matcher_registry <- validated_matcher_registry_v1()
+  matcher_revisions <- matcher_registry_field_v1(
+    matcher_registry, "revision"
+  )
+  matcher_availability <- matcher_registry_field_v1(
+    matcher_registry, "availability"
+  )
   policy_table <- engine_policy_table_v1()
 
   evidence_status <- rep("not_applicable", n)
@@ -688,8 +813,9 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
       reason[[i]] <- "matcher_capability_unavailable"
       next
     }
-    matched <- match_google_v1(
-      ev$body, url[[i]], product_token[[i]]
+    matched <- match_backend_v1(
+      matcher_backend[[i]], ev$body, url[[i]], product_token[[i]],
+      matcher_registry
     )
     matcher_status[[i]] <- "evaluated"
     url_decision[[i]] <- matched$url_decision

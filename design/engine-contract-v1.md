@@ -96,11 +96,12 @@ schema:
 
 1. complete the engine-profile gate: released contract, deterministic corpus,
    ABI and version review, provenance, and compatible licensing;
-2. add the backend revision to `engine_matcher_revisions_v1()` and change its
-   capability to `available` in `engine_matcher_availability_v1()`;
-3. add a backend-specific matcher function that returns the existing internal
+2. add a backend-specific matcher function that returns the existing internal
    fields (`url_decision`, reason, matched rule metadata, input bytes, and
-   truncation flag), then dispatch to it only for that explicit backend name;
+   truncation flag);
+3. atomically register that callable, its exact revision, and its `available`
+   capability in `engine_matcher_registry_v1()` under the explicit backend
+   name; the registry invariants reject partial or inconsistent activation;
 4. add its conformance corpus and end-to-end facade tests; and
 5. issue a new schema revision if any enum or column must change. Adding a
    backend implementation alone does not change the v1 result columns.
