@@ -37,7 +37,7 @@ test_that("contract metadata publishes revisions and sibling ranges", {
   contract <- robots_engine_contract_v1()
   expect_s3_class(contract, "robots_engine_contract_v1")
   expect_identical(contract$contract_id, "robotstxtr.engine-aware/v1")
-  expect_match(contract$schema_revision, "^2026-07-17\\.")
+  expect_identical(contract$schema_revision, "2026-07-17.1")
   expect_match(contract$matcher_revisions[["google"]], "22b355ff")
   expect_identical(
     contract$matcher_availability[["google"]], "available"
@@ -108,6 +108,95 @@ test_that("policy ruleset and matcher backend remain independent", {
   expect_true(all(is.na(x$results$url_decision)))
   expect_identical(
     x$results$reason, rep("matcher_capability_unavailable", 3L)
+  )
+})
+
+test_that("matcher dispatch uses only the explicitly selected backend", {
+  calls <- new.env(parent = emptyenv())
+  calls$google <- 0L
+  fake_google <- function(body, url, product_token) {
+    calls$google <- calls$google + 1L
+    list(
+      url_decision = "disallow",
+      reason = "rule_disallow",
+      matched_line = 2L,
+      matched_rule_type = "disallow",
+      matched_rule_value = "/private",
+      matcher_input_bytes = length(body),
+      matcher_body_truncated = FALSE
+    )
+  }
+  testthat::local_mocked_bindings(
+    match_google_v1 = fake_google,
+    .package = "robotstxtr"
+  )
+
+  x <- robots_evaluate_text_v1(
+    "user-agent: *\ndisallow: /private",
+    rep("https://example.com/private", 2L),
+    "bot", "google", c("google", "yandex")
+  )
+
+  expect_identical(calls$google, 1L)
+  expect_identical(
+    x$results$matcher_status, c("evaluated", "capability_unavailable")
+  )
+  expect_identical(x$results$url_decision, c("disallow", NA_character_))
+  expect_identical(
+    x$results$reason,
+    c("rule_disallow", "matcher_capability_unavailable")
+  )
+})
+
+test_that("unknown or unavailable matcher dispatch never falls through", {
+  registry <- robotstxtr:::engine_matcher_registry_v1()
+  expect_error(
+    robotstxtr:::match_backend_v1(
+      "unknown", raw(0), "https://example.com/", "bot", registry
+    ),
+    class = "robotstxtr_matcher_backend_unavailable"
+  )
+  expect_error(
+    robotstxtr:::match_backend_v1(
+      "yandex", raw(0), "https://example.com/", "bot", registry
+    ),
+    class = "robotstxtr_matcher_backend_unavailable"
+  )
+})
+
+test_that("matcher registry metadata and registration fail closed on drift", {
+  registry <- robotstxtr:::engine_matcher_registry_v1()
+
+  wrong_names <- registry
+  names(wrong_names)[[1L]] <- "other"
+
+  missing_callable <- registry
+  missing_callable$google$callable <- NULL
+
+  premature_callable <- registry
+  premature_callable$yandex$callable <- function(...) NULL
+
+  wrong_revision <- registry
+  wrong_revision$yandex$revision <- "yandex-unregistered-revision"
+
+  for (broken in list(
+    wrong_names, missing_callable, premature_callable, wrong_revision
+  )) {
+    expect_error(
+      robotstxtr:::validate_matcher_registry_v1(broken),
+      class = "robotstxtr_matcher_registry_invariant"
+    )
+  }
+
+  testthat::local_mocked_bindings(
+    engine_matcher_registry_v1 = function() missing_callable,
+    .package = "robotstxtr"
+  )
+  expect_error(
+    robots_evaluate_text_v1(
+      "", "https://example.com/", "bot", "google", "google"
+    ),
+    class = "robotstxtr_matcher_registry_invariant"
   )
 })
 
