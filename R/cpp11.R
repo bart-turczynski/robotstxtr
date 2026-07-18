@@ -4,6 +4,10 @@ robotstxtr_collect_directives_ <- function(body) {
   .Call(`_robotstxtr_robotstxtr_collect_directives_`, body)
 }
 
+robotstxtr_validation_parse_ <- function(body) {
+  .Call(`_robotstxtr_robotstxtr_validation_parse_`, body)
+}
+
 robotstxtr_allowed_text_ <- function(body, url, user_agent) {
   .Call(`_robotstxtr_robotstxtr_allowed_text_`, body, url, user_agent)
 }

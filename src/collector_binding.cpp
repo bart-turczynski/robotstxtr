@@ -20,6 +20,8 @@
 // ParseAndEmitLine escapes the value before emitting it); R must not re-derive a
 // pre-escape form.
 
+#include <cstdint>
+#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -108,6 +110,66 @@ class DirectiveCollector : public googlebot::RobotsParseHandler {
   }
 };
 
+// Validation collector retaining every parser line, including metadata for
+// blank, comment, malformed, accepted-typo, and overlong lines. Unlike the
+// match-correlation collector above, this also retains an unknown directive's
+// action so the public validation API can distinguish known-but-unsupported
+// directives from genuinely unknown ones.
+struct ValidationLine {
+  int line = 0;
+  std::string type = "none";
+  std::string action;
+  std::string value;
+  googlebot::RobotsParseHandler::LineMetadata metadata;
+};
+
+class ValidationCollector : public googlebot::RobotsParseHandler {
+ public:
+  void HandleRobotsStart() override { lines.clear(); }
+  void HandleRobotsEnd() override {}
+  void HandleUserAgent(int line_num, std::string_view value) override {
+    Record(line_num, "user-agent", "user-agent", value);
+  }
+  void HandleAllow(int line_num, std::string_view value) override {
+    Record(line_num, "allow", "allow", value);
+  }
+  void HandleDisallow(int line_num, std::string_view value) override {
+    Record(line_num, "disallow", "disallow", value);
+  }
+  void HandleSitemap(int line_num, std::string_view value) override {
+    Record(line_num, "sitemap", "sitemap", value);
+  }
+  void HandleUnknownAction(int line_num, std::string_view action,
+                           std::string_view value) override {
+    Record(line_num, "unknown", action, value);
+  }
+  void ReportLineMetadata(
+      int line_num,
+      const googlebot::RobotsParseHandler::LineMetadata& metadata) override {
+    ValidationLine& line = lines[line_num];
+    line.line = line_num;
+    line.metadata = metadata;
+  }
+
+  std::map<int, ValidationLine> lines;
+
+ private:
+  void Record(int line_num, const char* type, std::string_view action,
+              std::string_view value) {
+    ValidationLine& line = lines[line_num];
+    line.line = line_num;
+    line.type = type;
+    line.action.assign(action.data(), action.size());
+    line.value.assign(value.data(), value.size());
+  }
+};
+
+cpp11::r_string encoded_string(const std::string& value) {
+  const cetype_t enc = is_valid_utf8(value) ? CE_UTF8 : CE_BYTES;
+  return cpp11::r_string(Rf_mkCharLenCE(
+      value.data(), static_cast<int>(value.size()), enc));
+}
+
 }  // namespace
 
 // Parse `body` once and return the collected directives as a named list of three
@@ -135,4 +197,63 @@ cpp11::list robotstxtr_collect_directives_(std::string body) {
   using namespace cpp11::literals;
   return cpp11::writable::list(
       {"line"_nm = line_out, "type"_nm = type_out, "value"_nm = value_out});
+}
+
+// Parse raw bytes once and return one row per parser line. Taking a raw vector
+// rather than an R character scalar preserves embedded NUL and malformed UTF-8
+// so the validator can diagnose the original document byte-for-byte.
+[[cpp11::register]]
+cpp11::list robotstxtr_validation_parse_(cpp11::raws body) {
+  std::string bytes;
+  bytes.reserve(static_cast<size_t>(body.size()));
+  for (const uint8_t byte : body) {
+    bytes.push_back(static_cast<char>(byte));
+  }
+  ValidationCollector collector;
+  googlebot::ParseRobotsTxt(std::string_view(bytes), &collector);
+
+  const R_xlen_t n = static_cast<R_xlen_t>(collector.lines.size());
+  cpp11::writable::integers line_out(n);
+  cpp11::writable::strings type_out(n);
+  cpp11::writable::strings action_out(n);
+  cpp11::writable::strings value_out(n);
+  cpp11::writable::logicals is_empty_out(n);
+  cpp11::writable::logicals has_comment_out(n);
+  cpp11::writable::logicals is_comment_out(n);
+  cpp11::writable::logicals has_directive_out(n);
+  cpp11::writable::logicals is_typo_out(n);
+  cpp11::writable::logicals line_too_long_out(n);
+  cpp11::writable::logicals missing_colon_out(n);
+
+  R_xlen_t i = 0;
+  for (const auto& entry : collector.lines) {
+    const ValidationLine& line = entry.second;
+    line_out[i] = line.line;
+    type_out[i] = line.type;
+    action_out[i] = encoded_string(line.action);
+    value_out[i] = encoded_string(line.value);
+    is_empty_out[i] = line.metadata.is_empty;
+    has_comment_out[i] = line.metadata.has_comment;
+    is_comment_out[i] = line.metadata.is_comment;
+    has_directive_out[i] = line.metadata.has_directive;
+    is_typo_out[i] = line.metadata.is_acceptable_typo;
+    line_too_long_out[i] = line.metadata.is_line_too_long;
+    missing_colon_out[i] = line.metadata.is_missing_colon_separator;
+    ++i;
+  }
+
+  using namespace cpp11::literals;
+  return cpp11::writable::list({
+      "line"_nm = line_out,
+      "type"_nm = type_out,
+      "action"_nm = action_out,
+      "value"_nm = value_out,
+      "is_empty"_nm = is_empty_out,
+      "has_comment"_nm = has_comment_out,
+      "is_comment"_nm = is_comment_out,
+      "has_directive"_nm = has_directive_out,
+      "is_typo"_nm = is_typo_out,
+      "line_too_long"_nm = line_too_long_out,
+      "missing_colon"_nm = missing_colon_out,
+  });
 }

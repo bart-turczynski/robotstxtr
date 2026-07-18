@@ -53,8 +53,17 @@ reference:
       - robots_fetch
       - robots_body
 
+  - title: "Document validation"
+    desc: >
+      Validate supplied or fetched robots.txt documents under the explicit
+      Google-parser-compatible profile and inspect typed diagnostics.
+    contents:
+      - robots_validate_text
+      - robots_validate_url
+
   - title: "Methods"
     desc: "Printing for the returned S3 objects."
     contents:
       - print.robots_decisions
       - print.robots_fetches
+      - print.robots_validations

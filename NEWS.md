@@ -1,5 +1,12 @@
 # robotstxtr 0.2.0
 
+* Added `robots_validate_text()` and `robots_validate_url()` for stable,
+  machine-readable document validation under an explicit
+  `google-parser-compatible` profile. Reports include document byte/line and
+  directive evidence, per-line syntax and group diagnostics, BOM/NUL/UTF-8
+  hazards, and acquisition-limit outcomes without parsing truncated bodies
+  (#ROBO-htvtajbr).
+
 * Added the parallel `robotstxtr.engine-aware/v1` evaluation contract through
   `robots_evaluate_text_v1()` and `robots_evaluate_url_v1()`. Policy rulesets,
   matcher backends, robots product tokens, HTTP User-Agents, and acquisition
