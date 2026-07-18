@@ -48,8 +48,8 @@ print.robots_decisions <- function(x, ...) {
     n_src, if (n_src == 1L) "" else "s"
   ))
   if (n > 0L) {
-    n_allow <- sum(results$allowed %in% TRUE)
-    n_deny <- sum(results$allowed %in% FALSE)
+    n_allow <- sum(results$allowed, na.rm = TRUE)
+    n_deny <- sum(!results$allowed, na.rm = TRUE)
     n_unknown <- sum(is.na(results$allowed))
     cat(sprintf(
       "  allowed: %d  disallowed: %d  unknown: %d\n",

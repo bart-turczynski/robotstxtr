@@ -104,13 +104,10 @@ allowed_by_robots_text <- function(robots_txt, url, user_agent,
 
   # --- decision_source (§6.6). Invalid rows are input_unknown; valid rows split
   # by matcher result: disallow won, allow won (a rule matched), or default.
-  decision_source <- ifelse(
-    !valid, "input_unknown",
-    ifelse(
-      !allowed, "rule_disallow",
-      ifelse(matching_line > 0L, "rule_allow", "default_allow")
-    )
-  )
+  decision_source <- rep("default_allow", n)
+  decision_source[!valid] <- "input_unknown"
+  decision_source[valid & !allowed] <- "rule_disallow"
+  decision_source[valid & allowed & matching_line > 0L] <- "rule_allow"
 
   # `matching_line() == 0` (or NA for detached rows) maps to matched_line = NA;
   # positive lines are already one-based and returned unchanged.
@@ -167,17 +164,15 @@ allowed_by_robots_text <- function(robots_txt, url, user_agent,
 
   # Per-row error metadata: URL invalidity takes precedence over user-agent
   # invalidity (§6.6 error mapping).
-  error_stage <- ifelse(
-    !url_valid, "origin", ifelse(!ua_valid, "input", NA_character_)
-  )
-  error_class <- ifelse(
-    !url_valid, "robots_invalid_url",
-    ifelse(!ua_valid, "robots_invalid_user_agent", NA_character_)
-  )
-  error_message <- ifelse(
-    !url_valid, "URL is missing or empty.",
-    ifelse(!ua_valid, "User agent is missing or empty.", NA_character_)
-  )
+  error_stage <- rep(NA_character_, n)
+  error_stage[!ua_valid] <- "input"
+  error_stage[!url_valid] <- "origin"
+  error_class <- rep(NA_character_, n)
+  error_class[!ua_valid] <- "robots_invalid_user_agent"
+  error_class[!url_valid] <- "robots_invalid_url"
+  error_message <- rep(NA_character_, n)
+  error_message[!ua_valid] <- "User agent is missing or empty."
+  error_message[!url_valid] <- "URL is missing or empty."
 
   results <- data.frame(
     input_id = seq_len(n),

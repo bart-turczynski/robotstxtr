@@ -78,7 +78,7 @@ validate_ssrf_guard <- function(ssrf_guard) {
 # The package fetch user agent (PRD 6.4): package name and version. Never the
 # matcher user_agent (robots_fetch has no matcher user agent anyway).
 package_fetch_user_agent <- function() {
-  paste0("robotstxtr/", as.character(getNamespaceVersion("robotstxtr")))
+  sprintf("robotstxtr/%s", as.character(getNamespaceVersion("robotstxtr")))
 }
 
 # --- Classifiers ------------------------------------------------------------

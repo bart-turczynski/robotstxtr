@@ -135,7 +135,7 @@ test_that("BOM, NUL, and malformed UTF-8 hazards preserve raw evidence", {
 })
 
 test_that("overlong parser lines are errors", {
-  body <- paste0("user-agent: *\ndisallow: /", strrep("x", 17000L))
+  body <- sprintf("user-agent: *\ndisallow: /%s", strrep("x", 17000L))
   x <- robots_validate_text(body)
   expect_true("line_too_long" %in% x$diagnostics$code)
   expect_identical(x$documents$validation_status, "error")
@@ -158,16 +158,17 @@ test_that("invalid supplied validation inputs are classed call errors", {
 
 test_that("URL validation reuses one fetched raw body per origin", {
   body <- charToRaw("user-agent: *\ndisallow: /private\n")
-  calls <- 0L
+  state <- new.env(parent = emptyenv())
+  state$calls <- 0L
   httr2::local_mocked_responses(function(req) {
-    calls <<- calls + 1L
+    state$calls <- state$calls + 1L
     httr2::response(status_code = 200L, url = req$url, body = body)
   })
   x <- robots_validate_url(c(
     "https://example.com/one", "https://example.com/two"
   ))
 
-  expect_identical(calls, 1L)
+  expect_identical(state$calls, 1L)
   expect_identical(nrow(x$map), 2L)
   expect_identical(nrow(x$documents), 1L)
   expect_identical(x$map$source_id, rep("robots_1", 2L))
