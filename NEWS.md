@@ -20,6 +20,16 @@
 * Added `robots_engine_contract_v1()` for revision/capability negotiation and
   `as_legacy_robots_decisions_v1()` as the explicit bridge to the unchanged
   Google-oriented legacy schema (#ROBO-unowhvjx).
+* Added the Yandex `matcher_backend` as an available end-to-end backend as of
+  schema revision `2026-07-18.2`, bounded to profile `yandex-0.1.0` and the
+  crawlers `Yandex` and `YandexAdditionalBot`; every other Yandex-backend
+  product token resolves to a checked `unsupported_crawler` non-decision.
+  Yandex-evaluated results expose the new public `matched_rule_value_raw` list
+  column (exact owning-rule bytes, `raw(0)` for an effective-empty `Disallow`,
+  `NULL` for an absent rule), and structured backend identity is published at
+  `robots_engine_contract_v1()$matcher_identity$yandex`. This is an
+  independent, unofficial compatibility profile and does not claim
+  production-crawler parity (#ROBO-sbyndsws, #ROBO-mhzmembp).
 * Development installs and CI now resolve the pre-CRAN `rurl` dependency chain
   through the author's CRAN-like R-universe instead of nested GitHub remotes
   (#ROBO-yasmzyhl).

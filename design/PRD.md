@@ -1034,6 +1034,14 @@ rewrite of the v1 contracts above.
 - Exposure through **parallel, versioned** entry points / result contracts. New
   ruleset-aware entry points require an **explicit** `robots_policy_ruleset`.
 
+> **Update (2026-07-19):** the `yandex` `matcher_backend` was subsequently
+> activated as `available` under schema revision `2026-07-18.2`, bounded to
+> profile `yandex-0.1.0` (crawlers `Yandex` and `YandexAdditionalBot`); it
+> remains an independent, unofficial compatibility profile with no
+> production-crawler parity claim. `rfc9309` and `bing` stay
+> `capability_unavailable`. See `design/engine-contract-v1.md` and
+> `design/yandex-integration-release-audit.md`.
+
 **Preserved unchanged (still binding):**
 
 - The pinned v1 public surface and result contract (§6, esp. §6.6). Existing
