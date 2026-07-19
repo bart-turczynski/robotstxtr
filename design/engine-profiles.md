@@ -132,14 +132,18 @@ Selected **before** path matching; a capability + ruleset revision, not a contex
 
 `robots_policy_ruleset` (§4) is pure data and always available. `matcher_backend` is separate:
 
-| `matcher_backend` | availability |
-|---|---|
-| `google` | **available** — vendored `robotstxt-cpp` (Google's production parser; intentionally non-strict-RFC, `src/robots.h:23-25`; PRD forbids RFC-correcting it, `design/PRD.md:75-76,202`). |
-| `rfc9309` | **capability_unavailable** — no strict-RFC matcher built; `google/robotstxt` is NOT an RFC reference impl and cannot back it. |
-| `yandex` | **capability_unavailable** — gated on a reproducible parsing/group-selection differential + conformance corpus + ABI/provenance/licensing review. Yandex Allow/Disallow **precedence is equivalent to longest-match**, so a distinct matcher is justified (if at all) by group-selection/parsing/Clean-param, not precedence. |
+| `matcher_backend` | availability | token_policy |
+|---|---|---|
+| `google` | **available** — vendored `robotstxt-cpp` (Google's production parser; intentionally non-strict-RFC, `src/robots.h:23-25`; PRD forbids RFC-correcting it, `design/PRD.md:75-76,202`). | `arbitrary_valid` — accepts any valid Google robots product token for group selection; the result is Google parsing/matching semantics for that token, never a prediction of the named crawler. |
+| `rfc9309` | **capability_unavailable** — no strict-RFC matcher built; `google/robotstxt` is NOT an RFC reference impl and cannot back it. | `rfc9309` — RFC 9309 behavior only, and only under this backend. |
+| `yandex` | **capability_unavailable** — gated on a reproducible parsing/group-selection differential + conformance corpus + ABI/provenance/licensing review. Yandex Allow/Disallow **precedence is equivalent to longest-match**, so a distinct matcher is justified (if at all) by group-selection/parsing/Clean-param, not precedence. | `bounded_profiles` — bounded to supported Yandex vendor profiles (`yandex-0.1.0`) only; never generalized to arbitrary tokens or backed by Google matching. |
+| `bing` | **capability_unavailable** — gated on the same engine-profile activation gate; no Bing matcher built. | `bounded_profiles` — bounded to supported Bing vendor profiles only; never generalized to arbitrary tokens or backed by Google matching. |
 
 Requesting matching/group-selection for an unavailable backend → `matcher_status =
 capability_unavailable`; the §4 policy result still resolves independently (ADR-009 §2/§4).
+This token/semantics boundary is published as data on
+`robots_engine_contract_v1()$matcher_capability` (keyed per backend with
+`token_policy`, `matcher_semantics`, and a `note`).
 
 ## 7. Current policy/matcher limits (executable this release)
 
