@@ -103,6 +103,25 @@ jobs:
           upload-snapshots: true
           build_args: 'c("--no-manual")'
 
+  vendor-fidelity:
+    runs-on: ubuntu-latest
+    name: Vendored Yandex byte-fidelity
+    # Exercises the REAL src/vendor/robotstxtyandex tree against the frozen
+    # manifest -- byte fidelity that check-time testthat cannot see, because R
+    # does not install src/ (the installed package has no vendored tree). This
+    # job runs where src/ IS present: the source checkout. dev/verify-yandex-
+    # vendor.R is base-R only (tools::sha256sum + read.dcf; R >= 4.5, satisfied
+    # by setup-r 'release'), so it needs no dependency install, no compilation,
+    # no package load, and no staging repo. A peer job (no `needs:`) so it runs
+    # in parallel and its failure is independently attributable.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - name: Verify vendored Yandex tree matches the frozen manifest
+        run: Rscript dev/verify-yandex-vendor.R
+
   coverage:
     needs: check
     runs-on: ubuntu-latest
