@@ -33,13 +33,21 @@ extern "C" SEXP _robotstxtr_robotstxtr_matching_line_text_(SEXP body, SEXP url, 
     return cpp11::as_sexp(robotstxtr_matching_line_text_(cpp11::as_cpp<cpp11::decay_t<std::string>>(body), cpp11::as_cpp<cpp11::decay_t<cpp11::strings>>(url), cpp11::as_cpp<cpp11::decay_t<std::string>>(user_agent)));
   END_CPP11
 }
+// yandex_target_binding.cpp
+cpp11::writable::strings robotstxtr_extract_request_target_(std::string url);
+extern "C" SEXP _robotstxtr_robotstxtr_extract_request_target_(SEXP url) {
+  BEGIN_CPP11
+    return cpp11::as_sexp(robotstxtr_extract_request_target_(cpp11::as_cpp<cpp11::decay_t<std::string>>(url)));
+  END_CPP11
+}
 
 extern "C" {
 static const R_CallMethodDef CallEntries[] = {
-    {"_robotstxtr_robotstxtr_allowed_text_",       (DL_FUNC) &_robotstxtr_robotstxtr_allowed_text_,       3},
-    {"_robotstxtr_robotstxtr_collect_directives_", (DL_FUNC) &_robotstxtr_robotstxtr_collect_directives_, 1},
-    {"_robotstxtr_robotstxtr_matching_line_text_", (DL_FUNC) &_robotstxtr_robotstxtr_matching_line_text_, 3},
-    {"_robotstxtr_robotstxtr_validation_parse_",   (DL_FUNC) &_robotstxtr_robotstxtr_validation_parse_,   1},
+    {"_robotstxtr_robotstxtr_allowed_text_",           (DL_FUNC) &_robotstxtr_robotstxtr_allowed_text_,           3},
+    {"_robotstxtr_robotstxtr_collect_directives_",     (DL_FUNC) &_robotstxtr_robotstxtr_collect_directives_,     1},
+    {"_robotstxtr_robotstxtr_extract_request_target_", (DL_FUNC) &_robotstxtr_robotstxtr_extract_request_target_, 1},
+    {"_robotstxtr_robotstxtr_matching_line_text_",     (DL_FUNC) &_robotstxtr_robotstxtr_matching_line_text_,     3},
+    {"_robotstxtr_robotstxtr_validation_parse_",       (DL_FUNC) &_robotstxtr_robotstxtr_validation_parse_,       1},
     {NULL, NULL, 0}
 };
 }

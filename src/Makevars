@@ -39,6 +39,7 @@ OBJECTS = \
 	cpp11.o \
 	collector_binding.o \
 	matcher_binding.o \
+	yandex_target_binding.o \
 	reporting_robots.o \
 	robots.o \
 	access_matcher.o \
