@@ -164,9 +164,9 @@ test_that("nulling a non-default_allow matched_rule fails verification", {
 
 # ---- Data-only proof: nothing about availability or schema changed ----------
 
-test_that("Yandex stays capability_unavailable and schema revision is pinned", {
+test_that("Yandex is available and the schema revision is the activation one", {
   registry <- engine_matcher_registry_v1()
-  expect_identical(registry$yandex$availability, "capability_unavailable")
-  expect_null(registry$yandex$callable)
-  expect_identical(engine_schema_revision_v1(), "2026-07-17.1")
+  expect_identical(registry$yandex$availability, "available")
+  expect_type(registry$yandex$callable, "closure")
+  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
 })

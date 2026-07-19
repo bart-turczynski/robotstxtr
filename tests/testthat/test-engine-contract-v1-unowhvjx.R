@@ -37,14 +37,22 @@ test_that("contract metadata publishes revisions and sibling ranges", {
   contract <- robots_engine_contract_v1()
   expect_s3_class(contract, "robots_engine_contract_v1")
   expect_identical(contract$contract_id, "robotstxtr.engine-aware/v1")
-  expect_identical(contract$schema_revision, "2026-07-17.1")
+  expect_identical(contract$schema_revision, "2026-07-18.2")
   expect_match(contract$matcher_revisions[["google"]], "22b355ff")
   expect_identical(
     contract$matcher_availability[["google"]], "available"
   )
+  # Yandex is active post-activation; RFC 9309 and Bing remain unavailable.
   expect_identical(
-    unname(contract$matcher_availability[c("yandex", "rfc9309", "bing")]),
-    rep("capability_unavailable", 3L)
+    contract$matcher_availability[["yandex"]], "available"
+  )
+  expect_identical(
+    contract$matcher_revisions[["yandex"]],
+    robotstxtr:::yandex_matcher_revision_v1()
+  )
+  expect_identical(
+    unname(contract$matcher_availability[c("rfc9309", "bing")]),
+    rep("capability_unavailable", 2L)
   )
   expect_named(
     contract$sibling_versions, c("sitemapr", "sitemap-validator")
@@ -90,24 +98,42 @@ test_that("Google v1 text path uses the pinned matcher end to end", {
 })
 
 test_that("policy ruleset and matcher backend remain independent", {
+  has_batch <- is.function(
+    tryCatch(robotstxtr_checked_batch_, error = function(e) NULL)
+  )
+  has_extract <- is.function(
+    tryCatch(robotstxtr_extract_request_target_, error = function(e) NULL)
+  )
+  skip_if_not(
+    has_batch && has_extract, "native binding not built (pure-R install)"
+  )
   x <- robots_evaluate_text_v1(
     "user-agent: *\ndisallow: /", rep("https://example.com/private", 3L),
-    "bot",
+    "Yandex",
     c("rfc9309", "yandex", "bing"),
     c("rfc9309", "yandex", "bing")
   )
 
+  # RFC 9309 and Bing remain capability_unavailable; the active Yandex backend
+  # evaluates to a real decision. Policy still resolves independently of the
+  # backend on every row.
   expect_identical(x$results$policy_status, rep("evaluated", 3L))
   expect_identical(x$results$policy_action, rep("use_rules", 3L))
   expect_identical(
-    x$results$matcher_status, rep("capability_unavailable", 3L)
+    x$results$matcher_status,
+    c("capability_unavailable", "evaluated", "capability_unavailable")
   )
   expect_identical(
-    x$results$matcher_availability, rep("capability_unavailable", 3L)
+    x$results$matcher_availability,
+    c("capability_unavailable", "available", "capability_unavailable")
   )
-  expect_true(all(is.na(x$results$url_decision)))
   expect_identical(
-    x$results$reason, rep("matcher_capability_unavailable", 3L)
+    x$results$url_decision, c(NA_character_, "disallow", NA_character_)
+  )
+  expect_identical(
+    x$results$reason,
+    c("matcher_capability_unavailable", "rule_disallow",
+      "matcher_capability_unavailable")
   )
 })
 
@@ -130,6 +156,15 @@ test_that("matcher dispatch uses only the explicitly selected backend", {
     match_google_v1 = fake_google,
     .package = "robotstxtr"
   )
+  has_batch <- is.function(
+    tryCatch(robotstxtr_checked_batch_, error = function(e) NULL)
+  )
+  has_extract <- is.function(
+    tryCatch(robotstxtr_extract_request_target_, error = function(e) NULL)
+  )
+  skip_if_not(
+    has_batch && has_extract, "native binding not built (pure-R install)"
+  )
 
   x <- robots_evaluate_text_v1(
     "user-agent: *\ndisallow: /private",
@@ -137,14 +172,17 @@ test_that("matcher dispatch uses only the explicitly selected backend", {
     "bot", "google", c("google", "yandex")
   )
 
+  # Only the Google row hits the (mocked) Google matcher; the Yandex row is
+  # routed to the active Yandex adapter, which -- token "bot" being unsupported
+  # -- emits its own not_evaluated reason Google never produces. No fallthrough.
   expect_identical(calls$google, 1L)
   expect_identical(
-    x$results$matcher_status, c("evaluated", "capability_unavailable")
+    x$results$matcher_status, c("evaluated", "not_evaluated")
   )
   expect_identical(x$results$url_decision, c("disallow", NA_character_))
   expect_identical(
     x$results$reason,
-    c("rule_disallow", "matcher_capability_unavailable")
+    c("rule_disallow", "unsupported_product_token")
   )
 })
 
@@ -156,11 +194,13 @@ test_that("unknown or unavailable matcher dispatch never falls through", {
     ),
     class = "robotstxtr_matcher_backend_unavailable"
   )
+  # Yandex is now available but batch-shaped: the per-row dispatcher must refuse
+  # it with the explicit not-row-dispatchable guard rather than run it per row.
   expect_error(
     robotstxtr:::match_backend_v1(
       "yandex", raw(0), "https://example.com/", "bot", registry
     ),
-    class = "robotstxtr_matcher_backend_unavailable"
+    class = "robotstxtr_matcher_backend_not_row_dispatchable"
   )
 })
 
@@ -173,14 +213,19 @@ test_that("matcher registry metadata and registration fail closed on drift", {
   missing_callable <- registry
   missing_callable$google$callable <- NULL
 
-  premature_callable <- registry
-  premature_callable$yandex$callable <- function(...) NULL
+  # Yandex is now available with a registered callable, so the drift fixtures
+  # invert: they must construct genuinely-INVALID registries from that base.
+  # Coupling violation: an unavailable backend that still carries a callable.
+  coupling_violation <- registry
+  coupling_violation$yandex$availability <- "capability_unavailable"
 
-  wrong_revision <- registry
-  wrong_revision$yandex$revision <- "yandex-unregistered-revision"
+  # Iff violation: an available backend carrying the unavailable sentinel
+  # revision, so revision and availability disagree.
+  iff_violation <- registry
+  iff_violation$yandex$revision <- "capability-unavailable-v1"
 
   for (broken in list(
-    wrong_names, missing_callable, premature_callable, wrong_revision
+    wrong_names, missing_callable, coupling_violation, iff_violation
   )) {
     expect_error(
       robotstxtr:::validate_matcher_registry_v1(broken),

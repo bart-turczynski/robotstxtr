@@ -11,7 +11,7 @@ engine_contract_id_v1 <- function() {
 }
 
 engine_schema_revision_v1 <- function() {
-  "2026-07-17.1"
+  "2026-07-18.2"
 }
 
 engine_rulesets_v1 <- function() {
@@ -222,8 +222,11 @@ engine_policy_table_v1 <- function() {
 #'
 #' Returns the stable identifiers, value sets, backend capability states,
 #' the matcher token/semantics capability boundary (`matcher_capability`),
-#' status-policy table, and supported sibling-package ranges for the v1
-#' engine-aware contract. It performs no fetch or matching.
+#' the separately inspectable vendored-matcher identity fields
+#' (`matcher_identity`, e.g. library/payload/profile/corpus/evidence/
+#' profile-source for the Yandex backend), status-policy table, and supported
+#' sibling-package ranges for the v1 engine-aware contract. It performs no fetch
+#' or matching.
 #'
 #' @return A named list of contract metadata with class
 #'   `robots_engine_contract_v1`.
@@ -242,6 +245,7 @@ robots_engine_contract_v1 <- function() {
         matcher_registry, "availability"
       ),
       matcher_capability = engine_backend_capability_v1(),
+      matcher_identity = list(yandex = yandex_matcher_identity_v1()),
       robots_policy_rulesets = engine_rulesets_v1(),
       matcher_backends = engine_matchers_v1(),
       policy_table = engine_policy_table_v1(),
@@ -642,6 +646,41 @@ match_google_v1 <- function(body, url, product_token) {
   )
 }
 
+# The frozen identity of the vendored robotstxtyandex payload. These six fields
+# single-source the Yandex matcher revision and the separately inspectable
+# library/payload/profile/corpus/evidence/profile-source metadata published on
+# the contract accessor. They MUST byte-equal the corresponding
+# inst/vendor/robotstxtyandex/MANIFEST.dcf fields; the composed MatcherRevision
+# below byte-equals that manifest's MatcherRevision field.
+yandex_matcher_identity_v1 <- function() {
+  list(
+    library_version = "0.2.0",
+    payload_commit = "fdd60a7c3bc6825f3b3752562dc0d6ad9387a27e",
+    profile_id = "yandex-0.1.0",
+    accepted_corpus_revision = "337b9f3b886a92d6dc08c2fce84228d0cd6b801a",
+    evidence_snapshot = paste0(
+      "9d69d361db81e7d236562dc056b41865",
+      "da33d467d06f316e2c9a20988e007c96"
+    ),
+    profile_source_revision = "337b9f3b886a92d6dc08c2fce84228d0cd6b801a"
+  )
+}
+
+# Compose the frozen Yandex identity into the serialized MatcherRevision string.
+# The format is fixed by design/robotstxtyandex-integration-v1-spec.md and MUST
+# byte-equal inst/vendor/robotstxtyandex/MANIFEST.dcf's MatcherRevision field.
+yandex_matcher_revision_v1 <- function() {
+  id <- yandex_matcher_identity_v1()
+  paste0(
+    "robotstxtyandex/", id$library_version,
+    "+payload.", id$payload_commit,
+    ";profile=", id$profile_id,
+    ";corpus=", id$accepted_corpus_revision,
+    ";evidence=", id$evidence_snapshot,
+    ";profile-source=", id$profile_source_revision
+  )
+}
+
 engine_matcher_registry_v1 <- function() {
   list(
     google = list(
@@ -653,9 +692,9 @@ engine_matcher_registry_v1 <- function() {
       callable = match_google_v1
     ),
     yandex = list(
-      revision = "capability-unavailable-v1",
-      availability = "capability_unavailable",
-      callable = NULL
+      revision = yandex_matcher_revision_v1(),
+      availability = "available",
+      callable = match_yandex_v1
     ),
     rfc9309 = list(
       revision = "capability-unavailable-v1",
@@ -767,6 +806,19 @@ match_backend_v1 <- function(backend, body, url, product_token,
       "robotstxtr_matcher_backend_unavailable"
     )
   }
+  # Batch-shaped backends (e.g. yandex, parse-once) are never row-dispatched:
+  # evaluate_rows_v1() collects their rows and invokes the registered callable
+  # once in batch form. Reaching this per-row path with such a backend is an
+  # internal invariant violation, not a caller error.
+  if (identical(backend, "yandex")) {
+    robots_abort(
+      sprintf(
+        "Matcher backend `%s` is batch-shaped and must not be row-dispatched.",
+        backend
+      ),
+      "robotstxtr_matcher_backend_not_row_dispatchable"
+    )
+  }
   entry$callable(body, url, product_token)
 }
 
@@ -830,6 +882,11 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
   )
 
   valid <- url_valid & token_valid
+  # Batch-shaped backends (yandex) are collected here and dispatched once after
+  # the loop so each distinct body is parsed a single time. Google and other
+  # row-shaped backends keep the byte-identical per-row path below.
+  yandex_rows <- integer(0)
+  yandex_bodies <- list()
   for (i in which(valid)) {
     evidence_index <- match(source_id[[i]], evidence$source_id)
     ev <- lapply(evidence, function(column) column[[evidence_index]])
@@ -865,6 +922,13 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
       reason[[i]] <- "matcher_capability_unavailable"
       next
     }
+    if (identical(matcher_backend[[i]], "yandex")) {
+      # Defer: collect the row and its raw body for a single batch call after
+      # the loop. Result fields stay at their init defaults until scattered.
+      yandex_rows <- c(yandex_rows, i)
+      yandex_bodies[[length(yandex_bodies) + 1L]] <- ev$body
+      next
+    }
     matched <- match_backend_v1(
       matcher_backend[[i]], ev$body, url[[i]], product_token[[i]],
       matcher_registry
@@ -879,7 +943,33 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
     matcher_body_truncated[[i]] <- matched$matcher_body_truncated
   }
 
-  data.frame(
+  # Batch Yandex dispatch: one parse-once call over every collected row. `res`
+  # rows align with `yandex_rows` in order, so res[k, ] scatters back to row
+  # yandex_rows[k]. matched_rule_value_raw is scattered separately below (it is
+  # a list column the plain-vector constructor cannot hold).
+  yandex_raw_values <- NULL
+  if (length(yandex_rows) > 0L) {
+    entry <- matcher_registry$yandex
+    res <- entry$callable(
+      bodies = yandex_bodies,
+      urls = url[yandex_rows],
+      product_tokens = product_token[yandex_rows]
+    )
+    matcher_status[yandex_rows] <- res$matcher_status
+    url_decision[yandex_rows] <- res$url_decision
+    reason[yandex_rows] <- res$reason
+    matched_line[yandex_rows] <- res$matched_line
+    matched_rule_type[yandex_rows] <- res$matched_rule_type
+    matched_rule_value[yandex_rows] <- res$matched_rule_value
+    matcher_input_bytes[yandex_rows] <- res$matcher_input_bytes
+    matcher_body_truncated[yandex_rows] <- res$matcher_body_truncated
+    error_stage[yandex_rows] <- res$error_stage
+    error_class[yandex_rows] <- res$error_class
+    error_message[yandex_rows] <- res$error_message
+    yandex_raw_values <- res$matched_rule_value_raw
+  }
+
+  results <- data.frame(
     input_id = seq_len(n),
     url = url,
     robots_product_token = product_token,
@@ -917,6 +1007,15 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
     error_message = error_message,
     stringsAsFactors = FALSE
   )
+  # Schema 2026-07-18.2 public list column: exactly one element per row. All
+  # rows start absent (NULL); only Yandex-evaluated rows carry raw bytes /
+  # raw(0) / NULL, scattered so the present-empty raw(0) vs absent NULL
+  # distinction survives verbatim. Google and other rows stay NULL.
+  results$matched_rule_value_raw <- vector("list", n)
+  if (length(yandex_rows) > 0L) {
+    results$matched_rule_value_raw[yandex_rows] <- yandex_raw_values
+  }
+  results
 }
 
 #' Evaluate URLs against supplied robots.txt under an explicit engine profile
@@ -937,6 +1036,21 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' the token names. The Yandex and Bing backends are bounded to their supported
 #' vendor profiles only and never generalize to arbitrary tokens. This boundary
 #' is published as `robots_engine_contract_v1()$matcher_capability`.
+#'
+#' As of schema revision `2026-07-18.2` the Yandex backend is active. An
+#' evaluated Yandex row publishes `reason` as one of `default_allow`,
+#' `rule_allow`, `rule_disallow`, or `effective_empty_disallow`; a non-evaluated
+#' Yandex row reports `matcher_status = "not_evaluated"` with
+#' `reason = "unsupported_product_token"`
+#' (`error_class = "robots_unsupported_product_token"`) or
+#' `reason = "invalid_request_target"`
+#' (`error_class = "robots_invalid_request_target"`) at
+#' `error_stage = "input"`. The activation adds the public
+#' `matched_rule_value_raw` list column (one element per row: exact owning-rule
+#' bytes, `raw(0)` for an effective-empty Disallow, or `NULL` for an absent
+#' rule); it is populated for Yandex-evaluated rows and `NULL` elsewhere. The
+#' vendored-matcher identity is published as
+#' `robots_engine_contract_v1()$matcher_identity$yandex`.
 #'
 #' @param robots_txt A single, non-missing character value containing the
 #'   robots.txt body.

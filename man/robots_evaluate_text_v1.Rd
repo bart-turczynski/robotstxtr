@@ -54,6 +54,21 @@ that is NOT a claim of compatibility with, or a prediction of, the crawler
 the token names. The Yandex and Bing backends are bounded to their supported
 vendor profiles only and never generalize to arbitrary tokens. This boundary
 is published as \code{robots_engine_contract_v1()$matcher_capability}.
+
+As of schema revision \code{2026-07-18.2} the Yandex backend is active. An
+evaluated Yandex row publishes \code{reason} as one of \code{default_allow},
+\code{rule_allow}, \code{rule_disallow}, or \code{effective_empty_disallow}; a non-evaluated
+Yandex row reports \code{matcher_status = "not_evaluated"} with
+\code{reason = "unsupported_product_token"}
+(\code{error_class = "robots_unsupported_product_token"}) or
+\code{reason = "invalid_request_target"}
+(\code{error_class = "robots_invalid_request_target"}) at
+\code{error_stage = "input"}. The activation adds the public
+\code{matched_rule_value_raw} list column (one element per row: exact owning-rule
+bytes, \code{raw(0)} for an effective-empty Disallow, or \code{NULL} for an absent
+rule); it is populated for Yandex-evaluated rows and \code{NULL} elsewhere. The
+vendored-matcher identity is published as
+\code{robots_engine_contract_v1()$matcher_identity$yandex}.
 }
 \examples{
 # A non-Google-named token evaluated through the default Google backend

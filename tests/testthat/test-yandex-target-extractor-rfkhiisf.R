@@ -111,13 +111,13 @@ test_that("the extractor returns only its single owning value", {
   expect_length(got, 1L)
 })
 
-test_that("Yandex remains capability_unavailable (extractor stays hidden)", {
-  # The lexical extractor is present natively but wired to nothing: the engine
-  # contract must still report Yandex as unavailable, and no user-facing
-  # extractor export may exist.
+test_that("Yandex is available but the extractor stays unexported", {
+  # The lexical extractor now backs the active Yandex adapter, but it remains an
+  # internal routine: the engine contract reports Yandex available while no
+  # user-facing extractor export exists.
   expect_identical(
     engine_matcher_availability_v1()[["yandex"]],
-    "capability_unavailable"
+    "available"
   )
   expect_false("robotstxtr_extract_request_target_" %in%
                  getNamespaceExports("robotstxtr"))

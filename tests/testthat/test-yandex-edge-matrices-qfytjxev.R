@@ -9,10 +9,11 @@
 # request-target extractor's bytes-marked boundary error, and the data-only
 # dormancy proof.
 #
-# This unit adds tests ONLY. It touches no source, no fixture, and no existing
-# test. Yandex stays capability_unavailable, the schema stays 2026-07-17.1, and
-# nothing here registers or activates the adapter. Native-binding-dependent
-# edges skip on a pure-R install, matching the sibling conformance test.
+# This unit freezes those edges. Post-activation (YI5) the Yandex backend is
+# available, the schema is 2026-07-18.2, and the batch adapter is registered;
+# the facade and data-only assertions below track that active state.
+# Native-binding-dependent edges skip on a pure-R install, matching the sibling
+# conformance test.
 
 # ---------------------------------------------------------------------------
 # Self-contained inline helpers (uniquely prefixed yc_ to avoid collision with
@@ -73,13 +74,13 @@ yc_supplied_ev <- function(stored_bytes) {
   )
 }
 
-# Reusable dormancy assertion: the adapter stays hidden, the schema unchanged.
-yc_expect_dormant <- function() {
+# Reusable activation assertion: the adapter is registered, the schema bumped.
+yc_expect_active <- function() {
   expect_identical(
-    engine_matcher_availability_v1()[["yandex"]], "capability_unavailable"
+    engine_matcher_availability_v1()[["yandex"]], "available"
   )
-  expect_identical(engine_schema_revision_v1(), "2026-07-17.1")
-  expect_null(engine_matcher_registry_v1()$yandex$callable)
+  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
+  expect_type(engine_matcher_registry_v1()$yandex$callable, "closure")
 }
 
 yc_skip_without_native <- function() {
@@ -182,13 +183,15 @@ test_that("B1 an empty or NA token is input_invalid in the text facade", {
   }
 })
 
-test_that("B1 a valid yandex token instead reports capability_unavailable", {
+test_that("B1 a valid yandex token now evaluates to a real Yandex decision", {
+  yc_skip_without_native()
   x <- robots_evaluate_text_v1(
     "user-agent: *\ndisallow: /", "https://example.com/x", "Yandex",
     "yandex", "yandex"
   )
-  expect_identical(x$results$matcher_status, "capability_unavailable")
-  expect_identical(x$results$reason, "matcher_capability_unavailable")
+  expect_identical(x$results$matcher_status, "evaluated")
+  expect_identical(x$results$url_decision, "disallow")
+  expect_identical(x$results$reason, "rule_disallow")
 })
 
 test_that("B2 an invalid token never triggers a fetch in the url facade", {
@@ -306,8 +309,8 @@ test_that("D1 a bytes-marked URL raises the cpp11 translation error", {
 # E. Data-only proof: the adapter is still dormant.
 # ---------------------------------------------------------------------------
 
-test_that("E the adapter stays unavailable with the schema unchanged", {
-  yc_expect_dormant()
+test_that("E the adapter is available with the activation schema", {
+  yc_expect_active()
   expect_identical(engine_matcher_registry_v1()$yandex$availability,
-                   "capability_unavailable")
+                   "available")
 })

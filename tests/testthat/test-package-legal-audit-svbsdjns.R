@@ -6,8 +6,8 @@
 # present in the INSTALLED tree and stays DISTINCT from Google's Apache-2.0
 # material, that dev-only legal summaries are excluded from the binary package,
 # and that no internal / vendor / native symbol is a public R API. Tests ONLY:
-# this touches no source, no fixture, and no existing test. Yandex stays
-# capability_unavailable and the schema stays 2026-07-17.1.
+# this touches no source and no fixture. Post-activation the Yandex backend is
+# available and the schema is 2026-07-18.2; the export freeze stays unchanged.
 #
 # The companion offline tarball / build-scope audit (source vs binary file
 # disposition, exact vendored bytes surviving packaging) lives in
@@ -200,10 +200,10 @@ test_that("NATIVE-SURFACE hidden Yandex routines are registered + neutral", {
 # DATA-ONLY -- self-containment: Yandex dormant, schema pinned.
 # ---------------------------------------------------------------------------
 
-test_that("DATA-ONLY Yandex capability_unavailable, schema pinned", {
+test_that("DATA-ONLY Yandex available, schema bumped", {
   expect_identical(
     engine_matcher_availability_v1()[["yandex"]],
-    "capability_unavailable"
+    "available"
   )
-  expect_identical(engine_schema_revision_v1(), "2026-07-17.1")
+  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
 })
