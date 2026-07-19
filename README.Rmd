@@ -147,7 +147,14 @@ robots_evaluate_text_v1(
 ```
 
 The result distinguishes neutral fetch evidence, engine policy, matcher
-availability, and the final URL decision. Unsupported RFC 9309, Yandex, or Bing
+availability, and the final URL decision. Unsupported RFC 9309 and Bing
 matchers return `capability_unavailable` rather than silently falling back to
-Google. See [the engine-aware contract](design/engine-contract-v1.md) and
+Google.
+
+The Yandex `matcher_backend` is available as of schema revision `2026-07-18.2`,
+bounded to profile `yandex-0.1.0` and the `Yandex` and `YandexAdditionalBot`
+crawlers (every other Yandex-backend token resolves to a checked
+`unsupported_crawler` non-decision). It is an independent, unofficial
+compatibility profile and makes no production-crawler parity claim. See
+[the engine-aware contract](design/engine-contract-v1.md) and
 `robots_engine_contract_v1()` for schema revisions and capability metadata.

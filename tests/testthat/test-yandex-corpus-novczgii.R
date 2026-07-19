@@ -5,6 +5,15 @@
 
 skip_if_not_installed("jsonlite")
 
+# The corpus verifier relies on tools::sha256sum (R >= 4.5.0); skip cleanly
+# otherwise (mirrors test-vendor-manifest-verify-zfhakxcn.R).
+skip_if_no_sha256 <- function() {
+  skip_if_not(
+    exists("sha256sum", where = asNamespace("tools"), inherits = FALSE),
+    "tools::sha256sum() unavailable (needs R >= 4.5.0)"
+  )
+}
+
 corpus_dir <- function() {
   yandex_corpus_dir()
 }
@@ -24,6 +33,7 @@ copy_corpus <- function() {
 }
 
 test_that("the committed corpus verifies clean and offline", {
+  skip_if_no_sha256()
   res <- verify_yandex_corpus(corpus_dir())
   expect_true(res$ok)
   expect_equal(res$n_records, 140L)
@@ -71,6 +81,7 @@ test_that("corpus content matches the recorded invariants", {
 })
 
 test_that("every body file's SHA-256 matches its record", {
+  skip_if_no_sha256()
   dir <- corpus_dir()
   records <- read_yandex_corpus(dir)
   for (r in records) {
@@ -95,6 +106,7 @@ test_that("re-serialization is byte-identical to the committed cases.json", {
 # ---- Fail-closed mutation tests (operate on a copy) -------------------------
 
 test_that("dropping a case fails verification", {
+  skip_if_no_sha256()
   dir <- copy_corpus()
   on.exit(unlink(dir, recursive = TRUE))
   records <- read_yandex_corpus(dir)
@@ -106,6 +118,7 @@ test_that("dropping a case fails verification", {
 })
 
 test_that("adding a 141st case fails verification", {
+  skip_if_no_sha256()
   dir <- copy_corpus()
   on.exit(unlink(dir, recursive = TRUE))
   records <- read_yandex_corpus(dir)
@@ -119,6 +132,7 @@ test_that("adding a 141st case fails verification", {
 })
 
 test_that("corrupting one body byte fails verification", {
+  skip_if_no_sha256()
   dir <- copy_corpus()
   on.exit(unlink(dir, recursive = TRUE))
   records <- read_yandex_corpus(dir)
@@ -130,6 +144,7 @@ test_that("corrupting one body byte fails verification", {
 })
 
 test_that("flipping a recorded sha256 fails verification", {
+  skip_if_no_sha256()
   dir <- copy_corpus()
   on.exit(unlink(dir, recursive = TRUE))
   raw <- readLines(file.path(dir, "cases.json"), warn = FALSE)
@@ -145,6 +160,7 @@ test_that("flipping a recorded sha256 fails verification", {
 })
 
 test_that("nulling a non-default_allow matched_rule fails verification", {
+  skip_if_no_sha256()
   dir <- copy_corpus()
   on.exit(unlink(dir, recursive = TRUE))
   records <- read_yandex_corpus(dir)
