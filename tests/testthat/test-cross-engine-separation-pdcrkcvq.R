@@ -2,10 +2,10 @@
 # (ROBO-pdcrkcvq, YI6d).
 #
 # A small, high-signal suite proving the Google and Yandex matchers stay
-# behaviorally and operationally SEPARATE before Yandex activation. It adds
-# tests ONLY: it touches no source, no fixture, and no existing test. Yandex
-# stays capability_unavailable, the schema stays 2026-07-17.1, and nothing here
-# registers or activates the adapter.
+# behaviorally and operationally SEPARATE. It adds tests ONLY: it touches no
+# source and no fixture. Post-activation (YI5) the Yandex backend is available,
+# the schema is 2026-07-18.2, and the batch adapter is registered; the SEP/
+# DISPATCH/DRIFT assertions below track that active state.
 #
 # The suite is written to FAIL on a swapped/fallback dispatch (Yandex routed
 # through Google) and on either engine's metadata/identity drift: the SEP
@@ -242,7 +242,7 @@ test_that("D1 a Google request never touches the Yandex adapter", {
   expect_identical(x$results$url_decision, "disallow")
 })
 
-test_that("D2 a Yandex row dispatches to neither matcher", {
+test_that("D2 a Yandex row dispatches to the Yandex adapter, not Google", {
   calls <- new.env(parent = emptyenv())
   calls$google <- 0L
   calls$yandex <- 0L
@@ -252,7 +252,23 @@ test_that("D2 a Yandex row dispatches to neither matcher", {
   }
   fake_yandex <- function(bodies, urls, product_tokens) {
     calls$yandex <- calls$yandex + 1L
-    NULL
+    out <- data.frame(
+      native_evaluation_status = "evaluated",
+      matcher_status = "evaluated",
+      url_decision = "disallow",
+      reason = "rule_disallow",
+      matched_line = 2L,
+      matched_rule_type = "disallow",
+      matched_rule_value = "/private",
+      matcher_input_bytes = length(bodies[[1L]]),
+      matcher_body_truncated = FALSE,
+      error_stage = NA_character_,
+      error_class = NA_character_,
+      error_message = NA_character_,
+      stringsAsFactors = FALSE
+    )
+    out$matched_rule_value_raw <- list(charToRaw("/private"))
+    out
   }
   testthat::local_mocked_bindings(
     match_google_v1 = fake_google,
@@ -265,19 +281,22 @@ test_that("D2 a Yandex row dispatches to neither matcher", {
     "https://example.com/private", "bot", "yandex", "yandex"
   )
 
-  # Capability-unavailable short-circuit: no Google fallthrough, no Yandex call.
+  # The active Yandex backend is batch-dispatched once; Google is never touched.
   expect_identical(calls$google, 0L)
-  expect_identical(calls$yandex, 0L)
-  expect_identical(x$results$matcher_status, "capability_unavailable")
-  expect_identical(x$results$reason, "matcher_capability_unavailable")
-  expect_true(is.na(x$results$url_decision))
+  expect_identical(calls$yandex, 1L)
+  expect_identical(x$results$matcher_status, "evaluated")
+  expect_identical(x$results$reason, "rule_disallow")
+  expect_identical(x$results$url_decision, "disallow")
+  expect_identical(
+    x$results$matched_rule_value_raw[[1L]], charToRaw("/private")
+  )
 })
 
 test_that("D3 separation is enforced at the registry", {
   registry <- engine_matcher_registry_v1()
-  # Not merely absent: registered as unavailable with a NULL callable, while the
-  # hidden adapter itself remains batch-shaped (parse-once, YI5 wiring shape).
-  expect_null(registry$yandex$callable)
+  # Now active: registered with the batch-shaped adapter as its callable
+  # (parse-once), still with the batch signature the dispatcher invokes.
+  expect_type(registry$yandex$callable, "closure")
   expect_named(
     formals(match_yandex_v1),
     c("bodies", "urls", "product_tokens")
@@ -294,8 +313,10 @@ test_that("M1 matcher revisions and schema stay pinned", {
     registry$google$revision,
     "google-robotstxt-22b355ff855419e6a3ff8ff09c0ad7fdb17116f9"
   )
-  expect_identical(registry$yandex$revision, "capability-unavailable-v1")
-  expect_identical(engine_schema_revision_v1(), "2026-07-17.1")
+  expect_identical(
+    registry$yandex$revision, robotstxtr:::yandex_matcher_revision_v1()
+  )
+  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
 })
 
 test_that("M2 PROVENANCE and NOTICE pin the Google commits", {
@@ -335,15 +356,15 @@ test_that("T1 an arbitrary valid token yields Google semantics", {
 # DATA-ONLY -- dormancy proof: Yandex unavailable, schema pinned, Google live.
 # ---------------------------------------------------------------------------
 
-test_that("DATA-ONLY Yandex dormant, schema pinned, Google live", {
+test_that("DATA-ONLY Yandex active, schema bumped, Google live", {
   expect_identical(
     engine_matcher_availability_v1()[["yandex"]],
-    "capability_unavailable"
+    "available"
   )
-  expect_identical(engine_schema_revision_v1(), "2026-07-17.1")
+  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
 
   registry <- engine_matcher_registry_v1()
   expect_identical(registry$google$availability, "available")
   expect_type(registry$google$callable, "closure")
-  expect_null(registry$yandex$callable)
+  expect_type(registry$yandex$callable, "closure")
 })

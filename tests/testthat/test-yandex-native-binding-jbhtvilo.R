@@ -6,8 +6,8 @@
 # prove parse-once batching, byte-preserving raw bodies/targets, owning
 # lifetimes, every checked EvaluationStatus with its DecisionSource, the exact
 # empty/raw/non-UTF-8 rule-value representation, unsupported-first precedence,
-# and that the Yandex (not Google) engine ran. The routine stays hidden: engine
-# availability still reports Yandex capability_unavailable.
+# and that the Yandex (not Google) engine ran. Post-activation engine
+# availability reports Yandex available.
 
 skip_if_not(is.function(
   tryCatch(robotstxtr_checked_batch_,
@@ -210,9 +210,9 @@ test_that("the Yandex engine ran, not Google (effective-empty is Yandex)", {
   expect_identical(r$decision_source, "effective_empty_disallow")
 })
 
-test_that("Yandex engine availability is still capability_unavailable", {
+test_that("Yandex engine availability is now available", {
   expect_identical(
     engine_matcher_availability_v1()[["yandex"]],
-    "capability_unavailable"
+    "available"
   )
 })

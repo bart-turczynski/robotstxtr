@@ -214,14 +214,14 @@ test_that("the run covers 140 unique cases across 26 parse-once bodies", {
 # Yandex availability is unchanged, and the schema revision is unchanged.
 # ---------------------------------------------------------------------------
 
-test_that("validation leaves Yandex unavailable and the schema unchanged", {
+test_that("Yandex is active with the activation schema", {
   expect_identical(
     engine_matcher_availability_v1()[["yandex"]],
-    "capability_unavailable"
+    "available"
   )
-  expect_identical(engine_schema_revision_v1(), "2026-07-17.1")
+  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
 
   registry <- engine_matcher_registry_v1()
-  expect_identical(registry$yandex$availability, "capability_unavailable")
-  expect_null(registry$yandex$callable)
+  expect_identical(registry$yandex$availability, "available")
+  expect_type(registry$yandex$callable, "closure")
 })

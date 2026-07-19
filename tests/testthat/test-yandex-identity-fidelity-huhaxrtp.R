@@ -156,11 +156,13 @@ test_that("corpus PROVENANCE identity is byte-identical to the manifest", {
 # reading the pinned identity is deterministic (no clock/git substitution).
 # ---------------------------------------------------------------------------
 
-test_that("Yandex revision is the frozen sentinel, not a live revision", {
+test_that("Yandex revision is the composed frozen MatcherRevision", {
   registry <- engine_matcher_registry_v1()
-  expect_identical(registry$yandex$revision, "capability-unavailable-v1")
-  expect_null(registry$yandex$callable)
-  expect_false(identical(registry$yandex$revision, hi_matcher_rev))
+  # Post-activation the revision is the composed, byte-frozen MatcherRevision --
+  # never a live/clock/git substitution -- so it equals the composition oracle.
+  expect_identical(registry$yandex$revision, hi_matcher_rev)
+  expect_type(registry$yandex$callable, "closure")
+  expect_false(identical(registry$yandex$revision, "capability-unavailable-v1"))
 })
 
 test_that("reading the pinned manifest identity is deterministic", {
@@ -208,9 +210,9 @@ test_that("identity cross-check fails closed on a mutated corpus commit", {
 # DATA-ONLY -- availability and schema revision are unchanged by this unit.
 # ---------------------------------------------------------------------------
 
-test_that("Yandex stays capability_unavailable and schema is pinned", {
+test_that("Yandex is available and the schema is the activation revision", {
   expect_identical(
-    engine_matcher_availability_v1()[["yandex"]], "capability_unavailable"
+    engine_matcher_availability_v1()[["yandex"]], "available"
   )
-  expect_identical(engine_schema_revision_v1(), "2026-07-17.1")
+  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
 })

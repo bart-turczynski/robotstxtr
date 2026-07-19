@@ -284,14 +284,14 @@ test_that("embedded NUL/invalid-UTF-8 bodies are parsed, not truncated", {
 # Hidden-status invariants: no availability flip / registration / schema change
 # ---------------------------------------------------------------------------
 
-test_that("the adapter stays hidden -- no availability or schema change", {
+test_that("the adapter is active -- availability flipped and schema bumped", {
   expect_identical(
     engine_matcher_availability_v1()[["yandex"]],
-    "capability_unavailable"
+    "available"
   )
-  expect_identical(engine_schema_revision_v1(), "2026-07-17.1")
-  # The registry must NOT have gained a Yandex callable.
+  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
+  # The registry now carries the batch-shaped Yandex callable.
   registry <- engine_matcher_registry_v1()
-  expect_null(registry$yandex$callable)
-  expect_identical(registry$yandex$availability, "capability_unavailable")
+  expect_type(registry$yandex$callable, "closure")
+  expect_identical(registry$yandex$availability, "available")
 })

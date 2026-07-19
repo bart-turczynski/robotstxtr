@@ -50,17 +50,19 @@ test_that("boundary is executable: non-Google token yields Google semantics", {
   )
 })
 
-test_that("clarification is dormant: Yandex unavailable, schema pinned", {
+test_that("Yandex is active: available, registered, schema bumped", {
   expect_identical(
-    engine_matcher_availability_v1()[["yandex"]], "capability_unavailable"
+    engine_matcher_availability_v1()[["yandex"]], "available"
   )
 
   registry <- robotstxtr:::engine_matcher_registry_v1()
-  expect_null(registry$yandex$callable)
-  expect_identical(registry$yandex$revision, "capability-unavailable-v1")
+  expect_type(registry$yandex$callable, "closure")
+  expect_identical(
+    registry$yandex$revision, robotstxtr:::yandex_matcher_revision_v1()
+  )
 
-  # Google backend is untouched and schema revision is unchanged.
+  # Google backend is untouched and the schema revision is the activation one.
   expect_identical(registry$google$availability, "available")
   expect_type(registry$google$callable, "closure")
-  expect_identical(engine_schema_revision_v1(), "2026-07-17.1")
+  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
 })

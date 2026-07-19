@@ -36,9 +36,9 @@ test_that("no Yandex native entry point is registered (stays unavailable)", {
   expect_false(any(grepl("yandex", names_registered, ignore.case = TRUE)))
 })
 
-test_that("the engine contract still reports Yandex capability_unavailable", {
+test_that("the engine contract reports Yandex available post-activation", {
   expect_identical(
     engine_matcher_availability_v1()[["yandex"]],
-    "capability_unavailable"
+    "available"
   )
 })

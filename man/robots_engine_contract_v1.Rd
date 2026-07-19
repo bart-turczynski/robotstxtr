@@ -13,6 +13,9 @@ A named list of contract metadata with class
 \description{
 Returns the stable identifiers, value sets, backend capability states,
 the matcher token/semantics capability boundary (\code{matcher_capability}),
-status-policy table, and supported sibling-package ranges for the v1
-engine-aware contract. It performs no fetch or matching.
+the separately inspectable vendored-matcher identity fields
+(\code{matcher_identity}, e.g. library/payload/profile/corpus/evidence/
+profile-source for the Yandex backend), status-policy table, and supported
+sibling-package ranges for the v1 engine-aware contract. It performs no fetch
+or matching.
 }

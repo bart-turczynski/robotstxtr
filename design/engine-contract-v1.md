@@ -1,7 +1,7 @@
 # Engine-aware robots evaluation contract v1
 
 - Contract ID: `robotstxtr.engine-aware/v1`
-- Schema revision: `2026-07-17.1`
+- Schema revision: `2026-07-18.2`
 - First package release: `robotstxtr 0.2.0`
 - Normative policy source: [`engine-profiles.md`](engine-profiles.md)
 
@@ -62,11 +62,44 @@ SHA. The Google 500 KiB limit is applied at the matcher stage: the neutral
 evidence retains a complete caller-supplied or within-acquisition-limit body,
 and Google parses only its first 524,288 bytes.
 
-Yandex, RFC 9309, and Bing matcher requests return
-`capability_unavailable-v1`. Their policy tables still resolve independently
-where the accepted design has evidence. Bing fetch/status policy remains a
-`documentation_gap`; `assumed_rfc9309` is a separately named application policy
-and is never reported as Bing.
+The Yandex matcher backend is `available` as of schema revision
+`2026-07-18.2`. It is bounded to its supported Yandex vendor profiles
+(profile `yandex-0.1.0`) and never generalizes to arbitrary tokens or falls
+back to Google. Its backend revision is the composed, byte-frozen
+`robotstxtyandex/0.2.0+payload.<commit>;profile=yandex-0.1.0;corpus=<rev>;evidence=<sha>;profile-source=<rev>`
+string, byte-equal to `inst/vendor/robotstxtyandex/MANIFEST.dcf`'s
+`MatcherRevision`. The separately inspectable library/payload/profile/corpus/
+evidence/profile-source fields are published as
+`robots_engine_contract_v1()$matcher_identity$yandex`.
+
+The activation schema adds one public list column, `matched_rule_value_raw`,
+with exactly one element per result row: exact owning-rule bytes for a matched
+rule, `raw(0)` for an effective-empty Disallow, and `NULL` for an absent rule
+(evaluated `default_allow` and every non-evaluated outcome). `raw(0)` and
+`NULL` are semantically distinct and remain distinct through construction,
+subsetting, and serialization. The column is populated for Yandex-evaluated
+rows; Google and other rows keep `NULL`. The legacy adapter frame does not
+carry this column.
+
+For an evaluated Yandex row the published `reason` is exactly one of
+`default_allow`, `rule_allow`, `rule_disallow`, or `effective_empty_disallow`
+(the effective-empty case yields `url_decision = "allow"` with
+`matched_rule_type = "disallow"` and an empty value). For a non-evaluated
+Yandex row the matcher status is `not_evaluated` with either
+`reason = "unsupported_product_token"`
+(`error_class = "robots_unsupported_product_token"`) or
+`reason = "invalid_request_target"`
+(`error_class = "robots_invalid_request_target"`), both at
+`error_stage = "input"`; `unsupported_crawler` takes precedence when both a
+target and a token are invalid. Bodies over 500,000 bytes resolve through the
+documented Yandex `allow_all` policy (`matcher_status = "not_needed"`) before
+the matcher runs.
+
+RFC 9309 and Bing matcher requests return `capability_unavailable-v1`. Their
+policy tables still resolve independently where the accepted design has
+evidence. Bing fetch/status policy remains a `documentation_gap`;
+`assumed_rfc9309` is a separately named application policy and is never reported
+as Bing.
 
 ## Legacy compatibility
 
