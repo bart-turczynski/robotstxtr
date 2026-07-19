@@ -40,6 +40,7 @@ OBJECTS = \
 	collector_binding.o \
 	matcher_binding.o \
 	yandex_target_binding.o \
+	yandex_matcher_binding.o \
 	reporting_robots.o \
 	robots.o \
 	access_matcher.o \
