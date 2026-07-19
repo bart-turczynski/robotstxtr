@@ -1,0 +1,36 @@
+# Build wiring for robotstxtr (ROBO-mzwcditw, YI3b) — Windows lane.
+#
+# Identical logic to src/Makevars (keep the two in sync). Forward-slash paths
+# work under the Rtools/mingw32-make used on Windows. Compiles the package-owned
+# translation units AND the nested vendored robotstxtyandex payload into the
+# package shared object; the vendored objects link in but are called by nothing
+# yet (Yandex stays capability_unavailable).
+#
+# The vendored objects are named at the TOP LEVEL of src/ and their sources are
+# located via VPATH, so `R CMD build`'s `cleaning src` step (which globs only
+# top-level src/*.o) removes them; nested objects would otherwise leak into the
+# source tarball and trip the "checking if this is a source package" NOTE. VPATH
+# is a plain variable assignment (POSIX; not a rule), so it neither becomes the
+# default goal nor needs `SystemRequirements: GNU make`. With CXX_STD=CXX17 the
+# built-in .cc.o rule compiles each vendored source as C++17.
+
+CXX_STD = CXX17
+
+PKG_CPPFLAGS = -Ivendor/robotstxtyandex/include
+
+VPATH = vendor/robotstxtyandex/src
+
+OBJECTS = \
+	cpp11.o \
+	collector_binding.o \
+	matcher_binding.o \
+	reporting_robots.o \
+	robots.o \
+	access_matcher.o \
+	crawler_selector.o \
+	directive_lexer.o \
+	parser_ir.o \
+	physical_line_scanner.o \
+	policy_engine.o \
+	policy.o \
+	version.o

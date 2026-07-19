@@ -28,6 +28,11 @@ vectors/
 src/*.o
 src/*.so
 src/*.dll
+# Also ignore build artifacts under vendored subdirectories (defensive: the
+# VPATH build emits objects at top-level src/, but guard against a stray add).
+src/**/*.o
+src/**/*.so
+src/**/*.dll
 vignettes/*.html
 vignettes/*.pdf
 doc/

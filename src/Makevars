@@ -1,0 +1,51 @@
+# Build wiring for robotstxtr (ROBO-mzwcditw, YI3b).
+#
+# Compiles the package-owned translation units AND the nested vendored
+# robotstxtyandex payload into a single package shared object. The vendored
+# objects link in but are called by nothing yet (the public Yandex matcher
+# binding is a later unit, YI4b); Yandex stays capability_unavailable.
+#
+# Portability / CRAN notes:
+#  * OBJECTS is an explicit, enumerated list (no GNU make $(wildcard)/patsubst),
+#    so no `SystemRequirements: GNU make` declaration is needed. Defining
+#    OBJECTS overrides R's auto-glob of src/*, so every package-owned object
+#    MUST be listed here too.
+#  * The vendored objects are named at the TOP LEVEL of src/ (access_matcher.o,
+#    ...) and their sources are located via VPATH below. This is deliberate:
+#    `R CMD build` installs the package to render vignettes, which compiles
+#    these objects, and its `cleaning src` step only removes top-level src/*.o.
+#    Objects left in a nested src/ subdirectory would survive into the built
+#    source tarball and trip the "checking if this is a source package" NOTE.
+#    Compiling to top level keeps them under that cleanup.
+#  * VPATH is a plain variable assignment (not a rule/target), so it does not
+#    become make's default goal. It lets R's built-in `.cc.o` inference rule
+#    find each vendored source in vendor/robotstxtyandex/src/ and compile it to
+#    the matching top-level object with the standard C++17 flags — byte-for-byte
+#    the same compile the implicit rule performs. No explicit recipes, no GNU
+#    make features.
+#  * Vendored sources reference public headers as
+#    `#include "robotstxtyandex/xxx.h"`, resolved via the include path below;
+#    their private sibling headers resolve same-directory (no -I needed).
+#
+# Keep in sync with src/Makevars.win (identical logic).
+
+CXX_STD = CXX17
+
+PKG_CPPFLAGS = -Ivendor/robotstxtyandex/include
+
+VPATH = vendor/robotstxtyandex/src
+
+OBJECTS = \
+	cpp11.o \
+	collector_binding.o \
+	matcher_binding.o \
+	reporting_robots.o \
+	robots.o \
+	access_matcher.o \
+	crawler_selector.o \
+	directive_lexer.o \
+	parser_ir.o \
+	physical_line_scanner.o \
+	policy_engine.o \
+	policy.o \
+	version.o
