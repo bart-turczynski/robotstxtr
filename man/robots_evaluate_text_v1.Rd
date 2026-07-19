@@ -20,7 +20,9 @@ robots.txt body.}
 \item{url}{A character vector of URLs to evaluate.}
 
 \item{robots_product_token}{A character vector of length one or
-\code{length(url)} used only for robots user-agent group selection.}
+\code{length(url)} used only for robots user-agent group selection. The Google
+backend accepts any valid Google robots product token and yields Google
+semantics for it, not a prediction of the named crawler.}
 
 \item{robots_policy_ruleset}{An explicit ruleset, length one or
 \code{length(url)}: \code{"google"}, \code{"yandex"}, \code{"rfc9309"}, \code{"bing"}, or
@@ -40,4 +42,30 @@ Versioned, no-network entry point for the engine-aware v1 contract. The
 robots status-policy ruleset and matcher backend are selected independently;
 an unavailable backend produces \code{matcher_status = "capability_unavailable"}
 rather than silently using Google's matcher.
+}
+\details{
+The \code{robots_product_token} is used ONLY for robots user-agent group
+selection; it is never sent as an HTTP header. Each matcher backend is
+authoritative only for its own vendor semantics: \code{google} for Google,
+\code{yandex} for Yandex, \code{bing} for Bing, and RFC 9309 behavior only under the
+\code{rfc9309} backend. The Google backend additionally accepts any valid Google
+robots product token and returns Google parsing/matching semantics for it;
+that is NOT a claim of compatibility with, or a prediction of, the crawler
+the token names. The Yandex and Bing backends are bounded to their supported
+vendor profiles only and never generalize to arbitrary tokens. This boundary
+is published as \code{robots_engine_contract_v1()$matcher_capability}.
+}
+\examples{
+# A non-Google-named token evaluated through the default Google backend
+# yields Google parsing/matching semantics for that token. This is NOT a
+# prediction of the named crawler's behavior.
+decisions <- robots_evaluate_text_v1(
+  "user-agent: *\ndisallow: /private",
+  "https://example.com/private",
+  robots_product_token = "Yandex",
+  robots_policy_ruleset = "google",
+  matcher_backend = "google"
+)
+decisions$results$matcher_backend  # "google" -- Google semantics, not Yandex
+decisions$results$url_decision     # "disallow"
 }

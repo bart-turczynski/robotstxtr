@@ -108,3 +108,14 @@ schema:
 
 Never route an unavailable backend to Google and never relabel Google matching
 as RFC, Yandex, or Bing behavior.
+
+A new backend must also declare its **token policy**: whether it accepts any
+valid token as its own semantics (`arbitrary_valid`, as Google does for
+group selection) or is bounded to a fixed set of supported vendor profiles
+(`bounded_profiles`, as Yandex and Bing are; RFC 9309 uses `rfc9309`). This
+boundary is published as data on the contract object as
+`robots_engine_contract_v1()$matcher_capability`, keyed per backend with
+`token_policy`, `matcher_semantics`, and a human-readable `note`. Google
+accepting an arbitrary valid token yields Google parsing/matching semantics for
+that token and is never a claim of compatibility with — or a prediction of — the
+crawler the token names.

@@ -40,6 +40,56 @@ engine_matcher_availability_v1 <- function() {
   matcher_registry_field_v1(validated_matcher_registry_v1(), "availability")
 }
 
+# The capability boundary between a matcher backend's owned vendor SEMANTICS and
+# the robots product TOKEN used for user-agent group selection. Keyed like
+# engine_matcher_registry_v1(). This is descriptive metadata only: it changes no
+# matching behavior. `token_policy` is `"arbitrary_valid"` for Google (accepts
+# any valid Google robots product token), `"bounded_profiles"` for the
+# vendor-bounded backends, and `"rfc9309"` for the RFC backend.
+# `matcher_semantics` names the sole vendor/semantics a backend owns; a Google
+# decision on any token reflects Google parsing/matching, never a prediction of
+# the crawler the token names.
+engine_backend_capability_v1 <- function() {
+  list(
+    google = list(
+      token_policy = "arbitrary_valid",
+      matcher_semantics = "google",
+      note = paste0(
+        "Google backend accepts any valid Google robots product token for ",
+        "user-agent group selection; the result reflects Google ",
+        "parsing/matching semantics applied to that token, not behavioral ",
+        "compatibility with or a prediction of the crawler the token names."
+      )
+    ),
+    yandex = list(
+      token_policy = "bounded_profiles",
+      matcher_semantics = "yandex",
+      note = paste0(
+        "Yandex backend is bounded to its supported Yandex vendor profiles ",
+        "only (profile yandex-0.1.0); it never generalizes to arbitrary ",
+        "tokens and is not backed by Google matching."
+      )
+    ),
+    bing = list(
+      token_policy = "bounded_profiles",
+      matcher_semantics = "bing",
+      note = paste0(
+        "Bing backend is bounded to its supported Bing vendor profiles only; ",
+        "it never generalizes to arbitrary tokens and is not backed by Google ",
+        "matching."
+      )
+    ),
+    rfc9309 = list(
+      token_policy = "rfc9309",
+      matcher_semantics = "rfc9309",
+      note = paste0(
+        "RFC 9309 behavior is available only under the rfc9309 backend; ",
+        "no other backend may be relabeled as RFC 9309 semantics."
+      )
+    )
+  )
+}
+
 policy_rows_set_v1 <- function(table, category, ruleset, policy_status,
                                policy_action, policy_reason,
                                policy_provenance, policy_source) {
@@ -171,6 +221,7 @@ engine_policy_table_v1 <- function() {
 #' Inspect the versioned engine-aware robots contract
 #'
 #' Returns the stable identifiers, value sets, backend capability states,
+#' the matcher token/semantics capability boundary (`matcher_capability`),
 #' status-policy table, and supported sibling-package ranges for the v1
 #' engine-aware contract. It performs no fetch or matching.
 #'
@@ -190,6 +241,7 @@ robots_engine_contract_v1 <- function() {
       matcher_availability = matcher_registry_field_v1(
         matcher_registry, "availability"
       ),
+      matcher_capability = engine_backend_capability_v1(),
       robots_policy_rulesets = engine_rulesets_v1(),
       matcher_backends = engine_matchers_v1(),
       policy_table = engine_policy_table_v1(),
@@ -874,11 +926,25 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' an unavailable backend produces `matcher_status = "capability_unavailable"`
 #' rather than silently using Google's matcher.
 #'
+#' @details
+#' The `robots_product_token` is used ONLY for robots user-agent group
+#' selection; it is never sent as an HTTP header. Each matcher backend is
+#' authoritative only for its own vendor semantics: `google` for Google,
+#' `yandex` for Yandex, `bing` for Bing, and RFC 9309 behavior only under the
+#' `rfc9309` backend. The Google backend additionally accepts any valid Google
+#' robots product token and returns Google parsing/matching semantics for it;
+#' that is NOT a claim of compatibility with, or a prediction of, the crawler
+#' the token names. The Yandex and Bing backends are bounded to their supported
+#' vendor profiles only and never generalize to arbitrary tokens. This boundary
+#' is published as `robots_engine_contract_v1()$matcher_capability`.
+#'
 #' @param robots_txt A single, non-missing character value containing the
 #'   robots.txt body.
 #' @param url A character vector of URLs to evaluate.
 #' @param robots_product_token A character vector of length one or
-#'   `length(url)` used only for robots user-agent group selection.
+#'   `length(url)` used only for robots user-agent group selection. The Google
+#'   backend accepts any valid Google robots product token and yields Google
+#'   semantics for it, not a prediction of the named crawler.
 #' @param robots_policy_ruleset An explicit ruleset, length one or
 #'   `length(url)`: `"google"`, `"yandex"`, `"rfc9309"`, `"bing"`, or
 #'   `"assumed_rfc9309"`.
@@ -888,6 +954,19 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #'
 #' @return A `robots_engine_decisions_v1` object with `results`, neutral
 #'   `evidence`, and `contract` components.
+#' @examples
+#' # A non-Google-named token evaluated through the default Google backend
+#' # yields Google parsing/matching semantics for that token. This is NOT a
+#' # prediction of the named crawler's behavior.
+#' decisions <- robots_evaluate_text_v1(
+#'   "user-agent: *\ndisallow: /private",
+#'   "https://example.com/private",
+#'   robots_product_token = "Yandex",
+#'   robots_policy_ruleset = "google",
+#'   matcher_backend = "google"
+#' )
+#' decisions$results$matcher_backend  # "google" -- Google semantics, not Yandex
+#' decisions$results$url_decision     # "disallow"
 #' @export
 robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
                                     robots_policy_ruleset, matcher_backend,
@@ -921,6 +1000,16 @@ robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
 #' neutral acquisition and safety evidence before applying the explicitly
 #' selected policy ruleset and matcher backend. `fetch_user_agent` is the HTTP
 #' request User-Agent and is never used as `robots_product_token`.
+#'
+#' @details
+#' As with [robots_evaluate_text_v1()], the `robots_product_token` drives ONLY
+#' user-agent group selection. Each matcher backend is authoritative only for
+#' its own vendor semantics; the Google backend accepts any valid Google robots
+#' product token and returns Google semantics for it, which is not a claim of
+#' compatibility with the named crawler, while the Yandex and Bing backends are
+#' bounded to their supported vendor profiles and RFC 9309 behavior is available
+#' only under the `rfc9309` backend. See
+#' `robots_engine_contract_v1()$matcher_capability`.
 #'
 #' @inheritParams robots_evaluate_text_v1
 #' @inheritParams robots_fetch

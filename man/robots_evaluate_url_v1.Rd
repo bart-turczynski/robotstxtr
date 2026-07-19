@@ -19,7 +19,9 @@ robots_evaluate_url_v1(
 \item{url}{A character vector of URLs to evaluate.}
 
 \item{robots_product_token}{A character vector of length one or
-\code{length(url)} used only for robots user-agent group selection.}
+\code{length(url)} used only for robots user-agent group selection. The Google
+backend accepts any valid Google robots product token and yields Google
+semantics for it, not a prediction of the named crawler.}
 
 \item{robots_policy_ruleset}{An explicit ruleset, length one or
 \code{length(url)}: \code{"google"}, \code{"yandex"}, \code{"rfc9309"}, \code{"bing"}, or
@@ -57,4 +59,14 @@ Versioned URL-first entry point for the engine-aware v1 contract. It records
 neutral acquisition and safety evidence before applying the explicitly
 selected policy ruleset and matcher backend. \code{fetch_user_agent} is the HTTP
 request User-Agent and is never used as \code{robots_product_token}.
+}
+\details{
+As with \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}, the \code{robots_product_token} drives ONLY
+user-agent group selection. Each matcher backend is authoritative only for
+its own vendor semantics; the Google backend accepts any valid Google robots
+product token and returns Google semantics for it, which is not a claim of
+compatibility with the named crawler, while the Yandex and Bing backends are
+bounded to their supported vendor profiles and RFC 9309 behavior is available
+only under the \code{rfc9309} backend. See
+\code{robots_engine_contract_v1()$matcher_capability}.
 }
