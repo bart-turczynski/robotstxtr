@@ -10,15 +10,19 @@ repos:
         args: ['--maxkb=5120']
       # Vendored third-party payloads under src/vendor/ must stay byte-for-byte
       # identical to their pinned upstream (SHA-256 checked against the vendor
-      # manifest), so the whitespace-rewriting hooks must never touch them.
+      # manifest), so the whitespace-rewriting hooks must never touch them. The
+      # Yandex conformance corpus under inst/yandex-corpus/ is likewise a
+      # byte-exact fixture (bodies carry deliberate trailing spaces, CRLF and
+      # missing final newlines; cases.json is canonically serialized), so it is
+      # excluded for the same reason.
       - id: end-of-file-fixer
-        exclude: ^src/vendor/
+        exclude: ^(src/vendor/|inst/yandex-corpus/)
       - id: trailing-whitespace
-        exclude: ^src/vendor/
+        exclude: ^(src/vendor/|inst/yandex-corpus/)
       - id: check-merge-conflict
       - id: check-yaml
       - id: mixed-line-ending
-        exclude: ^src/vendor/
+        exclude: ^(src/vendor/|inst/yandex-corpus/)
       - id: check-case-conflict
   - repo: local
     hooks:

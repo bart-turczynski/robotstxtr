@@ -36,6 +36,7 @@ SystemRequirements: C++17
 Suggests:
     callr,
     httpuv,
+    jsonlite,
     knitr,
     oysteR,
     rmarkdown,
