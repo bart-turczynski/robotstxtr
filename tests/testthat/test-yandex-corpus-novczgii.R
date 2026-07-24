@@ -114,7 +114,9 @@ test_that("dropping a case fails verification", {
     charToRaw(enc2utf8(yandex_corpus_serialize(records[-1L]))),
     file.path(dir, "cases.json")
   )
-  expect_false(verify_yandex_corpus(dir)$ok)
+  expect_corpus_rejects(
+    verify_yandex_corpus(dir), "Expected exactly 140 records, found 139."
+  )
 })
 
 test_that("adding a 141st case fails verification", {
@@ -128,7 +130,9 @@ test_that("adding a 141st case fails verification", {
     charToRaw(enc2utf8(yandex_corpus_serialize(c(records, list(extra))))),
     file.path(dir, "cases.json")
   )
-  expect_false(verify_yandex_corpus(dir)$ok)
+  expect_corpus_rejects(
+    verify_yandex_corpus(dir), "Expected exactly 140 records, found 141."
+  )
 })
 
 test_that("corrupting one body byte fails verification", {
@@ -140,7 +144,7 @@ test_that("corrupting one body byte fails verification", {
   bytes <- readBin(body_path, "raw", n = file.size(body_path))
   bytes[[1L]] <- as.raw(bitwXor(as.integer(bytes[[1L]]), 1L))
   writeBin(bytes, body_path)
-  expect_false(verify_yandex_corpus(dir)$ok)
+  expect_corpus_rejects(verify_yandex_corpus(dir), "SHA-256 mismatch")
 })
 
 test_that("flipping a recorded sha256 fails verification", {
@@ -156,7 +160,7 @@ test_that("flipping a recorded sha256 fails verification", {
   )
   writeBin(charToRaw(enc2utf8(paste0(paste(raw, collapse = "\n"), "\n"))),
            file.path(dir, "cases.json"))
-  expect_false(verify_yandex_corpus(dir)$ok)
+  expect_corpus_rejects(verify_yandex_corpus(dir), "SHA-256 mismatch")
 })
 
 test_that("nulling a non-default_allow matched_rule fails verification", {
@@ -175,7 +179,204 @@ test_that("nulling a non-default_allow matched_rule fails verification", {
     charToRaw(enc2utf8(yandex_corpus_serialize(records))),
     file.path(dir, "cases.json")
   )
-  expect_false(verify_yandex_corpus(dir)$ok)
+  expect_corpus_rejects(
+    verify_yandex_corpus(dir), "matched_rule must be null iff default_allow"
+  )
+})
+
+# ---- Fail-closed rejection matrix ------------------------------------------
+#
+# One test per rejection branch of verify_yandex_corpus(). Each tampers with a
+# COPY and asserts the SPECIFIC diagnostic, so a verifier that rejected for
+# the wrong reason would not pass. Re-writing the tampered records with the
+# canonical serializer keeps the determinism check green, which isolates the
+# invariant under test.
+
+yc_tampered <- function(mutate) {
+  # Verification hashes every body file, so a pre-4.5 R must skip outright.
+  skip_if_no_sha256()
+  corpus_tamper_verify(
+    corpus_dir(), mutate, read_yandex_corpus, yandex_corpus_serialize,
+    verify_yandex_corpus
+  )
+}
+
+# Index of the first record carrying the given expected$source.
+yc_source_idx <- function(records, source) {
+  which(vapply(records, function(r) {
+    identical(r$expected$source, source)
+  }, logical(1)))[[1L]]
+}
+
+test_that("a corpus directory that does not exist is rejected", {
+  expect_corpus_rejects(
+    verify_yandex_corpus(tempfile("yandex-corpus-absent-")),
+    "Corpus directory not found"
+  )
+})
+
+test_that("a corpus directory without cases.json is rejected", {
+  dir <- tempfile("yandex-corpus-nocases-")
+  dir.create(dir)
+  on.exit(unlink(dir, recursive = TRUE))
+  expect_corpus_rejects(verify_yandex_corpus(dir), "cases.json not found")
+  expect_error(
+    read_yandex_corpus(dir), "Yandex corpus cases.json not found",
+    fixed = TRUE
+  )
+})
+
+test_that("a cases.json that is not valid JSON is rejected", {
+  dir <- corpus_minimal_dir("{ this is not json\n")
+  on.exit(unlink(dir, recursive = TRUE))
+  expect_corpus_rejects(
+    verify_yandex_corpus(dir), "cases.json is not valid JSON"
+  )
+})
+
+test_that("a cases.json that is not a JSON array is rejected", {
+  dir <- corpus_minimal_dir("123\n")
+  on.exit(unlink(dir, recursive = TRUE))
+  expect_corpus_rejects(
+    verify_yandex_corpus(dir), "cases.json must be a JSON array of records."
+  )
+})
+
+test_that("a non-object record is rejected", {
+  dir <- corpus_minimal_dir("[\"not-an-object\"]\n")
+  on.exit(unlink(dir, recursive = TRUE))
+  expect_corpus_rejects(
+    verify_yandex_corpus(dir), "Record 1 is not an object."
+  )
+})
+
+test_that("a record that the canonical writer cannot serialize is rejected", {
+  # A nested sources array makes yandex_corpus_build_record() throw, so the
+  # determinism check reports the failure instead of silently passing.
+  dir <- corpus_minimal_dir("[{\"sources\": [[\"a\", \"b\"]]}]\n")
+  on.exit(unlink(dir, recursive = TRUE))
+  expect_corpus_rejects(verify_yandex_corpus(dir), "Re-serialisation failed")
+})
+
+test_that("a record missing a required field is rejected", {
+  skip_if_no_sha256()
+  dir <- copy_corpus()
+  on.exit(unlink(dir, recursive = TRUE))
+  lines <- readLines(file.path(dir, "cases.json"), warn = FALSE)
+  idx <- grep("^    \"byte_size\": ", lines)[[1L]]
+  corpus_write_cases(dir, paste0(paste(lines[-idx], collapse = "\n"), "\n"))
+  expect_corpus_rejects(
+    verify_yandex_corpus(dir), "Record 1 is missing field(s): byte_size"
+  )
+})
+
+test_that("an unknown crawler is rejected", {
+  res <- yc_tampered(function(records) {
+    records[[1L]]$crawler <- "Googlebot"
+    records
+  })
+  expect_corpus_rejects(res, "has unknown crawler 'Googlebot'.")
+})
+
+test_that("an unknown expected.source is rejected", {
+  res <- yc_tampered(function(records) {
+    i <- yc_source_idx(records, "rule_allow")
+    records[[i]]$expected$source <- "rule_bogus"
+    records
+  })
+  expect_corpus_rejects(res, "has unknown expected.source 'rule_bogus'.")
+})
+
+test_that("an unknown decision is rejected", {
+  res <- yc_tampered(function(records) {
+    records[[1L]]$expected$decision <- "maybe"
+    records
+  })
+  expect_corpus_rejects(res, "has unknown decision 'maybe'.")
+})
+
+test_that("a matched_rule on a default_allow record is rejected", {
+  res <- yc_tampered(function(records) {
+    i <- yc_source_idx(records, "default_allow")
+    records[[i]]$expected$matched_rule <- list(
+      line = 1L, type = "allow", value = "/x"
+    )
+    records
+  })
+  expect_corpus_rejects(res, "matched_rule must be null iff default_allow")
+})
+
+test_that("a missing body file is rejected", {
+  skip_if_no_sha256()
+  dir <- copy_corpus()
+  on.exit(unlink(dir, recursive = TRUE))
+  records <- read_yandex_corpus(dir)
+  unlink(file.path(dir, records[[1L]]$body_file))
+  expect_corpus_rejects(
+    verify_yandex_corpus(dir),
+    sprintf("references missing body file %s.", records[[1L]]$body_file)
+  )
+})
+
+test_that("a body whose byte size drifted is rejected", {
+  skip_if_no_sha256()
+  dir <- copy_corpus()
+  on.exit(unlink(dir, recursive = TRUE))
+  records <- read_yandex_corpus(dir)
+  body_path <- file.path(dir, records[[1L]]$body_file)
+  bytes <- readBin(body_path, "raw", n = file.size(body_path))
+  writeBin(c(bytes, as.raw(10L)), body_path)
+  expect_corpus_rejects(verify_yandex_corpus(dir), "byte size mismatch")
+})
+
+test_that("a duplicate case_id is rejected", {
+  res <- yc_tampered(function(records) {
+    records[[2L]]$case_id <- records[[1L]]$case_id
+    records
+  })
+  expect_corpus_rejects(res, "Duplicate case_id(s):")
+})
+
+test_that("a non-canonical cases.json rendering is rejected", {
+  skip_if_no_sha256()
+  dir <- copy_corpus()
+  on.exit(unlink(dir, recursive = TRUE))
+  records <- read_yandex_corpus(dir)
+  # Semantically identical JSON, non-canonical bytes (a stray blank line).
+  corpus_write_cases(dir, paste0(yandex_corpus_serialize(records), "\n"))
+  expect_corpus_rejects(
+    verify_yandex_corpus(dir),
+    "cases.json is not byte-identical to its canonical serialisation."
+  )
+})
+
+# ---- Corpus-dir resolution and hashing helpers ------------------------------
+
+test_that("yandex_corpus_dir() falls back to a source-tree candidate", {
+  root <- tempfile("yandex-src-tree-")
+  on.exit(unlink(root, recursive = TRUE))
+  dir.create(file.path(root, "inst", "yandex-corpus"), recursive = TRUE)
+  resolve <- corpus_dir_fn_rooted(yandex_corpus_dir, root)
+  expect_identical(
+    resolve(),
+    normalizePath(file.path(root, "inst", "yandex-corpus"), winslash = "/")
+  )
+})
+
+test_that("yandex_corpus_dir() returns the install path when none hits", {
+  resolve <- corpus_dir_fn_rooted(
+    yandex_corpus_dir, tempfile("yandex-no-tree-")
+  )
+  expect_identical(resolve(), "")
+})
+
+test_that("hashing an unreadable file is a hard error", {
+  skip_if_no_sha256()
+  expect_error(
+    yandex_corpus_sha256_file(tempfile("yandex-absent-")),
+    "Could not read file for hashing",
+    fixed = TRUE
+  )
 })
 
 # ---- Data-only proof: nothing about availability or schema changed ----------
