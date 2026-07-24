@@ -19,3 +19,20 @@ Explicit compatibility adapter for callers that still consume the original
 backend are both \code{"google"}; unsupported legacy fetch outcomes remain
 unknown exactly as in the original API.
 }
+\examples{
+# Build a v1 engine result offline, then adapt it for a legacy consumer.
+engine <- robots_evaluate_text_v1(
+  "user-agent: *\nDisallow: /private\n",
+  c("https://example.com/page", "https://example.com/private"),
+  robots_product_token = "my-bot",
+  robots_policy_ruleset = "google",
+  matcher_backend = "google"
+)
+engine$results[c("url", "url_decision", "reason")]
+
+# The adapter collapses the three-valued `url_decision` into the legacy
+# logical `allowed`, and carries `reason` over as `decision_source`.
+legacy <- as_legacy_robots_decisions_v1(engine)
+class(legacy)
+legacy$results[c("url", "allowed", "decision_source", "matched_rule_type")]
+}

@@ -70,3 +70,26 @@ bounded to their supported vendor profiles and RFC 9309 behavior is available
 only under the \code{rfc9309} backend. See
 \code{robots_engine_contract_v1()$matcher_capability}.
 }
+\examples{
+# This entry point fetches /robots.txt over HTTP. The transport is mocked
+# here so the example runs offline; a real call needs no such wrapper.
+decisions <- httr2::with_mocked_responses(
+  function(req) {
+    httr2::response(
+      status_code = 200L, url = req$url,
+      body = charToRaw("user-agent: *\nDisallow: /private\n")
+    )
+  },
+  robots_evaluate_url_v1(
+    c("https://example.com/page", "https://example.com/private"),
+    robots_product_token = "my-bot",
+    robots_policy_ruleset = "google",
+    matcher_backend = "google"
+  )
+)
+decisions$results[c("url", "policy_status", "url_decision", "reason")]
+
+# Acquisition evidence is recorded neutrally, apart from the decision, so
+# the policy applied to the response stays auditable.
+decisions$evidence[c("source_id", "final_http_status", "evidence_status")]
+}

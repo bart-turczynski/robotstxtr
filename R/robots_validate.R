@@ -131,6 +131,20 @@ robots_validate_url <- function(url, timeout = 10, max_bytes = 524288L,
 #' @param ... Additional arguments, currently ignored.
 #'
 #' @return `x`, invisibly.
+#' @examples
+#' # A robots_validations object comes from robots_validate_url() or
+#' # robots_validate_text(); the transport is mocked here so the example runs
+#' # offline.
+#' validations <- httr2::with_mocked_responses(
+#'   function(req) {
+#'     httr2::response(
+#'       status_code = 200L, url = req$url,
+#'       body = charToRaw("user-agent: *\nDisallow: /private\n")
+#'     )
+#'   },
+#'   robots_validate_url("https://example.com/private")
+#' )
+#' print(validations)
 #' @export
 print.robots_validations <- function(x, ...) {
   n_documents <- nrow(x$documents)
