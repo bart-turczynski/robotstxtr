@@ -52,6 +52,7 @@ OBJECTS = \
 	matcher_binding.o \
 	yandex_target_binding.o \
 	yandex_matcher_binding.o \
+	bing_binding.o \
 	reporting_robots.o \
 	robots.o \
 	access_matcher.o \

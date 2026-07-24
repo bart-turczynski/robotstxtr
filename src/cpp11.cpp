@@ -5,6 +5,27 @@
 #include "cpp11/declarations.hpp"
 #include <R_ext/Visibility.h>
 
+// bing_binding.cpp
+cpp11::list robotstxtr_bing_eval_batch_(cpp11::list bodies, cpp11::integers ids, cpp11::strings agents, cpp11::list targets);
+extern "C" SEXP _robotstxtr_robotstxtr_bing_eval_batch_(SEXP bodies, SEXP ids, SEXP agents, SEXP targets) {
+  BEGIN_CPP11
+    return cpp11::as_sexp(robotstxtr_bing_eval_batch_(cpp11::as_cpp<cpp11::decay_t<cpp11::list>>(bodies), cpp11::as_cpp<cpp11::decay_t<cpp11::integers>>(ids), cpp11::as_cpp<cpp11::decay_t<cpp11::strings>>(agents), cpp11::as_cpp<cpp11::decay_t<cpp11::list>>(targets)));
+  END_CPP11
+}
+// bing_binding.cpp
+cpp11::writable::strings robotstxtr_bing_extract_request_target_(std::string url);
+extern "C" SEXP _robotstxtr_robotstxtr_bing_extract_request_target_(SEXP url) {
+  BEGIN_CPP11
+    return cpp11::as_sexp(robotstxtr_bing_extract_request_target_(cpp11::as_cpp<cpp11::decay_t<std::string>>(url)));
+  END_CPP11
+}
+// bing_binding.cpp
+cpp11::writable::strings robotstxtr_bing_contract_info_();
+extern "C" SEXP _robotstxtr_robotstxtr_bing_contract_info_() {
+  BEGIN_CPP11
+    return cpp11::as_sexp(robotstxtr_bing_contract_info_());
+  END_CPP11
+}
 // collector_binding.cpp
 cpp11::list robotstxtr_collect_directives_(std::string body);
 extern "C" SEXP _robotstxtr_robotstxtr_collect_directives_(SEXP body) {
@@ -50,12 +71,15 @@ extern "C" SEXP _robotstxtr_robotstxtr_extract_request_target_(SEXP url) {
 
 extern "C" {
 static const R_CallMethodDef CallEntries[] = {
-    {"_robotstxtr_robotstxtr_allowed_text_",           (DL_FUNC) &_robotstxtr_robotstxtr_allowed_text_,           3},
-    {"_robotstxtr_robotstxtr_checked_batch_",          (DL_FUNC) &_robotstxtr_robotstxtr_checked_batch_,          4},
-    {"_robotstxtr_robotstxtr_collect_directives_",     (DL_FUNC) &_robotstxtr_robotstxtr_collect_directives_,     1},
-    {"_robotstxtr_robotstxtr_extract_request_target_", (DL_FUNC) &_robotstxtr_robotstxtr_extract_request_target_, 1},
-    {"_robotstxtr_robotstxtr_matching_line_text_",     (DL_FUNC) &_robotstxtr_robotstxtr_matching_line_text_,     3},
-    {"_robotstxtr_robotstxtr_validation_parse_",       (DL_FUNC) &_robotstxtr_robotstxtr_validation_parse_,       1},
+    {"_robotstxtr_robotstxtr_allowed_text_",                (DL_FUNC) &_robotstxtr_robotstxtr_allowed_text_,                3},
+    {"_robotstxtr_robotstxtr_bing_contract_info_",          (DL_FUNC) &_robotstxtr_robotstxtr_bing_contract_info_,          0},
+    {"_robotstxtr_robotstxtr_bing_eval_batch_",             (DL_FUNC) &_robotstxtr_robotstxtr_bing_eval_batch_,             4},
+    {"_robotstxtr_robotstxtr_bing_extract_request_target_", (DL_FUNC) &_robotstxtr_robotstxtr_bing_extract_request_target_, 1},
+    {"_robotstxtr_robotstxtr_checked_batch_",               (DL_FUNC) &_robotstxtr_robotstxtr_checked_batch_,               4},
+    {"_robotstxtr_robotstxtr_collect_directives_",          (DL_FUNC) &_robotstxtr_robotstxtr_collect_directives_,          1},
+    {"_robotstxtr_robotstxtr_extract_request_target_",      (DL_FUNC) &_robotstxtr_robotstxtr_extract_request_target_,      1},
+    {"_robotstxtr_robotstxtr_matching_line_text_",          (DL_FUNC) &_robotstxtr_robotstxtr_matching_line_text_,          3},
+    {"_robotstxtr_robotstxtr_validation_parse_",            (DL_FUNC) &_robotstxtr_robotstxtr_validation_parse_,            1},
     {NULL, NULL, 0}
 };
 }
