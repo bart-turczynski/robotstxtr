@@ -1,17 +1,19 @@
 # robotstxtbing compatibility contract v2
 
-- Status: **architecture-complete draft for owner and evidence review; not
-  implementation-authorizing**
+- Status: **architecture approved; compatibility semantics remain
+  evidence-gated**
 - Contract ID: `robotstxtbing.compatibility/v2`
-- Draft revision: `2026-07-17.2`
+- Draft revision: `2026-07-23.1`
 - Evidence cutoff: 2026-07-17
-- Supersedes: [`robotstxtbing-v1-spec.md`](robotstxtbing-v1-spec.md)
-- Product-boundary decision: FP `ROBO-rvnkadzd`
-- Specification review: FP `ROBO-jeeycsyh`
+- Supersedes: `robotstxtbing-v1-spec.md` from the pre-migration project history
+- Product-boundary decision: FP `BING-rvnkadzd`
+- Specification review and owner approval: FP `BING-jeeycsyh`
+- Standalone migration source: robotstxtr commit `e1a8b4edca67b769490e199275401c37b188a69c`
+- Migrated source SHA-256: `7878546ad241733240865b62130121957e865855ad1750acbacdbdfd09dc9130`
 - Intended first release: `robotstxtbing` 0.1.0
 
-This document replaces the v1 draft as the implementation contract under
-review. V1 correctly protected the evidence boundary, but left engineering
+This document replaces the v1 draft as the approved architecture contract.
+V1 correctly protected the evidence boundary, but left engineering
 choices and empirical Bing questions in one open-clause register. V2 resolves
 the engineering architecture. The remaining gates in section 17 are exact
 evidence slots: observations may fill them, narrow the claimed profile, or
@@ -502,15 +504,32 @@ or a compatibility nonclaim.
 
 ### 9.3 Access grouping
 
-Grouping uses only recognized User-agent, Allow, and Disallow records.
-Sitemap, Crawl-delay, unknown, malformed, blank, and comment-only records
-cannot start, end, merge, or split an access group.
+Grouping starts, merges, and splits access groups on recognized User-agent,
+Allow, and Disallow records. Blank, comment-only, and malformed records never
+affect grouping. Recognized Sitemap and Crawl-delay records and unknown fields
+cannot start, merge, or split a group, and cannot end a group that already holds
+a retained access record — but a Sitemap, Crawl-delay, or unknown record
+appearing between stacked User-agent records (after a User-agent, before this
+group's first retained access record) **ends the stacked User-agent run**: see
+rule 2a. This group-ending exception is the `BING-aosnpswm` resolution (Narrow
+Option A, 2026-07-23; `docs/DECISIONS.md`): it aligns the contract with the
+observed Bing tester and the RFC 9309 §2.2.1 literal reading, and is corroborated
+cross-engine by Yandex. Blank and comment lines stay grouping-transparent (rule
+5); malformed lines in this position are not yet probed and remain transparent
+pending evidence.
 
 The state machine is:
 
 1. A nonempty recognized User-agent starts a group when none is open.
 2. Consecutive recognized User-agent records before the first retained access
-   record stack in that group.
+   record stack in that group. Blank and comment-only lines are transparent and
+   do not interrupt this stacking.
+2a. A recognized Sitemap or Crawl-delay record, or an unknown field, appearing
+   after one or more User-agent records but before the group's first retained
+   access record, ends the stacked User-agent run: the group is sealed with the
+   agents accumulated so far, and the next recognized User-agent starts a new
+   group. Malformed lines are not yet probed in this position and remain
+   transparent.
 3. Once a retained Allow or Disallow record has occurred, the next recognized
    User-agent starts a new group.
 4. A recognized access record with no open nonempty User-agent group is orphan
@@ -518,6 +537,41 @@ The state machine is:
 5. Blank lines and comments have no grouping effect.
 6. Repeated tokens and repeated groups remain distinct in source order; the
    selected profile table decides contribution and merging.
+
+**Adopted grouping resolution (rule 2a — `BING-aosnpswm`, Narrow Option A,
+2026-07-23).** Rule 2a above adopts the observed Bing tester over the earlier
+`google/robotstxt`-lenient default. The behavior sits in a three-way split:
+
+- **RFC 9309 §2.2.1** groups *consecutive* `user-agent` lines and begins the rule
+  section at the first non-`user-agent` line, so an intervening line ends the
+  stack (the RFC-literal reading) — this is what rule 2a now encodes;
+- **`google/robotstxt`** keeps the agents stacked across the intervening line —
+  the lenient default the contract previously encoded (superseded);
+- the **Bing tester** ends the stack, matching the RFC-literal reading.
+
+Evidence (displayed-tester; both profiles render identically, so this is a
+matcher-layer property, not a profile one): the metadata gate's
+`crawl-delay-stacked` cell renders `allow` on two dates (2026-07-20 and
+2026-07-23; the §4.2 two-date threshold is met) —
+`corpus/observations/{bingbot,adidxbot}-metadata-v1/`. The `stacked-ctl-v1`
+causation control isolates the cause: with no intervening line the agents stack
+(`disallow`), while an intervening `Crawl-delay`, `Sitemap`, or unknown field
+each ends the run (`allow`), and an intervening blank or comment stays
+transparent (`disallow`, consistent with rule 5 and the RFC) —
+`corpus/observations/{bingbot,adidxbot}-stacked-ctl-v1/`. A `malformed` line in
+that position is not yet probed, which is why rule 2a scopes the exception to
+Sitemap/Crawl-delay/unknown and leaves malformed transparent. The split is
+corroborated cross-engine: Yandex ends the stack on the same directives (and,
+stricter still, on blank/comment) — strictness ordering Google < Bing < Yandex
+(`docs/PROPOSAL_STACKED_CRAWL_DELAY_GROUPING_2026-07-22.md`,
+`docs/THREE_WAY_GOOGLE_BING_YANDEX_DIFFERENTIAL_MATRIX_2026-07-23.md`).
+
+This is `tester_observed` evidence, which does not by itself establish
+production-crawler behavior (§4.2; `docs/EVIDENCE_LIFECYCLE.md`); the contract
+adopts it as the group-**formation** rule, but no `crawl-delay-stacked`
+expectation is promoted — a group-formation observation is not a metadata
+noninterference expectation. Full analysis and the A/B/C options record:
+`docs/PROPOSAL_STACKED_CRAWL_DELAY_GROUPING_2026-07-22.md`.
 
 An access value beginning with `/` is canonical. Empty values and nonempty
 values without leading `/` are retained as classified records so evidence can
@@ -614,13 +668,16 @@ ASCII decimal digits and a value representable by `uint32_t`; leading zeroes
 are accepted and preserved only in `raw_value`. Signs, decimal points,
 exponents, internal whitespace, and other bytes are invalid.
 
-`group_agents` contains the final stacked User-agent declarations of the open
-access group with their source spelling and lines. It is empty for an unscoped
-record. Because access grouping ignores metadata, a Crawl-delay between stacked
-User-agent records is associated with the final group without changing it.
-The parser therefore resolves and stores `group_agents` when that access group
-closes or at end of input, rather than permanently snapshotting the agents when
-the Crawl-delay line is first classified.
+`group_agents` contains the stacked User-agent declarations of the access group
+the Crawl-delay belongs to, with their source spelling and lines. It is empty for
+an unscoped record. A Crawl-delay after the group's first retained access record
+is ordinary within-group metadata scoped to that group's agents. A Crawl-delay
+appearing between stacked User-agent records — before any retained access record —
+instead **ends** the stacked run under §9.3 rule 2a: its `group_agents` is exactly
+the User-agent records that precede it and that it terminates, and a following
+User-agent begins a separate group. In both cases the agents are fixed by the time
+the Crawl-delay line is classified, so the parser snapshots `group_agents` at that
+line.
 
 The parser preserves duplicates, invalid values, zero, and values above 20.
 Unlike Sitemap, Crawl-delay retains empty and invalid entries because its public
@@ -747,7 +804,7 @@ returned owning value.
 
 ## 15. Corpus, calibration, and offline conformance
 
-The sibling repository uses:
+This repository uses:
 
 ```text
 evidence/sources/          dated primary-source records and paraphrases
@@ -887,7 +944,7 @@ authorized merely because this draft contains a plausible algorithm.
 ## 19. Primary-source inventory
 
 These primary sources were accessed on 2026-07-17. Durable evidence records in
-the sibling repository must preserve access dates, relevant paraphrases, and
+this repository must preserve access dates, relevant paraphrases, and
 content hashes or archived captures where licensing permits.
 
 - [Robots.txt tester](https://www4.bing.com/webmasters/help/robots-txt-tester-623520ca)
