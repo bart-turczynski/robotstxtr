@@ -368,3 +368,52 @@ test_that("an empty batch returns the zero-row shape", {
   expect_identical(attr(out, "n_parse_calls"), 0L)
   expect_type(out$matched_rule_value_raw, "list")
 })
+
+test_that("a non-list `bodies` is a classed call error", {
+  # The adapter is batch-shaped: a bare raw vector is a caller mistake, never
+  # silently promoted to a one-row batch.
+  expect_error(
+    match_bing_v1(
+      raw_body("User-agent: bingbot\nDisallow: /"),
+      "https://example.test/x", "bingbot"
+    ),
+    class = "robotstxtr_invalid_bing_bodies"
+  )
+  expect_error(
+    match_bing_v1("User-agent: bingbot", "https://example.test/x", "bingbot"),
+    class = "robotstxtr_invalid_bing_bodies"
+  )
+  expect_error(
+    match_bing_v1(NULL, "https://example.test/x", "bingbot"),
+    "`bodies` must be a list of raw vectors.",
+    fixed = TRUE
+  )
+})
+
+test_that("an empty or missing URL becomes an empty request target", {
+  expect_identical(bing_target_bytes_v1(""), raw(0))
+  expect_identical(bing_target_bytes_v1(NA_character_), raw(0))
+  # A well-formed URL still yields its extracted target bytes.
+  expect_identical(
+    bing_target_bytes_v1("https://example.test/a?b=c"), charToRaw("/a?b=c")
+  )
+
+  # End to end: the empty target is rejected by the core, not pre-mapped here.
+  out <- match_bing_v1(
+    bodies = list(raw_body("User-agent: bingbot\nDisallow: /")),
+    urls = "",
+    product_tokens = "bingbot"
+  )
+  expect_identical(out$native_evaluation_status, "invalid_request_target")
+  expect_identical(out$matcher_status, "invalid_request_target")
+  expect_identical(out$reason, "invalid_request_target")
+  expect_identical(out$url_decision, NA_character_)
+  expect_identical(out$error_class, "robots_invalid_request_target")
+
+  out_na <- match_bing_v1(
+    bodies = list(raw_body("User-agent: bingbot\nDisallow: /")),
+    urls = NA_character_,
+    product_tokens = "bingbot"
+  )
+  expect_identical(out_na$matcher_status, "invalid_request_target")
+})

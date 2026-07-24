@@ -165,6 +165,159 @@ test_that("missing tree directory fails closed with an error", {
   )
 })
 
+# --- Manifest PARSING: every malformed shape fails closed -------------------
+#
+# The tests above drive tree verification against a well-formed manifest. These
+# drive read_yandex_vendor_manifest() itself: a manifest the package cannot
+# trust must abort, never degrade into a partial or silently-empty expectation
+# set. Every fixture is written to the caller's tempdir; nothing under inst/ or
+# src/vendor/ is read or written.
+
+# Write DCF `text` (one element per line, "" separating records) to a uniquely
+# named file under `dir` and return its path.
+write_yandex_manifest_text <- function(dir, name, text) {
+  path <- file.path(dir, name)
+  writeLines(text, path)
+  path
+}
+
+test_that("a manifest that is not parseable DCF fails closed", {
+  tmp <- local_tmpdir()
+  path <- write_yandex_manifest_text(
+    tmp, "garbage.dcf", c("this is not dcf at all", "@@@")
+  )
+  expect_error(read_yandex_vendor_manifest(path), "malformed", fixed = TRUE)
+})
+
+test_that("a manifest missing required fields fails closed", {
+  tmp <- local_tmpdir()
+  path <- write_yandex_manifest_text(tmp, "no-fields.dcf", c(
+    "Manifest: synthetic", "VendorRoot: vendorx", "", "Other: value"
+  ))
+  expect_error(
+    read_yandex_vendor_manifest(path),
+    "Manifest is missing required field(s): File, Sha256",
+    fixed = TRUE
+  )
+})
+
+test_that("a manifest without exactly one header record fails closed", {
+  tmp <- local_tmpdir()
+  two <- write_yandex_manifest_text(tmp, "two-headers.dcf", c(
+    "Manifest: synthetic", "VendorRoot: vendorx", "",
+    "Manifest: second", "VendorRoot: vendorx", "",
+    "File: vendorx/a", "Sha256: aa", ""
+  ))
+  expect_error(
+    read_yandex_vendor_manifest(two),
+    "exactly one identity/header record",
+    fixed = TRUE
+  )
+
+  none <- write_yandex_manifest_text(tmp, "no-header.dcf", c(
+    "File: vendorx/a", "Sha256: aa", "VendorRoot: vendorx", "",
+    "File: vendorx/b", "Sha256: bb", ""
+  ))
+  expect_error(
+    read_yandex_vendor_manifest(none),
+    "exactly one identity/header record",
+    fixed = TRUE
+  )
+})
+
+test_that("an empty or absent VendorRoot fails closed", {
+  tmp <- local_tmpdir()
+  empty <- write_yandex_manifest_text(tmp, "empty-root.dcf", c(
+    "Manifest: synthetic", "VendorRoot:", "",
+    "File: vendorx/a", "Sha256: aa", ""
+  ))
+  expect_error(
+    read_yandex_vendor_manifest(empty),
+    "non-empty VendorRoot",
+    fixed = TRUE
+  )
+
+  # VendorRoot declared only on a FILE record leaves the header's value NA.
+  absent <- write_yandex_manifest_text(tmp, "na-root.dcf", c(
+    "Manifest: synthetic", "",
+    "File: vendorx/a", "Sha256: aa", "VendorRoot: vendorx", ""
+  ))
+  expect_error(
+    read_yandex_vendor_manifest(absent),
+    "non-empty VendorRoot",
+    fixed = TRUE
+  )
+})
+
+test_that("an empty or absent Sha256 fails closed", {
+  tmp <- local_tmpdir()
+  empty <- write_yandex_manifest_text(tmp, "empty-sha.dcf", c(
+    "Manifest: synthetic", "VendorRoot: vendorx", "",
+    "File: vendorx/a", "Sha256:", ""
+  ))
+  expect_error(
+    read_yandex_vendor_manifest(empty),
+    "non-empty Sha256",
+    fixed = TRUE
+  )
+
+  absent <- write_yandex_manifest_text(tmp, "na-sha.dcf", c(
+    "Manifest: synthetic", "VendorRoot: vendorx", "",
+    "File: vendorx/a", "Sha256: aa", "",
+    "File: vendorx/b", ""
+  ))
+  expect_error(
+    read_yandex_vendor_manifest(absent),
+    "non-empty Sha256",
+    fixed = TRUE
+  )
+})
+
+test_that("a duplicate declared vendored path fails closed", {
+  tmp <- local_tmpdir()
+  path <- write_yandex_manifest_text(tmp, "dup.dcf", c(
+    "Manifest: synthetic", "VendorRoot: vendorx", "",
+    "File: vendorx/a", "Sha256: aa", "",
+    "File: vendorx/a", "Sha256: bb", ""
+  ))
+  expect_error(
+    read_yandex_vendor_manifest(path),
+    "duplicate vendored file path",
+    fixed = TRUE
+  )
+})
+
+test_that("a declared file escaping VendorRoot fails closed", {
+  skip_if_no_sha256()
+  tmp <- local_tmpdir()
+  fx <- make_fixture(tmp)
+  path <- write_yandex_manifest_text(tmp, "escapes.dcf", c(
+    "Manifest: synthetic", "VendorRoot: vendorx", "",
+    "File: vendorx/include/pkg/a.h", "Sha256: aa", "",
+    "File: elsewhere/evil.h", "Sha256: bb", ""
+  ))
+  expect_error(
+    verify_yandex_vendor_tree(fx$root, path),
+    "Manifest file(s) outside VendorRoot 'vendorx': elsewhere/evil.h",
+    fixed = TRUE
+  )
+  # And the helper itself keeps a well-formed set of paths intact.
+  expect_identical(
+    yandex_vendor_relpath(c("vendorx/a", "vendorx/d/b"), "vendorx"),
+    c("a", "d/b")
+  )
+})
+
+test_that("a file that cannot be hashed fails closed", {
+  skip_if_no_sha256()
+  tmp <- local_tmpdir()
+  expect_error(
+    yandex_sha256_file(file.path(tmp, "no-such-file")),
+    "Could not read file for hashing",
+    fixed = TRUE
+  )
+})
+
 test_that("shipped manifest is well-formed and self-describing", {
   skip_if_no_sha256()
   manifest <- yandex_vendor_manifest_path()

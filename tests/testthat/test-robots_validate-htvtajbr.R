@@ -198,6 +198,98 @@ test_that("URL acquisition outcomes remain explicit validation evidence", {
   expect_false(limited$documents$body_truncated)
 })
 
+test_that("an empty document is validated, not skipped", {
+  x <- robots_validate_text(raw())
+  expect_identical(x$documents$byte_size, 0L)
+  expect_identical(x$documents$line_count, 0L)
+  expect_identical(x$documents$active_line_count, 0L)
+  expect_identical(x$documents$nul_byte_count, 0L)
+  expect_identical(x$documents$encoding, "utf-8")
+  expect_false(x$documents$final_newline)
+  expect_identical(x$documents$validation_status, "error")
+  expect_identical(x$diagnostics$code, "missing_user_agent")
+  expect_identical(split_validation_lines(raw()), list())
+})
+
+test_that("bytes-encoded character input is used verbatim", {
+  body <- rawToChar(c(
+    charToRaw("user-agent: *\n"), as.raw(c(0xff, 0xfe)), charToRaw(": v\n")
+  ))
+  Encoding(body) <- "bytes"
+  x <- robots_validate_text(body)
+
+  # Used byte-for-byte: no re-encoding pass widened the 2 raw bytes.
+  expect_identical(x$documents$byte_size, 20L)
+  expect_identical(x$documents$encoding, "invalid-utf-8")
+  expect_identical(x$documents$unknown_directives, 1L)
+  # A bytes-encoded key is reported as the literal "unknown" action rather
+  # than being lower-cased (tolower() would mangle the raw bytes).
+  expect_identical(
+    x$diagnostics$directive[x$diagnostics$code == "unknown_directive"],
+    "unknown"
+  )
+  # A recognized type is passed through; an ASCII unknown key is lower-cased.
+  expect_identical(validation_ascii_action("SiteMap", "sitemap"), "sitemap")
+  expect_identical(validation_ascii_action("Crawl-Delay", "unknown"),
+                   "crawl-delay")
+})
+
+test_that("a user-agent after a rule opens a fresh group", {
+  x <- robots_validate_text(
+    "user-agent: a\ndisallow: /x\nuser-agent: b\ndisallow: /y\n"
+  )
+  expect_identical(x$documents$validation_status, "valid")
+  expect_identical(nrow(x$diagnostics), 0L)
+  expect_identical(x$documents$user_agent_directives, 2L)
+  expect_identical(x$documents$disallow_directives, 2L)
+})
+
+test_that("raw line rendering escapes tabs, control bytes, and empties", {
+  expect_identical(render_validation_line(raw(0)), "")
+  expect_identical(render_validation_line(charToRaw("a\tb")), "a\\tb")
+  expect_identical(render_validation_line(charToRaw("ok /x")), "ok /x")
+  expect_identical(render_validation_line(as.raw(c(0xff, 0x00))), "\\xFF\\x00")
+})
+
+test_that("validation_status reports not_validated when nothing was parsed", {
+  expect_identical(
+    validation_status(empty_validation_diagnostics(), validated = FALSE),
+    "not_validated"
+  )
+  expect_identical(validation_status(empty_validation_diagnostics()), "valid")
+})
+
+test_that("a generic acquisition failure is one acquisition_failed error", {
+  httr2::local_mocked_responses(validation_mock_response(500L))
+  failed <- robots_validate_url("https://example.com/x")
+
+  expect_identical(failed$documents$fetch_outcome, "http_error")
+  expect_identical(failed$documents$validation_status, "not_validated")
+  expect_identical(failed$diagnostics$severity, "error")
+  expect_identical(failed$diagnostics$code, "acquisition_failed")
+  # No transport message exists, so the outcome itself is the stated reason.
+  expect_identical(
+    failed$diagnostics$message,
+    "Acquisition outcome 'http_error' supplied no document body."
+  )
+  expect_identical(failed$documents$error_count, 1L)
+  expect_identical(failed$documents$warning_count, 0L)
+  expect_false(failed$documents$limit_exceeded)
+})
+
+test_that("an acquisition error message is reported verbatim", {
+  # The SSRF guard rejects before any request is issued, so this is offline.
+  blocked <- robots_validate_url("http://127.0.0.1/x")
+
+  expect_identical(blocked$documents$fetch_outcome, "ssrf_blocked")
+  expect_identical(blocked$documents$validation_status, "not_validated")
+  expect_identical(blocked$diagnostics$code, "acquisition_failed")
+  expect_identical(
+    blocked$diagnostics$message, "Blocked by SSRF guard (loopback)."
+  )
+  expect_identical(blocked$documents$error_count, 1L)
+})
+
 test_that("missing and invalid URL acquisitions are not document validation", {
   httr2::local_mocked_responses(validation_mock_response(404L))
   missing <- robots_validate_url("https://example.com/x")
