@@ -35,8 +35,22 @@ fi
 #    it is safe to run against the working dir and gives fast, local feedback.
 Rscript -e 'lints <- lintr::lint_package(); if (length(lints)) { print(lints); quit(status = 1) }'
 
-# 2) R CMD check --as-cran against a clean export of HEAD in a temp dir.
+docsdir="$(mktemp -d)"
 workdir="$(mktemp -d)"
-trap 'rm -rf "$workdir"' EXIT
+trap 'rm -rf "$docsdir" "$workdir"' EXIT
+
+# 2) Generated-docs drift: regenerate man/ and NAMESPACE from the roxygen
+#    comments in R/ and fail if they differ from what is committed. A stale .Rd
+#    is still valid .Rd, so neither the lint above nor the check below can see
+#    it (ROBO-cbzemsnq). Runs before the check because it is the cheaper of the
+#    two and fails fast.
+#
+#    It gets its OWN export, not the one the check builds from: roxygen loads
+#    the package through pkgload, which compiles src/ in place and leaves .o
+#    files and a .so behind that would contaminate the R CMD build below.
+git archive HEAD | tar -x -C "$docsdir"
+Rscript dev/check-docs-drift.R "$docsdir"
+
+# 3) R CMD check --as-cran against a clean export of HEAD in a temp dir.
 git archive HEAD | tar -x -C "$workdir"
 Rscript -e 'rcmdcheck::rcmdcheck(path = commandArgs(TRUE)[1], args = "--as-cran", error_on = "warning")' "$workdir"
