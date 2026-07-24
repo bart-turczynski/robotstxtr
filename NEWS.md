@@ -30,6 +30,21 @@
   `robots_engine_contract_v1()$matcher_identity$yandex`. This is an
   independent, unofficial compatibility profile and does not claim
   production-crawler parity (#ROBO-sbyndsws, #ROBO-mhzmembp).
+* Added `robots_engine_contract_v2()` and, through it, the Bing
+  `matcher_backend` as an available end-to-end backend as of schema revision
+  `2026-07-24.1`, bounded to the profiles `bingbot` and `adidxbot`; every other
+  Bing-backend product token resolves to a checked `unsupported_profile`
+  non-decision. The v2 schema extends the v1 status vocabulary with four Bing
+  outcomes — `invalid_request_target`, `unsupported_profile`,
+  `matcher_input_limit_exceeded`, and `matcher_work_limit_exceeded` — none of
+  which can ever be an allow/disallow decision. Structured backend identity is
+  published at `robots_engine_contract_v2()$matcher_identity$bing`. The
+  `robots_engine_contract_v1()` accessor's own contract id and schema revision
+  (`2026-07-18.2`) are unchanged. This is an independent, unofficial
+  compatibility profile and does not claim production-crawler parity; it is not
+  affiliated with or endorsed by Microsoft, Bing, Bingbot, or AdIdxBot
+  (#ROBO-zcgprxtq, #ROBO-lpedsigv, #ROBO-xbwlsjzu, #ROBO-yhfjsbzo,
+  #ROBO-qetsyvwv, #ROBO-onwulhga, #ROBO-ahilajyn).
 * Development installs and CI now resolve the pre-CRAN `rurl` dependency chain
   through the author's CRAN-like R-universe instead of nested GitHub remotes
   (#ROBO-yasmzyhl).

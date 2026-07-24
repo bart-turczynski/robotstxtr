@@ -2,12 +2,13 @@
 #
 # Offline PACKAGE + LEGAL build-scope audit (ROBO-svbsdjns, YI6f).
 #
-# Proves the SOURCE / BINARY packaging disposition of both engines' legal and
-# provenance material and of the vendored robotstxtyandex payload, with NO
-# network and NO sibling checkout. It builds the source tarball (applying
-# .Rbuildignore), audits which files survive into it, verifies the EXACT
-# vendored bytes against the frozen manifest inside the extracted tarball, and
-# (best effort) installs the tarball to confirm src/ is compiled-only.
+# Proves the SOURCE / BINARY packaging disposition of every engine's legal and
+# provenance material and of the vendored robotstxtyandex and robotstxtbing
+# payloads, with NO network and NO sibling checkout. It builds the source
+# tarball (applying .Rbuildignore), audits which files survive into it, verifies
+# the EXACT vendored bytes of both payloads against their frozen manifests
+# inside the extracted tarball, and (best effort) installs the tarball to
+# confirm src/ is compiled-only.
 #
 # This lives under dev/ (Rbuildignored) on purpose: it needs a build, so it is
 # NOT run at R CMD check time. The check-time, installed-package audits live in
@@ -85,7 +86,16 @@ present_paths <- c(
   "src/vendor/robotstxtyandex/src/policy.cc",
   "src/vendor/robotstxtyandex/src/access_matcher.cc",
   "src/vendor/robotstxtyandex/include/robotstxtyandex/policy.h",
-  "src/vendor/robotstxtyandex/include/robotstxtyandex/version.h"
+  "src/vendor/robotstxtyandex/include/robotstxtyandex/version.h",
+  "inst/vendor/robotstxtbing/MANIFEST.dcf",
+  "inst/vendor/robotstxtbing/PROVENANCE",
+  "inst/bing-corpus/PROVENANCE.dcf",
+  "src/vendor/robotstxtbing/LICENSE",
+  "src/vendor/robotstxtbing/NOTICE",
+  "src/vendor/robotstxtbing/src/matcher.cpp",
+  "src/vendor/robotstxtbing/src/policy.cpp",
+  "src/vendor/robotstxtbing/include/robotstxtbing/policy.h",
+  "src/vendor/robotstxtbing/include/robotstxtbing/version.h"
 )
 for (path in present_paths) {
   check(has_path(path), sprintf("present: %s", path))
@@ -144,6 +154,22 @@ if (!ok_verify) {
   report("mismatched", res$mismatched)
 }
 
+res_bing <- verify_bing_vendor_tree(
+  root = file.path(pkg_root, "src", "vendor", "robotstxtbing"),
+  manifest_path = file.path(
+    pkg_root, "inst", "vendor", "robotstxtbing", "MANIFEST.dcf"
+  )
+)
+ok_verify_bing <- check(
+  isTRUE(res_bing$ok),
+  "verify_bing_vendor_tree(extracted tarball)$ok"
+)
+if (!ok_verify_bing) {
+  report("missing", res_bing$missing)
+  report("extra", res_bing$extra)
+  report("mismatched", res_bing$mismatched)
+}
+
 # ---------------------------------------------------------------------------
 # 4. INSTALL the tarball: inst/ vendor records install; src/ is compiled-only.
 # ---------------------------------------------------------------------------
@@ -171,6 +197,16 @@ if (!identical(install_status, 0L)) {
   check(
     file.exists(file.path(installed, "APACHE-2.0-LICENSE")),
     "installed: APACHE-2.0-LICENSE present"
+  )
+  check(
+    file.exists(file.path(
+      installed, "vendor", "robotstxtbing", "MANIFEST.dcf"
+    )),
+    "installed: inst/vendor/robotstxtbing/MANIFEST.dcf present"
+  )
+  check(
+    file.exists(file.path(installed, "bing-corpus", "PROVENANCE.dcf")),
+    "installed: inst/bing-corpus/PROVENANCE.dcf present"
   )
   check(
     !dir.exists(file.path(installed, "src")),
