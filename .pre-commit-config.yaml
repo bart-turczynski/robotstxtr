@@ -14,15 +14,21 @@ repos:
       # Yandex conformance corpus under inst/yandex-corpus/ is likewise a
       # byte-exact fixture (bodies carry deliberate trailing spaces, CRLF and
       # missing final newlines; cases.json is canonically serialized), so it is
-      # excluded for the same reason.
+      # excluded for the same reason. testthat snapshots under
+      # tests/testthat/_snaps/ are the third case: testthat owns those files
+      # byte-for-byte and rewrites them on every run, so a whitespace hook that
+      # strips the trailing newline just loses a race with the next test run --
+      # leaving the tree perpetually dirty and the snapshot perpetually
+      # reformatted. Snapshot output can also carry meaningful trailing spaces
+      # from column padding.
       - id: end-of-file-fixer
-        exclude: ^(src/vendor/|inst/yandex-corpus/)
+        exclude: ^(src/vendor/|inst/yandex-corpus/|tests/testthat/_snaps/)
       - id: trailing-whitespace
-        exclude: ^(src/vendor/|inst/yandex-corpus/)
+        exclude: ^(src/vendor/|inst/yandex-corpus/|tests/testthat/_snaps/)
       - id: check-merge-conflict
       - id: check-yaml
       - id: mixed-line-ending
-        exclude: ^(src/vendor/|inst/yandex-corpus/)
+        exclude: ^(src/vendor/|inst/yandex-corpus/|tests/testthat/_snaps/)
       - id: check-case-conflict
   - repo: local
     hooks:

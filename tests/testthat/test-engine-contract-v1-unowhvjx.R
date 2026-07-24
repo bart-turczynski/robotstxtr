@@ -467,3 +467,239 @@ test_that("versioned axes reject implicit or unknown selections", {
     class = "robotstxtr_incompatible_legacy_adapter"
   )
 })
+
+test_that("print method summarizes and previews engine decisions", {
+  body <- "user-agent: *\nDisallow: /private\n"
+  plural <- robots_evaluate_text_v1(
+    body, c("https://example.com/a", "https://example.com/private"),
+    "bot", "google", "google"
+  )
+  single <- robots_evaluate_text_v1(
+    body, "https://example.com/private", "bot", "google", "google"
+  )
+  empty <- robots_evaluate_text_v1(body, character(), "bot", "google", "google")
+
+  # Every printed field is either a frozen schema string or an echo of the
+  # caller's own input: no timestamp, run id, or filesystem path reaches the
+  # output, so the snapshot is stable across runs and machines.
+  expect_snapshot(print(plural))
+  expect_snapshot(print(single))
+  expect_snapshot(print(empty))
+
+  # The method returns its input invisibly.
+  printed <- capture.output(returned <- print(plural))
+  expect_identical(returned, plural)
+  expect_gt(length(printed), 0L)
+})
+
+test_that("engine argument expansion rejects bad types and lengths", {
+  expect_error(
+    robotstxtr:::expand_product_token_v1(1L, 2L),
+    class = "robotstxtr_invalid_robots_product_token_type",
+    regexp = "must be a character vector"
+  )
+  expect_error(
+    robotstxtr:::expand_product_token_v1(c("a", "b"), 3L),
+    class = "robotstxtr_length_mismatch",
+    regexp = "got length 2"
+  )
+  # length(token) == n passes the vector through unchanged, elementwise.
+  expect_identical(
+    robotstxtr:::expand_product_token_v1(c("a", "b"), 2L), c("a", "b")
+  )
+  expect_identical(
+    robotstxtr:::expand_product_token_v1("a", 3L), rep("a", 3L)
+  )
+
+  backends <- robotstxtr:::engine_matchers_v1()
+  expect_error(
+    robotstxtr:::expand_engine_argument_v1(1L, 2L, "matcher_backend", backends),
+    class = "robotstxtr_invalid_matcher_backend",
+    regexp = "must be a character vector"
+  )
+  expect_error(
+    robotstxtr:::expand_engine_argument_v1(
+      c("google", "yandex"), 3L, "robots_policy_ruleset",
+      robotstxtr:::engine_rulesets_v1()
+    ),
+    class = "robotstxtr_length_mismatch",
+    regexp = "got length 2"
+  )
+  expect_identical(
+    robotstxtr:::expand_engine_argument_v1(
+      c("google", "yandex"), 2L, "matcher_backend", backends
+    ),
+    c("google", "yandex")
+  )
+})
+
+test_that("supplied text bodies keep raw bytes when marked as bytes", {
+  # A "bytes"-encoded string must not be routed through enc2utf8(): the
+  # non-UTF-8 octet has to survive into the matcher input verbatim.
+  body <- rawToChar(as.raw(c(0x2f, 0xff)))
+  Encoding(body) <- "bytes"
+  expect_identical(Encoding(body), "bytes")
+  expect_identical(
+    robotstxtr:::text_body_bytes_v1(body), as.raw(c(0x2f, 0xff))
+  )
+})
+
+test_that("acquisition results map onto neutral evidence statuses", {
+  status_of <- function(...) {
+    robotstxtr:::source_evidence_status_v1(
+      robotstxtr:::make_source_result(...)
+    )
+  }
+  expect_identical(
+    status_of(
+      "redirect_error", NULL, NULL, 5L, NULL, "over budget",
+      terminal_redirect_reason = "over_budget"
+    ),
+    "redirect_over_budget"
+  )
+  expect_identical(
+    status_of("timeout", NULL, NULL, 0L, NULL, "timed out"), "transport_fail"
+  )
+  expect_identical(
+    status_of("tls_error", NULL, NULL, 0L, NULL, "bad certificate"),
+    "transport_fail"
+  )
+  # A 1xx response to the robots.txt request is a protocol error, never a
+  # status the policy table can rule on.
+  expect_identical(
+    status_of("http_error", 100L, "http://example.test/robots.txt", 0L,
+              NULL, NULL),
+    "http_protocol_error"
+  )
+  # Nothing observed and no status band to classify: evidence is not
+  # applicable rather than an implied allow or deny.
+  expect_identical(
+    status_of("missing", NULL, "http://example.test/robots.txt", 0L,
+              NULL, NULL),
+    "not_applicable"
+  )
+})
+
+# The scattered evidence row resolve_policy_v1() consumes: evaluate_rows_v1()
+# reduces one evidence data.frame row to scalars before handing it over. Only
+# these four fields are read, so the fixture names exactly those.
+engine_policy_evidence <- function(evidence_status, source_kind = "fetched",
+                                   final_http_status = NA_integer_,
+                                   stored_bytes = 0L) {
+  list(
+    evidence_status = evidence_status,
+    source_kind = source_kind,
+    final_http_status = final_http_status,
+    stored_bytes = stored_bytes
+  )
+}
+
+test_that("policy resolution covers every acquisition category", {
+  policy_table <- robotstxtr:::engine_policy_table_v1()
+  resolve <- function(evidence, ruleset = "google") {
+    robotstxtr:::resolve_policy_v1(evidence, ruleset, policy_table)
+  }
+
+  # Evidence that classifies into no status band is never evaluated.
+  expect_identical(
+    resolve(engine_policy_evidence("not_applicable")),
+    list(
+      policy_status = "not_evaluated",
+      policy_action = NA_character_,
+      policy_reason = "evidence_not_applicable",
+      policy_provenance = "application_choice",
+      policy_source = "design/engine-profiles.md#neutral-fetch"
+    )
+  )
+  # A transport failure is lifecycle-dependent for Google: no action.
+  expect_identical(
+    resolve(engine_policy_evidence("transport_fail")),
+    list(
+      policy_status = "context_required",
+      policy_action = NA_character_,
+      policy_reason = "crawler_lifecycle_context_required",
+      policy_provenance = "documented",
+      policy_source = "design/engine-profiles.md#status-policy"
+    )
+  )
+  # Google documents an over-budget redirect chain as a 404-equivalent.
+  expect_identical(
+    resolve(engine_policy_evidence("redirect_over_budget")),
+    list(
+      policy_status = "evaluated",
+      policy_action = "allow_all",
+      policy_reason = "redirect_over_budget_as_404",
+      policy_provenance = "documented",
+      policy_source = "design/engine-profiles.md#redirect-handling"
+    )
+  )
+  # A non-200 2xx still yields rules under Google.
+  expect_identical(
+    resolve(engine_policy_evidence("usable_body", final_http_status = 204L)),
+    list(
+      policy_status = "evaluated",
+      policy_action = "use_rules",
+      policy_reason = "http_2xx_use_rules",
+      policy_provenance = "documented",
+      policy_source = "design/engine-profiles.md#status-policy"
+    )
+  )
+  # 429 is split out of the 4xx band; RFC 9309 allows all by application
+  # choice rather than by documented vendor behavior.
+  expect_identical(
+    resolve(
+      engine_policy_evidence("http_status", final_http_status = 429L),
+      "rfc9309"
+    ),
+    list(
+      policy_status = "evaluated",
+      policy_action = "allow_all",
+      policy_reason = "http_429_allow_all",
+      policy_provenance = "application_choice",
+      policy_source = "design/engine-profiles.md#status-policy"
+    )
+  )
+  # Defensive fall-through: a final status matching no band is treated as a
+  # protocol error, which no ruleset documents.
+  expect_identical(
+    resolve(engine_policy_evidence("http_status")),
+    list(
+      policy_status = "documentation_gap",
+      policy_action = NA_character_,
+      policy_reason = "policy_documentation_gap",
+      policy_provenance = "documentation_gap",
+      policy_source = "design/engine-profiles.md"
+    )
+  )
+})
+
+test_that("registry validation rejects field-level drift", {
+  registry <- robotstxtr:::engine_matcher_registry_v1()
+
+  bad_revision <- registry
+  bad_revision$google$revision <- ""
+  expect_error(
+    robotstxtr:::validate_matcher_registry_v1(bad_revision),
+    class = "robotstxtr_matcher_registry_invariant",
+    regexp = "backend `google` must have one non-empty revision"
+  )
+
+  bad_availability <- registry
+  bad_availability$google$availability <- "maybe"
+  expect_error(
+    robotstxtr:::validate_matcher_registry_v1(bad_availability),
+    class = "robotstxtr_matcher_registry_invariant",
+    regexp = "backend `google` has an invalid availability state"
+  )
+
+  # Keeping the `callable` name but filling it with a non-function passes the
+  # field-name check, so the availability/callable coupling guard is what has
+  # to catch it.
+  not_callable <- registry
+  not_callable$google$callable <- "match_google_v1"
+  expect_error(
+    robotstxtr:::validate_matcher_registry_v1(not_callable),
+    class = "robotstxtr_matcher_registry_invariant",
+    regexp = "available backend `google` must have a registered callable"
+  )
+})

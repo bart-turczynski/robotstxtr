@@ -84,10 +84,6 @@ engine_policy_revisions_v1 <- function() {
   )
 }
 
-engine_matcher_revisions_v1 <- function() {
-  matcher_registry_field_v1(validated_matcher_registry_v1(), "revision")
-}
-
 engine_matcher_availability_v1 <- function() {
   matcher_registry_field_v1(validated_matcher_registry_v1(), "availability")
 }

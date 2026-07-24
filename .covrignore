@@ -10,3 +10,19 @@ src/robots.cc
 src/robots.h
 src/reporting_robots.cc
 src/reporting_robots.h
+
+# Vendored upstream: the Bing and Yandex matchers under src/vendor/. Same rule
+# as the Google matcher above — carried verbatim from their upstream projects
+# and validated by their own conformance corpora in this package (Bing:
+# tests/testthat/test-bing-corpus-onwulhga.R, test-bing-nonregression-onwulhga.R,
+# test-bing-vendor-manifest-lpedsigv.R; Yandex: tests/testthat/
+# test-yandex-corpus-novczgii.R, test-yandex-adapter-conformance-voxvegad.R),
+# not by this package's own line coverage. Directory prefixes: covr expands a
+# directory entry to every file beneath it, so new vendored sources are covered
+# by these two lines automatically. Only src/vendor/ is excluded — the package's
+# own C++ binding shims (src/bing_binding.cpp, src/yandex_matcher_binding.cpp,
+# src/yandex_target_binding.cpp, src/collector_binding.cpp,
+# src/matcher_binding.cpp, src/cpp11.cpp) are this package's code and stay
+# covered.
+src/vendor/robotstxtbing/
+src/vendor/robotstxtyandex/
