@@ -42,7 +42,7 @@ test_that("contract metadata publishes revisions and sibling ranges", {
   expect_identical(
     contract$matcher_availability[["google"]], "available"
   )
-  # Yandex is active post-activation; RFC 9309 and Bing remain unavailable.
+  # Yandex and Bing are active post-activation; RFC 9309 remains unavailable.
   expect_identical(
     contract$matcher_availability[["yandex"]], "available"
   )
@@ -51,8 +51,14 @@ test_that("contract metadata publishes revisions and sibling ranges", {
     robotstxtr:::yandex_matcher_revision_v1()
   )
   expect_identical(
-    unname(contract$matcher_availability[c("rfc9309", "bing")]),
-    rep("capability_unavailable", 2L)
+    contract$matcher_availability[["bing"]], "available"
+  )
+  expect_identical(
+    contract$matcher_revisions[["bing"]],
+    robotstxtr:::bing_matcher_revision_v1()
+  )
+  expect_identical(
+    contract$matcher_availability[["rfc9309"]], "capability_unavailable"
   )
   expect_named(
     contract$sibling_versions, c("sitemapr", "sitemap-validator")
@@ -114,18 +120,19 @@ test_that("policy ruleset and matcher backend remain independent", {
     c("rfc9309", "yandex", "bing")
   )
 
-  # RFC 9309 and Bing remain capability_unavailable; the active Yandex backend
-  # evaluates to a real decision. Policy still resolves independently of the
-  # backend on every row.
+  # RFC 9309 remains capability_unavailable; the active Yandex backend evaluates
+  # to a real decision; the active Bing backend rejects the non-Bing token
+  # "Yandex" with unsupported_profile (no decision, never a fallthrough). Policy
+  # still resolves independently of the backend on every row.
   expect_identical(x$results$policy_status, rep("evaluated", 3L))
   expect_identical(x$results$policy_action, rep("use_rules", 3L))
   expect_identical(
     x$results$matcher_status,
-    c("capability_unavailable", "evaluated", "capability_unavailable")
+    c("capability_unavailable", "evaluated", "unsupported_profile")
   )
   expect_identical(
     x$results$matcher_availability,
-    c("capability_unavailable", "available", "capability_unavailable")
+    c("capability_unavailable", "available", "available")
   )
   expect_identical(
     x$results$url_decision, c(NA_character_, "disallow", NA_character_)
@@ -133,7 +140,7 @@ test_that("policy ruleset and matcher backend remain independent", {
   expect_identical(
     x$results$reason,
     c("matcher_capability_unavailable", "rule_disallow",
-      "matcher_capability_unavailable")
+      "unsupported_profile")
   )
 })
 

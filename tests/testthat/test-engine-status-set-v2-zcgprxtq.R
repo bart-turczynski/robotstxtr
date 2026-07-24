@@ -39,14 +39,15 @@ test_that("the guard passes members and fails closed on any non-member", {
   )
 })
 
-test_that("Bing backend stays capability_unavailable in this slice", {
+test_that("Bing backend is available after the BI5 activation", {
   contract <- robots_engine_contract_v1()
-  expect_identical(
-    contract$matcher_availability[["bing"]], "capability_unavailable"
-  )
+  expect_identical(contract$matcher_availability[["bing"]], "available")
   registry <- robotstxtr:::engine_matcher_registry_v1()
-  expect_null(registry$bing$callable)
-  expect_identical(registry$bing$availability, "capability_unavailable")
+  expect_type(registry$bing$callable, "closure")
+  expect_identical(registry$bing$availability, "available")
+  expect_identical(
+    registry$bing$revision, robotstxtr:::bing_matcher_revision_v1()
+  )
 })
 
 test_that("real evaluations emit only members of the v2 status set", {
@@ -59,9 +60,9 @@ test_that("real evaluations emit only members of the v2 status set", {
   skip_if_not(
     has_batch && has_extract, "native binding not built (pure-R install)"
   )
-  # Cover every currently reachable matcher_status branch: evaluated (google),
-  # not_needed (allow_all policy via 4xx yandex), capability_unavailable (bing),
-  # and not_evaluated (yandex unsupported token).
+  # Cover several reachable matcher_status branches: evaluated (google),
+  # not_evaluated (yandex unsupported token), and unsupported_profile (bing, the
+  # non-Bing token "bot"). All must be members of the published v2 set.
   x <- robots_evaluate_text_v1(
     "user-agent: *\ndisallow: /private",
     rep("https://example.com/private", 3L),

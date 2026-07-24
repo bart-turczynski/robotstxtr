@@ -69,6 +69,7 @@ pl_public_exports <- c(
   "as_legacy_robots_decisions_v1",
   "robots_body",
   "robots_engine_contract_v1",
+  "robots_engine_contract_v2",
   "robots_evaluate_text_v1",
   "robots_evaluate_url_v1",
   "robots_fetch",

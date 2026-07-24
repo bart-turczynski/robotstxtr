@@ -328,9 +328,9 @@ test_that("the bing native routines are registered", {
   ) %in% names_registered))
 })
 
-test_that("Bing engine availability stays capability_unavailable at BI4", {
+test_that("Bing engine availability is available after BI5 activation", {
   expect_identical(
     engine_matcher_availability_v1()[["bing"]],
-    "capability_unavailable"
+    "available"
   )
 })

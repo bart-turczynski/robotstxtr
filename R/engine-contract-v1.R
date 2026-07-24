@@ -14,6 +14,20 @@ engine_schema_revision_v1 <- function() {
   "2026-07-18.2"
 }
 
+# The engine-aware/v2 facade identity (BI-V2-SCHEMA, spec SS15). Introduced by
+# the atomic Bing activation, it supersedes the v1 facade for Bing while leaving
+# the v1 accessor's contract_id and schema_revision byte-unchanged (spec SS16.5
+# preserves the Yandex schema-2026-07-18.2 guarantees). The v2 surface is
+# published through robots_engine_contract_v2(); the shared registry and status
+# vocabulary are the same objects both accessors read.
+engine_contract_id_v2 <- function() {
+  "robotstxtr.engine-aware/v2"
+}
+
+engine_schema_revision_v2 <- function() {
+  "2026-07-24.1"
+}
+
 engine_rulesets_v1 <- function() {
   c("google", "yandex", "rfc9309", "bing", "assumed_rfc9309")
 }
@@ -283,7 +297,10 @@ robots_engine_contract_v1 <- function() {
         matcher_registry, "availability"
       ),
       matcher_capability = engine_backend_capability_v1(),
-      matcher_identity = list(yandex = yandex_matcher_identity_v1()),
+      matcher_identity = list(
+        yandex = yandex_matcher_identity_v1(),
+        bing = bing_matcher_identity_v1()
+      ),
       robots_policy_rulesets = engine_rulesets_v1(),
       matcher_backends = engine_matchers_v1(),
       policy_table = engine_policy_table_v1(),
@@ -293,6 +310,55 @@ robots_engine_contract_v1 <- function() {
       )
     ),
     class = "robots_engine_contract_v1"
+  )
+}
+
+#' Inspect the engine-aware/v2 robots contract (Bing activation)
+#'
+#' Returns the v2 facade metadata introduced by the atomic Bing matcher
+#' activation. It has the same shape as [robots_engine_contract_v1()] but
+#' publishes the v2 contract id (`robotstxtr.engine-aware/v2`), the v2
+#' schema revision (`2026-07-24.1`), the full eight-member v2 matcher-status set
+#' (`matcher_status_set`), and the separately inspectable vendored-matcher
+#' identity fields for both the Yandex and Bing backends
+#' (`matcher_identity$bing`, with library/payload/contract/parser/profile/
+#' manifest components). It reads the same shared matcher registry as the v1
+#' accessor, so the Bing backend reports `available` here and there alike; the
+#' v1 accessor's own `contract_id` and `schema_revision` stay unchanged. It does
+#' no fetch or matching.
+#'
+#' @return A named list of contract metadata with class
+#'   `robots_engine_contract_v2`.
+#' @seealso [robots_engine_contract_v1()]
+#' @export
+robots_engine_contract_v2 <- function() {
+  matcher_registry <- validated_matcher_registry_v1()
+  structure(
+    list(
+      contract_id = engine_contract_id_v2(),
+      schema_revision = engine_schema_revision_v2(),
+      matcher_status_set = engine_matcher_status_set_v2(),
+      policy_revisions = engine_policy_revisions_v1(),
+      matcher_revisions = matcher_registry_field_v1(
+        matcher_registry, "revision"
+      ),
+      matcher_availability = matcher_registry_field_v1(
+        matcher_registry, "availability"
+      ),
+      matcher_capability = engine_backend_capability_v1(),
+      matcher_identity = list(
+        yandex = yandex_matcher_identity_v1(),
+        bing = bing_matcher_identity_v1()
+      ),
+      robots_policy_rulesets = engine_rulesets_v1(),
+      matcher_backends = engine_matchers_v1(),
+      policy_table = engine_policy_table_v1(),
+      sibling_versions = c(
+        sitemapr = ">= 0.0.0.9000, < 0.1.0",
+        `sitemap-validator` = ">= 1.0.0, < 2.0.0"
+      )
+    ),
+    class = "robots_engine_contract_v2"
   )
 }
 
@@ -719,6 +785,50 @@ yandex_matcher_revision_v1 <- function() {
   )
 }
 
+# The frozen identity of the vendored robotstxtbing 0.1.0 payload (BI-V2-PIN /
+# BI-V2-IDENTITY). These eight fields single-source the Bing matcher revision
+# and the separately inspectable identity metadata published on the v2 contract
+# accessor. They MUST byte-equal the corresponding
+# inst/vendor/robotstxtbing/MANIFEST.dcf fields; the seven contract_info()
+# fields reconcile against the compiled ground truth
+# bing_native_contract_info(), and the composed MatcherRevision below
+# byte-equals the manifest's MatcherRevision. `payload_commit` is the
+# owner-approved pin: the annotated tag object for tag 0.1.0 (the value the
+# manifest's MatcherRevision embeds), not its target commit.
+bing_matcher_identity_v1 <- function() {
+  list(
+    library_version = "0.1.0",
+    payload_commit = "c82855d0756c748cc4770246a19282323cdfa331",
+    contract_id = "robotstxtbing-v2",
+    contract_revision = "0.1.0",
+    parser_revision = "0.1.0",
+    bingbot_profile_revision = "bingbot-2026-07-23.1",
+    adidxbot_profile_revision = "adidxbot-2026-07-23.1",
+    release_manifest_sha256 = paste0(
+      "5e79ee5dcb1a22b73b5fa0f86766be529",
+      "cf111fd5530d07b53fe1d6b7050a858"
+    )
+  )
+}
+
+# Compose the frozen Bing identity into the serialized MatcherRevision string.
+# The format is fixed by design/robotstxtbing-integration-v2-spec.md SS14 and
+# MUST byte-equal the MatcherRevision field in
+# inst/vendor/robotstxtbing/MANIFEST.dcf.
+bing_matcher_revision_v1 <- function() {
+  id <- bing_matcher_identity_v1()
+  paste0(
+    "robotstxtbing/", id$library_version,
+    "+payload.", id$payload_commit,
+    ";contract=", id$contract_id,
+    ";contract-rev=", id$contract_revision,
+    ";parser=", id$parser_revision,
+    ";bingbot=", id$bingbot_profile_revision,
+    ";adidxbot=", id$adidxbot_profile_revision,
+    ";manifest=", id$release_manifest_sha256
+  )
+}
+
 engine_matcher_registry_v1 <- function() {
   list(
     google = list(
@@ -740,9 +850,9 @@ engine_matcher_registry_v1 <- function() {
       callable = NULL
     ),
     bing = list(
-      revision = "capability-unavailable-v1",
-      availability = "capability_unavailable",
-      callable = NULL
+      revision = bing_matcher_revision_v1(),
+      availability = "available",
+      callable = match_bing_v1
     )
   )
 }
@@ -844,11 +954,11 @@ match_backend_v1 <- function(backend, body, url, product_token,
       "robotstxtr_matcher_backend_unavailable"
     )
   }
-  # Batch-shaped backends (e.g. yandex, parse-once) are never row-dispatched:
+  # Batch-shaped backends (yandex, bing -- parse-once) are never row-dispatched:
   # evaluate_rows_v1() collects their rows and invokes the registered callable
   # once in batch form. Reaching this per-row path with such a backend is an
   # internal invariant violation, not a caller error.
-  if (identical(backend, "yandex")) {
+  if (identical(backend, "yandex") || identical(backend, "bing")) {
     robots_abort(
       sprintf(
         "Matcher backend `%s` is batch-shaped and must not be row-dispatched.",
@@ -920,11 +1030,13 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
   )
 
   valid <- url_valid & token_valid
-  # Batch-shaped backends (yandex) are collected here and dispatched once after
-  # the loop so each distinct body is parsed a single time. Google and other
-  # row-shaped backends keep the byte-identical per-row path below.
+  # Batch-shaped backends (yandex, bing) are collected here and dispatched once
+  # after the loop so each distinct body is parsed a single time. Google and
+  # other row-shaped backends keep the byte-identical per-row path below.
   yandex_rows <- integer(0)
   yandex_bodies <- list()
+  bing_rows <- integer(0)
+  bing_bodies <- list()
   for (i in which(valid)) {
     evidence_index <- match(source_id[[i]], evidence$source_id)
     ev <- lapply(evidence, function(column) column[[evidence_index]])
@@ -967,6 +1079,12 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
       yandex_bodies[[length(yandex_bodies) + 1L]] <- ev$body
       next
     }
+    if (identical(matcher_backend[[i]], "bing")) {
+      # Defer: same parse-once batch treatment as yandex, on its own backend.
+      bing_rows <- c(bing_rows, i)
+      bing_bodies[[length(bing_bodies) + 1L]] <- ev$body
+      next
+    }
     matched <- match_backend_v1(
       matcher_backend[[i]], ev$body, url[[i]], product_token[[i]],
       matcher_registry
@@ -1005,6 +1123,33 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
     error_class[yandex_rows] <- res$error_class
     error_message[yandex_rows] <- res$error_message
     yandex_raw_values <- res$matched_rule_value_raw
+  }
+
+  # Batch Bing dispatch: one parse-once call over every collected row, scattered
+  # back the same way as Yandex. The Bing adapter emits the v2 non-evaluated
+  # statuses (unsupported_profile, invalid_request_target,
+  # matcher_input_limit_exceeded, matcher_work_limit_exceeded), all validated
+  # against the published set below.
+  bing_raw_values <- NULL
+  if (length(bing_rows) > 0L) {
+    entry <- matcher_registry$bing
+    res <- entry$callable(
+      bodies = bing_bodies,
+      urls = url[bing_rows],
+      product_tokens = product_token[bing_rows]
+    )
+    matcher_status[bing_rows] <- res$matcher_status
+    url_decision[bing_rows] <- res$url_decision
+    reason[bing_rows] <- res$reason
+    matched_line[bing_rows] <- res$matched_line
+    matched_rule_type[bing_rows] <- res$matched_rule_type
+    matched_rule_value[bing_rows] <- res$matched_rule_value
+    matcher_input_bytes[bing_rows] <- res$matcher_input_bytes
+    matcher_body_truncated[bing_rows] <- res$matcher_body_truncated
+    error_stage[bing_rows] <- res$error_stage
+    error_class[bing_rows] <- res$error_class
+    error_message[bing_rows] <- res$error_message
+    bing_raw_values <- res$matched_rule_value_raw
   }
 
   # Fail closed: no row may carry a matcher_status outside the published
@@ -1056,6 +1201,9 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
   results$matched_rule_value_raw <- vector("list", n)
   if (length(yandex_rows) > 0L) {
     results$matched_rule_value_raw[yandex_rows] <- yandex_raw_values
+  }
+  if (length(bing_rows) > 0L) {
+    results$matched_rule_value_raw[bing_rows] <- bing_raw_values
   }
   results
 }
