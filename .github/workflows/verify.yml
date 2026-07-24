@@ -100,6 +100,16 @@ jobs:
           # roxygen loads the package through pkgload the same way
           # devtools::document() does, which compiles the vendored C++, so the
           # LinkingTo and Imports dependencies all have to be present.
+          #
+          # The extras are cpp11::cpp_register()'s own helper packages, which
+          # pkgload invokes for a LinkingTo: cpp11 package before compiling.
+          # They are Suggests of cpp11, not dependencies of this package, so
+          # nothing else in the dependency graph pulls them in and the job
+          # otherwise dies on "The decor package(s) are required for this
+          # functionality". Source of truth: cpp11:::get_cpp_register_needs().
+          extra-packages: >-
+            any::brio, any::cli, any::decor, any::desc, any::glue,
+            any::tibble, any::vctrs
           needs: check
       - name: Install the roxygen2 version pinned in DESCRIPTION
         # The drift check demands an exact version match. roxygen output

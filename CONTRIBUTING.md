@@ -23,7 +23,10 @@ Rscript dev/check-docs-drift.R
 ```
 
 It needs the exact roxygen2 version pinned by `Config/roxygen2/version` in
-`DESCRIPTION`, since roxygen output formatting changes between releases.
+`DESCRIPTION`, since roxygen output formatting changes between releases. Like
+`devtools::document()` itself, it loads the package through `pkgload`, which
+runs `cpp11::cpp_register()` first — so `cpp11:::get_cpp_register_needs()`
+(`brio`, `cli`, `decor`, `desc`, `glue`, `tibble`, `vctrs`) must be installed.
 
 Source lives in `src/`, behavior features live in `features/`, tests live in `tests/`, and durable project context lives in `docs/`.
 
