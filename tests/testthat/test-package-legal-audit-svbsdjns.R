@@ -134,6 +134,74 @@ test_that("LEGAL-SEPARATION Google Apache vs Yandex MIT stay distinct", {
 })
 
 # ---------------------------------------------------------------------------
+# LEGAL-BING -- the vendored Bing Apache-2.0 disposition survives install and
+# stays DISTINCT from Google's Apache-2.0 material and Yandex's MIT material
+# (ROBO-onwulhga, BI6; spec §16.6).
+# ---------------------------------------------------------------------------
+
+test_that("LEGAL-BING Apache-2.0 manifest + provenance are installed", {
+  manifest <- pl_read_installed("vendor/robotstxtbing/MANIFEST.dcf")
+  provenance <- pl_read_installed("vendor/robotstxtbing/PROVENANCE")
+  skip_if(
+    is.na(manifest) || is.na(provenance),
+    "installed Bing vendor records absent"
+  )
+
+  # The manifest records Apache-2.0, the license disposition, and the pinned
+  # payload identity.
+  expect_true(grepl("License: Apache-2.0", manifest, fixed = TRUE))
+  expect_true(grepl("LicenseDisposition: Apache-2.0", manifest, fixed = TRUE))
+  expect_true(grepl(
+    "PayloadCommit: 1f2431b9d47ba25dec313eec5a396e795f00b5b8",
+    manifest,
+    fixed = TRUE
+  ))
+
+  # The provenance carries the independence disclaimer (Microsoft/Bing).
+  expect_true(grepl("Apache License 2.0", provenance, fixed = TRUE))
+  expect_true(grepl("unofficial", provenance, fixed = TRUE))
+  expect_true(grepl("Microsoft", provenance, fixed = TRUE))
+  expect_true(grepl("affiliation", provenance, fixed = TRUE))
+})
+
+test_that("LEGAL-BING corpus provenance is installed and two-tier", {
+  prov <- pl_read_installed("bing-corpus/PROVENANCE.dcf")
+  skip_if(is.na(prov), "installed Bing corpus provenance absent")
+
+  # The corpus provenance pins the release manifest and payload, records the
+  # two-tier tester/golden disposition, and carries the independence disclaimer.
+  expect_true(grepl("CaseCount: 191", prov, fixed = TRUE))
+  expect_true(grepl("AcceptedExpectationCount: 57", prov, fixed = TRUE))
+  expect_true(grepl(
+    "ReleaseManifestSha256: 5e79ee5", prov,
+    fixed = TRUE
+  ))
+  expect_true(grepl("tester_observed", prov, fixed = TRUE))
+  expect_true(grepl("not affiliated", prov, fixed = TRUE))
+})
+
+test_that("LEGAL-BING Apache disposition is distinct from Google + Yandex", {
+  bing_manifest <- pl_read_installed("vendor/robotstxtbing/MANIFEST.dcf")
+  yandex_manifest <- pl_read_installed("vendor/robotstxtyandex/MANIFEST.dcf")
+  skip_if(
+    is.na(bing_manifest) || is.na(yandex_manifest),
+    "installed vendor manifests absent"
+  )
+
+  # The Bing disposition explicitly names its separation from Google's Apache
+  # material and from the package/Yandex licenses; the two are not conflated.
+  expect_true(grepl(
+    "distinct from the package MIT license", bing_manifest, fixed = TRUE
+  ))
+  expect_true(grepl(
+    "inst/APACHE-2.0-LICENSE", bing_manifest, fixed = TRUE
+  ))
+  # Yandex stays MIT; Bing stays Apache-2.0. Three distinct dispositions.
+  expect_true(grepl("License: MIT", yandex_manifest, fixed = TRUE))
+  expect_true(grepl("License: Apache-2.0", bing_manifest, fixed = TRUE))
+})
+
+# ---------------------------------------------------------------------------
 # EXCLUSION -- dev-only legal summaries are Rbuildignored out of the binary.
 # ---------------------------------------------------------------------------
 
@@ -160,11 +228,18 @@ test_that("PRIVATE-API internal / vendor / native symbols are unexported", {
   denylist <- c(
     "robotstxtr_checked_batch_",
     "robotstxtr_extract_request_target_",
+    "robotstxtr_bing_eval_batch_",
+    "robotstxtr_bing_extract_request_target_",
+    "robotstxtr_bing_contract_info_",
     "match_yandex_v1",
     "match_google_v1",
+    "match_bing_v1",
     "verify_yandex_vendor_tree",
+    "verify_bing_vendor_tree",
     "read_yandex_corpus",
     "verify_yandex_corpus",
+    "read_bing_corpus",
+    "verify_bing_corpus",
     "resolve_policy_v1",
     "evaluate_rows_v1"
   )
@@ -195,6 +270,22 @@ test_that("NATIVE-SURFACE hidden Yandex routines are registered + neutral", {
   expect_true(all(hidden %in% names_registered))
   # Neutrally named: no registered routine leaks the engine identity.
   expect_false(any(grepl("yandex", hidden, ignore.case = TRUE)))
+})
+
+test_that("NATIVE-SURFACE hidden Bing routines are registered", {
+  dll <- pl_skip_if_no_native()
+  routines <- getDLLRegisteredRoutines(dll)[[".Call"]]
+  names_registered <- vapply(routines, function(r) r$name, character(1))
+
+  # The three hidden Bing routines (batch eval, request-target extractor,
+  # contract info) are present. Unlike the Yandex routines these carry the
+  # engine name -- that is their registered ABI identity, not an R API promise.
+  hidden <- c(
+    "_robotstxtr_robotstxtr_bing_eval_batch_",
+    "_robotstxtr_robotstxtr_bing_extract_request_target_",
+    "_robotstxtr_robotstxtr_bing_contract_info_"
+  )
+  expect_true(all(hidden %in% names_registered))
 })
 
 # ---------------------------------------------------------------------------
