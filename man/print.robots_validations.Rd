@@ -17,3 +17,18 @@
 \description{
 Print a robots.txt validation result
 }
+\examples{
+# A robots_validations object comes from robots_validate_url() or
+# robots_validate_text(); the transport is mocked here so the example runs
+# offline.
+validations <- httr2::with_mocked_responses(
+  function(req) {
+    httr2::response(
+      status_code = 200L, url = req$url,
+      body = charToRaw("user-agent: *\nDisallow: /private\n")
+    )
+  },
+  robots_validate_url("https://example.com/private")
+)
+print(validations)
+}

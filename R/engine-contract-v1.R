@@ -282,6 +282,25 @@ engine_policy_table_v1 <- function() {
 #'
 #' @return A named list of contract metadata with class
 #'   `robots_engine_contract_v1`.
+#' @examples
+#' # A plain offline accessor: it opens no socket and matches nothing.
+#' contract <- robots_engine_contract_v1()
+#' contract$contract_id
+#' contract$schema_revision
+#'
+#' # Which matcher backends this installation can actually run.
+#' contract$matcher_availability
+#'
+#' # The token/semantics boundary each backend is authoritative for.
+#' contract$matcher_capability$yandex$token_policy
+#'
+#' # Status policy is a lookup keyed by acquisition category and ruleset:
+#' # how each ruleset treats a 4xx response to the robots.txt request.
+#' policy <- contract$policy_table
+#' policy[
+#'   policy$category == "status_4xx",
+#'   c("ruleset", "policy_status", "policy_action", "policy_provenance")
+#' ]
 #' @export
 robots_engine_contract_v1 <- function() {
   matcher_registry <- validated_matcher_registry_v1()
@@ -329,6 +348,22 @@ robots_engine_contract_v1 <- function() {
 #'
 #' @return A named list of contract metadata with class
 #'   `robots_engine_contract_v2`.
+#' @examples
+#' v2 <- robots_engine_contract_v2()
+#' v1 <- robots_engine_contract_v1()
+#'
+#' # v2 publishes its own identifiers; the v1 accessor keeps its own.
+#' c(v1 = v1$contract_id, v2 = v2$contract_id)
+#' c(v1 = v1$schema_revision, v2 = v2$schema_revision)
+#'
+#' # The component v2 adds is the full eight-member matcher-status set.
+#' setdiff(names(v2), names(v1))
+#' v2$matcher_status_set
+#'
+#' # Everything else is read from the same shared matcher registry, so the
+#' # Bing identity and backend availability agree across both accessors.
+#' v2$matcher_identity$bing$contract_id
+#' identical(v2$matcher_availability, v1$matcher_availability)
 #' @seealso [robots_engine_contract_v1()]
 #' @export
 robots_engine_contract_v2 <- function() {
@@ -1320,6 +1355,28 @@ robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
 #'
 #' @return A `robots_engine_decisions_v1` object with `results`, neutral
 #'   `evidence`, and `contract` components.
+#' @examples
+#' # This entry point fetches /robots.txt over HTTP. The transport is mocked
+#' # here so the example runs offline; a real call needs no such wrapper.
+#' decisions <- httr2::with_mocked_responses(
+#'   function(req) {
+#'     httr2::response(
+#'       status_code = 200L, url = req$url,
+#'       body = charToRaw("user-agent: *\nDisallow: /private\n")
+#'     )
+#'   },
+#'   robots_evaluate_url_v1(
+#'     c("https://example.com/page", "https://example.com/private"),
+#'     robots_product_token = "my-bot",
+#'     robots_policy_ruleset = "google",
+#'     matcher_backend = "google"
+#'   )
+#' )
+#' decisions$results[c("url", "policy_status", "url_decision", "reason")]
+#'
+#' # Acquisition evidence is recorded neutrally, apart from the decision, so
+#' # the policy applied to the response stays auditable.
+#' decisions$evidence[c("source_id", "final_http_status", "evidence_status")]
 #' @export
 robots_evaluate_url_v1 <- function(url, robots_product_token,
 # nolint start: object_length_linter
@@ -1372,6 +1429,22 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
 #'   Google matcher backend for every row.
 #'
 #' @return A legacy `robots_decisions` object.
+#' @examples
+#' # Build a v1 engine result offline, then adapt it for a legacy consumer.
+#' engine <- robots_evaluate_text_v1(
+#'   "user-agent: *\nDisallow: /private\n",
+#'   c("https://example.com/page", "https://example.com/private"),
+#'   robots_product_token = "my-bot",
+#'   robots_policy_ruleset = "google",
+#'   matcher_backend = "google"
+#' )
+#' engine$results[c("url", "url_decision", "reason")]
+#'
+#' # The adapter collapses the three-valued `url_decision` into the legacy
+#' # logical `allowed`, and carries `reason` over as `decision_source`.
+#' legacy <- as_legacy_robots_decisions_v1(engine)
+#' class(legacy)
+#' legacy$results[c("url", "allowed", "decision_source", "matched_rule_type")]
 #' @export
 as_legacy_robots_decisions_v1 <- function(x) {
   if (!inherits(x, "robots_engine_decisions_v1")) {

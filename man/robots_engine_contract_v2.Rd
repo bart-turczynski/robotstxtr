@@ -23,6 +23,23 @@ accessor, so the Bing backend reports \code{available} here and there alike; the
 v1 accessor's own \code{contract_id} and \code{schema_revision} stay unchanged. It does
 no fetch or matching.
 }
+\examples{
+v2 <- robots_engine_contract_v2()
+v1 <- robots_engine_contract_v1()
+
+# v2 publishes its own identifiers; the v1 accessor keeps its own.
+c(v1 = v1$contract_id, v2 = v2$contract_id)
+c(v1 = v1$schema_revision, v2 = v2$schema_revision)
+
+# The component v2 adds is the full eight-member matcher-status set.
+setdiff(names(v2), names(v1))
+v2$matcher_status_set
+
+# Everything else is read from the same shared matcher registry, so the
+# Bing identity and backend availability agree across both accessors.
+v2$matcher_identity$bing$contract_id
+identical(v2$matcher_availability, v1$matcher_availability)
+}
 \seealso{
 \code{\link[=robots_engine_contract_v1]{robots_engine_contract_v1()}}
 }

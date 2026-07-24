@@ -19,3 +19,23 @@ profile-source for the Yandex backend), status-policy table, and supported
 sibling-package ranges for the v1 engine-aware contract. It performs no fetch
 or matching.
 }
+\examples{
+# A plain offline accessor: it opens no socket and matches nothing.
+contract <- robots_engine_contract_v1()
+contract$contract_id
+contract$schema_revision
+
+# Which matcher backends this installation can actually run.
+contract$matcher_availability
+
+# The token/semantics boundary each backend is authoritative for.
+contract$matcher_capability$yandex$token_policy
+
+# Status policy is a lookup keyed by acquisition category and ruleset:
+# how each ruleset treats a 4xx response to the robots.txt request.
+policy <- contract$policy_table
+policy[
+  policy$category == "status_4xx",
+  c("ruleset", "policy_status", "policy_action", "policy_provenance")
+]
+}
