@@ -13,14 +13,14 @@ A named list of contract metadata with class
 \description{
 Returns the v2 facade metadata introduced by the atomic Bing matcher
 activation. It has the same shape as \code{\link[=robots_engine_contract_v1]{robots_engine_contract_v1()}} but
-publishes the v2 contract id (\code{robotstxtr.engine-aware/v2}), the v2 activation
+publishes the v2 contract id (\code{robotstxtr.engine-aware/v2}), the v2
 schema revision (\code{2026-07-24.1}), the full eight-member v2 matcher-status set
 (\code{matcher_status_set}), and the separately inspectable vendored-matcher
 identity fields for both the Yandex and Bing backends
 (\code{matcher_identity$bing}, with library/payload/contract/parser/profile/
 manifest components). It reads the same shared matcher registry as the v1
-accessor, so the Bing backend reports \code{available} here and there alike; the v1
-accessor's own \code{contract_id} and \code{schema_revision} stay unchanged. It performs
+accessor, so the Bing backend reports \code{available} here and there alike; the
+v1 accessor's own \code{contract_id} and \code{schema_revision} stay unchanged. It does
 no fetch or matching.
 }
 \seealso{
