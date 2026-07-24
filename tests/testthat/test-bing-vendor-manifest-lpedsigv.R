@@ -105,6 +105,175 @@ test_that("missing manifest or tree fails closed with an error", {
   )
 })
 
+# --- Manifest PARSING: every malformed shape fails closed -------------------
+#
+# read_bing_vendor_manifest() is the trust boundary in front of the verifier: a
+# manifest it cannot fully trust must abort rather than degrade into a partial
+# expectation set. Fixtures live in the caller's tempdir; the shipped
+# inst/vendor/robotstxtbing/ payload is only ever read.
+
+write_bing_manifest_text <- function(dir, name, text) {
+  path <- file.path(dir, name)
+  writeLines(text, path)
+  path
+}
+
+test_that("a manifest that is not parseable DCF fails closed", {
+  tmp <- local_tmpdir()
+  path <- write_bing_manifest_text(
+    tmp, "garbage.dcf", c("this is not dcf at all", "@@@")
+  )
+  expect_error(
+    robotstxtr:::read_bing_vendor_manifest(path), "malformed", fixed = TRUE
+  )
+})
+
+test_that("a manifest missing required fields fails closed", {
+  tmp <- local_tmpdir()
+  path <- write_bing_manifest_text(tmp, "no-fields.dcf", c(
+    "Manifest: synthetic", "VendorRoot: vendorb", "", "Other: value"
+  ))
+  expect_error(
+    robotstxtr:::read_bing_vendor_manifest(path),
+    "Manifest is missing required field(s): File, Sha256",
+    fixed = TRUE
+  )
+})
+
+test_that("a manifest without exactly one header record fails closed", {
+  tmp <- local_tmpdir()
+  two <- write_bing_manifest_text(tmp, "two-headers.dcf", c(
+    "Manifest: synthetic", "VendorRoot: vendorb", "",
+    "Manifest: second", "VendorRoot: vendorb", "",
+    "File: vendorb/a", "Sha256: aa", ""
+  ))
+  expect_error(
+    robotstxtr:::read_bing_vendor_manifest(two),
+    "exactly one identity/header record",
+    fixed = TRUE
+  )
+
+  none <- write_bing_manifest_text(tmp, "no-header.dcf", c(
+    "File: vendorb/a", "Sha256: aa", "VendorRoot: vendorb", "",
+    "File: vendorb/b", "Sha256: bb", ""
+  ))
+  expect_error(
+    robotstxtr:::read_bing_vendor_manifest(none),
+    "exactly one identity/header record",
+    fixed = TRUE
+  )
+})
+
+test_that("an empty or absent VendorRoot fails closed", {
+  tmp <- local_tmpdir()
+  empty <- write_bing_manifest_text(tmp, "empty-root.dcf", c(
+    "Manifest: synthetic", "VendorRoot:", "",
+    "File: vendorb/a", "Sha256: aa", ""
+  ))
+  expect_error(
+    robotstxtr:::read_bing_vendor_manifest(empty),
+    "non-empty VendorRoot",
+    fixed = TRUE
+  )
+
+  absent <- write_bing_manifest_text(tmp, "na-root.dcf", c(
+    "Manifest: synthetic", "",
+    "File: vendorb/a", "Sha256: aa", "VendorRoot: vendorb", ""
+  ))
+  expect_error(
+    robotstxtr:::read_bing_vendor_manifest(absent),
+    "non-empty VendorRoot",
+    fixed = TRUE
+  )
+})
+
+test_that("an empty or absent Sha256 fails closed", {
+  tmp <- local_tmpdir()
+  empty <- write_bing_manifest_text(tmp, "empty-sha.dcf", c(
+    "Manifest: synthetic", "VendorRoot: vendorb", "",
+    "File: vendorb/a", "Sha256:", ""
+  ))
+  expect_error(
+    robotstxtr:::read_bing_vendor_manifest(empty),
+    "non-empty Sha256",
+    fixed = TRUE
+  )
+
+  absent <- write_bing_manifest_text(tmp, "na-sha.dcf", c(
+    "Manifest: synthetic", "VendorRoot: vendorb", "",
+    "File: vendorb/a", "Sha256: aa", "",
+    "File: vendorb/b", ""
+  ))
+  expect_error(
+    robotstxtr:::read_bing_vendor_manifest(absent),
+    "non-empty Sha256",
+    fixed = TRUE
+  )
+})
+
+test_that("a duplicate declared vendored path fails closed", {
+  tmp <- local_tmpdir()
+  path <- write_bing_manifest_text(tmp, "dup.dcf", c(
+    "Manifest: synthetic", "VendorRoot: vendorb", "",
+    "File: vendorb/a", "Sha256: aa", "",
+    "File: vendorb/a", "Sha256: bb", ""
+  ))
+  expect_error(
+    robotstxtr:::read_bing_vendor_manifest(path),
+    "duplicate vendored file path",
+    fixed = TRUE
+  )
+})
+
+test_that("a declared file escaping VendorRoot fails closed", {
+  skip_if_no_sha256()
+  tmp <- local_tmpdir()
+  fx <- make_bing_fixture(tmp)
+  path <- write_bing_manifest_text(tmp, "escapes.dcf", c(
+    "Manifest: synthetic", "VendorRoot: vendorb", "",
+    "File: vendorb/src/parser.cpp", "Sha256: aa", "",
+    "File: elsewhere/evil.h", "Sha256: bb", ""
+  ))
+  expect_error(
+    robotstxtr:::verify_bing_vendor_tree(fx$root, path),
+    "Manifest file(s) outside VendorRoot 'vendorb': elsewhere/evil.h",
+    fixed = TRUE
+  )
+  expect_identical(
+    robotstxtr:::bing_vendor_relpath(c("vendorb/a", "vendorb/d/b"), "vendorb"),
+    c("a", "d/b")
+  )
+})
+
+test_that("a file that cannot be hashed fails closed", {
+  skip_if_no_sha256()
+  tmp <- local_tmpdir()
+  expect_error(
+    robotstxtr:::bing_sha256_file(file.path(tmp, "no-such-file")),
+    "Could not read file for hashing",
+    fixed = TRUE
+  )
+})
+
+test_that("the default manifest path resolves to the installed manifest", {
+  # The verifier's default argument; every other test passes a fixture, so this
+  # is the only exercise of the installed-path resolver itself.
+  path <- robotstxtr:::bing_vendor_manifest_path()
+  expect_identical(
+    path,
+    system.file(
+      "vendor", "robotstxtbing", "MANIFEST.dcf", package = "robotstxtr"
+    )
+  )
+  skip_if(identical(path, ""), "installed Bing manifest absent")
+  expect_true(file.exists(path))
+  expect_identical(basename(path), "MANIFEST.dcf")
+  expect_identical(
+    robotstxtr:::read_bing_vendor_manifest(path)$vendor_root,
+    "src/vendor/robotstxtbing"
+  )
+})
+
 test_that("shipped manifest parses to one header + the 35-file frozen set", {
   path <- system.file(
     "vendor", "robotstxtbing", "MANIFEST.dcf", package = "robotstxtr"

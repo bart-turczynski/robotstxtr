@@ -127,7 +127,9 @@ test_that("dropping a case fails verification", {
     charToRaw(enc2utf8(bing_corpus_serialize(records[-1L]))),
     file.path(dir, "cases.json")
   )
-  expect_false(verify_bing_corpus(dir)$ok)
+  expect_corpus_rejects(
+    verify_bing_corpus(dir), "Expected exactly 191 records, found 190."
+  )
 })
 
 test_that("adding a 192nd case fails verification", {
@@ -141,7 +143,9 @@ test_that("adding a 192nd case fails verification", {
     charToRaw(enc2utf8(bing_corpus_serialize(c(records, list(extra))))),
     file.path(dir, "cases.json")
   )
-  expect_false(verify_bing_corpus(dir)$ok)
+  expect_corpus_rejects(
+    verify_bing_corpus(dir), "Expected exactly 191 records, found 192."
+  )
 })
 
 test_that("corrupting one body byte fails verification", {
@@ -153,7 +157,7 @@ test_that("corrupting one body byte fails verification", {
   bytes <- readBin(body_path, "raw", n = file.size(body_path))
   bytes[[1L]] <- as.raw(bitwXor(as.integer(bytes[[1L]]), 1L))
   writeBin(bytes, body_path)
-  expect_false(verify_bing_corpus(dir)$ok)
+  expect_corpus_rejects(verify_bing_corpus(dir), "SHA-256 mismatch")
 })
 
 test_that("flipping a recorded body sha256 fails verification", {
@@ -165,7 +169,7 @@ test_that("flipping a recorded body sha256 fails verification", {
   raw[[idx]] <- sub("[0-9a-f]{64}", strrep("0", 64L), raw[[idx]])
   writeBin(charToRaw(enc2utf8(paste0(paste(raw, collapse = "\n"), "\n"))),
            file.path(dir, "cases.json"))
-  expect_false(verify_bing_corpus(dir)$ok)
+  expect_corpus_rejects(verify_bing_corpus(dir), "SHA-256 mismatch")
 })
 
 test_that("breaking the tester<->golden decision link fails verification", {
@@ -181,7 +185,9 @@ test_that("breaking the tester<->golden decision link fails verification", {
     charToRaw(enc2utf8(bing_corpus_serialize(records))),
     file.path(dir, "cases.json")
   )
-  expect_false(verify_bing_corpus(dir)$ok)
+  expect_corpus_rejects(
+    verify_bing_corpus(dir), "!= golden url_decision"
+  )
 })
 
 test_that("nulling a non-default matched_rule fails verification", {
@@ -197,7 +203,310 @@ test_that("nulling a non-default matched_rule fails verification", {
     charToRaw(enc2utf8(bing_corpus_serialize(records))),
     file.path(dir, "cases.json")
   )
-  expect_false(verify_bing_corpus(dir)$ok)
+  expect_corpus_rejects(
+    verify_bing_corpus(dir), "matched_rule must be null iff default_allow"
+  )
+})
+
+# ---- Fail-closed rejection matrix ------------------------------------------
+#
+# One test per rejection branch of verify_bing_corpus(). Each tampers with a
+# COPY of the corpus and asserts the SPECIFIC diagnostic, so a verifier that
+# rejected for the wrong reason would not pass. Re-writing the tampered
+# records with the canonical serializer keeps the determinism check green,
+# which isolates the invariant under test (a few mutations unavoidably trip a
+# second, dependent check; the assertion always names the target one).
+
+bc_tampered <- function(mutate) {
+  # Verification hashes every body file, so a pre-4.5 R must skip outright.
+  skip_if_no_sha256()
+  corpus_tamper_verify(
+    corpus_dir(), mutate, read_bing_corpus, bing_corpus_serialize,
+    verify_bing_corpus
+  )
+}
+
+# Index of the first record carrying the given matcher_expected$reason.
+bc_reason_idx <- function(records, reason) {
+  which(vapply(records, function(r) {
+    identical(r$matcher_expected$reason, reason)
+  }, logical(1)))[[1L]]
+}
+
+test_that("a corpus directory that does not exist is rejected", {
+  expect_corpus_rejects(
+    verify_bing_corpus(tempfile("bing-corpus-absent-")),
+    "Corpus directory not found"
+  )
+})
+
+test_that("a corpus directory without cases.json is rejected", {
+  dir <- tempfile("bing-corpus-nocases-")
+  dir.create(dir)
+  on.exit(unlink(dir, recursive = TRUE))
+  expect_corpus_rejects(verify_bing_corpus(dir), "cases.json not found")
+  expect_error(
+    read_bing_corpus(dir), "Bing corpus cases.json not found",
+    fixed = TRUE
+  )
+})
+
+test_that("a cases.json that is not valid JSON is rejected", {
+  dir <- corpus_minimal_dir("{ this is not json\n")
+  on.exit(unlink(dir, recursive = TRUE))
+  expect_corpus_rejects(
+    verify_bing_corpus(dir), "cases.json is not valid JSON"
+  )
+})
+
+test_that("a cases.json that is not a JSON array is rejected", {
+  dir <- corpus_minimal_dir("123\n")
+  on.exit(unlink(dir, recursive = TRUE))
+  expect_corpus_rejects(
+    verify_bing_corpus(dir), "cases.json must be a JSON array of records."
+  )
+})
+
+test_that("a non-object record is rejected", {
+  dir <- corpus_minimal_dir("[\"not-an-object\"]\n")
+  on.exit(unlink(dir, recursive = TRUE))
+  expect_corpus_rejects(verify_bing_corpus(dir), "Record 1 is not an object.")
+})
+
+test_that("a record that the canonical writer cannot serialize is rejected", {
+  # A nested expectation_ids array makes bing_corpus_build_record() throw, so
+  # the determinism check reports the failure instead of silently passing.
+  dir <- corpus_minimal_dir("[{\"expectation_ids\": [[\"a\", \"b\"]]}]\n")
+  on.exit(unlink(dir, recursive = TRUE))
+  expect_corpus_rejects(verify_bing_corpus(dir), "Re-serialisation failed")
+})
+
+test_that("a record missing a required field is rejected", {
+  skip_if_no_sha256()
+  dir <- copy_corpus()
+  on.exit(unlink(dir, recursive = TRUE))
+  lines <- readLines(file.path(dir, "cases.json"), warn = FALSE)
+  idx <- grep("^    \"byte_size\": ", lines)[[1L]]
+  corpus_write_cases(dir, paste0(paste(lines[-idx], collapse = "\n"), "\n"))
+  expect_corpus_rejects(
+    verify_bing_corpus(dir), "Record 1 is missing field(s): byte_size"
+  )
+})
+
+test_that("an unknown profile is rejected", {
+  res <- bc_tampered(function(records) {
+    records[[1L]]$profile <- "googlebot"
+    records
+  })
+  expect_corpus_rejects(res, "has unknown profile 'googlebot'.")
+})
+
+test_that("an empty expectation_ids list is rejected", {
+  res <- bc_tampered(function(records) {
+    records[[1L]]$expectation_ids <- list()
+    records
+  })
+  expect_corpus_rejects(res, "has an empty expectation_ids list.")
+})
+
+test_that("a matcher_status other than evaluated is rejected", {
+  res <- bc_tampered(function(records) {
+    records[[1L]]$matcher_expected$matcher_status <- "capability_unavailable"
+    records
+  })
+  expect_corpus_rejects(res, "has matcher_status 'capability_unavailable'")
+})
+
+test_that("an unknown url_decision is rejected", {
+  res <- bc_tampered(function(records) {
+    i <- bc_reason_idx(records, "default_allow")
+    records[[i]]$matcher_expected$url_decision <- "maybe"
+    # Keep the tester decision in step so only the vocabulary check trips.
+    records[[i]]$tester_observed$decision <- "maybe"
+    records
+  })
+  expect_corpus_rejects(res, "has unknown url_decision 'maybe'.")
+})
+
+test_that("an unknown reason is rejected", {
+  res <- bc_tampered(function(records) {
+    i <- bc_reason_idx(records, "rule_allow")
+    records[[i]]$matcher_expected$reason <- "rule_bogus"
+    records
+  })
+  expect_corpus_rejects(res, "has unknown reason 'rule_bogus'.")
+})
+
+test_that("a matched_rule on a default_allow record is rejected", {
+  res <- bc_tampered(function(records) {
+    i <- bc_reason_idx(records, "default_allow")
+    records[[i]]$matcher_expected$matched_rule <- list(
+      line = 1L, type = "allow", value = "/x", value_raw_hex = "2f78"
+    )
+    records
+  })
+  expect_corpus_rejects(res, "matched_rule must be null iff default_allow")
+})
+
+test_that("an unknown matched rule type is rejected", {
+  res <- bc_tampered(function(records) {
+    i <- bc_reason_idx(records, "rule_allow")
+    records[[i]]$matcher_expected$matched_rule$type <- "redirect"
+    records
+  })
+  expect_corpus_rejects(res, "has unknown matched rule type 'redirect'.")
+})
+
+test_that("a rule type that disagrees with the reason is rejected", {
+  res <- bc_tampered(function(records) {
+    i <- bc_reason_idx(records, "rule_allow")
+    records[[i]]$matcher_expected$reason <- "rule_disallow"
+    records
+  })
+  expect_corpus_rejects(res, "rule type 'allow' disagrees with reason")
+})
+
+test_that("a decision that disagrees with the rule type is rejected", {
+  res <- bc_tampered(function(records) {
+    i <- bc_reason_idx(records, "rule_allow")
+    records[[i]]$matcher_expected$url_decision <- "disallow"
+    records[[i]]$tester_observed$decision <- "disallow"
+    records
+  })
+  expect_corpus_rejects(res, "decision 'disallow' disagrees with rule type")
+})
+
+test_that("a value_raw_hex that is not even-length hex is rejected", {
+  res <- bc_tampered(function(records) {
+    i <- bc_reason_idx(records, "rule_disallow")
+    records[[i]]$matcher_expected$matched_rule$value_raw_hex <- "zz"
+    records
+  })
+  expect_corpus_rejects(res, "value_raw_hex is not even-length hex.")
+})
+
+test_that("a value_raw_hex that is not the UTF-8 of value is rejected", {
+  res <- bc_tampered(function(records) {
+    i <- bc_reason_idx(records, "rule_disallow")
+    records[[i]]$matcher_expected$matched_rule$value_raw_hex <- "abcd"
+    records
+  })
+  expect_corpus_rejects(
+    res, "value_raw_hex does not match the UTF-8 of value."
+  )
+})
+
+test_that("a tester terminal_outcome other than evaluated is rejected", {
+  res <- bc_tampered(function(records) {
+    records[[1L]]$tester_observed$terminal_outcome <- "not_evaluated"
+    records
+  })
+  expect_corpus_rejects(res, "terminal_outcome is 'not_evaluated'")
+})
+
+test_that("a request_target_sha256 that does not pin the target is rejected", {
+  skip_if_no_sha256()
+  res <- bc_tampered(function(records) {
+    records[[1L]]$request_target_sha256 <- strrep("0", 64L)
+    records
+  })
+  expect_corpus_rejects(res, "request_target_sha256 mismatch.")
+})
+
+test_that("a missing body file is rejected", {
+  skip_if_no_sha256()
+  dir <- copy_corpus()
+  on.exit(unlink(dir, recursive = TRUE))
+  records <- read_bing_corpus(dir)
+  unlink(file.path(dir, records[[1L]]$body_file))
+  expect_corpus_rejects(
+    verify_bing_corpus(dir),
+    sprintf("references missing body file %s.", records[[1L]]$body_file)
+  )
+})
+
+test_that("a body whose byte size drifted is rejected", {
+  skip_if_no_sha256()
+  dir <- copy_corpus()
+  on.exit(unlink(dir, recursive = TRUE))
+  records <- read_bing_corpus(dir)
+  body_path <- file.path(dir, records[[1L]]$body_file)
+  bytes <- readBin(body_path, "raw", n = file.size(body_path))
+  writeBin(c(bytes, as.raw(10L)), body_path)
+  expect_corpus_rejects(verify_bing_corpus(dir), "byte size mismatch")
+})
+
+test_that("a duplicate case_id is rejected", {
+  res <- bc_tampered(function(records) {
+    records[[2L]]$case_id <- records[[1L]]$case_id
+    records
+  })
+  expect_corpus_rejects(res, "Duplicate case_id(s):")
+})
+
+test_that("a drifted distinct-body count is rejected", {
+  res <- bc_tampered(function(records) {
+    # Record 2 shares record 1's body, so re-pointing it adds a 96th body_ref.
+    records[[2L]]$body_ref <- "zzz-synthetic-body-ref"
+    records
+  })
+  expect_corpus_rejects(res, "Expected 95 distinct bodies, found 96.")
+})
+
+test_that("a drifted profile split is rejected", {
+  res <- bc_tampered(function(records) {
+    i <- which(vapply(records, function(r) {
+      identical(r$profile, "bingbot")
+    }, logical(1)))[[1L]]
+    records[[i]]$profile <- "adidxbot"
+    records
+  })
+  expect_corpus_rejects(res, "Profile split mismatch")
+})
+
+test_that("a non-canonical cases.json rendering is rejected", {
+  skip_if_no_sha256()
+  dir <- copy_corpus()
+  on.exit(unlink(dir, recursive = TRUE))
+  records <- read_bing_corpus(dir)
+  # Semantically identical JSON, non-canonical bytes (a stray blank line).
+  corpus_write_cases(dir, paste0(bing_corpus_serialize(records), "\n"))
+  expect_corpus_rejects(
+    verify_bing_corpus(dir),
+    "cases.json is not byte-identical to its canonical serialisation."
+  )
+})
+
+# ---- Corpus-dir resolution and hashing helpers ------------------------------
+
+test_that("bing_corpus_dir() falls back to a source-tree candidate", {
+  root <- tempfile("bing-src-tree-")
+  on.exit(unlink(root, recursive = TRUE))
+  dir.create(file.path(root, "inst", "bing-corpus"), recursive = TRUE)
+  resolve <- corpus_dir_fn_rooted(bing_corpus_dir, root)
+  expect_identical(
+    resolve(),
+    normalizePath(file.path(root, "inst", "bing-corpus"), winslash = "/")
+  )
+})
+
+test_that("bing_corpus_dir() returns the install path when no candidate hits", {
+  resolve <- corpus_dir_fn_rooted(bing_corpus_dir, tempfile("bing-no-tree-"))
+  expect_identical(resolve(), "")
+})
+
+test_that("hashing an unreadable file is a hard error", {
+  skip_if_no_sha256()
+  expect_error(
+    bing_corpus_sha256_file(tempfile("bing-absent-")),
+    "Could not read file for hashing",
+    fixed = TRUE
+  )
+})
+
+test_that("the hex encoder round-trips bytes and handles the empty vector", {
+  expect_identical(bing_corpus_bytes_to_hex(raw(0)), "")
+  expect_identical(bing_corpus_bytes_to_hex(charToRaw("/x")), "2f78")
 })
 
 # ---- Public-facade replay (skip on a pure-R install) -----------------------

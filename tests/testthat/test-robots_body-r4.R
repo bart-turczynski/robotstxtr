@@ -144,6 +144,16 @@ test_that("valid UTF-8 bodies render as UTF-8 text", {
   expect_identical(out, enc2utf8("café"))
 })
 
+test_that("a source that stored no body previews as NA, extracts as NULL", {
+  # Every non-`fetched` acquisition outcome stores a NULL body; the preview
+  # must report that absence as NA rather than an empty string.
+  x <- make_decisions(list(only = NULL))
+  expect_identical(robots_body(x), NA_character_)
+  expect_identical(robots_body(x, n = Inf), NA_character_)
+  expect_identical(robots_body(x, source_id = "only"), NA_character_)
+  expect_null(robots_body(x, raw = TRUE))
+})
+
 # --- Argument validation -----------------------------------------------------
 
 test_that("invalid n, raw, and object arguments raise package errors", {

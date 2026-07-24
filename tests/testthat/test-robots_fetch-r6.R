@@ -473,3 +473,61 @@ test_that("print.robots_fetches summarizes and returns invisibly", {
   expect_output(print(x), "<robots_fetches>")
   expect_invisible(print(x))
 })
+
+test_that("print.robots_fetches previews ten rows and counts the rest", {
+  httr2::local_mocked_responses(mock_router(
+    list("http://a/robots.txt" = ok_body())
+  ))
+  x <- robots_fetch(sprintf("http://a/p%02d", 1:12))
+  out <- capture.output(print(x))
+
+  expect_identical(out[[1]], "<robots_fetches>: 12 inputs, 1 source")
+  # Summary + column header + exactly ten preview rows + the truncation line.
+  expect_length(out, 13L)
+  expect_identical(out[[13]], "  ... and 2 more rows")
+  expect_true(grepl("p10", out[[12]], fixed = TRUE))
+  expect_false(any(grepl("p11", out, fixed = TRUE)))
+
+  # A single hidden row is reported in the singular.
+  y <- robots_fetch(sprintf("http://a/p%02d", 1:11))
+  expect_identical(
+    utils::tail(capture.output(print(y)), 1L), "  ... and 1 more row"
+  )
+
+  # Exactly ten rows print in full with no truncation line at all.
+  z <- robots_fetch(sprintf("http://a/p%02d", 1:10))
+  expect_false(any(grepl("more row", capture.output(print(z)), fixed = TRUE)))
+})
+
+# --- Classifier fallbacks (fetch-policy internals) ---------------------------
+
+test_that("classify_status treats any other final status as http_error", {
+  expect_identical(classify_status(200L), "fetched")
+  expect_identical(classify_status(206L), "partial_response")
+  expect_identical(classify_status(404L), "missing")
+  expect_identical(classify_status(410L), "missing")
+  expect_identical(classify_status(503L), "http_error")
+  # 3xx never reaches the classifier (the redirect loop owns it) and codes
+  # outside 100-599 are not a body; both fall to the defensive tail rather
+  # than fabricating a decision.
+  expect_identical(classify_status(302L), "http_error")
+  expect_identical(classify_status(600L), "http_error")
+  expect_identical(classify_status(0L), "http_error")
+})
+
+test_that("fetch_error_meta falls back to no error metadata", {
+  expect_identical(
+    fetch_error_meta("http_error"),
+    c(stage = "response", class = "robots_http_error")
+  )
+  expect_identical(
+    fetch_error_meta("fetched"),
+    c(stage = NA_character_, class = NA_character_)
+  )
+  # An outcome with no mapped metadata (e.g. the supplied-body path, which
+  # never fetches) yields NA stage/class rather than erroring on the switch.
+  expect_identical(
+    fetch_error_meta("supplied"),
+    c(stage = NA_character_, class = NA_character_)
+  )
+})
