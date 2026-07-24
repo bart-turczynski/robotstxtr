@@ -113,6 +113,33 @@ test_that("ssrf_check blocks IPv6 unspecified, link-local, and metadata", {
   expect_identical(reason_of("[fd00:ec2:1::5]"), "cloud-metadata")
 })
 
+test_that("every spelling of ::1 and :: classifies on the expanded address", {
+  # ::0.0.0.1 is the SAME 128 bits as ::1, and ::0.0.0.0 the same as ::.
+  # Deciding the two specials on the literal string blocked one spelling while
+  # allowing an identical other one (ROBO-pzgzxkoj), so they are matched on the
+  # expanded hextets instead: every form ssrf_ipv6_hextets() accepts must agree.
+  expect_identical(reason_of("[::1]"), "loopback")
+  expect_identical(reason_of("[0::1]"), "loopback")
+  expect_identical(reason_of("[::0:1]"), "loopback")
+  expect_identical(reason_of("[0:0:0:0:0:0:0:1]"), "loopback")
+  expect_identical(reason_of("[::0.0.0.1]"), "loopback")
+  expect_identical(reason_of("[0:0:0:0:0:0:0.0.0.1]"), "loopback")
+  expect_identical(reason_of("[::]"), "unspecified")
+  expect_identical(reason_of("[0::]"), "unspecified")
+  expect_identical(reason_of("[::0]"), "unspecified")
+  expect_identical(reason_of("[0:0:0:0:0:0:0:0]"), "unspecified")
+  expect_identical(reason_of("[::0.0.0.0]"), "unspecified")
+  expect_identical(reason_of("[0:0:0:0:0:0:0.0.0.0]"), "unspecified")
+  expect_false(ssrf_check("[::0.0.0.1]", "http")$allowed)
+  expect_false(ssrf_check("[::0.0.0.0]", "http")$allowed)
+  # One past the loopback special: with the low hextet above 1 the literal is
+  # no longer a special and still routes to the embedding decoder, so the
+  # deprecated IPv4-compatible reason keeps its meaning.
+  expect_identical(reason_of("[::2]"), "ipv4-compatible")
+  # A literal that does not expand to 8 hextets is not a special either.
+  expect_true(is.na(ssrf_ipv6_special(ssrf_ipv6_hextets("1:2:3"))))
+})
+
 test_that("ssrf_check rejects non-http(s) schemes and numeric-literal hosts", {
   expect_identical(ssrf_check("example.com", "ftp")$reason, "scheme")
   expect_identical(
@@ -255,18 +282,23 @@ test_that("ssrf_check allows an absent host and defers to downstream rules", {
   expect_true(zero_len$allowed)
 })
 
-test_that("rurl canonicalization catches dotted spellings of ::1 and ::", {
-  # ::0.0.0.1 and ::0.0.0.0 are the SAME 128-bit addresses as ::1 and ::.
-  # ssrf_classify_ipv6() only special-cases the exact strings "::1" and "::",
-  # and ssrf_embedded_ipv4() deliberately skips tail32 <= 1, so the pure
-  # matcher does not catch these spellings on its own. In the real path rurl
-  # normalizes them first, which is what must keep holding.
+test_that("dotted spellings of ::1 and :: are blocked on both layers", {
+  # ::0.0.0.1 and ::0.0.0.0 are the SAME 128-bit addresses as ::1 and ::, and
+  # two independent layers now catch them. Defense in depth, both pinned so
+  # neither can regress silently behind the other:
+  #   1. rurl canonicalizes the literal before the matcher ever sees it;
+  #   2. ssrf_classify_ipv6() classifies the EXPANDED address, so it catches
+  #      these spellings on its own even if rurl stops normalizing them.
+  # Layer 1 + 2 together, through the real parse path.
   expect_identical(
     robots_ssrf_check("http://[::0.0.0.1]/x")$reason, "loopback"
   )
   expect_identical(
     robots_ssrf_check("http://[::0.0.0.0]/x")$reason, "unspecified"
   )
+  # Layer 2 alone, with rurl out of the picture.
+  expect_identical(reason_of("[::0.0.0.1]"), "loopback")
+  expect_identical(reason_of("[::0.0.0.0]"), "unspecified")
 })
 
 test_that("an initial private origin is blocked before any request", {
