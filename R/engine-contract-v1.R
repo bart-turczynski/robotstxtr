@@ -22,6 +22,44 @@ engine_matchers_v1 <- function() {
   c("google", "yandex", "rfc9309", "bing")
 }
 
+# Authoritative enumeration of the robotstxtr.engine-aware/v2 matcher-status set
+# (spec design/robotstxtbing-integration-v2-spec.md decision BI-V2-SCHEMA, SS10,
+# SS15). The v2 schema extends v1's four-value vocabulary with the four Bing
+# outcomes v1 cannot losslessly carry: `invalid_request_target`,
+# `unsupported_profile`, `matcher_input_limit_exceeded` (the four parse limits
+# plus request-target-limit fold in here, distinguished by `reason`), and
+# `matcher_work_limit_exceeded`. Ordering is fixed and MUST NOT change: the four
+# v1 statuses first, then the four v2 additions. This is the single source of
+# truth for the status vocabulary; the live guard below enforces it, and the
+# atomic v2 activation (slice BI5) publishes it. No non-evaluated status may
+# ever be represented as an allow/disallow decision.
+engine_matcher_status_set_v2 <- function() {
+  c(
+    "evaluated", "not_needed", "not_evaluated", "capability_unavailable",
+    "invalid_request_target", "unsupported_profile",
+    "matcher_input_limit_exceeded", "matcher_work_limit_exceeded"
+  )
+}
+
+# Fail-closed guard: every emitted matcher_status MUST be a v2-set member.
+# evaluate_rows_v1() runs this over the fully assembled status vector before it
+# reaches any result row, so no backend can surface a status outside the
+# published vocabulary. Returns the input unchanged on success.
+validate_matcher_status_v2 <- function(matcher_status) {
+  allowed <- engine_matcher_status_set_v2()
+  invalid <- is.na(matcher_status) | !matcher_status %in% allowed
+  if (any(invalid)) {
+    robots_abort(
+      sprintf(
+        "Matcher status outside the engine-aware/v2 set: %s.",
+        toString(unique(matcher_status[invalid]))
+      ),
+      "robotstxtr_matcher_status_invariant"
+    )
+  }
+  matcher_status
+}
+
 engine_policy_revisions_v1 <- function() {
   c(
     google = "google-robots-policy-2026-07-17",
@@ -968,6 +1006,10 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
     error_message[yandex_rows] <- res$error_message
     yandex_raw_values <- res$matched_rule_value_raw
   }
+
+  # Fail closed: no row may carry a matcher_status outside the published
+  # engine-aware/v2 vocabulary, regardless of backend (BI-V2-SCHEMA).
+  matcher_status <- validate_matcher_status_v2(matcher_status)
 
   results <- data.frame(
     input_id = seq_len(n),
