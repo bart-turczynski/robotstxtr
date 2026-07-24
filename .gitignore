@@ -37,7 +37,14 @@ vignettes/*.html
 vignettes/*.pdf
 doc/
 Meta/
-tests/testthat/_snaps/
+
+# NOTE: tests/testthat/_snaps/ is deliberately NOT ignored. It was listed here
+# among the build artifacts in the initial scaffold, but testthat snapshots are
+# test source of truth, not generated output: they must be committed to assert
+# anything. While they were ignored, every expect_snapshot() call silently took
+# the "creating new snapshot" path on a clean checkout and in CI -- a warning
+# and zero assertions -- so a snapshot test would have looked green while
+# testing nothing.
 
 # Fiberplane local issue tracking
 .fp/
