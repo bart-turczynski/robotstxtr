@@ -67,6 +67,14 @@
   default allow. Fetches were not affected, because `rurl` canonicalises such
   literals before the guard sees them; the guard is now correct on its own
   rather than relying on that (#ROBO-pzgzxkoj).
+* The SSRF guard's IPv6 link-local and AWS cloud-metadata rules now match on
+  the expanded address too, completing the change above. Because a hextet may
+  be written with leading zeros, matching the literal string mis-decided both
+  rules: `fd00:0ec2::254` was allowed through while the identical
+  `fd00:ec2::254` was blocked, and addresses such as `fe8::` were reported as
+  link-local despite lying far outside `fe80::/10`. Both are now decided by
+  value — `fe80::/10` and `fd00:ec2::/32` — so every spelling agrees
+  (#ROBO-pjvypcjk).
 
 # robotstxtr 0.1.0
 

@@ -108,9 +108,51 @@ test_that("ssrf_check blocks IPv6 unspecified, link-local, and metadata", {
   expect_identical(reason_of("[fe80::1]"), "link-local")
   expect_identical(reason_of("[febf::1]"), "link-local")
   expect_identical(reason_of("[fe80::]"), "link-local")
-  # AWS IPv6 metadata endpoint and anything under its fd00:ec2: prefix.
+  # AWS IPv6 metadata endpoint and anything under its fd00:ec2::/32 prefix.
   expect_identical(reason_of("[fd00:ec2::254]"), "cloud-metadata")
   expect_identical(reason_of("[fd00:ec2:1::5]"), "cloud-metadata")
+})
+
+test_that("every spelling of the AWS IPv6 metadata prefix is blocked", {
+  # ROBO-pjvypcjk. A hextet may carry leading zeros, so "ec2" and "0ec2" are
+  # the same 16 bits. Matching the literal "^fd00:ec2:" blocked the first
+  # spelling and let the second through — a real bypass of the metadata block,
+  # not merely an inconsistency. All of these are fd00:0ec2::/32.
+  expect_identical(reason_of("[fd00:ec2::254]"), "cloud-metadata")
+  expect_identical(reason_of("[fd00:0ec2::254]"), "cloud-metadata")
+  expect_identical(reason_of("[fd00:0ec2:0:0:0:0:0:0254]"), "cloud-metadata")
+  expect_identical(reason_of("[fd00:ec2:0:0:0:0:0:254]"), "cloud-metadata")
+  expect_identical(reason_of("[FD00:0EC2::254]"), "cloud-metadata")
+  expect_identical(reason_of("[fd00:0ec2:ffff::1]"), "cloud-metadata")
+  expect_false(ssrf_check("[fd00:0ec2::254]", "http")$allowed)
+  # Neighbours outside the /32 stay allowed: only these two hextets match.
+  expect_true(is.na(reason_of("[fd00:ec3::254]")))
+  expect_true(is.na(reason_of("[fd01:ec2::254]")))
+  expect_true(is.na(reason_of("[fd00::1]")))
+})
+
+test_that("link-local matches fe80::/10 by value, not by literal prefix", {
+  # ROBO-pjvypcjk. The old "^fe[89ab][0-9a-f]?:" made the 4th hex digit
+  # optional, so a 3-digit first hextet ("fe8" = 0x0fe8) matched despite being
+  # nowhere near fe80::/10. The block is exactly 0xfe80..0xfebf.
+  expect_identical(reason_of("[fe80::1]"), "link-local")
+  expect_identical(reason_of("[fe80:0:0:0:0:0:0:1]"), "link-local")
+  expect_identical(reason_of("[FE80::1]"), "link-local")
+  expect_identical(
+    reason_of("[febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff]"), "link-local"
+  )
+  # Formerly over-blocked: 0x0fe8/0x0fea/0x0feb are ordinary global addresses.
+  expect_true(is.na(reason_of("[fe8::]")))
+  expect_true(is.na(reason_of("[fe8:0:0:0:0:0:0:1]")))
+  expect_true(is.na(reason_of("[fe9::]")))
+  expect_true(is.na(reason_of("[fea::1]")))
+  expect_true(is.na(reason_of("[feb::]")))
+  # Immediately outside the /10 on either side.
+  expect_true(is.na(reason_of("[fe7f::1]")))
+  expect_true(is.na(reason_of("[fec0::1]")))
+  # A literal that does not expand to 8 hextets matches no prefix block.
+  expect_true(is.na(ssrf_ipv6_prefix_block(ssrf_ipv6_hextets("fea:"))))
+  expect_true(is.na(ssrf_ipv6_prefix_block(NULL)))
 })
 
 test_that("every spelling of ::1 and :: classifies on the expanded address", {
