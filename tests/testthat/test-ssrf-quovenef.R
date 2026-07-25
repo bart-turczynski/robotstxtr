@@ -68,6 +68,62 @@ test_that("IPv6 literals with no blocked embedding are allowed", {
   expect_true(ssrf_check("[64:ff9b::5db8:d822]", "http")$allowed)
 })
 
+test_that("6to4 2002::/16 decodes the IPv4 at bits 16-47", {
+  # ROBO-laydgesq. 6to4 puts V4ADDR in hextets 2-3, not the low 32 bits, so
+  # every one of these reached the default allow before the decoder existed.
+  # Wrapping, in order: 127.0.0.1, 10.0.0.1, 192.168.0.1, 169.254.169.254.
+  expect_identical(reason_of("[2002:7f00:1::]"), "6to4")
+  expect_identical(reason_of("[2002:a00:1::]"), "6to4")
+  expect_identical(reason_of("[2002:c0a8:1::]"), "6to4")
+  expect_identical(reason_of("[2002:a9fe:a9fe::]"), "6to4")
+  expect_false(ssrf_check("[2002:a9fe:a9fe::]", "http")$allowed)
+  # 8080:8080 == 128.128.128.128. The prefix is globally reachable, so only the
+  # wrapped address may decide the outcome.
+  expect_true(is.na(reason_of("[2002:8080:8080::]")))
+})
+
+test_that("Teredo 2001::/32 undoes the XOR obfuscation of the client IPv4", {
+  # ROBO-laydgesq. The client IPv4 is stored ones-complemented, so no rule over
+  # the literal bits could ever see it: f5ff:fffe XOR ffff:ffff == 10.0.0.1,
+  # and 5601:5601 XOR ffff:ffff == 169.254.169.254.
+  expect_identical(reason_of("[2001:0:0:0:0:0:f5ff:fffe]"), "teredo")
+  expect_identical(reason_of("[2001:0:0:0:0:0:5601:5601]"), "teredo")
+  expect_false(ssrf_check("[2001:0:0:0:0:0:5601:5601]", "http")$allowed)
+  # f7f7:f7f7 XOR ffff:ffff == 8.8.8.8: a public wrapped address passes.
+  expect_true(is.na(reason_of("[2001:0:0:0:0:0:f7f7:f7f7]")))
+  # Teredo is 2001:0000::/32 — the second hextet must be zero, so the
+  # documentation range 2001:db8::/32 is a neighbour, not a Teredo address.
+  expect_true(is.na(reason_of("[2001:db8::1]")))
+})
+
+test_that("ISATAP decodes the IPv4 after the marker under ANY prefix", {
+  # ROBO-laydgesq. The outer prefix is arbitrary; only the *:5efe marker in
+  # hextets 5-6 identifies the form. Both documented markers are recognized.
+  expect_identical(reason_of("[2001:db8::5efe:a00:1]"), "isatap")
+  expect_identical(reason_of("[2001:db8::200:5efe:a00:1]"), "isatap")
+  # fe80::5efe:a00:1 was blocked before, but incidentally — by the outer
+  # fe80::/10 rule. It is now blocked for the reason that actually applies.
+  expect_identical(reason_of("[fe80::5efe:a00:1]"), "isatap")
+  # A public wrapped address passes under a global prefix (808:808 == 8.8.8.8)
+  # but still hits the outer prefix rule under fe80::/10.
+  expect_true(is.na(reason_of("[2001:db8::5efe:808:808]")))
+  expect_identical(reason_of("[fe80::5efe:808:808]"), "link-local")
+  # 5eff is not the marker; nothing here embeds an address.
+  expect_true(is.na(reason_of("[2001:db8::5eff:a00:1]")))
+})
+
+test_that("malformed IPv6 literals are refused, not allowed", {
+  # ROBO-udnyuuwn. rurl rejects these before the guard sees them, so this is
+  # unreachable through the fetch path — which is precisely the reliance being
+  # removed: the guard now enforces it on its own authority.
+  expect_identical(reason_of("[fe80:::1]"), "malformed-address")
+  expect_identical(reason_of("[::12345]"), "malformed-address")
+  expect_identical(reason_of("[::ffff:999.1.1.1]"), "malformed-address")
+  expect_false(ssrf_check("[fe80:::1]", "http")$allowed)
+  # Well-formed literals are untouched.
+  expect_true(ssrf_check("[2606:2800::]", "http")$allowed)
+})
+
 test_that("ssrf_expand_zero_run resolves every :: placement to 8 hextets", {
   # Fully written, no "::" at all.
   expect_identical(
@@ -94,12 +150,13 @@ test_that("ssrf_expand_zero_run rejects malformed IPv6 shapes", {
   expect_null(ssrf_expand_zero_run("::ffff::1"))
   # Nothing left to fill: 8 groups are already written around the "::".
   expect_null(ssrf_expand_zero_run("1:2:3:4:5:6:7:8::"))
-  # A shape the expander rejects is simply not an IP literal. It never
-  # becomes a *decoded* address, so it can never match a blocked range by
-  # accident — it falls through to the registered-name path.
-  expect_true(is.na(reason_of("[1:2:3]")))
-  expect_true(is.na(reason_of("[::ffff::1]")))
-  expect_true(is.na(reason_of("[1:2:3:4:5:6:7:8::]")))
+  # A shape the expander rejects is not an address the guard can reason about,
+  # so it is refused rather than falling through to the default allow
+  # (ROBO-udnyuuwn). It never becomes a *decoded* address either, so it cannot
+  # match a blocked range by accident.
+  expect_identical(reason_of("[1:2:3]"), "malformed-address")
+  expect_identical(reason_of("[::ffff::1]"), "malformed-address")
+  expect_identical(reason_of("[1:2:3:4:5:6:7:8::]"), "malformed-address")
 })
 
 test_that("ssrf_check blocks IPv6 unspecified, link-local, and metadata", {
@@ -150,9 +207,9 @@ test_that("link-local matches fe80::/10 by value, not by literal prefix", {
   # Immediately outside the /10 on either side.
   expect_true(is.na(reason_of("[fe7f::1]")))
   expect_true(is.na(reason_of("[fec0::1]")))
-  # A literal that does not expand to 8 hextets matches no prefix block.
-  expect_true(is.na(ssrf_ipv6_prefix_block(ssrf_ipv6_hextets("fea:"))))
-  expect_true(is.na(ssrf_ipv6_prefix_block(NULL)))
+  # A literal that does not expand to 8 hextets is refused outright rather than
+  # falling through the prefix rules to the default allow (ROBO-udnyuuwn).
+  expect_identical(ssrf_classify_ipv6("fea:"), "malformed-address")
 })
 
 test_that("every spelling of ::1 and :: classifies on the expanded address", {
@@ -178,8 +235,9 @@ test_that("every spelling of ::1 and :: classifies on the expanded address", {
   # no longer a special and still routes to the embedding decoder, so the
   # deprecated IPv4-compatible reason keeps its meaning.
   expect_identical(reason_of("[::2]"), "ipv4-compatible")
-  # A literal that does not expand to 8 hextets is not a special either.
-  expect_true(is.na(ssrf_ipv6_special(ssrf_ipv6_hextets("1:2:3"))))
+  # A literal that does not expand to 8 hextets is not a special either — it is
+  # refused before any rule runs (ROBO-udnyuuwn).
+  expect_identical(ssrf_classify_ipv6("1:2:3"), "malformed-address")
 })
 
 test_that("ssrf_check rejects non-http(s) schemes and numeric-literal hosts", {

@@ -75,6 +75,19 @@
   link-local despite lying far outside `fe80::/10`. Both are now decided by
   value — `fe80::/10` and `fd00:ec2::/32` — so every spelling agrees
   (#ROBO-pjvypcjk).
+* The SSRF guard now decodes the three IPv6 transition mechanisms — 6to4
+  (`2002::/16`), Teredo (`2001::/32`, whose embedded IPv4 is XOR-obfuscated),
+  and ISATAP (a `*:5efe` marker under any prefix) — and classifies the IPv4
+  address each one wraps. All three pack that address outside the low 32 bits,
+  so the previous decoders missed them and, for example, `2002:a9fe:a9fe::`
+  (6to4-wrapped `169.254.169.254`) was allowed. A wrapped *public* address
+  still passes: these prefixes are globally reachable, so only what they carry
+  decides the outcome (#ROBO-laydgesq).
+* An IPv6 literal that cannot be expanded to exactly 8 hextets (`fe80:::1`,
+  `::12345`) is now refused with the reason `malformed-address` instead of
+  reaching the default allow. Such literals never survive URL parsing, so no
+  reachable fetch changes; the guard simply no longer depends on `rurl`
+  rejecting them first (#ROBO-udnyuuwn).
 
 # robotstxtr 0.1.0
 
