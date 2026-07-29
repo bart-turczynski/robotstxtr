@@ -156,16 +156,15 @@ allowed_by_robots_url <- function(url, user_agent, timeout = 10,
   error_message_col[invalid_ua] <- "User agent is missing or empty."
 
   # --- Decode each fetched source body to the matcher string ONCE (PRD 6.2
-  # bridge, mirrors allowed_by_robots_text): rawToChar + Encoding UTF-8. Non-
-  # fetched sources store no body and are not matched. Keyed by source_id so the
-  # per-(source, UA) matcher grouping below reuses one decoded body per source.
+  # bridge, mirrors allowed_by_robots_text): `decode_matcher_body()` drops NUL
+  # bytes and marks the result UTF-8 (R/body-decode.R). Non-fetched sources
+  # store no body and are not matched. Keyed by source_id so the per-(source,
+  # UA) matcher grouping below reuses one decoded body per source.
   source_body_utf8 <- vector("list", nrow(robots))
   names(source_body_utf8) <- robots$source_id
   for (i in seq_len(nrow(robots))) {
     if (identical(robots$fetch_outcome[[i]], "fetched")) {
-      body_utf8 <- rawToChar(robots$body[[i]])
-      Encoding(body_utf8) <- "UTF-8"
-      source_body_utf8[[i]] <- body_utf8
+      source_body_utf8[[i]] <- decode_matcher_body(robots$body[[i]])
     }
   }
 

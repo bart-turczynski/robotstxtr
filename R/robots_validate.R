@@ -307,7 +307,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     )
   }
 
-  bytes_without_nul <- bytes[bytes != as.raw(0)]
+  bytes_without_nul <- nul_free_bytes(bytes)
   encoding_valid <- validUTF8(rawToChar(bytes_without_nul))
   encoding <- if (encoding_valid) "utf-8" else "invalid-utf-8"
   if (!encoding_valid) {

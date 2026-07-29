@@ -567,6 +567,21 @@ store those exact bytes in `robots$body`, and pass that same byte sequence to
 C++. If a matched callback value is not valid UTF-8, return it as an R character
 value with `Encoding = "bytes"` rather than replacing bytes.
 
+Acquired bytes carrying a NUL: R's character type cannot hold a NUL byte, so
+every decode of acquired bytes must remove NUL bytes before those bytes become an
+R string — for the matcher, for the parse collector, and for the `robots_body()`
+preview. The document must not be truncated at the NUL and no other byte may be
+rewritten; `robots$body` keeps the acquired bytes verbatim, NUL included, so
+`raw = TRUE` still round-trips them. This is a deliberate, documented divergence
+from the reference matcher, which is byte-transparent and would read
+`"\0Disallow: /x"` as the unknown directive `"\0disallow"` and ignore that line:
+byte transparency is unreachable through R's character type, and of the two
+representable rules, removal preserves every directive the document spells out
+where truncation would silently discard the rest of the file. Such a document is
+malformed, and `robots_validate_text()` reports it as a `nul_byte` error
+diagnostic, so the malformation stays visible — but a fetch must degrade, never
+abort, because of it.
+
 `robots_body()` must select from the `robots` table, render raw bytes safely when
 `raw = FALSE`, and return the raw vector unchanged when `raw = TRUE`. If
 `source_id` is omitted and the object contains more than one source, it must

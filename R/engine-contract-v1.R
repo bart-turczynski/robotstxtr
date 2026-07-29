@@ -458,9 +458,7 @@ text_body_bytes_v1 <- function(robots_txt) {
 }
 
 matcher_string_v1 <- function(body) {
-  out <- rawToChar(body)
-  Encoding(out) <- "UTF-8"
-  out
+  decode_matcher_body(body)
 }
 
 source_evidence_status_v1 <- function(result) {

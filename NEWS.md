@@ -88,6 +88,18 @@
   reaching the default allow. Such literals never survive URL parsing, so no
   reachable fetch changes; the guard simply no longer depends on `rurl`
   rejecting them first (#ROBO-udnyuuwn).
+* A fetched `robots.txt` carrying an embedded NUL byte no longer aborts the
+  call. `robots_body()`, `allowed_by_robots_url()` and
+  `robots_evaluate_url_v1()` decoded acquired bytes with a bare `rawToChar()`,
+  which raises `embedded nul in string`, so one stray NUL — a UTF-16-encoded
+  file, a WAF challenge page, a truncated or NUL-padded response — turned a
+  best-effort fetch into an error. NUL bytes are now removed before the bytes
+  become an R string, the same rule `robots_validate_text()` already applied:
+  the document is not truncated at the NUL and no other byte is rewritten, so
+  every directive the file spells out still applies. The stored body stays
+  byte-exact (`robots_body(raw = TRUE)`), and the malformation stays visible —
+  `robots_validate_text()` still reports it as a `nul_byte` error diagnostic
+  (#ROBO-hcqrzikz).
 
 # robotstxtr 0.1.0
 

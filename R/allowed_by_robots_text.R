@@ -76,8 +76,7 @@ allowed_by_robots_text <- function(robots_txt, url, user_agent,
   } else {
     raw_body <- charToRaw(enc2utf8(robots_txt))
   }
-  body_utf8 <- rawToChar(raw_body)
-  Encoding(body_utf8) <- "UTF-8"
+  body_utf8 <- decode_matcher_body(raw_body)
 
   # --- Per-element validity (§6.6, text path): a URL or user agent is invalid
   # only when missing (`NA`) or empty (`""`). Other URL strings pass through to
