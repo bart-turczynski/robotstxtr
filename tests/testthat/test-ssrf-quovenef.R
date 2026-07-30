@@ -21,6 +21,34 @@ test_that("ssrf_check blocks the documented IPv4 ranges with stable reasons", {
   expect_false(ssrf_check("127.0.0.1", "http")$allowed)
 })
 
+test_that("CGNAT 100.64.0.0/10 is blocked as shared, not cloud-metadata", {
+  # ROBO-cjnsrmgd. 100.64.0.0/10 is RFC 6598 Shared Address Space (CGNAT); it
+  # is not a metadata range, it merely contains one provider's endpoint. It was
+  # reported as "cloud-metadata", so a consumer keying off that published code
+  # misattributed every CGNAT address it saw. Still blocked — label only.
+  expect_identical(reason_of("100.64.0.0"), "shared")
+  expect_identical(reason_of("100.100.1.1"), "shared")
+  expect_identical(reason_of("100.127.255.255"), "shared")
+  expect_false(ssrf_check("100.64.0.1", "http")$allowed)
+  # The block is a /10, so these neighbours stay allowed.
+  expect_true(is.na(reason_of("100.128.0.1")))
+  expect_true(is.na(reason_of("100.63.255.255")))
+})
+
+test_that("0.0.0.0/8 above the unspecified address is this-network", {
+  # ROBO-cjnsrmgd. Only 0.0.0.0/32 is the unspecified address (RFC 1122
+  # §3.2.1.3); the rest of 0.0.0.0/8 is "this network" (RFC 791 §3.2). The old
+  # single /8 row reported all 16,777,216 addresses as "unspecified", correct
+  # for exactly one of them. Both remain blocked.
+  expect_identical(reason_of("0.0.0.0"), "unspecified")
+  expect_identical(reason_of("0.0.0.1"), "this-network")
+  expect_identical(reason_of("0.1.2.3"), "this-network")
+  expect_identical(reason_of("0.255.255.255"), "this-network")
+  expect_false(ssrf_check("0.1.2.3", "http")$allowed)
+  # 1.0.0.0 is the first address outside the /8.
+  expect_true(is.na(reason_of("1.0.0.0")))
+})
+
 test_that("ssrf_check blocks IPv6 loopback, embeddings, and metadata names", {
   expect_identical(reason_of("[::1]"), "loopback")
   expect_identical(reason_of("[::ffff:127.0.0.1]"), "ipv4-mapped")
@@ -157,6 +185,34 @@ test_that("ssrf_expand_zero_run rejects malformed IPv6 shapes", {
   expect_identical(reason_of("[1:2:3]"), "malformed-address")
   expect_identical(reason_of("[::ffff::1]"), "malformed-address")
   expect_identical(reason_of("[1:2:3:4:5:6:7:8::]"), "malformed-address")
+})
+
+test_that("a trailing single colon does not read as the address without it", {
+  # ROBO-zavqklmi. strsplit() KEEPS a leading empty field but DROPS a trailing
+  # one, so the arity check counted "1:2:3:4:5:6:7:8:" as eight groups and
+  # "::1:" as "::1", resolving each to an address: "::1:" was loopback and
+  # "::ffff:" decoded on to the IPv4-compatible 0.0.255.255. The verdicts
+  # happened to match the well-formed spellings, so this over-accepted a
+  # spelling rather than unblocking a range — but the malformed-address
+  # invariant (ROBO-udnyuuwn) did not hold.
+  expect_null(ssrf_expand_zero_run("::1:"))
+  expect_null(ssrf_expand_zero_run("::ffff:"))
+  expect_null(ssrf_expand_zero_run("1:2:3:4:5:6:7:8:"))
+  expect_identical(reason_of("[::1:]"), "malformed-address")
+  expect_identical(reason_of("[::ffff:]"), "malformed-address")
+  expect_identical(reason_of("[1:2:3:4:5:6:7:8:]"), "malformed-address")
+  # Already correct and must stay so: the kept leading empty field pushes the
+  # count to 9, so a leading single ":" was never the leaky direction.
+  expect_null(ssrf_expand_zero_run(":1:2:3:4:5:6:7:8"))
+})
+
+test_that("valid IPv6 spellings survive the trailing-colon refusal", {
+  expect_identical(ssrf_expand_zero_run("::"), rep("0", 8L))
+  expect_length(ssrf_expand_zero_run("1:2:3:4:5:6:7:8"), 8L)
+  expect_length(ssrf_expand_zero_run("fe80::1"), 8L)
+  expect_identical(reason_of("[::]"), "unspecified")
+  expect_identical(reason_of("[fe80::1]"), "link-local")
+  expect_true(is.na(reason_of("[2606:2800::]")))
 })
 
 test_that("ssrf_check blocks IPv6 unspecified, link-local, and metadata", {

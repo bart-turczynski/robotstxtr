@@ -88,6 +88,26 @@
   reaching the default allow. Such literals never survive URL parsing, so no
   reachable fetch changes; the guard simply no longer depends on `rurl`
   rejecting them first (#ROBO-udnyuuwn).
+* An IPv6 literal ending in a single `:` is now refused with
+  `malformed-address` rather than read as the address without it. R's
+  `strsplit()` keeps a *leading* empty field but drops a *trailing* one, so the
+  guard's arity check counted `1:2:3:4:5:6:7:8:` as eight groups and `::1:` as
+  `::1`: the first was allowed, the second classified as loopback, and
+  `::ffff:` decoded on to the IPv4-compatible `0.0.255.255`. Each landed on the
+  same verdict as its well-formed spelling, so no blocked range became
+  reachable — what failed was the `malformed-address` invariant above. A
+  trailing `.` is deliberately still accepted, matching the WHATWG host parser
+  (#ROBO-zavqklmi).
+* Two SSRF reason codes are corrected. `100.64.0.0/10` — RFC 6598 Shared
+  Address Space, i.e. carrier-grade NAT — was reported as `cloud-metadata`; it
+  is not a metadata range, it merely contains one provider's endpoint, so a
+  consumer keying off that code misattributed every CGNAT address it saw. It is
+  now `shared`. And only `0.0.0.0/32` is the unspecified address (RFC 1122
+  §3.2.1.3), so the rest of `0.0.0.0/8` is now `this-network` (RFC 791 §3.2)
+  instead of reporting all 16 777 216 addresses as `unspecified`. **Both blocks
+  remain blocked and no address changes verdict — only the reported code.**
+  `169.254.169.254` keeps its deliberate `cloud-metadata` label inside the
+  link-local `/16` (#ROBO-cjnsrmgd).
 * A fetched `robots.txt` carrying an embedded NUL byte no longer aborts the
   call. `robots_body()`, `allowed_by_robots_url()` and
   `robots_evaluate_url_v1()` decoded acquired bytes with a bare `rawToChar()`,
