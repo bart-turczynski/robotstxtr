@@ -1,7 +1,7 @@
 Package: robotstxtr
 Type: Package
 Title: Engine-Aware 'robots.txt' Policy with Google's Matcher Algorithm
-Version: 0.2.0
+Version: 0.2.0.9000
 Language: en-US
 Authors@R:
     person("Bart", "Turczynski", email = "bartek@turczynski.pl", role = c("aut", "cre"),

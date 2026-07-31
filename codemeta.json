@@ -8,7 +8,7 @@
   "codeRepository": "https://github.com/bart-turczynski/robotstxtr",
   "issueTracker": "https://github.com/bart-turczynski/robotstxtr/issues",
   "license": "https://spdx.org/licenses/MIT",
-  "version": "0.2.0",
+  "version": "0.2.0.9000",
   "programmingLanguage": {
     "@type": "ComputerLanguage",
     "name": "R",
@@ -57,6 +57,18 @@
         "url": "https://cran.r-project.org"
       },
       "sameAs": "https://CRAN.R-project.org/package=httpuv"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "identifier": "jsonlite",
+      "name": "jsonlite",
+      "provider": {
+        "@id": "https://cran.r-project.org",
+        "@type": "Organization",
+        "name": "Comprehensive R Archive Network (CRAN)",
+        "url": "https://cran.r-project.org"
+      },
+      "sameAs": "https://CRAN.R-project.org/package=jsonlite"
     },
     {
       "@type": "SoftwareApplication",
@@ -169,11 +181,10 @@
       ],
       "name": "{robotstxtr}: Engine-Aware 'robots.txt' Policy with Google's Matcher Algorithm",
       "url": "https://github.com/bart-turczynski/robotstxtr",
-      "description": "R package version 0.2.0"
+      "description": "R package version 0.2.0.9000"
     }
   ],
   "releaseNotes": "https://github.com/bart-turczynski/robotstxtr/blob/main/NEWS.md",
-  "readme": "https://github.com/bart-turczynski/robotstxtr/blob/main/README.md",
   "contIntegration": ["https://github.com/bart-turczynski/robotstxtr/actions/workflows/verify.yml", "https://app.codecov.io/gh/bart-turczynski/robotstxtr", "https://github.com/bart-turczynski/robotstxtr/actions/workflows/security-audit.yml", "https://github.com/bart-turczynski/robotstxtr/actions/workflows/osv-audit.yml"],
   "developmentStatus": "https://lifecycle.r-lib.org/articles/stages.html#maturing"
 }

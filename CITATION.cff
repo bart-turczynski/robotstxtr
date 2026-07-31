@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "robotstxtr: Engine-Aware 'robots.txt' Policy with Google's Matcher Algorithm"
-version: 0.2.0
+version: 0.2.0.9000
 abstract: >-
   Evaluates whether URLs may be crawled according to robots.txt rules. A
   versioned engine-aware facade keeps neutral fetch evidence, per-engine status
