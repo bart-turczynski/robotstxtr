@@ -22,4 +22,18 @@ On every commit, lightweight hooks run: end-of-file fixer, trailing-whitespace t
 
 On `git push`, the `verify` hook runs the project's verify command — the same chain CI runs. Server-side branch protection is unavailable on this GitHub plan, so this local pre-push gate is the stand-in for branch protection: it blocks a push whose tree would turn CI red.
 
+### The tracker is not in git unless it is snapshotted
+
+`.fp/` is gitignored, so the issue tracker is a local database that no commit, no clone and no bundle has ever contained — while `NEWS.md`, the release audits under `design/` and the test suite all cite `ROBO-*` ids as the reasoning behind what they assert. Regenerate the one copy that is in git with:
+
+```bash
+sh data-raw/snapshot-tracker.sh
+```
+
+It writes `design/tracker-snapshot.md`. Not `docs/`: that path here is the generated pkgdown site and is gitignored (`.gitignore:51`), so a snapshot written there would reach no commit and defeat the point of the file. `design/` is where this package's committed design docs already live.
+
+`fp` stays authoritative — nothing reads the snapshot back, and `fp context <id>` is still the way to read an issue. The file is a backstop, and every run overwrites it wholesale, so hand-edits to it are lost.
+
+Refresh it before taking any copy of the repository you intend to keep: a mirror push to the `backup` remote at `~/Projects/_backups/robotstxtr.git`, or a `git bundle create <path> --all`. Both exist for this repository. A snapshot that is never regenerated is worse than none, because it looks current.
+
 @FP_AGENTS.md
