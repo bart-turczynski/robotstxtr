@@ -29,6 +29,7 @@
 ^FP_AGENTS\.md$
 ^_scratch$
 ^dev$
+^data-raw$
 ^docs$
 ^design$
 ^CLAUDE\.md$
