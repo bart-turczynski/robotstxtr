@@ -24,8 +24,6 @@ ROBO-cbbyzfvf [todo] [low] Screaming Frog robots.txt conformance study (client, 
 ├── ROBO-aeyefkgi [todo] [low] SF4 — Fetch-policy probes: status, redirect, and size behaviour against a local server
 └── ROBO-uustkwqv [todo] [low] SF5 — Publish the Googlebot-vs-Screaming-Frog disagreement set
 
-ROBO-mgumaoyf [todo] [low] Extract the SSRF guard into a standalone ssrfr package
-
 ROBO-eslcxgfc [done] [high] Pre-push verify chokes on live browser socket under _scratch/ (R CMD build copies tree before .Rbuildignore)
 
 ROBO-quovenef [done] [high] Add SSRF guard to the fetch policy (block private/loopback/link-local; re-check across redirects)
@@ -92,6 +90,8 @@ ROBO-xmtazvxg [done] [low] Add robotstxtr-package.Rd via _PACKAGE sentinel (boil
 ROBO-cbzemsnq [done] [low] No CI check for roxygen/Rd drift — stale generated docs can land silently
 
 ROBO-udnyuuwn [done] [low] SSRF guard is fail-open on malformed IPv6 literals — decide whether to fail closed
+
+ROBO-mgumaoyf [done] [low] Extract the SSRF guard into a standalone ssrfr package
 
 ROBO-cjnsrmgd [done] [low] SSRF guard mislabels 100.64.0.0/10 as cloud-metadata; it is RFC 6598 shared address space
 
@@ -1596,7 +1596,7 @@ Epic complete — all seven slices (BI1–BI7) merged to main. The robotstxtr.en
 
 ## ROBO-mgumaoyf: Extract the SSRF guard into a standalone ssrfr package
 
-**Status:** todo
+**Status:** done
 
 ### Description
 
@@ -1656,6 +1656,13 @@ policy stays in that ADR even after the implementation moves.
 Also carry over the open posture question, ROBO-udnyuuwn / SITE-zgufvkks
 (malformed IPv6 literals fail open) — better to decide it once inside ssrfr
 than twice outside it.
+
+### Comments
+
+#### 2026-07-31 — bartek@turczynski.pl
+
+Doing this at ~/Projects/ssrfr
+
 
 
 
