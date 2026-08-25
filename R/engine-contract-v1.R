@@ -1451,10 +1451,16 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' @param robots_txt A single, non-missing character value containing the
 #'   robots.txt body.
 #' @param url A character vector of URLs to evaluate.
-#' @param robots_product_token A character vector of length one or
-#'   `length(url)` used only for robots user-agent group selection. The Google
-#'   backend accepts any valid Google robots product token and yields Google
-#'   semantics for it, not a prediction of the named crawler.
+#' @param robots_product_token A matcher-profile selector: a robots.txt
+#'   `User-agent:` group label, NOT an HTTP `User-Agent` crawler identity. It is
+#'   never sent as a header. A character vector of length one or `length(url)`.
+#'   The Google backend accepts any valid Google robots product token and
+#'   yields Google semantics for it, not a prediction of the named crawler. The
+#'   `"yandex"` and `"bing"` backends accept only a closed set of selectors,
+#'   published on the engine contract as
+#'   `matcher_capability$<backend>$supported_profiles` and checkable up front
+#'   with [robots_resolve_matcher_profile_v1()]; an
+#'   unaccepted selector leaves its rows undecided rather than raising.
 #' @param robots_policy_ruleset An explicit ruleset, length one or
 #'   `length(url)`: `"google"`, `"yandex"`, `"rfc9309"`, `"bing"`, or
 #'   `"assumed_rfc9309"`.

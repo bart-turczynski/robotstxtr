@@ -1,5 +1,52 @@
 # robotstxtr (development version)
 
+* The engine contract now publishes which product tokens each
+  `bounded_profiles` matcher backend accepts, and what each one does. Schema
+  revision advances to `2026-08-25.1` on both `robots_engine_contract_v1()` and
+  `robots_engine_contract_v2()`; both contract ids are unchanged and the
+  addition is additive, so no existing field changes type or meaning.
+
+  The accepted sets are small and not guessable from vendor documentation:
+
+  | backend | accepted selectors |
+  |---|---|
+  | `yandex` | `Yandex`, `YandexAdditionalBot` |
+  | `bing` | `bingbot`, `adidxbot` |
+
+  Notably `YandexBot` — Yandex's main indexing crawler, and the value a caller
+  is most likely to reach for — is **not** accepted, while `Yandex` is. That is
+  not a typo in either direction: `robots_product_token` is a robots.txt
+  `User-agent:` group label, not an HTTP `User-Agent` crawler identity, and
+  `Yandex` is an umbrella group that no crawler ever sends. RFC 9309 treats the
+  two as one namespace; vendors do not.
+
+  Each backend's `matcher_capability` entry gains `product_token_role`,
+  `product_token_comparison` (`ascii_case_insensitive_exact` for both backends)
+  and `supported_profiles`, a data frame carrying `profile_id`,
+  `accepted_token`, `group_label`, `group_selection` and `profile_revision`.
+  `group_selection` matters: `Yandex` and `bingbot` fall back to a
+  `User-agent: *` group when no group names them (`exact_else_wildcard`), while
+  `YandexAdditionalBot` and `adidxbot` never do (`exact_only`), so a robots.txt
+  containing only `User-agent: *` does not constrain them at all. The two
+  accepted selectors on a backend are therefore not interchangeable, which is
+  why the contract publishes rows rather than a bare token vector. Backends
+  whose `token_policy` is `arbitrary_valid` or `rfc9309` publish none of the
+  three fields: their accepted sets are not closed
+  (#ROBO-qgxekgph, #ROBO-gcnlckao).
+
+* New exported `robots_resolve_matcher_profile_v1()` checks a product token
+  against a backend before anything is fetched or evaluated, returning the
+  resolved profile row — including `group_selection` — or raising
+  `robotstxtr_unresolvable_matcher_profile` with the accepted selectors named
+  in the message. Passing an unaccepted selector to an evaluation call is still
+  not an error: the affected rows come back undecided, with `url_decision`
+  `NA`, which reads like a transport failure rather than a configuration
+  mistake. Inspecting results is not an equivalent guard, because a row need
+  never reach the matcher at all — an `allow_all` policy returns a decision for
+  a nonsensical selector without consulting the profile. Unsupported-token
+  `error_message` values now also name the accepted selectors and point at the
+  resolver; the per-row status vocabulary is unchanged (#ROBO-nvuwpktu).
+
 * Added `robots_engine_contract_v2()` and, through it, the Bing
   `matcher_backend` as an available end-to-end backend as of schema revision
   `2026-07-24.1`, bounded to the profiles `bingbot` and `adidxbot`; every other
@@ -9,8 +56,9 @@
   `matcher_input_limit_exceeded`, and `matcher_work_limit_exceeded` — none of
   which can ever be an allow/disallow decision. Structured backend identity is
   published at `robots_engine_contract_v2()$matcher_identity$bing`. The
-  `robots_engine_contract_v1()` accessor's own contract id and schema revision
-  (`2026-07-18.2`) are unchanged. This is an independent, unofficial
+  `robots_engine_contract_v1()` accessor's own contract id is unchanged, and
+  its schema revision was unchanged by this addition (it later advanced for the
+  bounded-profile publication below). This is an independent, unofficial
   compatibility profile and does not claim production-crawler parity; it is not
   affiliated with or endorsed by Microsoft, Bing, Bingbot, or AdIdxBot
   (#ROBO-zcgprxtq, #ROBO-lpedsigv, #ROBO-xbwlsjzu, #ROBO-yhfjsbzo,
