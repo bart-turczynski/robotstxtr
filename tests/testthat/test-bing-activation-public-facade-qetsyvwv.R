@@ -17,7 +17,7 @@ test_that("the v2 contract publishes the activation identity and status set", {
   v2 <- robots_engine_contract_v2()
   expect_s3_class(v2, "robots_engine_contract_v2")
   expect_identical(v2$contract_id, "robotstxtr.engine-aware/v2")
-  expect_identical(v2$schema_revision, "2026-07-24.1")
+  expect_identical(v2$schema_revision, "2026-08-25.1")
   expect_identical(
     v2$matcher_status_set, robotstxtr:::engine_matcher_status_set_v2()
   )
@@ -49,7 +49,7 @@ test_that("v1 accessor identity and schema stay byte-unchanged (SS16.5)", {
   # nor the Google/Yandex identities the v1 accessor publishes.
   v1 <- robots_engine_contract_v1()
   expect_identical(v1$contract_id, "robotstxtr.engine-aware/v1")
-  expect_identical(v1$schema_revision, "2026-07-18.2")
+  expect_identical(v1$schema_revision, "2026-08-25.1")
   expect_match(v1$matcher_revisions[["google"]], "22b355ff")
   expect_identical(
     v1$matcher_revisions[["yandex"]],

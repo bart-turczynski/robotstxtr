@@ -159,8 +159,14 @@ match_yandex_v1 <- function(bodies, urls, product_tokens) {
   error_stage[unsupported | invalid_target] <- "input"
   error_class[unsupported] <- "robots_unsupported_product_token"
   error_class[invalid_target] <- "robots_invalid_request_target"
-  error_message[unsupported] <-
-    "Robots product token is not supported by the Yandex matcher backend."
+  error_message[unsupported] <- sprintf(
+    paste0(
+      "Robots product token is not supported by the Yandex matcher backend. ",
+      "Accepted selectors: %s. Resolve the token before evaluating with ",
+      "robots_resolve_matcher_profile_v1()."
+    ),
+    accepted_selectors_phrase_v1("yandex")
+  )
   error_message[invalid_target] <-
     "A request target could not be derived from the URL."
 

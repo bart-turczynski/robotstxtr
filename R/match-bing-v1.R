@@ -192,8 +192,14 @@ match_bing_v1 <- function(bodies, urls, product_tokens) {
   error_class[invalid_target] <- "robots_invalid_request_target"
   error_class[input_limit] <- "robots_matcher_input_limit_exceeded"
   error_class[work_limit] <- "robots_matcher_work_limit_exceeded"
-  error_message[unsupported] <-
-    "Robots product token is not a supported Bing profile."
+  error_message[unsupported] <- sprintf(
+    paste0(
+      "Robots product token is not a supported Bing profile. Accepted ",
+      "selectors: %s. Resolve the token before evaluating with ",
+      "robots_resolve_matcher_profile_v1()."
+    ),
+    accepted_selectors_phrase_v1("bing")
+  )
   error_message[invalid_target] <-
     "A request target could not be derived from the URL."
   error_message[input_limit] <-

@@ -4,8 +4,8 @@
 # Explicit, high-signal assertions that adding and activating the Bing backend
 # left Google and Yandex byte- and behavior-UNCHANGED: their vendored trees
 # still match their frozen manifests, their matcher revisions and identities are
-# unchanged, the v1 engine-aware schema stays 2026-07-18.2 (only the NEW v2
-# accessor reports v2), the 140-case Yandex corpus still verifies clean, and a
+# unchanged, only the NEW v2 accessor reports the v2 contract id, the 140-case
+# Yandex corpus still verifies clean, and a
 # Google/Yandex request neither loads nor invokes the Bing adapter.
 #
 # Tests ONLY -- no source, no fixture touched. This suite deliberately keeps to
@@ -59,13 +59,16 @@ test_that("NR-IDENTITY Google + Yandex revisions and v1 schema are unchanged", {
   expect_identical(
     registry$yandex$revision, robotstxtr:::yandex_matcher_revision_v1()
   )
-  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
+  expect_identical(engine_schema_revision_v1(), "2026-08-25.1")
 
-  # The v1 accessor's own identity is byte-unchanged: still the v1 contract and
-  # the pre-Bing schema, with the pre-Bing Google/Yandex revisions.
+  # The v1 accessor still reports the v1 contract id with the pre-Bing
+  # Google/Yandex revisions. Its schema_revision is NOT frozen forever: §16.5
+  # required it to survive the BING activation unchanged, which it did. It later
+  # advanced to 2026-08-25.1 for the additive bounded-profile publication
+  # (ROBO-qgxekgph), which touched no Google or Yandex matcher behaviour.
   v1 <- robots_engine_contract_v1()
   expect_identical(v1$contract_id, "robotstxtr.engine-aware/v1")
-  expect_identical(v1$schema_revision, "2026-07-18.2")
+  expect_identical(v1$schema_revision, "2026-08-25.1")
   expect_match(v1$matcher_revisions[["google"]], "22b355ff")
   expect_identical(
     v1$matcher_revisions[["yandex"]],
@@ -76,11 +79,14 @@ test_that("NR-IDENTITY Google + Yandex revisions and v1 schema are unchanged", {
 test_that("NR-V2 only the new v2 accessor reports the v2 contract", {
   v2 <- robots_engine_contract_v2()
   expect_identical(v2$contract_id, "robotstxtr.engine-aware/v2")
-  expect_identical(v2$schema_revision, "2026-07-24.1")
-  # Adding v2 did not mutate the v1 accessor's contract_id or schema.
+  expect_identical(v2$schema_revision, "2026-08-25.1")
+  # Adding v2 did not mutate the v1 accessor's contract_id. Both accessors carry
+  # the same schema_revision string today because the bounded-profile addition
+  # landed in both on one date; a revision is only ever meaningful alongside its
+  # contract_id, which is what actually separates the two surfaces.
   v1 <- robots_engine_contract_v1()
   expect_identical(v1$contract_id, "robotstxtr.engine-aware/v1")
-  expect_identical(v1$schema_revision, "2026-07-18.2")
+  expect_identical(v1$schema_revision, "2026-08-25.1")
   # Google/Yandex revisions match across both accessors.
   expect_identical(
     v1$matcher_revisions[["yandex"]], v2$matcher_revisions[["yandex"]]

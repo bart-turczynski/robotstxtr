@@ -12,7 +12,9 @@ A named list of contract metadata with class
 }
 \description{
 Returns the stable identifiers, value sets, backend capability states,
-the matcher token/semantics capability boundary (\code{matcher_capability}),
+the matcher token/semantics capability boundary (\code{matcher_capability},
+which for a \code{bounded_profiles} backend also publishes the accepted
+matcher-profile selectors in \code{supported_profiles}),
 the separately inspectable vendored-matcher identity fields
 (\code{matcher_identity}, e.g. library/payload/profile/corpus/evidence/
 profile-source for the Yandex backend), status-policy table, and supported
@@ -30,6 +32,11 @@ contract$matcher_availability
 
 # The token/semantics boundary each backend is authoritative for.
 contract$matcher_capability$yandex$token_policy
+
+# Which selectors a bounded backend accepts, and how each one selects a
+# group. `Yandex` falls back to `User-agent: *`; `YandexAdditionalBot`
+# never does, so the two are not interchangeable.
+contract$matcher_capability$yandex$supported_profiles
 
 # Status policy is a lookup keyed by acquisition category and ruleset:
 # how each ruleset treats a 4xx response to the robots.txt request.

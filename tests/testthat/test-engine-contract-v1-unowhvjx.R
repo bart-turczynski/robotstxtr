@@ -37,7 +37,7 @@ test_that("contract metadata publishes revisions and sibling ranges", {
   contract <- robots_engine_contract_v1()
   expect_s3_class(contract, "robots_engine_contract_v1")
   expect_identical(contract$contract_id, "robotstxtr.engine-aware/v1")
-  expect_identical(contract$schema_revision, "2026-07-18.2")
+  expect_identical(contract$schema_revision, "2026-08-25.1")
   expect_match(contract$matcher_revisions[["google"]], "22b355ff")
   expect_identical(
     contract$matcher_availability[["google"]], "available"

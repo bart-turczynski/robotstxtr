@@ -19,10 +19,16 @@ robots.txt body.}
 
 \item{url}{A character vector of URLs to evaluate.}
 
-\item{robots_product_token}{A character vector of length one or
-\code{length(url)} used only for robots user-agent group selection. The Google
-backend accepts any valid Google robots product token and yields Google
-semantics for it, not a prediction of the named crawler.}
+\item{robots_product_token}{A matcher-profile selector: a robots.txt
+\verb{User-agent:} group label, NOT an HTTP \code{User-Agent} crawler identity. It is
+never sent as a header. A character vector of length one or \code{length(url)}.
+The Google backend accepts any valid Google robots product token and
+yields Google semantics for it, not a prediction of the named crawler. The
+\code{"yandex"} and \code{"bing"} backends accept only a closed set of selectors,
+published on the engine contract as
+\verb{matcher_capability$<backend>$supported_profiles} and checkable up front
+with \code{\link[=robots_resolve_matcher_profile_v1]{robots_resolve_matcher_profile_v1()}}; an
+unaccepted selector leaves its rows undecided rather than raising.}
 
 \item{robots_policy_ruleset}{An explicit ruleset, length one or
 \code{length(url)}: \code{"google"}, \code{"yandex"}, \code{"rfc9309"}, \code{"bing"}, or
@@ -55,7 +61,7 @@ the token names. The Yandex and Bing backends are bounded to their supported
 vendor profiles only and never generalize to arbitrary tokens. This boundary
 is published as \code{robots_engine_contract_v1()$matcher_capability}.
 
-As of schema revision \code{2026-07-18.2} the Yandex backend is active. An
+The Yandex backend is active (since schema revision \code{2026-07-18.2}). An
 evaluated Yandex row publishes \code{reason} as one of \code{default_allow},
 \code{rule_allow}, \code{rule_disallow}, or \code{effective_empty_disallow}; a non-evaluated
 Yandex row reports \code{matcher_status = "not_evaluated"} with

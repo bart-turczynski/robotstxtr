@@ -7,7 +7,8 @@
 # material, that dev-only legal summaries are excluded from the binary package,
 # and that no internal / vendor / native symbol is a public R API. Tests ONLY:
 # this touches no source and no fixture. Post-activation the Yandex backend is
-# available and the schema is 2026-07-18.2; the export freeze stays unchanged.
+# available and the engine-aware v1 schema is current; the export freeze stays
+# unchanged.
 #
 # The companion offline tarball / build-scope audit (source vs binary file
 # disposition, exact vendored bytes surviving packaging) lives in
@@ -60,7 +61,7 @@ pl_skip_if_no_native <- function() {
 }
 
 # The frozen public export surface. getNamespaceExports() returns exactly these
-# ten symbols; the four S3 print methods register for dispatch but are not in
+# twelve symbols; the four S3 print methods register for dispatch but are not in
 # the exports set. Adding an export is a deliberate API change that MUST update
 # this list (and the setequal freeze below will otherwise fail).
 pl_public_exports <- c(
@@ -73,6 +74,7 @@ pl_public_exports <- c(
   "robots_evaluate_text_v1",
   "robots_evaluate_url_v1",
   "robots_fetch",
+  "robots_resolve_matcher_profile_v1",
   "robots_validate_text",
   "robots_validate_url"
 )
@@ -297,5 +299,5 @@ test_that("DATA-ONLY Yandex available, schema bumped", {
     engine_matcher_availability_v1()[["yandex"]],
     "available"
   )
-  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
+  expect_identical(engine_schema_revision_v1(), "2026-08-25.1")
 })
