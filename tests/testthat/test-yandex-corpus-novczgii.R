@@ -385,5 +385,5 @@ test_that("Yandex is available and the schema revision is the activation one", {
   registry <- engine_matcher_registry_v1()
   expect_identical(registry$yandex$availability, "available")
   expect_type(registry$yandex$callable, "closure")
-  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
+  expect_identical(engine_schema_revision_v1(), "2026-08-25.1")
 })

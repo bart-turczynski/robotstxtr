@@ -7,7 +7,8 @@
 # material, that dev-only legal summaries are excluded from the binary package,
 # and that no internal / vendor / native symbol is a public R API. Tests ONLY:
 # this touches no source and no fixture. Post-activation the Yandex backend is
-# available and the schema is 2026-07-18.2; the export freeze stays unchanged.
+# available and the engine-aware v1 schema is current; the export freeze stays
+# unchanged.
 #
 # The companion offline tarball / build-scope audit (source vs binary file
 # disposition, exact vendored bytes surviving packaging) lives in
@@ -297,5 +298,5 @@ test_that("DATA-ONLY Yandex available, schema bumped", {
     engine_matcher_availability_v1()[["yandex"]],
     "available"
   )
-  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
+  expect_identical(engine_schema_revision_v1(), "2026-08-25.1")
 })

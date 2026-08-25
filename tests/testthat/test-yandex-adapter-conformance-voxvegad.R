@@ -219,7 +219,7 @@ test_that("Yandex is active with the activation schema", {
     engine_matcher_availability_v1()[["yandex"]],
     "available"
   )
-  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
+  expect_identical(engine_schema_revision_v1(), "2026-08-25.1")
 
   registry <- engine_matcher_registry_v1()
   expect_identical(registry$yandex$availability, "available")

@@ -289,7 +289,7 @@ test_that("the adapter is active -- availability flipped and schema bumped", {
     engine_matcher_availability_v1()[["yandex"]],
     "available"
   )
-  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
+  expect_identical(engine_schema_revision_v1(), "2026-08-25.1")
   # The registry now carries the batch-shaped Yandex callable.
   registry <- engine_matcher_registry_v1()
   expect_type(registry$yandex$callable, "closure")

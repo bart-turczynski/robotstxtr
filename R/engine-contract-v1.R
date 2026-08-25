@@ -11,13 +11,14 @@ engine_contract_id_v1 <- function() {
 }
 
 engine_schema_revision_v1 <- function() {
-  "2026-07-18.2"
+  "2026-08-25.1"
 }
 
 # The engine-aware/v2 facade identity (BI-V2-SCHEMA, spec SS15). Introduced by
 # the atomic Bing activation, it supersedes the v1 facade for Bing while leaving
-# the v1 accessor's contract_id and schema_revision byte-unchanged (spec SS16.5
-# preserves the Yandex schema-2026-07-18.2 guarantees). The v2 surface is
+# the v1 accessor's contract_id and schema_revision byte-unchanged at the time
+# (spec SS16.5 preserved the Yandex schema-2026-07-18.2 guarantees across that
+# activation; the freeze was scoped to it, not permanent). The v2 surface is
 # published through robots_engine_contract_v2(); the shared registry and status
 # vocabulary are the same objects both accessors read.
 engine_contract_id_v2 <- function() {
@@ -25,7 +26,7 @@ engine_contract_id_v2 <- function() {
 }
 
 engine_schema_revision_v2 <- function() {
-  "2026-07-24.1"
+  "2026-08-25.1"
 }
 
 engine_rulesets_v1 <- function() {
@@ -88,6 +89,150 @@ engine_matcher_availability_v1 <- function() {
   matcher_registry_field_v1(validated_matcher_registry_v1(), "availability")
 }
 
+# The accepted matcher-profile selectors for one `bounded_profiles` backend.
+#
+# A `bounded_profiles` backend accepts a closed, tiny set of tokens and rejects
+# everything else. Publishing only the membership of that set would be
+# misleading, because the accepted tokens within one backend do NOT behave
+# alike: each row's `group_selection` says whether the profile falls back to a
+# wildcard group when no group names it.
+#
+#   exact_else_wildcard  Merge every group naming this token exactly; only if
+#                        no such group exists, merge the `User-agent: *`
+#                        groups. (`Yandex`, `bingbot`)
+#   exact_only           Merge every group naming this token exactly, and never
+#                        fall back to a wildcard group. A robots.txt with only
+#                        `User-agent: *` therefore constrains this profile not
+#                        at all. (`YandexAdditionalBot`, `adidxbot`)
+#
+# The pattern is vendor-neutral rather than a Yandex quirk: the Yandex
+# "Additional" family and Bing's AdIdxBot both behave this way, in the vendored
+# cores (robotstxtyandex crawler_selector.cc, robotstxtbing selection.h) as in
+# vendor documentation.
+#
+# `accepted_token` is the canonical spelling. Comparison is ASCII
+# case-insensitive and exact -- no trimming, prefix or suffix matching, and no
+# aliases -- as published by `product_token_comparison`.
+supported_profiles_row_v1 <- function(profile_id, accepted_token,
+                                      group_selection, profile_revision) {
+  data.frame(
+    profile_id = profile_id,
+    accepted_token = accepted_token,
+    group_label = accepted_token,
+    group_selection = group_selection,
+    profile_revision = profile_revision,
+    stringsAsFactors = FALSE
+  )
+}
+
+# The published selection modes. Any row outside this set is a build error.
+supported_profile_selection_modes_v1 <- function() {
+  c("exact_else_wildcard", "exact_only")
+}
+
+# Yandex accepts exactly the umbrella group label and the Additional crawler.
+# Both come from the single vendored profile library, so both rows carry that
+# library's profile id as their revision -- read from the frozen identity, never
+# restated as a literal here.
+yandex_supported_profiles_v1 <- function() {
+  revision <- yandex_matcher_identity_v1()$profile_id
+  supported_profiles_row_v1(
+    profile_id = c("yandex", "yandex_additional_bot"),
+    accepted_token = c("Yandex", "YandexAdditionalBot"),
+    group_selection = c("exact_else_wildcard", "exact_only"),
+    profile_revision = c(revision, revision)
+  )
+}
+
+# Bing accepts exactly `bingbot` and `adidxbot` (robotstxtbing policy.cpp
+# is_supported_profile_token). Each has its own frozen profile revision.
+bing_supported_profiles_v1 <- function() {
+  id <- bing_matcher_identity_v1()
+  supported_profiles_row_v1(
+    profile_id = c("bingbot", "adidxbot"),
+    accepted_token = c("bingbot", "adidxbot"),
+    group_selection = c("exact_else_wildcard", "exact_only"),
+    profile_revision = c(
+      id$bingbot_profile_revision, id$adidxbot_profile_revision
+    )
+  )
+}
+
+# Build-time invariant over the published capability object. Keeps the two
+# axes from drifting apart: a bounded backend must publish a profile table and
+# an unbounded one must not, and every published selection mode must be one the
+# contract defines. A violation is a package bug, not user input, so it aborts.
+validate_backend_capability_v1 <- function(capability) {
+  modes <- supported_profile_selection_modes_v1()
+  profile_fields <- c(
+    "product_token_role", "product_token_comparison", "supported_profiles"
+  )
+
+  for (backend in names(capability)) {
+    entry <- capability[[backend]]
+    bounded <- identical(entry$token_policy, "bounded_profiles")
+    present <- profile_fields %in% names(entry)
+
+    if (bounded && !all(present)) {
+      capability_abort_v1(sprintf(
+        "backend %s is bounded_profiles but omits: %s.",
+        backend, toString(profile_fields[!present])
+      ))
+    }
+    if (!bounded && any(present)) {
+      capability_abort_v1(sprintf(
+        "backend %s is not bounded_profiles but publishes: %s.",
+        backend, toString(profile_fields[present])
+      ))
+    }
+    if (!bounded) next
+
+    profiles <- entry$supported_profiles
+    if (!is.data.frame(profiles) || nrow(profiles) == 0L) {
+      capability_abort_v1(sprintf(
+        "backend %s must publish a non-empty supported_profiles frame.", backend
+      ))
+    }
+    expected_cols <- c(
+      "profile_id", "accepted_token", "group_label", "group_selection",
+      "profile_revision"
+    )
+    if (!identical(names(profiles), expected_cols)) {
+      capability_abort_v1(sprintf(
+        "backend %s supported_profiles columns must be exactly: %s.",
+        backend, toString(expected_cols)
+      ))
+    }
+    bad_mode <- !profiles$group_selection %in% modes
+    if (any(bad_mode)) {
+      capability_abort_v1(sprintf(
+        "backend %s publishes unknown group_selection: %s.",
+        backend, toString(unique(profiles$group_selection[bad_mode]))
+      ))
+    }
+    if (anyDuplicated(tolower(profiles$accepted_token)) > 0L) {
+      capability_abort_v1(sprintf(
+        "backend %s publishes case-duplicate accepted_token values.", backend
+      ))
+    }
+    if (any(is.na(profiles$profile_revision) |
+              !nzchar(profiles$profile_revision))) {
+      capability_abort_v1(sprintf(
+        "backend %s publishes an empty profile_revision.", backend
+      ))
+    }
+  }
+
+  capability
+}
+
+capability_abort_v1 <- function(detail) {
+  robots_abort(
+    sprintf("Matcher capability invariant failed: %s", detail),
+    "robotstxtr_matcher_capability_invariant"
+  )
+}
+
 # The capability boundary between a matcher backend's owned vendor SEMANTICS and
 # the robots product TOKEN used for user-agent group selection. Keyed like
 # engine_matcher_registry_v1(). This is descriptive metadata only: it changes no
@@ -97,6 +242,20 @@ engine_matcher_availability_v1 <- function() {
 # `matcher_semantics` names the sole vendor/semantics a backend owns; a Google
 # decision on any token reflects Google parsing/matching, never a prediction of
 # the crawler the token names.
+#
+# The two `bounded_profiles` backends additionally publish which selectors they
+# accept, because passing an unaccepted one is not an error a caller can miss
+# cheaply: on `yandex` it yields matcher_status `not_evaluated` with reason
+# `unsupported_product_token`, which reads like a transport failure rather than
+# a configuration mistake. `product_token_role` names what the token IS -- a
+# robots.txt group selector, not an HTTP User-Agent crawler identity --
+# `product_token_comparison` fixes how it is compared, and
+# `supported_profiles` carries the accepted rows with their group-selection
+# behavior. Backends whose `token_policy` is `arbitrary_valid` or `rfc9309`
+# publish none of the three: the set is not closed, so there is nothing to
+# enumerate. A `capability_unavailable` backend still publishes its capability
+# entry; `rfc9309` is unavailable AND unbounded, so it publishes no profile
+# table for the second reason, not the first.
 engine_backend_capability_v1 <- function() {
   list(
     google = list(
@@ -116,7 +275,10 @@ engine_backend_capability_v1 <- function() {
         "Yandex backend is bounded to its supported Yandex vendor profiles ",
         "only (profile yandex-0.1.0); it never generalizes to arbitrary ",
         "tokens and is not backed by Google matching."
-      )
+      ),
+      product_token_role = "matcher_profile_selector",
+      product_token_comparison = "ascii_case_insensitive_exact",
+      supported_profiles = yandex_supported_profiles_v1()
     ),
     bing = list(
       token_policy = "bounded_profiles",
@@ -125,7 +287,10 @@ engine_backend_capability_v1 <- function() {
         "Bing backend is bounded to its supported Bing vendor profiles only; ",
         "it never generalizes to arbitrary tokens and is not backed by Google ",
         "matching."
-      )
+      ),
+      product_token_role = "matcher_profile_selector",
+      product_token_comparison = "ascii_case_insensitive_exact",
+      supported_profiles = bing_supported_profiles_v1()
     ),
     rfc9309 = list(
       token_policy = "rfc9309",
@@ -136,6 +301,10 @@ engine_backend_capability_v1 <- function() {
       )
     )
   )
+}
+
+validated_backend_capability_v1 <- function() {
+  validate_backend_capability_v1(engine_backend_capability_v1())
 }
 
 policy_rows_set_v1 <- function(table, category, ruleset, policy_status,
@@ -269,7 +438,9 @@ engine_policy_table_v1 <- function() {
 #' Inspect the versioned engine-aware robots contract
 #'
 #' Returns the stable identifiers, value sets, backend capability states,
-#' the matcher token/semantics capability boundary (`matcher_capability`),
+#' the matcher token/semantics capability boundary (`matcher_capability`,
+#' which for a `bounded_profiles` backend also publishes the accepted
+#' matcher-profile selectors in `supported_profiles`),
 #' the separately inspectable vendored-matcher identity fields
 #' (`matcher_identity`, e.g. library/payload/profile/corpus/evidence/
 #' profile-source for the Yandex backend), status-policy table, and supported
@@ -289,6 +460,11 @@ engine_policy_table_v1 <- function() {
 #'
 #' # The token/semantics boundary each backend is authoritative for.
 #' contract$matcher_capability$yandex$token_policy
+#'
+#' # Which selectors a bounded backend accepts, and how each one selects a
+#' # group. `Yandex` falls back to `User-agent: *`; `YandexAdditionalBot`
+#' # never does, so the two are not interchangeable.
+#' contract$matcher_capability$yandex$supported_profiles
 #'
 #' # Status policy is a lookup keyed by acquisition category and ruleset:
 #' # how each ruleset treats a 4xx response to the robots.txt request.
@@ -311,7 +487,7 @@ robots_engine_contract_v1 <- function() {
       matcher_availability = matcher_registry_field_v1(
         matcher_registry, "availability"
       ),
-      matcher_capability = engine_backend_capability_v1(),
+      matcher_capability = validated_backend_capability_v1(),
       matcher_identity = list(
         yandex = yandex_matcher_identity_v1(),
         bing = bing_matcher_identity_v1()
@@ -333,7 +509,7 @@ robots_engine_contract_v1 <- function() {
 #' Returns the v2 facade metadata introduced by the atomic Bing matcher
 #' activation. It has the same shape as [robots_engine_contract_v1()] but
 #' publishes the v2 contract id (`robotstxtr.engine-aware/v2`), the v2
-#' schema revision (`2026-07-24.1`), the full eight-member v2 matcher-status set
+#' schema revision, the full eight-member v2 matcher-status set
 #' (`matcher_status_set`), and the separately inspectable vendored-matcher
 #' identity fields for both the Yandex and Bing backends
 #' (`matcher_identity$bing`, with library/payload/contract/parser/profile/
@@ -376,7 +552,7 @@ robots_engine_contract_v2 <- function() {
       matcher_availability = matcher_registry_field_v1(
         matcher_registry, "availability"
       ),
-      matcher_capability = engine_backend_capability_v1(),
+      matcher_capability = validated_backend_capability_v1(),
       matcher_identity = list(
         yandex = yandex_matcher_identity_v1(),
         bing = bing_matcher_identity_v1()
@@ -1223,7 +1399,8 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
     error_message = error_message,
     stringsAsFactors = FALSE
   )
-  # Schema 2026-07-18.2 public list column: exactly one element per row. All
+  # Public list column, unchanged since schema 2026-07-18.2: exactly one
+  # element per row. All
   # rows start absent (NULL); only Yandex-evaluated rows carry raw bytes /
   # raw(0) / NULL, scattered so the present-empty raw(0) vs absent NULL
   # distinction survives verbatim. Google and other rows stay NULL.
@@ -1256,7 +1433,7 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' vendor profiles only and never generalize to arbitrary tokens. This boundary
 #' is published as `robots_engine_contract_v1()$matcher_capability`.
 #'
-#' As of schema revision `2026-07-18.2` the Yandex backend is active. An
+#' The Yandex backend is active (since schema revision `2026-07-18.2`). An
 #' evaluated Yandex row publishes `reason` as one of `default_allow`,
 #' `rule_allow`, `rule_disallow`, or `effective_empty_disallow`; a non-evaluated
 #' Yandex row reports `matcher_status = "not_evaluated"` with

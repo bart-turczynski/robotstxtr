@@ -10,7 +10,8 @@
 # dormancy proof.
 #
 # This unit freezes those edges. Post-activation (YI5) the Yandex backend is
-# available, the schema is 2026-07-18.2, and the batch adapter is registered;
+# available, the engine-aware v1 schema is current, and the batch adapter is
+# registered;
 # the facade and data-only assertions below track that active state.
 # Native-binding-dependent edges skip on a pure-R install, matching the sibling
 # conformance test.
@@ -79,7 +80,7 @@ yc_expect_active <- function() {
   expect_identical(
     engine_matcher_availability_v1()[["yandex"]], "available"
   )
-  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
+  expect_identical(engine_schema_revision_v1(), "2026-08-25.1")
   expect_type(engine_matcher_registry_v1()$yandex$callable, "closure")
 }
 

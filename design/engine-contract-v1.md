@@ -1,7 +1,7 @@
 # Engine-aware robots evaluation contract v1
 
 - Contract ID: `robotstxtr.engine-aware/v1`
-- Schema revision: `2026-07-18.2`
+- Schema revision: `2026-08-25.1`
 - First package release: `robotstxtr 0.2.0`
 - Normative policy source: [`engine-profiles.md`](engine-profiles.md)
 
@@ -62,8 +62,8 @@ SHA. The Google 500 KiB limit is applied at the matcher stage: the neutral
 evidence retains a complete caller-supplied or within-acquisition-limit body,
 and Google parses only its first 524,288 bytes.
 
-The Yandex matcher backend is `available` as of schema revision
-`2026-07-18.2`. It is bounded to its supported Yandex vendor profiles
+The Yandex matcher backend is `available` (as of schema revision
+`2026-07-18.2`). It is bounded to its supported Yandex vendor profiles
 (profile `yandex-0.1.0`) and never generalizes to arbitrary tokens or falls
 back to Google. Its backend revision is the composed, byte-frozen
 `robotstxtyandex/0.2.0+payload.<commit>;profile=yandex-0.1.0;corpus=<rev>;evidence=<sha>;profile-source=<rev>`
@@ -152,3 +152,62 @@ boundary is published as data on the contract object as
 accepting an arbitrary valid token yields Google parsing/matching semantics for
 that token and is never a claim of compatibility with — or a prediction of — the
 crawler the token names.
+
+## Accepted matcher-profile selectors
+
+A backend whose `token_policy` is `bounded_profiles` accepts a closed set of
+selectors and rejects everything else. As of schema revision `2026-08-25.1`
+that set is published, so a consumer can validate its configuration before
+evaluating anything instead of discovering the mistake in the results.
+
+Each such backend's `matcher_capability` entry carries three additional fields:
+
+- `product_token_role` — always `matcher_profile_selector`. The value names
+  what the token IS: a robots.txt `User-agent:` group selector, not an HTTP
+  `User-Agent` crawler identity. RFC 9309 treats those as one namespace;
+  Yandex does not, because its umbrella label `Yandex` is a group name no
+  crawler ever sends.
+- `product_token_comparison` — always `ascii_case_insensitive_exact`. ASCII
+  case folding, exact whole-token match, no trimming, no prefix or suffix
+  matching, no aliases.
+- `supported_profiles` — a data frame with columns `profile_id`,
+  `accepted_token`, `group_label`, `group_selection`, `profile_revision`.
+
+`group_selection` is normative and takes one of two values:
+
+| value | meaning |
+|---|---|
+| `exact_else_wildcard` | Merge every group naming this token exactly. Only if no such group exists, merge the `User-agent: *` groups. |
+| `exact_only` | Merge every group naming this token exactly, and never fall back to a wildcard group. A robots.txt containing only `User-agent: *` constrains this profile not at all. |
+
+The published sets:
+
+| backend | `accepted_token` | `group_selection` |
+|---|---|---|
+| `yandex` | `Yandex` | `exact_else_wildcard` |
+| `yandex` | `YandexAdditionalBot` | `exact_only` |
+| `bing` | `bingbot` | `exact_else_wildcard` |
+| `bing` | `adidxbot` | `exact_only` |
+
+The two accepted tokens within a backend are therefore **not
+interchangeable**, which is why the contract publishes rows rather than a bare
+token vector. The `exact_only` pattern is vendor-neutral: the Yandex
+"Additional" family and Bing's AdIdxBot both behave this way.
+
+A backend whose `token_policy` is `arbitrary_valid` (`google`) or `rfc9309`
+publishes none of the three fields — its accepted set is not closed, so there
+is nothing to enumerate. `rfc9309` is both `capability_unavailable` and
+unbounded; it publishes no profile table for the second reason, not the first.
+
+Passing an unaccepted selector is not an error at evaluation time, and the two
+backends do not report it identically:
+
+| backend | `matcher_status` | `reason` | `error_class` |
+|---|---|---|---|
+| `yandex` | `not_evaluated` | `unsupported_product_token` | `robots_unsupported_product_token` |
+| `bing` | `unsupported_profile` | `unsupported_profile` | `robots_unsupported_profile` |
+
+The Yandex shape is the quieter of the two: a caller who does not inspect
+`reason` sees an evaluation in which nothing was decided, which reads like a
+transport failure rather than a configuration mistake. That is the failure this
+publication exists to prevent.

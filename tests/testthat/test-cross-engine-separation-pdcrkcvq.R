@@ -4,7 +4,8 @@
 # A small, high-signal suite proving the Google and Yandex matchers stay
 # behaviorally and operationally SEPARATE. It adds tests ONLY: it touches no
 # source and no fixture. Post-activation (YI5) the Yandex backend is available,
-# the schema is 2026-07-18.2, and the batch adapter is registered; the SEP/
+# the engine-aware v1 schema is current, and the batch adapter is registered;
+# the SEP/
 # DISPATCH/DRIFT assertions below track that active state.
 #
 # The suite is written to FAIL on a swapped/fallback dispatch (Yandex routed
@@ -316,7 +317,7 @@ test_that("M1 matcher revisions and schema stay pinned", {
   expect_identical(
     registry$yandex$revision, robotstxtr:::yandex_matcher_revision_v1()
   )
-  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
+  expect_identical(engine_schema_revision_v1(), "2026-08-25.1")
 })
 
 test_that("M2 PROVENANCE and NOTICE pin the Google commits", {
@@ -361,7 +362,7 @@ test_that("DATA-ONLY Yandex active, schema bumped, Google live", {
     engine_matcher_availability_v1()[["yandex"]],
     "available"
   )
-  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
+  expect_identical(engine_schema_revision_v1(), "2026-08-25.1")
 
   registry <- engine_matcher_registry_v1()
   expect_identical(registry$google$availability, "available")

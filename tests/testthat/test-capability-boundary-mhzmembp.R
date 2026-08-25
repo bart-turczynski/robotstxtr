@@ -64,5 +64,5 @@ test_that("Yandex is active: available, registered, schema bumped", {
   # Google backend is untouched and the schema revision is the activation one.
   expect_identical(registry$google$availability, "available")
   expect_type(registry$google$callable, "closure")
-  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
+  expect_identical(engine_schema_revision_v1(), "2026-08-25.1")
 })

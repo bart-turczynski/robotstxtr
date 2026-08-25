@@ -214,5 +214,5 @@ test_that("Yandex is available and the schema is the activation revision", {
   expect_identical(
     engine_matcher_availability_v1()[["yandex"]], "available"
   )
-  expect_identical(engine_schema_revision_v1(), "2026-07-18.2")
+  expect_identical(engine_schema_revision_v1(), "2026-08-25.1")
 })

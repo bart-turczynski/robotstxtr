@@ -3,7 +3,7 @@
     Code
       print(plural)
     Output
-      <robots_engine_decisions_v1 [2026-07-18.2]>: 2 results, 1 evidence source
+      <robots_engine_decisions_v1 [2026-08-25.1]>: 2 results, 1 evidence source
        input_id                         url robots_policy_ruleset matcher_backend
               1       https://example.com/a                google          google
               2 https://example.com/private                google          google
@@ -16,7 +16,7 @@
     Code
       print(single)
     Output
-      <robots_engine_decisions_v1 [2026-07-18.2]>: 1 result, 1 evidence source
+      <robots_engine_decisions_v1 [2026-08-25.1]>: 1 result, 1 evidence source
        input_id                         url robots_policy_ruleset matcher_backend
               1 https://example.com/private                google          google
        policy_status matcher_status url_decision        reason
@@ -27,5 +27,5 @@
     Code
       print(empty)
     Output
-      <robots_engine_decisions_v1 [2026-07-18.2]>: 0 results, 1 evidence source
+      <robots_engine_decisions_v1 [2026-08-25.1]>: 0 results, 1 evidence source
 
