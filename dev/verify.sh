@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Pre-push verify gate — mirrors CI (see .github/workflows/R-CMD-check.yml).
+# Pre-push verify gate — mirrors CI (see .gitlab-ci.yml).
 #
 # Why a clean git-archive export instead of the working tree:
 # R CMD build copies the *entire* package tree to a temp dir before it applies
@@ -11,8 +11,8 @@
 # a browser is open gets blocked.
 #
 # Checking a `git archive HEAD` export sidesteps this entirely. The export holds
-# only committed, tracked files — exactly what is being pushed and what CI checks
-# out with actions/checkout — so _scratch/ and any sockets in it are never
+# only committed, tracked files — exactly what is being pushed and what the CI
+# runner clones — so _scratch/ and any sockets in it are never
 # present to trip the copy. This makes the local gate a truer mirror of CI.
 set -euo pipefail
 
