@@ -192,7 +192,15 @@ check:
     - *r-binaries
     - *apt-pandoc
     - *install-pak
-    - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "deps::.", "rcmdcheck"))'
+    # `deps::.` installs HARD dependencies only. --as-cran builds the knitr
+    # vignette and runs the testthat suite, and knitr/rmarkdown/testthat all
+    # live in Suggests, so the package's soft dependencies are installed
+    # separately below. rurl goes first: CRAN serves 1.2.0, under the declared
+    # floor, so the local solve has to find it already present from git.
+    # Scoped to the local package on purpose -- a blanket `dependencies = TRUE`
+    # on this vector would also pull rurl's own Suggests, pkgdown included.
+    - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "rcmdcheck"))'
+    - Rscript -e 'pak::local_install_deps(dependencies = TRUE, upgrade = FALSE)'
   script:
     # Strict CRAN-grade pass on the fast gate, warnings fatal. The
     # cross-platform matrix repeats this on Windows and the self-hosted macOS
@@ -220,7 +228,10 @@ coverage:
     - *r-binaries
     - *apt-pandoc
     - *install-pak
-    - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "deps::.", "covr", "xml2"))'
+    # Same Suggests problem as `check`: covr runs the testthat suite, which
+    # needs testthat, httpuv, jsonlite, callr, oysteR and rosv -- all Suggests.
+    - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "covr", "xml2"))'
+    - Rscript -e 'pak::local_install_deps(dependencies = TRUE, upgrade = FALSE)'
   script:
     # covr's coverage percentage only reaches the log if the object is
     # printed; passing it straight to to_cobertura() would leave the
