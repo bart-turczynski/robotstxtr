@@ -125,6 +125,20 @@
   `robots_validate_text()` still reports it as a `nul_byte` error diagnostic
   (#ROBO-hcqrzikz).
 
+## Internal
+
+* The OSS Index dependency audit in `tests/testthat/test-security.R` scopes to
+  hard dependencies (`Depends` + `Imports`) instead of the `Suggests` tree, and
+  allow-lists by ID the two `curl` advisories the narrower scope still reports.
+  `curl` is a genuine hard dependency here, reached through `httr2`, and both
+  CVE-2026-18924 and CVE-2026-3783 name libcurl ranges covering CRAN's current
+  `curl` 8.0.0 — there is no version to upgrade to, so the gate had been
+  blocking every push since 2026-09-06. Each allow-list row carries a written
+  reason and a review date, and `helper-security.R` enforces three rules: an
+  advisory that is reported and not allow-listed fails, an allow-listed
+  advisory that is no longer reported fails, and drift past a review date or a
+  package version warns (ROBO-oykjiyjj).
+
 # robotstxtr 0.2.0
 
 * Added `robots_validate_text()` and `robots_validate_url()` for stable,
