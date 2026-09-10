@@ -1,0 +1,252 @@
+# Fast verification gate: lint + a single Ubuntu --as-cran R CMD check +
+# coverage + README-sync + generated-docs-sync + the two vendored-tree fidelity
+# checks, on every merge request and every push to main. The cross-platform
+# matrix and the ASAN/valgrind sanitizer runs live in a separate, manually
+# triggered pipeline (ROBO-mkuskipr) because this namespace has 400 compute
+# minutes per month and a 6-entry matrix would exhaust them in two runs.
+#
+# Ported from .github/workflows/verify.yml (ROBO-tkmclvsg). The GitHub account
+# `bart-turczynski` is suspended, so GitLab is now the only forge.
+#
+# DEPENDENCY RESOLUTION. `rurl (>= 2.2.1)` is not on CRAN -- CRAN serves 1.2.0 --
+# and the R-universe staging repo that used to cover the gap is gone with the
+# GitHub account that hosted its registry. So rurl is installed straight from
+# its GitLab git URL. Its own imports (stringi, punycoder >= 1.2.0, pslr >=
+# 1.1.0) are all satisfied by current CRAN, so rurl is the ONLY git dependency.
+#
+# rurl has no v3.0.0 tag yet, so this tracks its default branch. That is a
+# moving target: if rurl's main breaks, this pipeline goes red on a robotstxtr
+# tree nobody touched. Pin to a tag as soon as rurl cuts one.
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web"
+    # Do not run a duplicate branch pipeline alongside an open MR's pipeline;
+    # every duplicate is billed twice against the 400-minute budget.
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+  auto_cancel:
+    on_new_commit: interruptible
+
+default:
+  image: rocker/r-ver:4.6.1
+  interruptible: true
+  cache:
+    # Keyed on DESCRIPTION: any dependency change invalidates the library.
+    key:
+      files:
+        - DESCRIPTION
+    paths:
+      - .r-lib/
+
+variables:
+  R_LIBS_USER: "$CI_PROJECT_DIR/.r-lib"
+  R_KEEP_PKG_SOURCE: "yes"
+  LINTR_ERROR_ON_LINT: "true"
+  # rurl's default branch; see the DEPENDENCY RESOLUTION note above.
+  RURL_GIT: "git::https://gitlab.com/bart-turczynski/rurl.git"
+  GIT_DEPTH: "1"
+
+stages:
+  - verify
+  - check
+  - report
+
+# ---- shared setup ------------------------------------------------------------
+
+# Posit Package Manager serves Linux BINARIES for CRAN packages, which is what
+# keeps this pipeline inside the compute budget -- source-building httr2 and
+# stringi on every job would multiply the cost. The codename is read from the
+# image at runtime rather than hardcoded, so a base-image bump cannot silently
+# drop us back to source installs. The HTTPUserAgent is what P3M keys the binary
+# response on; without it the same URL quietly serves source tarballs.
+.r-binaries: &r-binaries |
+  . /etc/os-release
+  mkdir -p "$R_LIBS_USER"
+  cat > /tmp/ci-repos.R <<'RPROFILE'
+  local({
+    codename <- Sys.getenv("CI_OS_CODENAME")
+    options(
+      repos = c(
+        P3M = sprintf(
+          "https://packagemanager.posit.co/cran/__linux__/%s/latest", codename
+        ),
+        CRAN = "https://cloud.r-project.org"
+      ),
+      HTTPUserAgent = sprintf(
+        "R/%s R (%s)", getRversion(),
+        paste(getRversion(), R.version$platform, R.version$arch, R.version$os)
+      ),
+      Ncpus = max(1L, parallel::detectCores())
+    )
+  })
+  RPROFILE
+  export CI_OS_CODENAME="$VERSION_CODENAME"
+  export R_PROFILE_USER=/tmp/ci-repos.R
+
+.apt-pandoc: &apt-pandoc |
+  apt-get update -qq
+  apt-get install -y --no-install-recommends pandoc git ca-certificates
+  rm -rf /var/lib/apt/lists/*
+
+.install-pak: &install-pak |
+  Rscript -e 'if (!requireNamespace("pak", quietly = TRUE)) install.packages("pak")'
+
+# ---- stage: verify -----------------------------------------------------------
+
+lint:
+  stage: verify
+  before_script:
+    - *r-binaries
+    - *apt-pandoc
+    - *install-pak
+    - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "deps::.", "lintr"))'
+  script:
+    - Rscript -e 'lintr::lint_package()'
+
+readme:
+  stage: verify
+  # devtools::build_readme() installs the package (compiling the vendored C++)
+  # and re-renders README.Rmd before the sync check, so it needs the full check
+  # dependency set and pandoc.
+  before_script:
+    - *r-binaries
+    - *apt-pandoc
+    - *install-pak
+    - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "deps::.", "devtools"))'
+  script:
+    - Rscript -e 'devtools::build_readme()'
+    - |
+      if ! git diff --exit-code -- README.md; then
+        echo "ERROR: README.md is out of sync with README.Rmd."
+        echo "Run devtools::build_readme() and commit the result."
+        exit 1
+      fi
+
+docs:
+  stage: verify
+  # A stale .Rd is still perfectly valid .Rd, so no other job here can see
+  # generated-doc drift: `lint` reads R/ and never looks at man/, and `check`
+  # validates the Rd it is handed, not whether that Rd still matches the comment
+  # it came from. man/robots_engine_contract_v2.Rd sat stale in main from
+  # c29b9f0 until an unrelated docs change surfaced it (ROBO-cbzemsnq).
+  # Regenerating and diffing is what catches the class.
+  #
+  # The extra packages are cpp11::cpp_register()'s own helpers, which pkgload
+  # invokes for a LinkingTo: cpp11 package before compiling. They are Suggests
+  # of cpp11, not dependencies of this package, so nothing else in the graph
+  # pulls them in and the job otherwise dies on "The decor package(s) are
+  # required for this functionality". Source of truth:
+  # cpp11:::get_cpp_register_needs().
+  before_script:
+    - *r-binaries
+    - *apt-pandoc
+    - *install-pak
+    - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "deps::.", "brio", "cli", "decor", "desc", "glue", "tibble", "vctrs"))'
+    # The drift check demands an exact version match. roxygen output formatting
+    # shifts between releases, so an unpinned runner would start reporting
+    # version skew as drift the day roxygen2 publishes -- a red pipeline on a
+    # tree nobody touched.
+    - Rscript -e 'pak::pkg_install(paste0("roxygen2@", read.dcf("DESCRIPTION", "Config/roxygen2/version")[[1]]))'
+  script:
+    - Rscript dev/check-docs-drift.R
+
+vendor-fidelity:yandex:
+  stage: verify
+  # Exercises the REAL src/vendor/robotstxtyandex tree against the frozen
+  # manifest -- byte fidelity that check-time testthat cannot see, because R
+  # does not install src/ (the installed package has no vendored tree). This job
+  # runs where src/ IS present: the source checkout. dev/verify-yandex-vendor.R
+  # is base-R only (tools::sha256sum + read.dcf), so it needs no dependency
+  # install, no compilation, and no package load. Deliberately has no `needs:`
+  # relationship with any other job so its failure is independently
+  # attributable.
+  cache: {}
+  script:
+    - Rscript dev/verify-yandex-vendor.R
+
+vendor-fidelity:bing:
+  stage: verify
+  # Exercises the REAL src/vendor/robotstxtbing tree against the frozen manifest
+  # -- byte fidelity, package-owned-code separation, and Apache-2.0
+  # legal/provenance survival that check-time testthat cannot see (spec S16.2).
+  # Runs fully OFFLINE with NO sibling robotstxtbing repository. Phases A-C are
+  # base R + jsonlite; phase D (vendored-engine == golden == tester equivalence)
+  # is delegated to the compiled `check` job, which runs
+  # tests/testthat/test-bing-corpus-onwulhga.R over all 191 cases.
+  cache: {}
+  before_script:
+    - *r-binaries
+    - Rscript -e 'install.packages("jsonlite")'
+  script:
+    - Rscript dev/verify-bing-vendor.R
+
+# ---- stage: check ------------------------------------------------------------
+
+check:
+  stage: check
+  needs: ["lint"]
+  before_script:
+    - *r-binaries
+    - *apt-pandoc
+    - *install-pak
+    # `deps::.` installs HARD dependencies only. --as-cran builds the knitr
+    # vignette and runs the testthat suite, and knitr/rmarkdown/testthat all
+    # live in Suggests, so the package's soft dependencies are installed
+    # separately below. rurl goes first: CRAN serves 1.2.0, under the declared
+    # floor, so the local solve has to find it already present from git.
+    # Scoped to the local package on purpose -- a blanket `dependencies = TRUE`
+    # on this vector would also pull rurl's own Suggests, pkgdown included.
+    - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "rcmdcheck"))'
+    - Rscript -e 'pak::local_install_deps(dependencies = TRUE, upgrade = FALSE)'
+  script:
+    # Strict CRAN-grade pass on the fast gate, warnings fatal. The
+    # cross-platform matrix repeats this on Windows and the self-hosted macOS
+    # runner in the manually triggered pipeline.
+    - |
+      Rscript -e '
+        res <- rcmdcheck::rcmdcheck(
+          args = c("--no-manual", "--as-cran"),
+          build_args = "--no-manual",
+          error_on = "warning"
+        )
+      '
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - "*.Rcheck/"
+
+# ---- stage: report -----------------------------------------------------------
+
+coverage:
+  stage: report
+  needs: ["check"]
+  before_script:
+    - *r-binaries
+    - *apt-pandoc
+    - *install-pak
+    # Same Suggests problem as `check`: covr runs the testthat suite, which
+    # needs testthat, httpuv, jsonlite, callr, oysteR and rosv -- all Suggests.
+    - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "covr", "xml2"))'
+    - Rscript -e 'pak::local_install_deps(dependencies = TRUE, upgrade = FALSE)'
+  script:
+    # covr's coverage percentage only reaches the log if the object is
+    # printed; passing it straight to to_cobertura() would leave the
+    # `coverage:` regex below with nothing to match.
+    - |
+      Rscript -e '
+        cov <- covr::package_coverage(quiet = FALSE)
+        print(cov)
+        covr::to_cobertura(cov)
+      '
+  coverage: '/Coverage: \d+\.\d+\%/'
+  artifacts:
+    when: always
+    expire_in: 1 week
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: cobertura.xml
