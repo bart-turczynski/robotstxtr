@@ -20,11 +20,12 @@ home:
 navbar:
   structure:
     left: [reference, articles, news]
-    right: [search, github]
+    right: [search, gitlab]
   components:
-    github:
-      icon: fab fa-github
-      href: https://github.com/bart-turczynski/robotstxtr
+    gitlab:
+      icon: fab fa-gitlab
+      href: https://gitlab.com/bart-turczynski/robotstxtr
+      aria-label: GitLab
 
 footer:
   structure:
@@ -33,7 +34,7 @@ footer:
   components:
     related: >
       Related:
-      <a href="https://bart-turczynski.github.io/rurl/">rurl</a> ·
+      <a href="https://bart-turczynski.gitlab.io/rurl/">rurl</a> ·
       <a href="https://github.com/google/robotstxt">google/robotstxt</a>
 
 reference:

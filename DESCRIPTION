@@ -21,8 +21,8 @@ Description: Evaluates whether URLs may be crawled according to 'robots.txt'
     <https://github.com/google/robotstxt>, distributed under the Apache License
     2.0; see the package NOTICE.
 License: MIT + file LICENSE
-URL: https://github.com/bart-turczynski/robotstxtr, https://bart-turczynski.github.io/robotstxtr/
-BugReports: https://github.com/bart-turczynski/robotstxtr/issues
+URL: https://gitlab.com/bart-turczynski/robotstxtr, https://robotstxtr-de6c15.gitlab.io
+BugReports: https://gitlab.com/bart-turczynski/robotstxtr/-/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Depends:
