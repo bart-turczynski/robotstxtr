@@ -8,15 +8,26 @@
 # Ported from .github/workflows/verify.yml (ROBO-tkmclvsg). The GitHub account
 # `bart-turczynski` is suspended, so GitLab is now the only forge.
 #
-# DEPENDENCY RESOLUTION. `rurl (>= 2.2.1)` is not on CRAN -- CRAN serves 1.2.0 --
-# and the R-universe staging repo that used to cover the gap is gone with the
-# GitHub account that hosted its registry. So rurl is installed straight from
-# its GitLab git URL. Its own imports (stringi, punycoder >= 1.2.0, pslr >=
-# 1.1.0) are all satisfied by current CRAN, so rurl is the ONLY git dependency.
+# DEPENDENCY RESOLUTION. When this gate was written `rurl (>= 2.2.1)` was not on
+# CRAN -- CRAN served 1.2.0 -- and the R-universe staging repo that used to cover
+# the gap is gone with the GitHub account that hosted its registry. So rurl is
+# installed straight from its GitLab git URL. Its own imports (stringi,
+# punycoder >= 1.2.0, pslr >= 1.1.0) are all satisfied by current CRAN, so rurl
+# is the ONLY git dependency.
 #
-# rurl has no v3.0.0 tag yet, so this tracks its default branch. That is a
-# moving target: if rurl's main breaks, this pipeline goes red on a robotstxtr
-# tree nobody touched. Pin to a tag as soon as rurl cuts one.
+# `RURL_GIT` is PINNED to the `v3.0.1` tag (commit 0ca8f09). It used to track
+# rurl's default branch, which made every run here test rurl's development head
+# -- pipeline 2838356532 installed `rurl 3.0.1.9000` -- so a rurl commit could
+# turn this pipeline red on a robotstxtr tree nobody touched, and CI was not
+# exercising what a user would install. Move the pin deliberately when
+# robotstxtr is ready for a newer rurl; do not drop it back to the branch
+# (ROBO-hzcnolhe).
+#
+# The pin stays on git rather than resolving rurl from the repos configured
+# below, because the git tag is the one coordinate this file fixes itself. CRAN
+# published rurl 3.0.1 on 2026-09-09 and its p3m mirror -- which `.r-binaries`
+# puts FIRST -- still served 1.2.0 more than a day later, so repo resolution was
+# not a reliable substitute at the moment the pin was made.
 
 workflow:
   rules:
@@ -45,8 +56,8 @@ variables:
   R_LIBS_USER: "$CI_PROJECT_DIR/.r-lib"
   R_KEEP_PKG_SOURCE: "yes"
   LINTR_ERROR_ON_LINT: "true"
-  # rurl's default branch; see the DEPENDENCY RESOLUTION note above.
-  RURL_GIT: "git::https://gitlab.com/bart-turczynski/rurl.git"
+  # rurl pinned to its v3.0.1 tag; see the DEPENDENCY RESOLUTION note above.
+  RURL_GIT: "git::https://gitlab.com/bart-turczynski/rurl.git@v3.0.1"
   GIT_DEPTH: "1"
 
 stages:
