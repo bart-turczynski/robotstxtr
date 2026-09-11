@@ -6,17 +6,13 @@
 
 <!-- badges: start -->
 
-[![R-CMD-check](https://github.com/bart-turczynski/robotstxtr/actions/workflows/verify.yml/badge.svg)](https://github.com/bart-turczynski/robotstxtr/actions/workflows/verify.yml)
+[![Pipeline
+status](https://gitlab.com/bart-turczynski/robotstxtr/badges/main/pipeline.svg)](https://gitlab.com/bart-turczynski/robotstxtr/-/pipelines)
 [![CRAN
 status](https://www.r-pkg.org/badges/version/robotstxtr)](https://CRAN.R-project.org/package=robotstxtr)
-[![Codecov
-coverage](https://codecov.io/gh/bart-turczynski/robotstxtr/branch/main/graph/badge.svg)](https://app.codecov.io/gh/bart-turczynski/robotstxtr)
+[![Coverage](https://gitlab.com/bart-turczynski/robotstxtr/badges/main/coverage.svg)](https://gitlab.com/bart-turczynski/robotstxtr/-/pipelines)
 [![Lifecycle:
 maturing](https://img.shields.io/badge/lifecycle-maturing-blue.svg)](https://lifecycle.r-lib.org/articles/stages.html#maturing)
-[![Security
-audit](https://github.com/bart-turczynski/robotstxtr/actions/workflows/security-audit.yml/badge.svg)](https://github.com/bart-turczynski/robotstxtr/actions/workflows/security-audit.yml)
-[![OSV
-audit](https://github.com/bart-turczynski/robotstxtr/actions/workflows/osv-audit.yml/badge.svg)](https://github.com/bart-turczynski/robotstxtr/actions/workflows/osv-audit.yml)
 <!-- badges: end -->
 
 Faithful `robots.txt` parsing and URL-allowed decisions for R, powered

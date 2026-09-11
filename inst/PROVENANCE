@@ -12,7 +12,8 @@ Vendored files (copied verbatim, Apache-2.0 + Google copyright headers preserved
   src/reporting_robots.h
 
 Immediate source (the de-Abseiled, standard-library-only C++ replica):
-  Repository:     https://github.com/bart-turczynski/robotstxt-cpp
+  Repository:     https://gitlab.com/bart-turczynski/robotstxt-cpp
+                  (private; the pinned commit is the durable identifier)
   Pinned commit:  1cb8b047d81dfa0e9c1a1549b269fb5f196756c9
 
 Underlying upstream baseline (the pristine Google matcher the replica mirrors):

@@ -130,6 +130,17 @@
   went away with the suspended `bart-turczynski` GitHub account
   (#ROBO-qqwkldzv).
 
+* Package metadata now points at GitLab. `URL:` is
+  <https://gitlab.com/bart-turczynski/robotstxtr> plus the documentation site,
+  `BugReports:` is <https://gitlab.com/bart-turczynski/robotstxtr/-/issues>, and
+  `codemeta.json`, `CITATION.cff`, `inst/CITATION`, `.zenodo.json`,
+  `SECURITY-INSIGHTS.yml`, `THIRD_PARTY_NOTICES.md`, `inst/NOTICE`,
+  `inst/PROVENANCE` and the README badges follow. The vulnerability-reporting
+  instructions in `SECURITY-INSIGHTS.yml` now describe GitLab's confidential
+  issue, which is what replaces GitHub private vulnerability reporting. Upstream
+  citations of `github.com/google/robotstxt` are unchanged — that is the C++
+  project this package vendors (#ROBO-bgcloodt).
+
 ## Internal
 
 * CI installs `rurl` from its `v3.0.1` tag instead of tracking rurl's default

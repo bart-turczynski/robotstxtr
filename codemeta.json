@@ -4,9 +4,9 @@
   "identifier": "robotstxtr",
   "description": "Evaluates whether URLs may be crawled according to 'robots.txt' rules. A versioned engine-aware facade keeps neutral fetch evidence, per-engine status policy, robots product tokens, and matcher capabilities separate, returning explicit non-decisions when policy is undocumented or a matcher is unavailable. The available matcher is a vendored, upstream-test-validated snapshot of Google's open-source C++ 'robots.txt' matcher, preserving Googlebot behavior. Fetches use a deterministic, conservative policy built on 'httr2', with fetch origins constructed by 'rurl'. All network access in tests, examples, and vignettes is mocked or served locally, so no internet connection is required to install, test, or check the package. The bundled matcher derives from Google's 'robotstxt' project <https://github.com/google/robotstxt>, distributed under the Apache License 2.0; see the package NOTICE.",
   "name": "robotstxtr: Engine-Aware 'robots.txt' Policy with Google's Matcher Algorithm",
-  "relatedLink": "https://bart-turczynski.github.io/robotstxtr/",
-  "codeRepository": "https://github.com/bart-turczynski/robotstxtr",
-  "issueTracker": "https://github.com/bart-turczynski/robotstxtr/issues",
+  "relatedLink": "https://robotstxtr-de6c15.gitlab.io",
+  "codeRepository": "https://gitlab.com/bart-turczynski/robotstxtr",
+  "issueTracker": "https://gitlab.com/bart-turczynski/robotstxtr/-/issues",
   "license": "https://spdx.org/licenses/MIT",
   "version": "0.2.0.9000",
   "programmingLanguage": {
@@ -180,11 +180,11 @@
         }
       ],
       "name": "{robotstxtr}: Engine-Aware 'robots.txt' Policy with Google's Matcher Algorithm",
-      "url": "https://github.com/bart-turczynski/robotstxtr",
+      "url": "https://gitlab.com/bart-turczynski/robotstxtr",
       "description": "R package version 0.2.0.9000"
     }
   ],
-  "releaseNotes": "https://github.com/bart-turczynski/robotstxtr/blob/main/NEWS.md",
-  "contIntegration": ["https://github.com/bart-turczynski/robotstxtr/actions/workflows/verify.yml", "https://app.codecov.io/gh/bart-turczynski/robotstxtr", "https://github.com/bart-turczynski/robotstxtr/actions/workflows/security-audit.yml", "https://github.com/bart-turczynski/robotstxtr/actions/workflows/osv-audit.yml"],
+  "releaseNotes": "https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/NEWS.md",
+  "contIntegration": ["https://gitlab.com/bart-turczynski/robotstxtr/-/pipelines"],
   "developmentStatus": "https://lifecycle.r-lib.org/articles/stages.html#maturing"
 }

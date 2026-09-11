@@ -15,8 +15,8 @@ authors:
   - family-names: Turczynski
     given-names: Bart
     orcid: "https://orcid.org/0000-0002-8788-7980"
-repository-code: "https://github.com/bart-turczynski/robotstxtr"
-url: "https://bart-turczynski.github.io/robotstxtr/"
+repository-code: "https://gitlab.com/bart-turczynski/robotstxtr"
+url: "https://robotstxtr-de6c15.gitlab.io"
 license: MIT
 keywords:
   - robots.txt
