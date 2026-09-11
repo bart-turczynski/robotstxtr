@@ -127,6 +127,10 @@
 
 ## Internal
 
+* CI installs `rurl` from its `v3.0.1` tag instead of tracking rurl's default
+  branch, so the pipeline no longer tests robotstxtr against rurl's development
+  head (ROBO-hzcnolhe).
+
 * The OSS Index dependency audit in `tests/testthat/test-security.R` scopes to
   hard dependencies (`Depends` + `Imports`) instead of the `Suggests` tree, and
   allow-lists by ID the two `curl` advisories the narrower scope still reports.
