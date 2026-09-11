@@ -40,3 +40,10 @@ repos:
         always_run: true
         stages: [pre-push]
         verbose: true
+      - id: check-citation
+        name: citation metadata vs DESCRIPTION
+        entry: python3 scripts/check-citation.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

@@ -165,6 +165,13 @@ docs:
   script:
     - Rscript dev/check-docs-drift.R
 
+citation-version:
+  stage: verify
+  image: python:3.13-alpine
+  script:
+    - python3 scripts/check-citation.py --self-test
+    - python3 scripts/check-citation.py
+
 vendor-fidelity:yandex:
   stage: verify
   # Exercises the REAL src/vendor/robotstxtyandex tree against the frozen
