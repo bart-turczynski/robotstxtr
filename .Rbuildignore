@@ -47,3 +47,7 @@
 ^\.zenodo\.json$
 ^SECURITY-INSIGHTS\.yml$
 ^CODE_OF_CONDUCT\.md$
+# The citation gate ported from seor (design/adr/0002 there). Not part
+# of the installable package; without this, --as-cran reports it as a
+# non-standard top-level directory.
+^scripts$
