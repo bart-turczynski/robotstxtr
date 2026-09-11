@@ -132,7 +132,7 @@
 
 * Package metadata now points at GitLab. `URL:` is
   <https://gitlab.com/bart-turczynski/robotstxtr> plus the documentation site,
-  `BugReports:` is <https://gitlab.com/bart-turczynski/robotstxtr/-/issues>, and
+  `BugReports:` is <https://gitlab.com/bart-turczynski/robotstxtr/-/work_items>, and
   `codemeta.json`, `CITATION.cff`, `inst/CITATION`, `.zenodo.json`,
   `SECURITY-INSIGHTS.yml`, `THIRD_PARTY_NOTICES.md`, `inst/NOTICE`,
   `inst/PROVENANCE` and the README badges follow. The vulnerability-reporting
