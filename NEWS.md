@@ -125,6 +125,11 @@
   `robots_validate_text()` still reports it as a `nul_byte` error diagnostic
   (#ROBO-hcqrzikz).
 
+* The pkgdown documentation site is built and published by GitLab CI at
+  <https://robotstxtr-de6c15.gitlab.io>, replacing the GitHub Pages site that
+  went away with the suspended `bart-turczynski` GitHub account
+  (#ROBO-qqwkldzv).
+
 ## Internal
 
 * CI installs `rurl` from its `v3.0.1` tag instead of tracking rurl's default
