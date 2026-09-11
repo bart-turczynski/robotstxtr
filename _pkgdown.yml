@@ -1,4 +1,4 @@
-url: https://bart-turczynski.github.io/robotstxtr/
+url: https://robotstxtr-de6c15.gitlab.io
 
 template:
   bootstrap: 5
@@ -70,6 +70,7 @@ reference:
     contents:
       - robots_engine_contract_v1
       - robots_engine_contract_v2
+      - robots_resolve_matcher_profile_v1
       - robots_evaluate_text_v1
       - robots_evaluate_url_v1
       - as_legacy_robots_decisions_v1

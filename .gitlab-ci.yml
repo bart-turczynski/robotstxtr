@@ -64,6 +64,7 @@ stages:
   - verify
   - check
   - report
+  - deploy
 
 # ---- shared setup ------------------------------------------------------------
 
@@ -261,3 +262,67 @@ coverage:
       coverage_report:
         coverage_format: cobertura
         path: cobertura.xml
+
+# ---- stage: deploy -----------------------------------------------------------
+
+# The pkgdown site. Ported from .github/workflows/pkgdown.yaml, which targeted
+# the suspended GitHub account and last ran 2026-08-07 (ROBO-qqwkldzv), and
+# modelled on the sibling pagerankr's `pages` job.
+#
+# `pkgdown::build_site()` writes to docs/, which is both .gitignored and
+# .Rbuildignored here, so the site is a pure build artifact; GitLab Pages
+# publishes `public/`, hence the move.
+#
+# robotstxtr itself must be INSTALLED, not merely loaded: build_reference()
+# EVALUATES the examples, and those call library(robotstxtr). Building with
+# install = FALSE and no installed copy dies at the first example with "there is
+# no package called 'robotstxtr'". The GitHub workflow got this for free from
+# r-lib/actions' `extra-packages: local::.`; on GitLab it has to be explicit --
+# and here that install also compiles the vendored C++ matcher, so it is the
+# expensive step of this job.
+#
+# local_install_deps(dependencies = TRUE) rather than `deps::.`: the vignettes
+# and examples pkgdown renders reach into Suggests (knitr, rmarkdown, httpuv,
+# jsonlite, callr), exactly as the `check` job does. rurl goes in first from its
+# pinned git tag for the same reason as everywhere else in this file.
+.pkgdown-site:
+  stage: deploy
+  needs:
+    - job: check
+      artifacts: false
+  before_script:
+    - *r-binaries
+    - *apt-pandoc
+    - *install-pak
+    - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "pkgdown"))'
+    - Rscript -e 'pak::local_install_deps(dependencies = TRUE, upgrade = FALSE)'
+    - Rscript -e 'pak::local_install(upgrade = FALSE)'
+  script:
+    - Rscript -e 'pkgdown::build_site(new_process = FALSE, install = FALSE)'
+    - mv docs public
+  artifacts:
+    paths:
+      - public
+
+# Must be named `pages` and publish `public/` -- that pairing is what GitLab
+# Pages deploys, not a convention this file chose.
+#
+# Default branch only: a site rebuilt from every merge request would publish
+# unreviewed docs to the same URL, and this namespace bills 400 compute minutes
+# a month.
+pages:
+  extends: .pkgdown-site
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# The same build, without the deploy, so a merge request that touches the site
+# can prove the recipe before it reaches main -- `pages` itself never runs on an
+# MR pipeline, so without this the first run of a changed recipe would be on the
+# default branch. MANUAL and allow_failure on purpose: it costs nothing against
+# the compute budget unless someone asks for it.
+pkgdown-preview:
+  extends: .pkgdown-site
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+      allow_failure: true
