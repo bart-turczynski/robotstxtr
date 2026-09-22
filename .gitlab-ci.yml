@@ -320,6 +320,10 @@ coverage:
 # and examples pkgdown renders reach into Suggests (knitr, rmarkdown, httpuv,
 # jsonlite, callr), exactly as the `check` job does. rurl goes in first from its
 # pinned git tag for the same reason as everywhere else in this file.
+#
+# The agent instruction files are deleted from this throwaway checkout before
+# the build: pkgdown renders every top-level .md and has no setting to skip
+# one, so they were being published as pages once the site went public.
 .pkgdown-site:
   stage: deploy
   needs:
@@ -333,6 +337,7 @@ coverage:
     - Rscript -e 'pak::local_install_deps(dependencies = TRUE, upgrade = FALSE)'
     - Rscript -e 'pak::local_install(upgrade = FALSE)'
   script:
+    - rm -f AGENTS.md CLAUDE.md FP_AGENTS.md FP_CLAUDE.md
     - Rscript -e 'pkgdown::build_site(new_process = FALSE, install = FALSE)'
     - mv docs public
   artifacts:
