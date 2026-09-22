@@ -157,6 +157,15 @@
 
 ## Internal
 
+* CI now creates exactly one pipeline per merge, on `main`, instead of three
+  (branch, merge-request, and main). Merge-request and feature-branch
+  pipelines are suppressed via a top-level `workflow:` block; the dead
+  `pkgdown-preview` MR-only job was removed along with them. Feature-branch
+  pushes get no CI of their own — the local pre-push verify gate is what
+  blocks bad code before it leaves the machine — and GitLab's per-line
+  coverage annotations in merge-request diffs no longer appear, since no
+  pipeline attaches to the MR (SEOR-bmgkzhvy).
+
 * `codemeta.json` now declares the `issueTracker` that `DESCRIPTION`'s
   `BugReports:` already did, <https://gitlab.com/bart-turczynski/robotstxtr/-/work_items>.
   It was the last tracked copy of the retired issues path, which GitLab has

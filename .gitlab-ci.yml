@@ -1,9 +1,12 @@
 # Fast verification gate: lint + a single Ubuntu --as-cran R CMD check +
 # coverage + README-sync + generated-docs-sync + the two vendored-tree fidelity
-# checks, on every merge request and every push to main. The cross-platform
-# matrix and the ASAN/valgrind sanitizer runs live in a separate, manually
-# triggered pipeline (ROBO-mkuskipr) because this namespace has 400 compute
-# minutes per month and a 6-entry matrix would exhaust them in two runs.
+# checks, on every push to main (and on tag pipelines). Merge-request and
+# feature-branch pipelines are suppressed fleet-wide (SEOR-bmgkzhvy) -- see the
+# `workflow:` block below -- so this no longer runs "on every merge request".
+# The cross-platform matrix and the ASAN/valgrind sanitizer runs live in a
+# separate, manually triggered pipeline (ROBO-mkuskipr) because this namespace
+# has 400 compute minutes per month and a 6-entry matrix would exhaust them in
+# two runs.
 #
 # Ported from .github/workflows/verify.yml (ROBO-tkmclvsg). The GitHub account
 # `bart-turczynski` is suspended, so GitLab is now the only forge.
@@ -29,15 +32,40 @@
 # puts FIRST -- still served 1.2.0 more than a day later, so repo resolution was
 # not a reliable substitute at the moment the pin was made.
 
+# One pipeline per merge, not three (SEOR-bmgkzhvy). On a concurrency-1 shared
+# runner, a branch pipeline and its merge-request pipeline test the same tree
+# the `main` pipeline is about to test again a few minutes later -- and the two
+# useless ones are CREATED FIRST, so they hold the runner's only slot while the
+# pipeline that actually gates the work (main) queues behind them. Measured
+# repeatedly: a deleted branch's pipeline dies at get_sources (exit 128) or
+# worse, runs to completion against a tree nobody can see any more, and an
+# already-merged MR's pipeline has been seen holding the runner for 30+
+# minutes. Previously this block ran a duplicate-pipeline GUARD (suppress the
+# branch pipeline only when an MR was open) plus an unconditional `web` rule;
+# that guard never touched the MR pipeline, which is what actually caused the
+# stalls, so it was replaced rather than kept alongside this rule set.
+#
+# Costs, accepted deliberately:
+#   - No CI on feature-branch pushes at all. The local pre-push verify gate
+#     (dev/verify.sh) is what actually blocks bad code before it leaves the
+#     machine; only_allow_merge_if_pipeline_succeeds is false here, so a CI
+#     result has never gated a merge in this project.
+#   - No CI result visible before clicking merge (no MR pipeline).
+#   - GitLab's per-line coverage annotations in an MR diff need a pipeline
+#     attached to the MR; none is created now, so those annotations stop
+#     appearing. The coverage badge (sourced from main) is unaffected.
+#   - The old unconditional `if: $CI_PIPELINE_SOURCE == "web"` rule let anyone
+#     hand-trigger a pipeline on ANY branch (the escape hatch used to unblock a
+#     jammed queue). That capability is gone: a web/API pipeline on a
+#     non-default branch now falls through to `when: never` and creates
+#     nothing. Only a web-triggered run against `main` still works.
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_PIPELINE_SOURCE == "web"
-    # Do not run a duplicate branch pipeline alongside an open MR's pipeline;
-    # every duplicate is billed twice against the 400-minute budget.
-    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - when: never
   auto_cancel:
     on_new_commit: interruptible
 
@@ -322,14 +350,10 @@ pages:
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-# The same build, without the deploy, so a merge request that touches the site
-# can prove the recipe before it reaches main -- `pages` itself never runs on an
-# MR pipeline, so without this the first run of a changed recipe would be on the
-# default branch. MANUAL and allow_failure on purpose: it costs nothing against
-# the compute budget unless someone asks for it.
-pkgdown-preview:
-  extends: .pkgdown-site
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      when: manual
-      allow_failure: true
+# `pkgdown-preview` (extended .pkgdown-site, rules: merge_request_event only,
+# manual, allow_failure) was removed under SEOR-bmgkzhvy: MR pipelines are
+# suppressed fleet-wide (see `workflow:` above), so its one rule could never
+# match again -- dead config that would have rotted silently. It existed so a
+# merge request touching the site could prove a changed pkgdown recipe before
+# it reached main; that capability is gone on purpose. The first run of a
+# changed recipe is now on `main`, via `pages` itself.

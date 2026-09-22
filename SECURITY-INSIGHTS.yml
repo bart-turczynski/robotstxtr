@@ -101,8 +101,9 @@ repository:
           Audit of the runtime dependency closure against the OSV database
           (osv.dev). No account or secrets required. Runs from the package's own
           test suite (tests/testthat/test-security.R), which the `check` job in
-          .gitlab-ci.yml exercises on every merge request and every push to
-          main.
+          .gitlab-ci.yml exercises on every push to main (merge-request
+          pipelines are suppressed fleet-wide; see .gitlab-ci.yml's
+          `workflow:` block).
       - name: oysteR (Sonatype OSS Index)
         type: SCA
         rulesets:
@@ -117,8 +118,9 @@ repository:
           the Sonatype OSS Index, with allow-listed advisories carrying a written
           reason and a review date. Runs from the package's own test suite
           (tests/testthat/test-security.R), which the `check` job in
-          .gitlab-ci.yml exercises on every merge request and every push to
-          main.
+          .gitlab-ci.yml exercises on every push to main (merge-request
+          pipelines are suppressed fleet-wide; see .gitlab-ci.yml's
+          `workflow:` block).
       - name: AddressSanitizer / valgrind
         type: SAST
         rulesets:
