@@ -10,17 +10,48 @@ Result: **0 errors | 0 warnings | 1 note**
 
 ### Note
 
-**New submission**
+`checking CRAN incoming feasibility ... NOTE` covers three items.
 
-```
-* checking CRAN incoming feasibility ... NOTE
-Maintainer: 'Bart Turczynski <bartek@turczynski.pl>'
+* **New submission.**
 
-New submission
-```
+  ```
+  Maintainer: 'Bart Turczynski <bartek@turczynski.pl>'
 
-This is the informational CRAN-incoming-feasibility note that is expected for
-a first submission; there is no package defect behind it.
+  New submission
+  ```
+
+  This is the informational note expected for a first submission; there is no
+  package defect behind it.
+
+* **Version contains large components (`0.2.0.9000`).** The package is still
+  on a development version; it is bumped to a release version before
+  submission.
+
+* **`BugReports:` reported as a 404.**
+
+      Found the following (possibly) invalid URLs:
+        URL: https://gitlab.com/bart-turczynski/robotstxtr/-/issues
+          From: DESCRIPTION
+          Status: 404
+
+  This is the address the incoming check itself asks for. GitLab has migrated
+  issues to work items and answers `/-/issues` with 404 to any signed-out,
+  non-browser client, on every project on the site: GitLab's own tracker,
+  `https://gitlab.com/gitlab-org/gitlab/-/issues`, answers 404 identically. A
+  browser is redirected (302) to `/-/work_items`, so the link works for a
+  reader.
+
+  No gitlab.com address clears both checks.
+  `tools:::.check_package_CRAN_incoming()` accepts a gitlab.com `BugReports:`
+  only when its path ends in `/-/issues`, and every such path, with or without
+  a query string, is the 404 above. A sibling package's first upload declared
+  `/-/work_items`, which returns 200, and was archived at the pretest for that
+  reason; it was accepted on resubmission with `/-/issues`. The field here
+  follows the check's suggestion, as the dependency `rurl` 3.0.1 does on CRAN.
+  The `NEWS.md` bullet gives the address as code rather than as a link, so the
+  404 is reported once, from `DESCRIPTION` only. `codemeta.json` keeps the
+  `/-/work_items` address that a reader can click; it is in `.Rbuildignore`,
+  so it is not part of this tarball.
 
 ## Dependencies
 

@@ -32,9 +32,13 @@ WHAT IT CHECKS.
 
 WHAT IT DOES NOT CHECK, ON PURPOSE.
 
-* `codemeta.json` carries the same stale URL and is deliberately left alone:
-  it is generated, it is known stale, and regenerating it while `Remotes:` is
-  still in `DESCRIPTION` would make it worse (SEOR-tzxuisnf).
+* `codemeta.json` is deliberately left alone: it is generated, it is
+  `.Rbuildignore`d, and the tracker address it declares is not the one
+  `DESCRIPTION` declares, on purpose. `BugReports:` must end in `/-/issues`
+  for `tools:::.check_package_CRAN_incoming()` to accept a gitlab.com tracker,
+  while `codemeta.json` keeps the `/-/work_items` address a reader can
+  actually click (ROBO-zghpvlxu, ROBO-npiueuey). A URL-equality rule over this
+  file would therefore be wrong, not merely unhelpful.
 * Nothing here touches the network. Whether a declared URL resolves is a fact
   about the rest of the world; `R CMD check --as-cran` already fetches declared
   URLs, and wiring a network call into a pre-push gate makes every push fail on
