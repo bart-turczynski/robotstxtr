@@ -141,6 +141,20 @@
   citations of `github.com/google/robotstxt` are unchanged — that is the C++
   project this package vendors (#ROBO-bgcloodt).
 
+* The `BugReports:` field in `DESCRIPTION` now reads
+  `https://gitlab.com/bart-turczynski/robotstxtr/-/issues`, superseding the
+  `/-/work_items` form the metadata entries elsewhere in this unreleased
+  section record.
+  `tools:::.check_package_CRAN_incoming()` accepts a gitlab.com bug tracker
+  only when the path ends in `/-/issues`, and the `/-/work_items` form is what
+  got a sibling package archived at the CRAN incoming pretest. GitLab answers
+  `/-/issues` with 404 to a signed-out, non-browser client and redirects a
+  browser to the work-items view, so the address a reader clicks still
+  resolves; `cran-comments.md` explains the resulting URL note. The incoming
+  check reads no file but `DESCRIPTION`, so `codemeta.json` — which is
+  `.Rbuildignore`d and read only by humans — deliberately keeps the
+  `/-/work_items` address, which returns 200 (ROBO-npiueuey).
+
 ## Internal
 
 * `codemeta.json` now declares the `issueTracker` that `DESCRIPTION`'s
