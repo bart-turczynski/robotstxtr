@@ -22,6 +22,8 @@ On every commit, lightweight hooks run: end-of-file fixer, trailing-whitespace t
 
 On `git push`, the `verify` hook runs the project's verify command — the same chain CI runs. GitLab is this project's forge (GitHub, where mirrored, is read-only), and GitLab Free does offer protected branches — the fleet's own instructions say to wire those up. They only gate what reaches the default branch; this local hook is complementary, not a substitute: it blocks a push whose tree would turn CI red before it ever leaves your machine.
 
+**On a feature branch this hook is the only gate that runs by itself, and that is deliberate.** `.gitlab-ci.yml` carries a top-level `workflow:` block admitting only a tag, a push to `main`, or a hand-started (`web`) pipeline — so a branch push creates no pipeline and neither does its merge request, one pipeline per merge instead of three (SEOR-bmgkzhvy). Do not read a branch's empty pipeline list as a passing result: there is no result. To get a server-side answer on a branch before merging, start one at **Build > Pipelines > Run pipeline** and pick the ref; the full gate runs there. `pages` is pinned to `main`, because it publishes rather than reports. Note that `glab ci run` starts an `api`-source pipeline, which the block still refuses on a branch — use the button.
+
 ### The tracker is not in git unless it is snapshotted
 
 `.fp/` is gitignored, so the issue tracker is a local database that no commit, no clone and no bundle has ever contained — while `NEWS.md`, the release audits under `design/` and the test suite all cite `ROBO-*` ids as the reasoning behind what they assert. Regenerate the one copy that is in git with:

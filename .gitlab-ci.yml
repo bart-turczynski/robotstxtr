@@ -54,17 +54,28 @@
 #   - GitLab's per-line coverage annotations in an MR diff need a pipeline
 #     attached to the MR; none is created now, so those annotations stop
 #     appearing. The coverage badge (sourced from main) is unaffected.
-#   - The old unconditional `if: $CI_PIPELINE_SOURCE == "web"` rule let anyone
-#     hand-trigger a pipeline on ANY branch (the escape hatch used to unblock a
-#     jammed queue). That capability is gone: a web/API pipeline on a
-#     non-default branch now falls through to `when: never` and creates
-#     nothing. Only a web-triggered run against `main` still works.
+#   - An API-triggered pipeline on a non-default branch falls through to
+#     `when: never` and creates nothing. Hand-started `web` pipelines are the
+#     exception and are listed below; `glab ci run` uses the api source, so it
+#     is not a substitute for the button on a branch.
+#
+# The `web` rule is back, and deliberately so. It was dropped with the rest of
+# the old rule set, which cost this project the escape hatch it used to unblock
+# a jammed queue, and the only way left to get a server-side answer about a
+# branch was to merge it first. Admitting it does not reopen the problem above:
+# that was entirely push- and merge-request-driven, whereas `web` requires a
+# human to open Build > Pipelines > Run pipeline and pick a ref. Started on a
+# branch it runs the full gate there -- lint, readme, docs, citation-version,
+# both vendor-fidelity legs, check and coverage. `pages` is pinned to the
+# default branch and stays unreachable, so the hatch verifies a branch but
+# never publishes one (SEOR-bmgkzhvy).
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       when: never
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web"
     - when: never
   auto_cancel:
     on_new_commit: interruptible
