@@ -164,7 +164,11 @@
   pushes get no CI of their own — the local pre-push verify gate is what
   blocks bad code before it leaves the machine — and GitLab's per-line
   coverage annotations in merge-request diffs no longer appear, since no
-  pipeline attaches to the MR (SEOR-bmgkzhvy).
+  pipeline attaches to the MR. A pipeline started by hand from Build >
+  Pipelines > Run pipeline is the exception: it works against any ref and runs
+  the full gate there, so a branch can still be verified on the server before
+  it merges. `pages` is pinned to `main` and is not reachable that way
+  (SEOR-bmgkzhvy).
 
 * `codemeta.json` now declares the `issueTracker` that `DESCRIPTION`'s
   `BugReports:` already did, <https://gitlab.com/bart-turczynski/robotstxtr/-/work_items>.
