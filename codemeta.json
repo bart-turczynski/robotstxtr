@@ -6,7 +6,7 @@
   "name": "robotstxtr: Engine-Aware 'robots.txt' Policy with Google's Matcher Algorithm",
   "relatedLink": "https://robotstxtr-de6c15.gitlab.io",
   "codeRepository": "https://gitlab.com/bart-turczynski/robotstxtr",
-  "issueTracker": "https://gitlab.com/bart-turczynski/robotstxtr/-/issues",
+  "issueTracker": "https://gitlab.com/bart-turczynski/robotstxtr/-/work_items",
   "license": "https://spdx.org/licenses/MIT",
   "version": "0.2.0.9000",
   "programmingLanguage": {

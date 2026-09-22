@@ -143,6 +143,12 @@
 
 ## Internal
 
+* `codemeta.json` now declares the `issueTracker` that `DESCRIPTION`'s
+  `BugReports:` already did, <https://gitlab.com/bart-turczynski/robotstxtr/-/work_items>.
+  It was the last tracked copy of the retired issues path, which GitLab has
+  returned 404 for since issues moved to work items platform-wide; the file is
+  `.Rbuildignore`d, so no shipped file changes (ROBO-zghpvlxu).
+
 * CI installs `rurl` from its `v3.0.1` tag instead of tracking rurl's default
   branch, so the pipeline no longer tests robotstxtr against rurl's development
   head (ROBO-hzcnolhe).
