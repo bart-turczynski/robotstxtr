@@ -20,7 +20,7 @@ On every commit, lightweight hooks run: end-of-file fixer, trailing-whitespace t
 
 ### Pre-push verify gate
 
-On `git push`, the `verify` hook runs the project's verify command — the same chain CI runs. Server-side branch protection is unavailable on this GitHub plan, so this local pre-push gate is the stand-in for branch protection: it blocks a push whose tree would turn CI red.
+On `git push`, the `verify` hook runs the project's verify command — the same chain CI runs. GitLab is this project's forge (GitHub, where mirrored, is read-only), and GitLab Free does offer protected branches — the fleet's own instructions say to wire those up. They only gate what reaches the default branch; this local hook is complementary, not a substitute: it blocks a push whose tree would turn CI red before it ever leaves your machine.
 
 ### The tracker is not in git unless it is snapshotted
 
