@@ -157,6 +157,12 @@
 
 ## Internal
 
+* `DESCRIPTION`'s `URL:` now lists the package's r-universe page. r-universe
+  records this repository's upstream owner as `gitlab-bart-turczynski` because
+  it is hosted on GitLab, which does not match the `bart-turczynski` universe,
+  so the package was built and served but hidden from r-universe search. The
+  URL claims it (SEOR-zfamoutf).
+
 * CI now creates exactly one pipeline per merge, on `main`, instead of three
   (branch, merge-request, and main). Merge-request and feature-branch
   pipelines are suppressed via a top-level `workflow:` block; the dead
