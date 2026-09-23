@@ -72,10 +72,10 @@
 # branch was to merge it first. Admitting it does not reopen the problem above:
 # that was entirely push- and merge-request-driven, whereas `web` requires a
 # human to open Build > Pipelines > Run pipeline and pick a ref. Started on a
-# branch it runs the full gate there -- lint, readme, docs, citation-version,
-# both vendor-fidelity legs, check and coverage. `pages` is pinned to the
-# default branch and stays unreachable, so the hatch verifies a branch but
-# never publishes one (SEOR-bmgkzhvy).
+# branch it runs the full gate there -- gates (lint, readme, docs,
+# citation-version, both vendor-fidelity legs), check and coverage. `pages` is
+# pinned to the default branch and stays unreachable, so the hatch verifies a
+# branch but never publishes one (SEOR-bmgkzhvy).
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -170,105 +170,66 @@ stages:
 
 # ---- stage: verify -----------------------------------------------------------
 
-lint:
+# `gates` folds six formerly-separate verify-stage jobs -- lint, readme, docs,
+# citation-version, vendor-fidelity:yandex, vendor-fidelity:bing -- into one
+# (SEOR-pgammbgo). robotstxtr measured as one of the three worst repos in the
+# fleet's CI survey: ~10 jobs, ~7.5 minutes of actual compute, against a very
+# large wall time driven almost entirely by ~2 minutes of pure runner-pickup
+# tax PER JOB. Measured on a real main pipeline (#2875793448, all `success`):
+#   lint 35.9s + readme 43.1s + docs 37.0s + citation-version 5.1s +
+#   vendor-fidelity:yandex 4.4s + vendor-fidelity:bing 8.3s = ~133.8s combined.
+# That is genuinely cheap; six separate pickups to run ~2m14s of work was the
+# actual waste, not the work itself. `check`, `coverage`, and `pages` are
+# deliberately left separate -- different concerns, different failure
+# meanings, and (for `check`/`coverage`) genuinely not cheap.
+#
+# THE FOLD IS NOT FAIL-FAST. dev/gates.R runs every one of the six gates'
+# commands (never stopping at the first failure), captures every exit status,
+# prints ONE final summary naming every gate's verdict, and only THEN exits
+# nonzero if any failed -- see the header of that script for the full
+# rationale and command-by-command inventory (also reproduced in the commit
+# that introduced this job). Folding red/green signals into one job without
+# that property would trade six independent signals for one and still cost a
+# re-run to find the second failure, which defeats the point of folding.
+#
+# vendor-fidelity:yandex and vendor-fidelity:bing fold in because, despite the
+# name, NEITHER makes a network call: both are base-R/jsonlite comparisons of
+# the real vendored source tree against a frozen MANIFEST.dcf checked into
+# inst/vendor/* (see dev/gates.R's header for the grep that established this).
+# A job that actually called out to a live vendor spec would have been left
+# separate on purpose -- folding a network-dependent check into the fast gate
+# would make the whole gate flaky on a vendor outage.
+#
+# citation-version previously ran in `image: python:3.13-alpine`, not the
+# `rocker/r-ver` default the other five jobs use -- rocker/r-ver ships no
+# python3 at all (verified: `docker run --rm rocker/r-ver:4.5.1 which python3`
+# exits 1). The explicit `apt-get install -y --no-install-recommends python3`
+# below exists ONLY for this job's sake; scripts/check-citation.py is
+# stdlib-only, so nothing else is needed.
+#
+# Package installs below are the union of what the six original jobs
+# installed (lintr; devtools; brio/cli/decor/desc/glue/tibble/vctrs +
+# roxygen2 pinned to Config/roxygen2/version; jsonlite), plus RURL_GIT and
+# deps::. that every one of them needed.
+gates:
   stage: verify
   before_script:
     - *r-binaries
     - *apt-pandoc
+    - apt-get update -qq && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
     - *install-pak
-    - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "deps::.", "lintr"))'
-  script:
-    - Rscript -e 'lintr::lint_package()'
-
-readme:
-  stage: verify
-  # devtools::build_readme() installs the package (compiling the vendored C++)
-  # and re-renders README.Rmd before the sync check, so it needs the full check
-  # dependency set and pandoc.
-  before_script:
-    - *r-binaries
-    - *apt-pandoc
-    - *install-pak
-    - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "deps::.", "devtools"))'
-  script:
-    - Rscript -e 'devtools::build_readme()'
-    - |
-      if ! git diff --exit-code -- README.md; then
-        echo "ERROR: README.md is out of sync with README.Rmd."
-        echo "Run devtools::build_readme() and commit the result."
-        exit 1
-      fi
-
-docs:
-  stage: verify
-  # A stale .Rd is still perfectly valid .Rd, so no other job here can see
-  # generated-doc drift: `lint` reads R/ and never looks at man/, and `check`
-  # validates the Rd it is handed, not whether that Rd still matches the comment
-  # it came from. man/robots_engine_contract_v2.Rd sat stale in main from
-  # c29b9f0 until an unrelated docs change surfaced it (ROBO-cbzemsnq).
-  # Regenerating and diffing is what catches the class.
-  #
-  # The extra packages are cpp11::cpp_register()'s own helpers, which pkgload
-  # invokes for a LinkingTo: cpp11 package before compiling. They are Suggests
-  # of cpp11, not dependencies of this package, so nothing else in the graph
-  # pulls them in and the job otherwise dies on "The decor package(s) are
-  # required for this functionality". Source of truth:
-  # cpp11:::get_cpp_register_needs().
-  before_script:
-    - *r-binaries
-    - *apt-pandoc
-    - *install-pak
-    - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "deps::.", "brio", "cli", "decor", "desc", "glue", "tibble", "vctrs"))'
-    # The drift check demands an exact version match. roxygen output formatting
-    # shifts between releases, so an unpinned runner would start reporting
-    # version skew as drift the day roxygen2 publishes -- a red pipeline on a
-    # tree nobody touched.
+    - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "deps::.", "lintr", "devtools", "brio", "cli", "decor", "desc", "glue", "tibble", "vctrs", "jsonlite"))'
+    # Same reasoning as the old `docs` job: pinned so an unpinned roxygen2
+    # release cannot turn into drift on a tree nobody touched.
     - Rscript -e 'pak::pkg_install(paste0("roxygen2@", read.dcf("DESCRIPTION", "Config/roxygen2/version")[[1]]))'
   script:
-    - Rscript dev/check-docs-drift.R
-
-citation-version:
-  stage: verify
-  image: python:3.13-alpine
-  script:
-    - python3 scripts/check-citation.py --self-test
-    - python3 scripts/check-citation.py
-
-vendor-fidelity:yandex:
-  stage: verify
-  # Exercises the REAL src/vendor/robotstxtyandex tree against the frozen
-  # manifest -- byte fidelity that check-time testthat cannot see, because R
-  # does not install src/ (the installed package has no vendored tree). This job
-  # runs where src/ IS present: the source checkout. dev/verify-yandex-vendor.R
-  # is base-R only (tools::sha256sum + read.dcf), so it needs no dependency
-  # install, no compilation, and no package load. Deliberately has no `needs:`
-  # relationship with any other job so its failure is independently
-  # attributable.
-  cache: {}
-  script:
-    - Rscript dev/verify-yandex-vendor.R
-
-vendor-fidelity:bing:
-  stage: verify
-  # Exercises the REAL src/vendor/robotstxtbing tree against the frozen manifest
-  # -- byte fidelity, package-owned-code separation, and Apache-2.0
-  # legal/provenance survival that check-time testthat cannot see (spec S16.2).
-  # Runs fully OFFLINE with NO sibling robotstxtbing repository. Phases A-C are
-  # base R + jsonlite; phase D (vendored-engine == golden == tester equivalence)
-  # is delegated to the compiled `check` job, which runs
-  # tests/testthat/test-bing-corpus-onwulhga.R over all 191 cases.
-  cache: {}
-  before_script:
-    - *r-binaries
-    - Rscript -e 'install.packages("jsonlite")'
-  script:
-    - Rscript dev/verify-bing-vendor.R
+    - Rscript dev/gates.R
 
 # ---- stage: check ------------------------------------------------------------
 
 check:
   stage: check
-  needs: ["lint"]
+  needs: ["gates"]
   before_script:
     - *r-binaries
     - *apt-pandoc

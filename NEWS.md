@@ -198,6 +198,15 @@
   advisory that is no longer reported fails, and drift past a review date or a
   package version warns (ROBO-oykjiyjj).
 
+* CI folds the `lint`, `readme`, `docs`, `citation-version`,
+  `vendor-fidelity:yandex` and `vendor-fidelity:bing` verify-stage jobs into
+  one `gates` job (`dev/gates.R`), cutting five runner pickups per pipeline
+  while keeping the combined ~2m14s of gate compute unchanged. `check`,
+  `coverage` and `pages` stay separate. The new job runs every folded gate
+  regardless of an earlier one failing, then reports one summary naming every
+  gate's verdict before exiting non-zero, so a red pipeline still names every
+  broken gate rather than just the first one (SEOR-pgammbgo).
+
 # robotstxtr 0.2.0
 
 * Added `robots_validate_text()` and `robots_validate_url()` for stable,
