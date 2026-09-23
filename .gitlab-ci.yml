@@ -390,7 +390,7 @@ coverage:
     - |
       set -e
       mkdir -p /tmp/agent-md
-      keep="README.md NEWS.md LICENSE.md LICENCE.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md THIRD_PARTY_NOTICES.md cran-comments.md"
+      keep="README.md NEWS.md LICENSE.md LICENCE.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md THIRD_PARTY_NOTICES.md cran-comments.md CHANGELOG.md"
       for f in *.md; do
         case " $keep " in
           *" $f "*) continue ;;

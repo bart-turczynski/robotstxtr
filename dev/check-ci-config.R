@@ -19,7 +19,10 @@
 # fix. It now pins the FIXED file: .r-binaries reorders .libPaths() so the
 # cached directory wins, and the deploy job's filter is a keep-list that
 # sweeps anything not explicitly meant for the site -- including a family it
-# has never seen before, proven with a synthetic "GEMINI.md" sentinel. An
+# has never seen before, proven with a synthetic "GEMINI.md" sentinel -- while
+# asserting an EXACT match against the full expected survivor set (not just a
+# subset), so a file's own publish/private status (CHANGELOG.md, grandfathered
+# per the coordinator's decision -- see below) cannot drift silently. An
 # earlier revision of this script (see git history) pinned the opposite,
 # pre-fix state and was flipped here on purpose.
 #
@@ -110,12 +113,35 @@ if (!is.null(status) && status != 0) {
   ))
 }
 
-remaining <- sort(list.files(scratch))
+# Exclude filter.sh itself (written into scratch below to run the extracted
+# lines) -- it is test harness, not a file the real job's checkout would ever
+# have at its root.
+remaining <- sort(list.files(scratch, pattern = "\\.md$"))
 moved <- if (dir.exists(staging)) sort(list.files(staging)) else character(0)
 known_agent_files <- c("AGENTS.md", "CLAUDE.md", "FP_AGENTS.md", "FP_CLAUDE.md")
+
+# The full, exact expected survivor set -- not just "these are safe if
+# present" but "this is the whole list, no more, no less". Written as a
+# literal here (not derived from the keep= string in the YAML) so this
+# script has its own opinion, independent of the file it is checking.
+#
+# CHANGELOG.md is here deliberately: it is a near-empty stub, unreferenced
+# by _pkgdown.yml, and distinct from the real NEWS.md -- flagged for review
+# rather than silently kept when this filter was first inverted
+# (SEOR-wqxhftpv). The coordinator decided GRANDFATHER, not retire:
+# https://robotstxtr-de6c15.gitlab.io/CHANGELOG.html already returns 200,
+# and this repo's `pages` job auto-deploys on every push to main, so
+# sweeping it now would have silently taken down a live page as a
+# side effect of a hygiene fix. Retiring it later is a separate, explicit
+# editorial change for the owner to make on purpose, not a by-product of
+# this ticket. This exact-match check exists so that a future edit to the
+# `keep=` string cannot move CHANGELOG.md (or anything else) across that
+# line again without this pin noticing -- the earlier, subset-only version
+# of this check was blind to exactly that kind of drift.
 site_keep_list <- c(
-  "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "LICENSE.md", "NEWS.md",
-  "README.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md", "cran-comments.md"
+  "CHANGELOG.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "LICENSE.md",
+  "NEWS.md", "README.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md",
+  "cran-comments.md"
 )
 
 still_present <- intersect(known_agent_files, remaining)
@@ -155,14 +181,40 @@ ok(paste0(
   " even though the filter has never seen it before"
 ))
 
-missing_keep <- setdiff(intersect(site_keep_list, real_root_md), remaining)
-if (length(missing_keep) > 0) {
+# Exact-match, not subset: an expected survivor missing from `remaining` is
+# a file the filter swept by mistake; anything in `remaining` NOT expected
+# is a file publishing that was never decided on. Both directions matter --
+# a subset-only check would have stayed silent while CHANGELOG.md moved
+# from published to private (or the reverse) as a side effect of an
+# unrelated edit to the keep= string.
+expected_survivors <- intersect(site_keep_list, real_root_md)
+extra_survivors <- setdiff(remaining, expected_survivors)
+missing_survivors <- setdiff(expected_survivors, remaining)
+if (length(extra_survivors) > 0 || length(missing_survivors) > 0) {
   fail(paste0(
-    "file(s) meant for the public site were swept out of the root by ",
-    "mistake: ", paste(missing_keep, collapse = ", ")
+    "the surviving top-level .md set does not match the expected site set.",
+    if (length(extra_survivors) > 0) {
+      paste0(
+        " Published without a decision on record: ",
+        paste(extra_survivors, collapse = ", "), "."
+      )
+    } else {
+      ""
+    },
+    if (length(missing_survivors) > 0) {
+      paste0(
+        " Swept out of the root unexpectedly: ",
+        paste(missing_survivors, collapse = ", "), "."
+      )
+    } else {
+      ""
+    }
   ))
 }
-ok("files meant for the site (README/NEWS/LICENSE/... ) are left in place")
+ok(paste0(
+  "surviving top-level .md set matches exactly: ",
+  paste(expected_survivors, collapse = ", ")
+))
 
 unlink(scratch, recursive = TRUE)
 unlink(staging, recursive = TRUE)
