@@ -72,8 +72,8 @@
 # branch was to merge it first. Admitting it does not reopen the problem above:
 # that was entirely push- and merge-request-driven, whereas `web` requires a
 # human to open Build > Pipelines > Run pipeline and pick a ref. Started on a
-# branch it runs the full gate there -- gates (lint, readme, docs,
-# citation-version, both vendor-fidelity legs), check and coverage. `pages` is
+# branch it runs the full gate there -- gates (lint, readme, docs, both
+# vendor-fidelity legs), citation-version, check and coverage. `pages` is
 # pinned to the default branch and stays unreachable, so the hatch verifies a
 # branch but never publishes one (SEOR-bmgkzhvy).
 workflow:
@@ -170,27 +170,28 @@ stages:
 
 # ---- stage: verify -----------------------------------------------------------
 
-# `gates` folds six formerly-separate verify-stage jobs -- lint, readme, docs,
-# citation-version, vendor-fidelity:yandex, vendor-fidelity:bing -- into one
+# `gates` folds five formerly-separate verify-stage jobs -- lint, readme,
+# docs, vendor-fidelity:yandex, vendor-fidelity:bing -- into one
 # (SEOR-pgammbgo). robotstxtr measured as one of the three worst repos in the
 # fleet's CI survey: ~10 jobs, ~7.5 minutes of actual compute, against a very
 # large wall time driven almost entirely by ~2 minutes of pure runner-pickup
 # tax PER JOB. Measured on a real main pipeline (#2875793448, all `success`):
-#   lint 35.9s + readme 43.1s + docs 37.0s + citation-version 5.1s +
-#   vendor-fidelity:yandex 4.4s + vendor-fidelity:bing 8.3s = ~133.8s combined.
-# That is genuinely cheap; six separate pickups to run ~2m14s of work was the
-# actual waste, not the work itself. `check`, `coverage`, and `pages` are
-# deliberately left separate -- different concerns, different failure
-# meanings, and (for `check`/`coverage`) genuinely not cheap.
+#   lint 35.9s + readme 43.1s + docs 37.0s + vendor-fidelity:yandex 4.4s +
+#   vendor-fidelity:bing 8.3s = ~128.7s combined. That is genuinely cheap;
+#   five separate pickups to run ~2m9s of work was the actual waste, not the
+#   work itself. `check`, `coverage`, and `pages` are deliberately left
+#   separate -- different concerns, different failure meanings, and (for
+#   `check`/`coverage`) genuinely not cheap.
 #
-# THE FOLD IS NOT FAIL-FAST. dev/gates.R runs every one of the six gates'
+# THE FOLD IS NOT FAIL-FAST. dev/gates.R runs every one of the folded gates'
 # commands (never stopping at the first failure), captures every exit status,
 # prints ONE final summary naming every gate's verdict, and only THEN exits
 # nonzero if any failed -- see the header of that script for the full
 # rationale and command-by-command inventory (also reproduced in the commit
 # that introduced this job). Folding red/green signals into one job without
-# that property would trade six independent signals for one and still cost a
-# re-run to find the second failure, which defeats the point of folding.
+# that property would trade several independent signals for one and still
+# cost a re-run to find the second failure, which defeats the point of
+# folding.
 #
 # vendor-fidelity:yandex and vendor-fidelity:bing fold in because, despite the
 # name, NEITHER makes a network call: both are base-R/jsonlite comparisons of
@@ -200,23 +201,42 @@ stages:
 # separate on purpose -- folding a network-dependent check into the fast gate
 # would make the whole gate flaky on a vendor outage.
 #
-# citation-version previously ran in `image: python:3.13-alpine`, not the
-# `rocker/r-ver` default the other five jobs use -- rocker/r-ver ships no
-# python3 at all (verified: `docker run --rm rocker/r-ver:4.5.1 which python3`
-# exits 1). The explicit `apt-get install -y --no-install-recommends python3`
-# below exists ONLY for this job's sake; scripts/check-citation.py is
-# stdlib-only, so nothing else is needed.
+# citation-version does NOT fold in and stays its own job below, on purpose.
+# Folding is folding IMAGES, not just commands: lint/readme/docs/both
+# vendor-fidelity jobs all already ran on no `image:` override, i.e. the
+# `default:` image (`rocker/r-ver:4.6.1`), so combining them changes nothing
+# about what interpreter each command runs under. citation-version is the one
+# job here that overrode `image:` to `python:3.13-alpine`, and that image
+# provides something the default does not: verified directly against the
+# EXACT pinned tag --
+#   docker run --rm rocker/r-ver:4.6.1 sh -c 'which python3 || echo "NO python3"'
+#   -> NO python3
+# -- so a `gates` job built on the R default cannot run
+# `python3 scripts/check-citation.py` without first installing an interpreter
+# the other five gates have no other use for. Tested both ways before
+# deciding: `apt-get install -y --no-install-recommends python3` inside
+# rocker/r-ver:4.6.1 does work (proven with
+# `docker run --rm -v "$PWD":/w -w /w rocker/r-ver:4.6.1 sh -c '...'`,
+# check-citation's own self-test and main check both PASS under it), so
+# folding was an option, not a blocker. Declined anyway: check-citation.py is
+# stdlib-only and offline BY DESIGN -- that is exactly why it was given its
+# own minimal image rather than the R toolchain's -- and permanently coupling
+# an apt-get install into the R gates image on every merge, forever, just to
+# turn this pipeline's 6->2 verify-stage jobs into 6->1 (saving one more
+# runner pickup) is a worse trade than leaving the one job that needs a
+# second interpreter on the image built for it, at 6->2. citation-version is
+# also the cheapest of the six original jobs (5.1s), so the pickup tax it
+# still pays is the smallest one left on the table.
 #
-# Package installs below are the union of what the six original jobs
-# installed (lintr; devtools; brio/cli/decor/desc/glue/tibble/vctrs +
-# roxygen2 pinned to Config/roxygen2/version; jsonlite), plus RURL_GIT and
-# deps::. that every one of them needed.
+# Package installs below are the union of what the five folded jobs installed
+# (lintr; devtools; brio/cli/decor/desc/glue/tibble/vctrs + roxygen2 pinned to
+# Config/roxygen2/version; jsonlite), plus RURL_GIT and deps::. that every one
+# of them needed.
 gates:
   stage: verify
   before_script:
     - *r-binaries
     - *apt-pandoc
-    - apt-get update -qq && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
     - *install-pak
     - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "deps::.", "lintr", "devtools", "brio", "cli", "decor", "desc", "glue", "tibble", "vctrs", "jsonlite"))'
     # Same reasoning as the old `docs` job: pinned so an unpinned roxygen2
@@ -224,6 +244,16 @@ gates:
     - Rscript -e 'pak::pkg_install(paste0("roxygen2@", read.dcf("DESCRIPTION", "Config/roxygen2/version")[[1]]))'
   script:
     - Rscript dev/gates.R
+
+citation-version:
+  stage: verify
+  # Kept on its own image on purpose -- see the `gates` job comment above.
+  # scripts/check-citation.py is stdlib-only, so `python:3.13-alpine` is all
+  # this job needs; it never touches the R toolchain.
+  image: python:3.13-alpine
+  script:
+    - python3 scripts/check-citation.py --self-test
+    - python3 scripts/check-citation.py
 
 # ---- stage: check ------------------------------------------------------------
 
