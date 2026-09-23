@@ -15,11 +15,13 @@
 # does not also update this script is caught here instead of surfacing as a
 # published AGENTS.html or a cache that silently never holds a built library.
 #
-# THIS SNAPSHOT: taken 2026-09-23, before SEOR-dyzgzyot/SEOR-wqxhftpv landed.
-# It pins today's file, gap included -- .r-binaries does not yet reorder
-# .libPaths(), and the deploy job's filter is a fixed 4-name deny list that
-# does not catch an unlisted family. Both assertions are meant to be flipped
-# to the opposite requirement in the same commit that fixes the YAML.
+# THIS SNAPSHOT: updated 2026-09-23 alongside the SEOR-dyzgzyot/SEOR-wqxhftpv
+# fix. It now pins the FIXED file: .r-binaries reorders .libPaths() so the
+# cached directory wins, and the deploy job's filter is a keep-list that
+# sweeps anything not explicitly meant for the site -- including a family it
+# has never seen before, proven with a synthetic "GEMINI.md" sentinel. An
+# earlier revision of this script (see git history) pinned the opposite,
+# pre-fix state and was flipped here on purpose.
 #
 # Usage (from the package root): Rscript dev/check-ci-config.R
 
@@ -51,28 +53,25 @@ if (is.null(r_binaries)) fail(".r-binaries anchor not found in .gitlab-ci.yml")
 reorder_line <- '.libPaths(c(Sys.getenv("R_LIBS_USER"), .libPaths()))'
 has_reorder <- grepl(reorder_line, r_binaries, fixed = TRUE)
 
-if (has_reorder) {
+if (!has_reorder) {
   fail(paste0(
-    ".r-binaries already reorders .libPaths() -- this snapshot pins the ",
-    "PRE-fix state (SEOR-dyzgzyot). Update the assertion to require the ",
-    "reorder now that the fix has landed."
+    ".r-binaries does not reorder .libPaths() -- R_LIBS_USER is set but ",
+    "nothing puts it ahead of site-library, so installs land in the image ",
+    "and the cache never holds a built library (SEOR-dyzgzyot)."
   ))
 }
-ok(paste0(
-  ".r-binaries does not yet reorder .libPaths() (pins the known ",
-  "SEOR-dyzgzyot gap: R_LIBS_USER is set but installs still land in ",
-  "site-library and the cache never holds a built library)"
-))
+ok(".r-binaries reorders .libPaths() so R_LIBS_USER wins (SEOR-dyzgzyot)")
 
 # ---- check 2: agent-instruction .md filter ----------------------------------
 #
 # pkgdown:::package_mds() hardcodes its own skip list (README/LICENSE(/CE)/
 # NEWS) and its no_render list (cran-comments.md, issue/PR templates); nothing
 # else is safe by default. Every OTHER top-level *.md gets rendered as a page
-# and folded into search.json. Today's deploy job removes exactly four named
-# files (AGENTS.md, CLAUDE.md, FP_AGENTS.md, FP_CLAUDE.md) -- a deny list,
-# which by construction cannot cover a family it does not name. That gap is
-# pinned here with a synthetic "GEMINI.md" sentinel.
+# and folded into search.json. The deploy job's filter is now a keep-list: it
+# moves every top-level *.md NOT explicitly meant for the site into
+# /tmp/agent-md, so an unknown file -- stood in here by a synthetic
+# "GEMINI.md" sentinel this repo has no real file for -- is swept by default
+# instead of published by default.
 
 deploy_job <- cfg[[".pkgdown-site"]]
 if (is.null(deploy_job)) fail(".pkgdown-site job not found in .gitlab-ci.yml")
@@ -112,6 +111,7 @@ if (!is.null(status) && status != 0) {
 }
 
 remaining <- sort(list.files(scratch))
+moved <- if (dir.exists(staging)) sort(list.files(staging)) else character(0)
 known_agent_files <- c("AGENTS.md", "CLAUDE.md", "FP_AGENTS.md", "FP_CLAUDE.md")
 site_keep_list <- c(
   "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "LICENSE.md", "NEWS.md",
@@ -125,29 +125,41 @@ if (length(still_present) > 0) {
     "published by pkgdown: ", paste(still_present, collapse = ", ")
   ))
 }
-ok(paste0(
-  "all of ", paste(known_agent_files, collapse = ", "),
-  " are removed by today's filter"
-))
-
-if (!(sentinel %in% remaining)) {
+not_moved <- setdiff(known_agent_files, moved)
+if (length(not_moved) > 0) {
   fail(paste0(
-    sentinel, " (a stand-in for a future agent-file family) did NOT ",
-    "survive the filter -- this snapshot expects today's deny list to miss ",
-    "it. Either the filter changed (update this assertion to require it be ",
-    "caught, SEOR-wqxhftpv) or the sentinel logic broke."
+    "known agent-instruction file(s) are gone from the root but were not ",
+    "moved into ", staging, ": ", paste(not_moved, collapse = ", ")
   ))
 }
 ok(paste0(
-  sentinel, " (a new, unlisted agent-file family) survives today's deny-",
-  "list filter -- the known SEOR-wqxhftpv gap"
+  "all of ", paste(known_agent_files, collapse = ", "),
+  " are moved into ", staging
+))
+
+if (sentinel %in% remaining) {
+  fail(paste0(
+    sentinel, " (a stand-in for a future agent-file family) survived the ",
+    "filter -- the keep-list regressed to a fail-open deny list ",
+    "(SEOR-wqxhftpv)."
+  ))
+}
+if (!(sentinel %in% moved)) {
+  fail(paste0(
+    sentinel, " is not in the root, but it was not moved into ", staging,
+    " either -- something other than the keep-list mv made it disappear."
+  ))
+}
+ok(paste0(
+  sentinel, " (a new, unlisted agent-file family) is swept into ", staging,
+  " even though the filter has never seen it before"
 ))
 
 missing_keep <- setdiff(intersect(site_keep_list, real_root_md), remaining)
 if (length(missing_keep) > 0) {
   fail(paste0(
-    "file(s) meant for the public site were removed from the root ",
-    "unexpectedly: ", paste(missing_keep, collapse = ", ")
+    "file(s) meant for the public site were swept out of the root by ",
+    "mistake: ", paste(missing_keep, collapse = ", ")
   ))
 }
 ok("files meant for the site (README/NEWS/LICENSE/... ) are left in place")

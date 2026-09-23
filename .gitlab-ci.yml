@@ -32,14 +32,21 @@
 # puts FIRST -- still served 1.2.0 more than a day later, so repo resolution was
 # not a reliable substitute at the moment the pin was made.
 
-# One pipeline per merge, not three (SEOR-bmgkzhvy). On a concurrency-1 shared
-# runner, a branch pipeline and its merge-request pipeline test the same tree
-# the `main` pipeline is about to test again a few minutes later -- and the two
-# useless ones are CREATED FIRST, so they hold the runner's only slot while the
-# pipeline that actually gates the work (main) queues behind them. Measured
+# One pipeline per merge, not three (SEOR-bmgkzhvy). These are NOT GitLab.com
+# shared runners and concurrency is NOT capped at 1 -- both were previously
+# claimed here and are false (SEOR-gpafxhua). The truth, verified 2026-09-23:
+# self-hosted Docker runners on one Mac, registered from
+# ~/.gitlab-runner/config.toml, with `concurrent = 4` -- a number this fleet
+# owns, not a platform limit. Full detail in
+# seor/design/adr/0003-fleet-ci-runs-on-self-hosted-runners.md. That does not
+# make duplicate pipelines free: a branch pipeline and its merge-request
+# pipeline still test the same tree the `main` pipeline is about to test again
+# a few minutes later, competing for the same laptop's four slots and its
+# compute budget -- and the two useless ones are CREATED FIRST, so they
+# contend with the pipeline that actually gates the work (main). Measured
 # repeatedly: a deleted branch's pipeline dies at get_sources (exit 128) or
 # worse, runs to completion against a tree nobody can see any more, and an
-# already-merged MR's pipeline has been seen holding the runner for 30+
+# already-merged MR's pipeline has been seen holding a runner slot for 30+
 # minutes. Previously this block ran a duplicate-pipeline GUARD (suppress the
 # branch pipeline only when an MR was open) plus an unconditional `web` rule;
 # that guard never touched the MR pipeline, which is what actually caused the
@@ -136,6 +143,22 @@ stages:
   RPROFILE
   export CI_OS_CODENAME="$VERSION_CODENAME"
   export R_PROFILE_USER=/tmp/ci-repos.R
+  # Put the cached library FIRST so installs land in it. Setting R_LIBS_USER
+  # (see variables: above) is NOT enough: rocker/r-ver's Renviron.site puts
+  # /usr/local/lib/R/site-library FIRST in .libPaths() and R_LIBS_USER third,
+  # so R installs into the image and it dies with the container -- the cache
+  # then carries pak's downloads but never a built library, which is the
+  # expensive half on this fleet's arm64 runners (p3m has no arm64 binaries,
+  # so every dependency compiles from source). Appended to Rprofile.site
+  # rather than set as an environment variable because Renviron.site is read
+  # later and overrides the environment; R_LIBS_SITE does not work either, for
+  # the same reason. site-library stays on the path behind it, so the image's
+  # own packages (docopt, littler) remain visible. Verified against
+  # rocker/r-ver:4.5.1 directly, and landed first in seor (SEOR-dyzgzyot; see
+  # seor/design/adr/0003-fleet-ci-runs-on-self-hosted-runners.md for the
+  # measured before/after). The print line makes each run self-evidencing.
+  echo '.libPaths(c(Sys.getenv("R_LIBS_USER"), .libPaths()))' >> "${R_HOME}/etc/Rprofile.site"
+  Rscript -e 'cat("Library paths:\n"); print(.libPaths())'
 
 .apt-pandoc: &apt-pandoc |
   apt-get update -qq
@@ -332,9 +355,25 @@ coverage:
 # jsonlite, callr), exactly as the `check` job does. rurl goes in first from its
 # pinned git tag for the same reason as everywhere else in this file.
 #
-# The agent instruction files are deleted from this throwaway checkout before
-# the build: pkgdown renders every top-level .md and has no setting to skip
-# one, so they were being published as pages once the site went public.
+# pkgdown:::package_mds() renders every top-level .md except a hardcoded skip
+# list (README.md/LICENSE(.md|CE.md)/NEWS.md, handled elsewhere) and a
+# hardcoded no_render list (cran-comments.md, issue/PR templates); _pkgdown.yml
+# has no setting that can add to either, so AGENTS.md, CLAUDE.md, FP_AGENTS.md
+# and FP_CLAUDE.md were being published as pages -- and folded into
+# search.json, where their text outranks real docs -- once the site went
+# public (SEOR-pibdjanz).
+#
+# This used to be a 4-name deny list (`rm -f AGENTS.md CLAUDE.md FP_AGENTS.md
+# FP_CLAUDE.md`), which is fail-OPEN: it does not cover a new name inside
+# those families, let alone a new family such as GEMINI.md, and a future
+# agent tool's instruction file would be published by default (SEOR-wqxhftpv).
+# Inverted to a keep-list below: every top-level *.md is moved out UNLESS it
+# is explicitly meant for the site, so an unknown file stays private by
+# default. Moved rather than deleted (the `mv` shape, adopted from pslr's
+# equivalent job) so a later reader of search.json never finds a link to a
+# page that 404s. Fails loud, not silently, if a known agent file is somehow
+# still in the root afterwards -- a rename or a keep-list mistake must break
+# the pipeline, not quietly start publishing the file again.
 .pkgdown-site:
   stage: deploy
   needs:
@@ -348,7 +387,22 @@ coverage:
     - Rscript -e 'pak::local_install_deps(dependencies = TRUE, upgrade = FALSE)'
     - Rscript -e 'pak::local_install(upgrade = FALSE)'
   script:
-    - rm -f AGENTS.md CLAUDE.md FP_AGENTS.md FP_CLAUDE.md
+    - |
+      set -e
+      mkdir -p /tmp/agent-md
+      keep="README.md NEWS.md LICENSE.md LICENCE.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md THIRD_PARTY_NOTICES.md cran-comments.md"
+      for f in *.md; do
+        case " $keep " in
+          *" $f "*) continue ;;
+        esac
+        mv "$f" /tmp/agent-md/
+      done
+      for sensitive in AGENTS.md CLAUDE.md FP_AGENTS.md FP_CLAUDE.md; do
+        if [ -f "$sensitive" ]; then
+          echo "ERROR: $sensitive is still present after the agent-md filter; refusing to build the public site." >&2
+          exit 1
+        fi
+      done
     - Rscript -e 'pkgdown::build_site(new_process = FALSE, install = FALSE)'
     - mv docs public
   artifacts:
