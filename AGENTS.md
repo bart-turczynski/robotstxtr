@@ -38,4 +38,16 @@ It writes `design/tracker-snapshot.md`. Not `docs/`: that path here is the gener
 
 Refresh it before taking any copy of the repository you intend to keep: a mirror push to the `backup` remote at `~/Projects/_backups/robotstxtr.git`, or a `git bundle create <path> --all`. Both exist for this repository. A snapshot that is never regenerated is worse than none, because it looks current.
 
+## A red gate on an untouched tree
+
+Toolchain drift makes the verify gate go red on a tree nobody changed, and it
+looks exactly like a defect in the change being made. `scripts/check-toolchain.R`
+runs ahead of the expensive step and names it in one line: roxygen2's installed
+version against this package's `Config/roxygen2/version`, and any installed
+package built under a newer R than the one running. Both have happened, and both
+cost an afternoon (SEOR-tcytizic).
+
+If that check passes and the gate is still red on a tree you have not touched,
+say so and keep the evidence rather than assuming your change caused it.
+
 @FP_AGENTS.md
