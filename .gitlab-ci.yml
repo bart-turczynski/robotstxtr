@@ -111,6 +111,7 @@ stages:
   - check
   - report
   - deploy
+  - audit
 
 # ---- shared setup ------------------------------------------------------------
 
@@ -421,3 +422,98 @@ pages:
 # merge request touching the site could prove a changed pkgdown recipe before
 # it reached main; that capability is gone on purpose. The first run of a
 # changed recipe is now on `main`, via `pages` itself.
+
+# ---- stage: audit ------------------------------------------------------------
+
+# Dependency vulnerability audits (SEOR-fftbjnpl), modelled on seor's
+# `osv-audit` / `security-audit` and punycoder's SCHEDULE_KIND guard
+# (SEOR-ihmntqzm). They run tests/testthat/test-osv.R and test-security.R,
+# which already exist and are unchanged here.
+#
+# WHEN THEY RUN. Only on a pipeline schedule that sets the CI/CD variable
+# SCHEDULE_KIND=dependency-audit, or from a hand-started `web` pipeline (manual,
+# non-blocking there). Never on a push to main, a tag, or any other schedule: a
+# schedule alone is not a selector, and a job guarded only by
+# `$CI_PIPELINE_SOURCE == "schedule"` would fire on every schedule this project
+# ever adds. The `workflow:` block above already admits a schedule pipeline on
+# the default branch (its `$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH` rule), so
+# these are not dead config. A scheduled run is BLOCKING: these are detectors,
+# and a detector that cannot turn a pipeline red is worthless.
+#
+# OWNER GATES, not doable from a commit:
+#   - Create the schedule (Build > Pipeline schedules, ref `main`, weekly) and
+#     give it the variable SCHEDULE_KIND=dependency-audit.
+#   - Set OSSINDEX_USER and OSSINDEX_TOKEN as project CI/CD variables (OSS
+#     Index answers anonymous requests with HTTP 401). Until both exist,
+#     `security-audit` is red on purpose and says why; `osv-audit` needs no
+#     account.
+#
+# Note that such a schedule pipeline also runs every job above that has no
+# `rules:` (gates, citation-version, check, coverage) and `pages`, which is
+# pinned to the default branch, not to a pipeline source.
+#
+# NO-SKIP GUARD. A skipped audit reports success having audited nothing (the
+# failure PUNY-rsxtbbln records). test-security.R turns its own preconditions
+# into failures under OSSINDEX_AUDIT_REQUIRED=true. test-osv.R has no such
+# flag, and it skips silently when robotstxtr is not INSTALLED: it resolves the
+# runtime closure from installed.packages(), and under test_local()'s pkgload
+# the package is loaded but not installed, so the closure comes back empty and
+# `skip_if(length(deps) == 0)` fires. So robotstxtr is installed below, and
+# each job fails if any test in its file was skipped, without touching the
+# tests themselves.
+.audit:
+  stage: audit
+  needs: []
+  interruptible: false
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_KIND == "dependency-audit"
+    # Under `rules`, `when: manual` defaults to `allow_failure: false`, which
+    # would leave a hand-started pipeline blocked on a job nobody meant to gate
+    # on; hence the explicit allow_failure.
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+      allow_failure: true
+    - when: never
+  variables:
+    # Belt and braces so skip_on_cran() cannot skip the audit silently.
+    NOT_CRAN: "true"
+  before_script:
+    - *r-binaries
+    - *apt-pandoc
+    - *install-pak
+    # rurl from its pinned tag first, as everywhere else in this file; then
+    # the Suggests set (rosv, oysteR, testthat); then robotstxtr itself, which
+    # test-osv.R needs installed (see NO-SKIP GUARD above).
+    - Rscript -e 'pak::pkg_install(Sys.getenv("RURL_GIT"))'
+    - Rscript -e 'pak::local_install_deps(dependencies = TRUE, upgrade = FALSE)'
+    - Rscript -e 'pak::local_install(upgrade = FALSE)'
+
+# OSV database (https://osv.dev) via {rosv}. No account, token or variable.
+osv-audit:
+  extends: .audit
+  script:
+    - |
+      Rscript -e '
+        res <- as.data.frame(testthat::test_local(filter = "osv", stop_on_failure = TRUE))
+        if (nrow(res) == 0L || any(res$skipped)) {
+          stop("osv-audit ran no audit: a test in test-osv.R was skipped or none ran.")
+        }
+      '
+
+# Sonatype OSS Index via {oysteR}. Needs OSSINDEX_USER / OSSINDEX_TOKEN (see
+# OWNER GATES above). OSSINDEX_AUDIT_REQUIRED is set here and nowhere else, so
+# local runs, the pre-push gate and R CMD check still skip; in this job a
+# missing precondition is a failure (tests/testthat/test-security.R).
+security-audit:
+  extends: .audit
+  variables:
+    NOT_CRAN: "true"
+    OSSINDEX_AUDIT_REQUIRED: "true"
+  script:
+    - |
+      Rscript -e '
+        res <- as.data.frame(testthat::test_local(filter = "security", stop_on_failure = TRUE))
+        if (nrow(res) == 0L || any(res$skipped)) {
+          stop("security-audit ran no audit: a test in test-security.R was skipped or none ran.")
+        }
+      '
