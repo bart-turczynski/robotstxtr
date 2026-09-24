@@ -155,7 +155,7 @@
       "@type": "SoftwareApplication",
       "identifier": "rurl",
       "name": "rurl",
-      "version": ">= 2.2.1",
+      "version": ">= 3.0.1",
       "provider": {
         "@id": "https://cran.r-project.org",
         "@type": "Organization",

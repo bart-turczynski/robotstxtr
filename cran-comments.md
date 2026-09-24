@@ -55,10 +55,10 @@ Result: **0 errors | 0 warnings | 1 note**
 
 ## Dependencies
 
-`robotstxtr` depends on R (>= 4.1.0) and imports `rurl` and `httr2`. Per the
-package design, `robotstxtr` requires a `rurl` version that is not yet
-available on CRAN, so the CRAN release of `robotstxtr` is blocked until the
-required `rurl` version is on CRAN.
+`robotstxtr` depends on R (>= 4.1.0) and imports `rurl (>= 3.0.1)` and
+`httr2`, both available from CRAN. The `rurl` floor is the current CRAN
+release; the package's full test suite passes against it as installed from
+CRAN.
 
 ## Downstream dependencies
 

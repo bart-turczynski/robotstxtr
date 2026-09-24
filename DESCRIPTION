@@ -31,7 +31,7 @@ Depends:
     R (>= 4.1.0)
 Imports:
     httr2,
-    rurl (>= 2.2.1)
+    rurl (>= 3.0.1)
 LinkingTo:
     cpp11
 SystemRequirements: C++17
