@@ -61,3 +61,13 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-push]
+      # DESCRIPTION's BugReports: keeps the CRAN-incoming-safe /-/issues form
+      # while every human-facing file points at /-/work_items (SEOR-ocbtrrnl).
+      # Stdlib Python and offline, wired the same way as check-citation.
+      - id: check-bugreports
+        name: BugReports split (DESCRIPTION vs human-facing links)
+        entry: python3 scripts/check-bugreports.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

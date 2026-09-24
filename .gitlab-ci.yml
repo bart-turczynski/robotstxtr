@@ -254,6 +254,9 @@ citation-version:
   script:
     - python3 scripts/check-citation.py --self-test
     - python3 scripts/check-citation.py
+    # Same image, same reasoning: stdlib-only and offline (SEOR-ocbtrrnl).
+    - python3 scripts/check-bugreports.py --self-test
+    - python3 scripts/check-bugreports.py
 
 # ---- stage: check ------------------------------------------------------------
 
