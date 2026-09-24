@@ -157,6 +157,17 @@
 
 ## Internal
 
+* The OSS Index allow-list in `tests/testthat/helper-security.R` is now
+  checked by a validator, `oss_index_allowlist_violations()`, that returns
+  findings and is itself tested against broken fixture rows, instead of a loop
+  of expectations that asserts nothing once the list is empty. The two `curl`
+  rows are unchanged and pass it. The audit test gains a loud-failure mode:
+  under `OSSINDEX_AUDIT_REQUIRED=true`, missing `oysteR` or missing OSS Index
+  credentials fail the test instead of skipping it, so a credentialed audit
+  job cannot report success having audited nothing. No job sets the flag yet.
+  An audit that resolves no packages now fails rather than passing vacuously
+  (SEOR-fftbjnpl).
+
 * `DESCRIPTION`'s `URL:` now lists the package's r-universe page. r-universe
   records this repository's upstream owner as `gitlab-bart-turczynski` because
   it is hosted on GitLab, which does not match the `bart-turczynski` universe,
