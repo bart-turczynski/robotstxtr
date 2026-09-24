@@ -155,7 +155,28 @@
   `.Rbuildignore`d and read only by humans — deliberately keeps the
   `/-/work_items` address, which returns 200 (ROBO-npiueuey).
 
+* `rurl` is now required at `>= 3.0.1`, up from `>= 2.2.1`. The old floor
+  named a version that was only ever a source-forge tag and never reached
+  CRAN, whose `rurl` releases are 1.2.0 (archived) and 3.0.1; 3.0.1 is the
+  lowest version a CRAN install can satisfy, and the full test suite passes
+  against it installed from CRAN. The installation instructions no longer set
+  up the R-universe staging repository, since every dependency now comes from
+  CRAN (#ROBO-depmsgpz).
+
 ## Internal
+
+* Two dependency vulnerability audit jobs, `osv-audit` and `security-audit`,
+  run `tests/testthat/test-osv.R` and `tests/testthat/test-security.R` on a
+  pipeline schedule that sets `SCHEDULE_KIND=dependency-audit`, or by hand
+  from a web-started pipeline. `security-audit` sets
+  `OSSINDEX_AUDIT_REQUIRED=true`. Both install the package first, because the
+  OSV test resolves the dependency closure from installed packages and skips
+  without it, and both fail if any audit test skipped (SEOR-fftbjnpl).
+
+* `scripts/check-bugreports.py`, run on pre-push and in the
+  `citation-version` CI job, keeps `DESCRIPTION`'s `BugReports:` on the
+  CRAN-incoming-safe `/-/issues` form and fails if a human-facing file links
+  that form instead of `/-/work_items` (SEOR-ocbtrrnl).
 
 * The OSS Index allow-list in `tests/testthat/helper-security.R` is now
   checked by a validator, `oss_index_allowlist_violations()`, that returns
