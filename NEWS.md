@@ -165,6 +165,11 @@
 
 ## Internal
 
+* The agent instructions no longer import `FP_AGENTS.md` or `FP_CLAUDE.md`,
+  the files the `fp` tracker generates, which are deleted. `AGENTS.md` points
+  at the house `agent-workflow` and `fp` skills for the git workflow
+  (SEOR-ipwcbcov).
+
 * Two dependency vulnerability audit jobs, `osv-audit` and `security-audit`,
   run `tests/testthat/test-osv.R` and `tests/testthat/test-security.R` on a
   pipeline schedule that sets `SCHEDULE_KIND=dependency-audit`, or by hand
