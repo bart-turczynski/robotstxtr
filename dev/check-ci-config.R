@@ -131,7 +131,8 @@ known_agent_files <- c("AGENTS.md", "CLAUDE.md")
 # by _pkgdown.yml, and distinct from the real NEWS.md -- flagged for review
 # rather than silently kept when this filter was first inverted
 # (SEOR-wqxhftpv). The coordinator decided GRANDFATHER, not retire:
-# https://robotstxtr-de6c15.gitlab.io/CHANGELOG.html already returns 200,
+# the site's CHANGELOG.html already returned 200 (now at
+# https://bart-turczynski.gitlab.io/robotstxtr/CHANGELOG.html),
 # and this repo's `pages` job auto-deploys on every push to main, so
 # sweeping it now would have silently taken down a live page as a
 # side effect of a hygiene fix. Retiring it later is a separate, explicit

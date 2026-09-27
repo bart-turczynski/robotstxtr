@@ -22,7 +22,7 @@ Description: Evaluates whether URLs may be crawled according to 'robots.txt'
     2.0; see the package NOTICE.
 License: MIT + file LICENSE
 URL: https://gitlab.com/bart-turczynski/robotstxtr,
-    https://robotstxtr-de6c15.gitlab.io,
+    https://bart-turczynski.gitlab.io/robotstxtr/,
     https://bart-turczynski.r-universe.dev/robotstxtr
 BugReports: https://gitlab.com/bart-turczynski/robotstxtr/-/issues
 Encoding: UTF-8
