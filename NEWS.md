@@ -126,9 +126,15 @@
   (#ROBO-hcqrzikz).
 
 * The pkgdown documentation site is built and published by GitLab CI at
-  <https://robotstxtr-de6c15.gitlab.io>, replacing the GitHub Pages site that
-  went away with the suspended `bart-turczynski` GitHub account
+  <https://bart-turczynski.gitlab.io/robotstxtr/>, replacing the GitHub Pages
+  site that went away with the suspended `bart-turczynski` GitHub account
   (#ROBO-qqwkldzv).
+
+* The documentation site's address is now the GitLab Pages namespace path
+  <https://bart-turczynski.gitlab.io/robotstxtr/>, the fleet-wide standard,
+  instead of the project's unique Pages domain, which no longer resolves.
+  `DESCRIPTION`, `CITATION.cff`, `.zenodo.json`, `codemeta.json` and
+  `SECURITY-INSIGHTS.yml` all carry the new address (SEOR-hcmtspmv).
 
 * Package metadata now points at GitLab. `URL:` is
   <https://gitlab.com/bart-turczynski/robotstxtr> plus the documentation site,
