@@ -4,27 +4,16 @@ Use committed docs for durable project knowledge. Keep raw planning notes, tempo
 
 Do not commit `_scratch/`, `.fp/`, secrets, dependencies, build outputs, or local caches.
 
-## Git hygiene
+## Git and the verify gate
 
-This project uses the [pre-commit](https://pre-commit.com) framework. Its config (`.pre-commit-config.yaml`) is cloned with the repo; each clone enables the hooks once:
+Git follows the house `agent-workflow` skill. fp status changes stay decoupled from git (the `fp` skill's `references/decoupling.md`). What is specific to this repository:
 
-```bash
-pre-commit install && pre-commit install --hook-type pre-push
-```
+- Each clone enables the hooks once: `pre-commit install && pre-commit install --hook-type pre-push`. `pre-commit` is a Python tool; install it with `uv tool install pre-commit` or `pipx install pre-commit`.
+- The pre-push `verify` hook runs `dev/verify.sh`, the chain CI runs. Run it by hand with `pre-commit run --hook-stage pre-push --all-files`.
+- **On a branch that hook is the only gate.** `.gitlab-ci.yml`'s top-level `workflow:` block admits only a tag, a push to `main`, or a hand-started (`web`) pipeline, so a branch push and its merge request create no pipeline (SEOR-bmgkzhvy). An empty pipeline list is not a pass. For a server-side answer on a branch, start one at **Build > Pipelines > Run pipeline**; `glab ci run` starts an `api` pipeline, which the block refuses.
+- The pages keep-list is `keep=` in the `.pkgdown-site` job of `.gitlab-ci.yml`, pinned by `dev/check-ci-config.R`. A new top-level `.md` meant for the public site is not published until it is added there.
 
-`pre-commit` is a Python tool. For non-Python templates, install it with `uv tool install pre-commit` or `pipx install pre-commit`.
-
-### Per-commit checks
-
-On every commit, lightweight hooks run: end-of-file fixer, trailing-whitespace trimming, merge-conflict detection, YAML/TOML validation, mixed-line-ending and case-conflict guards, and `check-added-large-files` — a portable 5 MB size guard that blocks accidentally committing heavy blobs (a big blob bloats `.git` history even after deletion).
-
-### Pre-push verify gate
-
-On `git push`, the `verify` hook runs the project's verify command — the same chain CI runs. GitLab is this project's forge (GitHub, where mirrored, is read-only), and GitLab Free does offer protected branches — the fleet's own instructions say to wire those up. They only gate what reaches the default branch; this local hook is complementary, not a substitute: it blocks a push whose tree would turn CI red before it ever leaves your machine.
-
-**On a feature branch this hook is the only gate that runs by itself, and that is deliberate.** `.gitlab-ci.yml` carries a top-level `workflow:` block admitting only a tag, a push to `main`, or a hand-started (`web`) pipeline — so a branch push creates no pipeline and neither does its merge request, one pipeline per merge instead of three (SEOR-bmgkzhvy). Do not read a branch's empty pipeline list as a passing result: there is no result. To get a server-side answer on a branch before merging, start one at **Build > Pipelines > Run pipeline** and pick the ref; the full gate runs there. `pages` is pinned to `main`, because it publishes rather than reports. Note that `glab ci run` starts an `api`-source pipeline, which the block still refuses on a branch — use the button.
-
-### The tracker is not in git unless it is snapshotted
+## The tracker is not in git unless it is snapshotted
 
 `.fp/` is gitignored, so the issue tracker is a local database that no commit, no clone and no bundle has ever contained — while `NEWS.md`, the release audits under `design/` and the test suite all cite `ROBO-*` ids as the reasoning behind what they assert. Regenerate the one copy that is in git with:
 
@@ -49,5 +38,3 @@ cost an afternoon (SEOR-tcytizic).
 
 If that check passes and the gate is still red on a tree you have not touched,
 say so and keep the evidence rather than assuming your change caused it.
-
-@FP_AGENTS.md

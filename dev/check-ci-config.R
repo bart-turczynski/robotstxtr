@@ -118,7 +118,9 @@ if (!is.null(status) && status != 0) {
 # have at its root.
 remaining <- sort(list.files(scratch, pattern = "\\.md$"))
 moved <- if (dir.exists(staging)) sort(list.files(staging)) else character(0)
-known_agent_files <- c("AGENTS.md", "CLAUDE.md", "FP_AGENTS.md", "FP_CLAUDE.md")
+# FP_AGENTS.md and FP_CLAUDE.md were deleted (SEOR-ipwcbcov); a regenerated
+# one is an unlisted family, which the GEMINI.md sentinel below stands in for.
+known_agent_files <- c("AGENTS.md", "CLAUDE.md")
 
 # The full, exact expected survivor set -- not just "these are safe if
 # present" but "this is the whole list, no more, no less". Written as a
