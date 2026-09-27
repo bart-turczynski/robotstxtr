@@ -39,18 +39,11 @@ claim of universal behavioral identity with Googlebot.
 
 ## Installation
 
-`robotstxtr` is not on CRAN yet. Its required `rurl` version is temporarily
-available from the author's R-universe while the coordinated dependency updates
-progress through CRAN. Configure that repository before installing the
-development version from GitHub:
+`robotstxtr` is not on CRAN yet. Its dependencies, including `rurl`, are all
+on CRAN, so the development version installs from GitHub with no extra
+repository configuration:
 
 ```{r install}
-# Temporary until rurl >= 2.2.1 is live on CRAN.
-options(repos = c(
-  bart_turczynski = "https://bart-turczynski.r-universe.dev",
-  CRAN = "https://cloud.r-project.org"
-))
-
 # with pak
 pak::pak("bart-turczynski/robotstxtr")
 
