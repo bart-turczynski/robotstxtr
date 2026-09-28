@@ -81,3 +81,23 @@ CRAN.
 ## Downstream dependencies
 
 None — this is a new package.
+
+## Submission history
+
+### 0.3.0: first submission
+
+* Submitted 2026-09-28 12:47:19 UTC with `devtools::submit_cran()`, from a
+  clean clone of `main` at `289df00941fdc09f163d9e036d977724489459d4`
+  (recorded in `CRAN-SUBMISSION`).
+* Submitted tarball `robotstxtr_0.3.0.tar.gz`, SHA-256
+  `643a0777bb4ef02549943ff34974e96abe69718759eeb2a2c0502c7c1e4c7cb2`.
+* Checks on the same package source (`98e71e0`; only this file changed
+  after it):
+  * win-builder R-release <https://win-builder.r-project.org/agdw99MSIgci>,
+    R-devel <https://win-builder.r-project.org/8NIOAvpR3O6j>, R-oldrelease
+    <https://win-builder.r-project.org/UWX7pupev67b>. win-builder deletes
+    these about 72 hours after the check.
+  * R-hub build `paragonit-crow`:
+    <https://github.com/r-hub2/roasted-eel-robotstxtr/actions/runs/36416901099>.
+    Its windows, nosuggests and valgrind jobs failed for platform reasons,
+    which are recorded in the project's release issue, ROBO-lvddphcx.
