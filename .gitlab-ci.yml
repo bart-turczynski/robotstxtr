@@ -229,6 +229,11 @@ stages:
 # also the cheapest of the six original jobs (5.1s), so the pickup tax it
 # still pays is the smallest one left on the table.
 #
+# news-version and codemeta joined the harness later (ROBO-srowxxtg). They
+# replace the two GitHub workflows M1 deleted, need only base R and jsonlite,
+# and also run from the pre-push hook, since on a branch that hook is the only
+# gate. See dev/gates.R for how they differ from pagerankr's.
+#
 # Package installs below are the union of what the five folded jobs installed
 # (lintr; devtools; brio/cli/decor/desc/glue/tibble/vctrs + roxygen2 pinned to
 # Config/roxygen2/version; jsonlite), plus RURL_GIT and deps::. that every one
