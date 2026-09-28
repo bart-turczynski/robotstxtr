@@ -229,22 +229,22 @@ stages:
 # also the cheapest of the six original jobs (5.1s), so the pickup tax it
 # still pays is the smallest one left on the table.
 #
-# news-version and codemeta joined the harness later (ROBO-srowxxtg). They
-# replace the two GitHub workflows M1 deleted, need only base R and jsonlite,
-# and also run from the pre-push hook, since on a branch that hook is the only
-# gate. See dev/gates.R for how they differ from pagerankr's.
+# news-version and codemeta joined the harness later (ROBO-srowxxtg), then
+# spelling (0.3.0 release, ROBO-lvddphcx). The first two replace the GitHub
+# workflows M1 deleted. All three also run from the pre-push hook, since on a
+# branch that hook is the only gate. See dev/gates.R for the details.
 #
 # Package installs below are the union of what the five folded jobs installed
 # (lintr; devtools; brio/cli/decor/desc/glue/tibble/vctrs + roxygen2 pinned to
 # Config/roxygen2/version; jsonlite), plus RURL_GIT and deps::. that every one
-# of them needed.
+# of them needed, plus spelling for the spelling gate.
 gates:
   stage: verify
   before_script:
     - *r-binaries
     - *apt-pandoc
     - *install-pak
-    - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "deps::.", "lintr", "devtools", "brio", "cli", "decor", "desc", "glue", "tibble", "vctrs", "jsonlite"))'
+    - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "deps::.", "lintr", "devtools", "brio", "cli", "decor", "desc", "glue", "tibble", "vctrs", "jsonlite", "spelling"))'
     # Same reasoning as the old `docs` job: pinned so an unpinned roxygen2
     # release cannot turn into drift on a tree nobody touched.
     - Rscript -e 'pak::pkg_install(paste0("roxygen2@", read.dcf("DESCRIPTION", "Config/roxygen2/version")[[1]]))'

@@ -71,8 +71,8 @@
 #
 # Usage (from the package root): Rscript dev/gates.R [gate ...]
 #
-# With no arguments all seven gates run: the five above plus news-version and
-# codemeta, which came later (see their section below).
+# With no arguments all eight gates run: the five above plus news-version,
+# codemeta and spelling, which came later (see their sections below).
 
 if (!file.exists("DESCRIPTION") || !file.exists(".git")) {
   stop("run this from the repository root", call. = FALSE)
@@ -260,6 +260,27 @@ gate_codemeta <- function() {
   record("codemeta", !length(detail), detail)
 }
 
+# ---- spelling ---------------------------------------------------------------
+# spelling::spell_check_package() over DESCRIPTION, man/, vignettes, README and
+# NEWS, against `Language: en-US` and inst/WORDLIST. Nothing checked spelling
+# here before 0.3.0, and win-builder found DESCRIPTION words the local check
+# never reported: R CMD check needs an English aspell/hunspell dictionary and
+# silently skips the check without one. CRAN ignores inst/WORDLIST, so a word
+# listed here can still appear in the incoming NOTE; the list only stops new
+# typos. Ported in spirit from pagerankr's lint gate, as its own gate.
+gate_spelling <- function() {
+  bad <- spelling::spell_check_package()
+  detail <- character()
+  if (nrow(bad)) {
+    detail <- c(
+      sprintf("%s: %s", bad$word,
+              vapply(bad$found, toString, character(1))),
+      paste("Correct the prose, or add genuine terms to inst/WORDLIST",
+            "(spelling::update_wordlist())."))
+  }
+  record("spelling", !nrow(bad), detail)
+}
+
 available <- list(
   "lint" = gate_lint,
   "readme" = gate_readme,
@@ -267,7 +288,8 @@ available <- list(
   "vendor-fidelity:yandex" = gate_vendor_yandex,
   "vendor-fidelity:bing" = gate_vendor_bing,
   "news-version" = gate_news_version,
-  "codemeta" = gate_codemeta
+  "codemeta" = gate_codemeta,
+  "spelling" = gate_spelling
 )
 
 # With no arguments every gate runs, which is what the CI job does. Named gates

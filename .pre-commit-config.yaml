@@ -46,12 +46,13 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-push]
-      # NEWS heading and codemeta.json vs DESCRIPTION (ROBO-srowxxtg). The same
-      # gates the CI `gates` job runs; in-process and about a second, so they
-      # run ahead of the expensive verify step.
+      # NEWS heading and codemeta.json vs DESCRIPTION (ROBO-srowxxtg), and
+      # spelling against inst/WORDLIST. The same gates the CI `gates` job runs;
+      # in-process and a few seconds, so they run ahead of the expensive verify
+      # step.
       - id: gates-metadata
-        name: NEWS heading and codemeta.json vs DESCRIPTION
-        entry: Rscript dev/gates.R news-version codemeta
+        name: NEWS heading, codemeta.json and spelling
+        entry: Rscript dev/gates.R news-version codemeta spelling
         language: system
         pass_filenames: false
         always_run: true
