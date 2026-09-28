@@ -69,7 +69,10 @@
 # --self-test) are UNCHANGED in .gitlab-ci.yml's separate citation-version
 # job -- not moved here.
 #
-# Usage (from the package root): Rscript dev/gates.R
+# Usage (from the package root): Rscript dev/gates.R [gate ...]
+#
+# With no arguments all seven gates run: the five above plus news-version and
+# codemeta, which came later (see their section below).
 
 if (!file.exists("DESCRIPTION") || !file.exists(".git")) {
   stop("run this from the repository root", call. = FALSE)
@@ -98,36 +101,196 @@ run_step <- function(label, command, args = character(0), env = character(0)) {
   invisible(ok)
 }
 
-cat("robotstxtr gates --", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
-cat("5 gate(s): lint, readme, docs,",
-    "vendor-fidelity:yandex, vendor-fidelity:bing\n",
-    "(citation-version runs as its own CI job, on its own image -- not here)\n\n")
+record <- function(label, ok, detail = character()) {
+  cat(sprintf("[gates] %-4s %-32s\n", if (ok) "PASS" else "FAIL", label))
+  if (!ok && length(detail)) {
+    cat(paste0("        | ", detail, collapse = "\n"), "\n", sep = "")
+  }
+  results[[length(results) + 1L]] <<- list(label = label, ok = ok)
+  invisible(ok)
+}
 
 # ---- lint --------------------------------------------------------------
 # Verbatim `lint` job script. LINTR_ERROR_ON_LINT is a repo-wide CI variable
 # (see .gitlab-ci.yml `variables:`), so lintr itself turns any lint into a
 # nonzero exit; nothing extra to check here.
-run_step("lint", "Rscript", c("-e", "lintr::lint_package()"))
+gate_lint <- function() {
+  run_step("lint", "Rscript", c("-e", "lintr::lint_package()"))
+}
 
 # ---- readme --------------------------------------------------------------
 # Verbatim `readme` job script, as two sub-commands: build then diff-check.
-run_step("readme: build", "Rscript", c("-e", "devtools::build_readme()"))
-run_step(
-  "readme: README.md in sync",
-  "git", c("diff", "--exit-code", "--", "README.md")
-)
+gate_readme <- function() {
+  run_step("readme: build", "Rscript", c("-e", "devtools::build_readme()"))
+  run_step(
+    "readme: README.md in sync",
+    "git", c("diff", "--exit-code", "--", "README.md")
+  )
+}
 
 # ---- docs --------------------------------------------------------------
 # Verbatim `docs` job script.
-run_step("docs", "Rscript", "dev/check-docs-drift.R")
+gate_docs <- function() {
+  run_step("docs", "Rscript", "dev/check-docs-drift.R")
+}
 
 # ---- vendor-fidelity:yandex ----------------------------------------------
 # Verbatim `vendor-fidelity:yandex` job script.
-run_step("vendor-fidelity:yandex", "Rscript", "dev/verify-yandex-vendor.R")
+gate_vendor_yandex <- function() {
+  run_step("vendor-fidelity:yandex", "Rscript", "dev/verify-yandex-vendor.R")
+}
 
 # ---- vendor-fidelity:bing -------------------------------------------------
 # Verbatim `vendor-fidelity:bing` job script.
-run_step("vendor-fidelity:bing", "Rscript", "dev/verify-bing-vendor.R")
+gate_vendor_bing <- function() {
+  run_step("vendor-fidelity:bing", "Rscript", "dev/verify-bing-vendor.R")
+}
+
+# ---- news-version and codemeta (ROBO-srowxxtg) -----------------------------
+# These two replace the news-version.yaml and codemeta.yaml GitHub workflows
+# that M1 (ROBO-tkmclvsg) deleted without a port. Ported from pagerankr's
+# scripts/gates.R, with two changes:
+#
+# * news-version is stricter. pagerankr accepts "(development version)" under
+#   any DESCRIPTION Version; here it passes only while Version is a .9000
+#   development version, so a release bump that forgets the NEWS heading fails
+#   instead of reaching CRAN as "(development version)".
+# * codemeta also compares every dependency constraint with DESCRIPTION.
+#   codemeta.json is hand-edited and never regenerated: codemetar would put
+#   back the /-/issues tracker that the file deliberately replaces with
+#   /-/work_items (ROBO-zghpvlxu). So nothing else keeps its requirement list
+#   in step. That is also why the old codemeta.yaml, which regenerated the
+#   file, is not carried. pagerankr's check for a `host::repo` spec mangled
+#   into a URL is dropped: that damage comes from `Remotes:`, which this
+#   package has none of.
+#
+# Both run in-process on base R plus jsonlite, which takes a second, so the
+# pre-push hook runs them as well (`Rscript dev/gates.R news-version
+# codemeta`). On a branch that hook is the only gate (SEOR-bmgkzhvy).
+
+description_field <- function(field) {
+  unname(read.dcf("DESCRIPTION", fields = field)[1L, 1L])
+}
+
+is_dev_version <- function(version) {
+  parts <- strsplit(version, ".", fixed = TRUE)[[1L]]
+  length(parts) == 4L && as.integer(parts[4L]) >= 9000L
+}
+
+gate_news_version <- function() {
+  version <- description_field("Version")
+  news <- readLines("NEWS.md", warn = FALSE)
+  heading_line <- grep("^# ", news, value = TRUE)[1L]
+  heading <- sub("^#\\s+robotstxtr\\s+", "", heading_line)
+  allowed <- if (is_dev_version(version)) {
+    c("(development version)", version)
+  } else {
+    version
+  }
+  ok <- !is.na(heading) && heading %in% allowed
+  record("news-version", ok, sprintf(
+    "top NEWS.md heading is '%s'; with DESCRIPTION Version '%s' it must be %s.",
+    heading_line, version,
+    paste0("'# robotstxtr ", allowed, "'", collapse = " or ")
+  ))
+}
+
+# Named vector package -> constraint (NA when unconstrained).
+description_deps <- function(fields) {
+  values <- stats::na.omit(vapply(fields, description_field, character(1)))
+  items <- trimws(unlist(strsplit(values, ",", fixed = TRUE)))
+  items <- items[nzchar(items)]
+  constraint <- ifelse(
+    grepl("(", items, fixed = TRUE),
+    gsub("\\s+", " ", trimws(sub("^[^(]*\\(([^)]*)\\).*$", "\\1", items))),
+    NA_character_
+  )
+  stats::setNames(constraint, trimws(sub("\\(.*$", "", items)))
+}
+
+codemeta_deps <- function(entries) {
+  # softwareRequirements also carries a plain "SystemRequirements" string.
+  entries <- Filter(is.list, entries)
+  constraint <- vapply(entries, function(d) {
+    if (is.null(d$version)) NA_character_ else d$version
+  }, character(1))
+  ids <- vapply(entries, function(d) d$identifier, character(1))
+  stats::setNames(constraint, ids)
+}
+
+dependency_drift <- function(what, declared, recorded) {
+  drift <- character()
+  for (pkg in sort(union(names(declared), names(recorded)))) {
+    d <- if (pkg %in% names(declared)) declared[[pkg]] else "(absent)"
+    r <- if (pkg %in% names(recorded)) recorded[[pkg]] else "(absent)"
+    if (!identical(d, r)) {
+      drift <- c(drift, sprintf(
+        "%s %s: DESCRIPTION '%s', codemeta.json '%s'",
+        what, pkg, if (is.na(d)) "(any)" else d, if (is.na(r)) "(any)" else r
+      ))
+    }
+  }
+  drift
+}
+
+gate_codemeta <- function() {
+  version <- description_field("Version")
+  meta <- jsonlite::read_json("codemeta.json", simplifyVector = FALSE)
+  detail <- character()
+  if (!identical(meta$version, version)) {
+    detail <- sprintf("version: DESCRIPTION '%s', codemeta.json '%s'",
+                      version, format(meta$version))
+  }
+  detail <- c(
+    detail,
+    dependency_drift("requirement",
+                     description_deps(c("Depends", "Imports")),
+                     codemeta_deps(meta$softwareRequirements)),
+    dependency_drift("suggestion",
+                     description_deps("Suggests"),
+                     codemeta_deps(meta$softwareSuggestions))
+  )
+  if (length(detail)) {
+    detail <- c(detail, paste(
+      "Hand-edit codemeta.json to match. Do NOT run",
+      "codemetar::write_codemeta(): it would revert issueTracker to /-/issues",
+      "(ROBO-zghpvlxu)."
+    ))
+  }
+  record("codemeta", !length(detail), detail)
+}
+
+available <- list(
+  "lint" = gate_lint,
+  "readme" = gate_readme,
+  "docs" = gate_docs,
+  "vendor-fidelity:yandex" = gate_vendor_yandex,
+  "vendor-fidelity:bing" = gate_vendor_bing,
+  "news-version" = gate_news_version,
+  "codemeta" = gate_codemeta
+)
+
+# With no arguments every gate runs, which is what the CI job does. Named gates
+# run just that subset, still to completion, never fail-fast.
+selected <- commandArgs(trailingOnly = TRUE)
+if (!length(selected)) {
+  selected <- names(available)
+}
+unknown <- setdiff(selected, names(available))
+if (length(unknown)) {
+  cat("[gates] unknown gate(s):", toString(unknown), "\n")
+  cat("[gates] available:", toString(names(available)), "\n")
+  quit(status = 2L)
+}
+
+cat("robotstxtr gates --", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
+cat(length(selected), "gate(s):", toString(selected), "\n",
+    "(citation-version runs as its own CI job, on its own image --",
+    "not here)\n\n")
+
+for (name in selected) {
+  available[[name]]()
+}
 
 # ---- verdict --------------------------------------------------------------
 cat("\n")
