@@ -1,4 +1,4 @@
-# robotstxtr (development version)
+# robotstxtr 0.3.0
 
 * The engine contract now publishes which product tokens each
   `bounded_profiles` matcher backend accepts, and what each one does. Schema

@@ -10,7 +10,7 @@ Result: **0 errors | 0 warnings | 1 note**
 
 ### Note
 
-`checking CRAN incoming feasibility ... NOTE` covers three items.
+`checking CRAN incoming feasibility ... NOTE` covers two items.
 
 * **New submission.**
 
@@ -22,10 +22,6 @@ Result: **0 errors | 0 warnings | 1 note**
 
   This is the informational note expected for a first submission; there is no
   package defect behind it.
-
-* **Version contains large components (`0.2.0.9000`).** The package is still
-  on a development version; it is bumped to a release version before
-  submission.
 
 * **`BugReports:` reported as a 404.**
 

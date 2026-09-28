@@ -1,7 +1,7 @@
 {
   "upload_type": "software",
   "title": "robotstxtr: Engine-Aware 'robots.txt' Policy with Google's Matcher Algorithm",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "language": "eng",
   "access_right": "open",
   "license": "MIT",
