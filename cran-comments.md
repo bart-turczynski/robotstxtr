@@ -1,10 +1,27 @@
 ## R CMD check results
 
-Checked with `R CMD check --as-cran` on:
+Every check below ran on the same package source, the one submitted.
 
-* local: macOS aarch64 (R 4.6.0)
+* **local**, macOS Tahoe 26.6.1, aarch64-apple-darwin23, R 4.6.0:
+  `R CMD check --as-cran` with `_R_CHECK_CRAN_INCOMING_=true` and
+  `_R_CHECK_CRAN_INCOMING_REMOTE_=true`, against a library holding only CRAN
+  packages. 0 errors | 0 warnings | 1 note.
+* **win-builder**, x86_64-w64-mingw32, 0 errors | 0 warnings | 1 note on each:
+  * R-release, R 4.6.1 (2026-06-24 ucrt)
+  * R-devel, R Under development (2026-09-25 r90590 ucrt)
+  * R-oldrelease, R 4.5.3 (2026-03-11 ucrt)
+* **R-hub** (R Consortium runners), R-devel (2026-09-25 r90590), Status: OK
+  on each:
+  * linux: Ubuntu 24.04.5 LTS, x86_64-pc-linux-gnu (`--as-cran`)
+  * macos: macOS Sequoia 15.7.9, x86_64-apple-darwin20 (`--as-cran`)
+  * macos-arm64: macOS Tahoe 26.6.2, aarch64-apple-darwin23 (`--as-cran`)
+  * clang-asan: Ubuntu 22.04.5 LTS, AddressSanitizer, no reports
+  * clang-ubsan: Ubuntu 22.04.5 LTS, UndefinedBehaviorSanitizer, no reports
 
-Result: **0 errors | 0 warnings | 1 note**
+The note is the incoming feasibility note below; R-hub does not run that
+check, so it reports none. The local run shows its "New submission" and
+`BugReports:` items but not the spelling item, because this machine has no
+English dictionary for R's spell check; win-builder shows all three.
 
 ---
 
