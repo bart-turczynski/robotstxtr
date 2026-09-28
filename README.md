@@ -153,6 +153,6 @@ The Yandex `matcher_backend` is available as of schema revision
 resolves to a checked `unsupported_crawler` non-decision). It is an
 independent, unofficial compatibility profile and makes no
 production-crawler parity claim. See [the engine-aware
-contract](design/engine-contract-v1.md) and
-`robots_engine_contract_v1()` for schema revisions and capability
+contract](https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/design/engine-contract-v1.md)
+and `robots_engine_contract_v1()` for schema revisions and capability
 metadata.

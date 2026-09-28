@@ -65,10 +65,10 @@
   #ROBO-qetsyvwv, #ROBO-onwulhga, #ROBO-ahilajyn).
 * The SSRF guard now classifies the IPv6 unspecified and loopback addresses on
   the expanded address rather than the literal string, so every spelling of
-  those 128 bits is treated alike — `::0.0.0.1` is recognised as loopback and
+  those 128 bits is treated alike — `::0.0.0.1` is recognized as loopback and
   `::0.0.0.0` as unspecified, matching `::1` and `::`. Previously the dotted
   forms were classified as neither special nor embedded IPv4 and reached the
-  default allow. Fetches were not affected, because `rurl` canonicalises such
+  default allow. Fetches were not affected, because `rurl` canonicalizes such
   literals before the guard sees them; the guard is now correct on its own
   rather than relying on that (#ROBO-pzgzxkoj).
 * The SSRF guard's IPv6 link-local and AWS cloud-metadata rules now match on

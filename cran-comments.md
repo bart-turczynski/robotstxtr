@@ -10,7 +10,7 @@ Result: **0 errors | 0 warnings | 1 note**
 
 ### Note
 
-`checking CRAN incoming feasibility ... NOTE` covers two items.
+`checking CRAN incoming feasibility ... NOTE` covers three items.
 
 * **New submission.**
 
@@ -22,6 +22,11 @@ Result: **0 errors | 0 warnings | 1 note**
 
   This is the informational note expected for a first submission; there is no
   package defect behind it.
+
+* **Possibly misspelled words in DESCRIPTION: `Matcher`, `matcher`.** Both
+  are spelled correctly. "Matcher" is the technical term for the component
+  that decides whether a URL is allowed, and it is the name Google gives the
+  library the package bundles: the "Robots.txt Parser and Matcher Library".
 
 * **`BugReports:` reported as a 404.**
 
