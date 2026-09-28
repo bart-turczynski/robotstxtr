@@ -39,19 +39,25 @@ claim of universal behavioral identity with Googlebot.
 
 ## Installation
 
-`robotstxtr` is not on CRAN yet. Its dependencies, including `rurl`, are all
-on CRAN, so the development version installs from GitHub with no extra
-repository configuration:
+Install the released version from CRAN:
 
 ```{r install}
-# with pak
-pak::pak("bart-turczynski/robotstxtr")
-
-# or with remotes
-remotes::install_github("bart-turczynski/robotstxtr")
+install.packages("robotstxtr")
 ```
 
-Installation compiles the vendored C++ matcher and requires a C++17 toolchain.
+The development version lives on GitLab. Its dependencies, including `rurl`,
+are all on CRAN, so it installs with no extra repository configuration:
+
+```{r install-dev}
+# with pak
+pak::pak("gitlab::bart-turczynski/robotstxtr")
+
+# or with remotes
+remotes::install_gitlab("bart-turczynski/robotstxtr")
+```
+
+Installing from source compiles the vendored C++ matcher and requires a C++17
+toolchain.
 Once dependencies have been obtained, installing, testing, and checking the
 package does not make live network requests.
 
