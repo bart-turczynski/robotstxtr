@@ -6,7 +6,7 @@
 # offline by YI6a (inst/yandex-corpus/). The adapter stays hidden: this unit
 # only reads the committed corpus and asserts adapter output equals the pinned
 # expectations. It edits no engine/adapter/binding/extractor/fixture and never
-# rewrites an expectation to accommodate adapter behaviour -- a disagreement is
+# rewrites an expectation to accommodate adapter behavior -- a disagreement is
 # reported as a failing case, never masked.
 #
 # The corpus stores request_target (slash-prefixed ASCII); the adapter takes

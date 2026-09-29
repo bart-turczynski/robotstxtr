@@ -10,7 +10,7 @@
 
 # Record every requested URL and (optionally) the sent user agent, and route to
 # a per-URL response spec. `routes` maps a request URL to a function(req) that
-# returns an httr2 response or a signalled condition.
+# returns an httr2 response or a signaled condition.
 mock_router <- function(routes, recorder = NULL) {
   function(req) {
     if (!is.null(recorder)) {
@@ -58,7 +58,7 @@ status_resp <- function(code, headers = list(), body = NULL) {
   }
 }
 
-# A signalled transport failure shaped like httr2's httr2_failure wrapping a
+# A signaled transport failure shaped like httr2's httr2_failure wrapping a
 # curl_error_* condition (curl >= 5 classes conditions after the CURLcode).
 transport_fail <- function(curl_class, msg) {
   force(curl_class)

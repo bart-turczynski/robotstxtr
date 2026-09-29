@@ -3,14 +3,14 @@
 #
 # The contract publishes, per `bounded_profiles` backend, which selectors are
 # accepted AND how each one selects a user-agent group. Both halves have to be
-# true of the matcher, so this suite asserts SELECTION BEHAVIOUR rather than
+# true of the matcher, so this suite asserts SELECTION BEHAVIOR rather than
 # `matcher_status` alone.
 #
 # Why status alone is not enough: a suite that only checks "every published
 # token evaluates" proves the table has no false POSITIVES and nothing else. It
 # cannot see changed case-folding, a `group_selection` value that no longer
 # matches what the core does, or an accidental broadening in which every token
-# starts evaluating. The published behaviour is the contract, so the behaviour
+# starts evaluating. The published behavior is the contract, so the behavior
 # is what gets pinned here.
 #
 # KNOWN LIMIT, deliberate. This direction catches false positives only. A token
@@ -145,7 +145,7 @@ test_that("BP2 only bounded backends publish selector data", {
 })
 
 # ---------------------------------------------------------------------------
-# Selection behaviour, driven from the published table
+# Selection behavior, driven from the published table
 # ---------------------------------------------------------------------------
 
 test_that("BP3 each published selector is selected by its own exact group", {

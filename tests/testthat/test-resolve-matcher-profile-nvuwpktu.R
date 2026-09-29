@@ -29,7 +29,7 @@ test_that("RP1 an accepted selector resolves to its published profile row", {
   expect_identical(res$profile_revision, "yandex-0.1.0")
 })
 
-test_that("RP2 resolution reports selection behaviour, not just acceptance", {
+test_that("RP2 resolution reports selection behavior, not just acceptance", {
   # The whole reason the resolver returns a row rather than TRUE: two accepted
   # selectors on one backend do different things.
   res <- rp_resolve("yandex", c("Yandex", "YandexAdditionalBot"))
@@ -169,7 +169,7 @@ test_that("RP10 the resolver agrees with the contract table it reads", {
 })
 
 test_that("RP11 resolution predicts what evaluation actually does", {
-  # The claim the resolver makes is behavioural, so check it against the
+  # The claim the resolver makes is behavioral, so check it against the
   # matcher rather than against the table a second time.
   skip_if_not(
     identical(engine_matcher_availability_v1()[["yandex"]], "available"),
