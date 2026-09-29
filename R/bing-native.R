@@ -24,7 +24,7 @@ bing_evaluate_batch <- function(bodies, body_index, product_tokens, targets) {
 
 # Convert one absolute HTTP(S) URL to its origin-form request target using
 # Bing's own byte-preserving lexical extractor, or NA_character_ on failure
-# (spec section 9). Vectorised over `url` for convenience in tests.
+# (spec section 9). Vectorized over `url` for convenience in tests.
 bing_extract_request_target <- function(url) {
   vapply(
     as.character(url),
