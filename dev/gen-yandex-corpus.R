@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 # Deterministic, offline generator for the Yandex conformance corpus projection.
 #
-# Introduced by ROBO-novczgii (YI6a). Produces the three shipped artefacts from
+# Introduced by ROBO-novczgii (YI6a). Produces the three shipped artifacts from
 # a read-only, byte-pinned view of a sibling robotstxtyandex checkout:
 #   inst/yandex-corpus/bodies/<basename>.txt   (26 body files, byte-for-byte)
 #   inst/yandex-corpus/cases.json              (140 records, canonical JSON)

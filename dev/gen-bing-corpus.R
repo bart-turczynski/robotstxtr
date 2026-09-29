@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 # Deterministic, offline generator for the Bing conformance corpus projection.
 #
-# Introduced by ROBO-onwulhga (BI6). Produces the shipped artefacts from a
+# Introduced by ROBO-onwulhga (BI6). Produces the shipped artifacts from a
 # read-only, byte-pinned view of a sibling robotstxtbing checkout:
 #   inst/bing-corpus/bodies/<body_ref>.txt   (95 body files, byte-for-byte)
 #   inst/bing-corpus/cases.json              (191 records, canonical JSON)
