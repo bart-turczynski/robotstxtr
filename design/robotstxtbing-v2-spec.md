@@ -139,7 +139,7 @@ Every behavioral expectation has exactly one grade:
 | `tester_observed` | Accepted, dated Bing Webmaster Tools tester observations support the exact expectation. |
 | `project_behavior` | The project deliberately chooses deterministic behavior where Bing evidence is unavailable or inapplicable. |
 
-RFC 9309 predictions and pinned-Google results are separately labelled
+RFC 9309 predictions and pinned-Google results are separately labeled
 comparisons and never behavioral grades.
 
 Raw observations progress through:

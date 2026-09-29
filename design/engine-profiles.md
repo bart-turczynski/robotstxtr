@@ -29,7 +29,7 @@ body for the selected product token.
   are future-validator reference only; nothing there executes.
 - **Bing robots policy** — no current Bing primary source publishes a robots.txt status/redirect/
   network table or an RFC-9309 conformance claim. Every Bing status/redirect cell is
-  `documentation_gap`; not synthesised from RFC. A product may opt into an explicit `assumed_rfc9309`
+  `documentation_gap`; not synthesized from RFC. A product may opt into an explicit `assumed_rfc9309`
   application policy, never presented as `bing`.
 - **Crawler lifecycle emulation** (cache TTL, 30-day grace, last-known-good). Stateless; lifecycle-
   dependent cells resolve to `context_required` (§4).
@@ -89,7 +89,7 @@ share one engine column — each has its own provenance/action:
   - `bing`: `[documentation_gap]`.
 - **`no_location` / `loop`** (malformed redirect) → `evidence_status = http_protocol_error`. No engine
   documents a specific action → `[documentation_gap]`; a product may choose a deterministic result via
-  an explicit `application_choice`, never labelled `documented`.
+  an explicit `application_choice`, never labeled `documented`.
 
 Within budget: `rfc9309` follows cross-authority, reached rules → initial authority `[documented]`;
 `google` follows at least five (cross-authority not separately restated → `[inferred]`); `yandex`
