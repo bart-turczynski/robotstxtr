@@ -17,7 +17,7 @@
 # reproduces the same curl condition but is timing-sensitive; mocking the read
 # reproduces it deterministically, so no skip guard is needed.
 
-# A signalled mid-stream transport failure: an httr2_failure wrapping a
+# A signaled mid-stream transport failure: an httr2_failure wrapping a
 # curl_error_* condition (curl >= 5 classes conditions after the CURLcode).
 # curl_error_partial_file is what curl raises when the peer closes before the
 # declared body has fully arrived; it is neither a timeout nor a TLS error, so

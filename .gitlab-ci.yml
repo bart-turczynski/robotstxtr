@@ -336,7 +336,7 @@ coverage:
 
 # The pkgdown site. Ported from .github/workflows/pkgdown.yaml, which targeted
 # the suspended GitHub account and last ran 2026-08-07 (ROBO-qqwkldzv), and
-# modelled on the sibling pagerankr's `pages` job.
+# modeled on the sibling pagerankr's `pages` job.
 #
 # `pkgdown::build_site()` writes to docs/, which is both .gitignored and
 # .Rbuildignored here, so the site is a pure build artifact; GitLab Pages
@@ -430,7 +430,7 @@ pages:
 
 # ---- stage: audit ------------------------------------------------------------
 
-# Dependency vulnerability audits (SEOR-fftbjnpl), modelled on seor's
+# Dependency vulnerability audits (SEOR-fftbjnpl), modeled on seor's
 # `osv-audit` / `security-audit` and punycoder's SCHEDULE_KIND guard
 # (SEOR-ihmntqzm). They run tests/testthat/test-osv.R and test-security.R,
 # which already exist and are unchanged here.

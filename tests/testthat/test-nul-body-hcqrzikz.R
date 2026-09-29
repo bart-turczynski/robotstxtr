@@ -46,7 +46,7 @@ nul_body_bytes <- c(
 
 # --- The two decode helpers --------------------------------------------------
 
-test_that("render_body_bytes() honours its no-error contract on a NUL", {
+test_that("render_body_bytes() honors its no-error contract on a NUL", {
   out <- render_body_bytes(as.raw(c(0x55, 0x73, 0x65, 0x72, 0x00, 0x61)))
   expect_identical(out, "Usera")
 

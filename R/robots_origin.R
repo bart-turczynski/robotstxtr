@@ -16,7 +16,7 @@
 #' the origin is serialized with a lowercased scheme and host, IDN hostnames
 #' converted to ASCII/punycode, non-default ports preserved and default ports
 #' (http 80, https 443) omitted, IPv6 literals bracketed, userinfo dropped, and
-#' path/params/query/fragment ignored in favour of exactly `/robots.txt`.
+#' path/params/query/fragment ignored in favor of exactly `/robots.txt`.
 #'
 #' Ineligible input (failing the scheme guard, or rejected by `rurl` as
 #' unparseable or host-less) returns `NA_character_`. This is surfaced per row

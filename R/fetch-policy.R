@@ -105,7 +105,7 @@ classify_status <- function(status) {
   "http_error"
 }
 
-# Classify a transport failure signalled by httr2/curl into timeout, tls_error,
+# Classify a transport failure signaled by httr2/curl into timeout, tls_error,
 # or network_error (PRD 6.4). httr2 wraps the curl error as the `parent` of an
 # `httr2_failure`; curl (>= 5) classes conditions after the CURLcode name (e.g.
 # `curl_error_operation_timedout`, `curl_error_peer_failed_verification`). We

@@ -30,7 +30,7 @@ test_that("CGNAT 100.64.0.0/10 is blocked as shared, not cloud-metadata", {
   expect_identical(reason_of("100.100.1.1"), "shared")
   expect_identical(reason_of("100.127.255.255"), "shared")
   expect_false(ssrf_check("100.64.0.1", "http")$allowed)
-  # The block is a /10, so these neighbours stay allowed.
+  # The block is a /10, so these neighbors stay allowed.
   expect_true(is.na(reason_of("100.128.0.1")))
   expect_true(is.na(reason_of("100.63.255.255")))
 })
@@ -120,7 +120,7 @@ test_that("Teredo 2001::/32 undoes the XOR obfuscation of the client IPv4", {
   # f7f7:f7f7 XOR ffff:ffff == 8.8.8.8: a public wrapped address passes.
   expect_true(is.na(reason_of("[2001:0:0:0:0:0:f7f7:f7f7]")))
   # Teredo is 2001:0000::/32 — the second hextet must be zero, so the
-  # documentation range 2001:db8::/32 is a neighbour, not a Teredo address.
+  # documentation range 2001:db8::/32 is a neighbor, not a Teredo address.
   expect_true(is.na(reason_of("[2001:db8::1]")))
 })
 
@@ -238,7 +238,7 @@ test_that("every spelling of the AWS IPv6 metadata prefix is blocked", {
   expect_identical(reason_of("[FD00:0EC2::254]"), "cloud-metadata")
   expect_identical(reason_of("[fd00:0ec2:ffff::1]"), "cloud-metadata")
   expect_false(ssrf_check("[fd00:0ec2::254]", "http")$allowed)
-  # Neighbours outside the /32 stay allowed: only these two hextets match.
+  # Neighbors outside the /32 stay allowed: only these two hextets match.
   expect_true(is.na(reason_of("[fd00:ec3::254]")))
   expect_true(is.na(reason_of("[fd01:ec2::254]")))
   expect_true(is.na(reason_of("[fd00::1]")))

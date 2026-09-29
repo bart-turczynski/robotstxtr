@@ -65,7 +65,7 @@ test_that("NR-IDENTITY Google + Yandex revisions and v1 schema are unchanged", {
   # Google/Yandex revisions. Its schema_revision is NOT frozen forever: §16.5
   # required it to survive the BING activation unchanged, which it did. It later
   # advanced to 2026-08-25.1 for the additive bounded-profile publication
-  # (ROBO-qgxekgph), which touched no Google or Yandex matcher behaviour.
+  # (ROBO-qgxekgph), which touched no Google or Yandex matcher behavior.
   v1 <- robots_engine_contract_v1()
   expect_identical(v1$contract_id, "robotstxtr.engine-aware/v1")
   expect_identical(v1$schema_revision, "2026-08-25.1")

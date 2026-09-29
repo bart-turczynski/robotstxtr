@@ -16,7 +16,7 @@
 // bytes, duplicate slashes, dot segments, parameters (";"), and query order are
 // all preserved byte-for-byte. It MUST NOT percent-encode literal Unicode after
 // the cpp11 translation, and it MUST NOT consult rurl's cleaned/parsed path or
-// query, googlebot::GetPathParamsQuery(), or any other engine's URL behaviour.
+// query, googlebot::GetPathParamsQuery(), or any other engine's URL behavior.
 //
 // The routine stays HIDDEN: Yandex capability remains unavailable, nothing in
 // the public facade calls it, and it is not user-exported. It is registered
