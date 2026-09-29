@@ -72,3 +72,26 @@ reasons a real package hits as it grows:
 (ropensci-review-tools/goodpractice#321). It only guarded the pre-R-4.0
 `data.frame()` default, and this package Depends on R >= 4.1.0. The fleet turned
 it off on 2026-07-18, before goodpractice did (pagerankr PAGE-iiqjlfxl).
+
+## CRAN release checklist
+
+Follow the fleet checklist,
+[seor `design/release-checklist.md`](https://gitlab.com/bart-turczynski/seor/-/blob/main/design/release-checklist.md).
+robotstxtr's deltas:
+
+- **Step 5: run every gate first.** The vendored C++ fidelity checks
+  (`vendor-fidelity:yandex`, `vendor-fidelity:bing`) run only in CI's `gates`
+  job, not in the pre-push hook. Confirm that job passed on the release
+  commit, or run `Rscript dev/gates.R`, which runs them all.
+- **Step 6: three R-hub platforms fail for platform reasons.** On 0.3.0
+  (ROBO-lvddphcx): `windows`, because R-hub checks the tarball out of git and
+  `.gitattributes` is Rbuildignored, so line-ending conversion rewrites the
+  byte-exact corpus files (win-builder, which tests the tarball itself, is
+  the Windows control); `valgrind`, with no frame in robotstxtr code; and
+  `nosuggests`, where the vignette needs `rmarkdown`. The sanitizers and
+  valgrind matter here because of the compiled code. By the owner's
+  decision, those three were recorded on the release issue, not in
+  `cran-comments.md`.
+- **Step 7: submit from a clean clone, always.** `tmp/` is neither
+  gitignored nor Rbuildignored (ROBO-bqvkezdp), so a tarball built from a
+  working copy can ship it.
