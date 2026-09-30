@@ -6,7 +6,7 @@
 // robotstxtbing public API (Policy::Parse + Policy::Evaluate + contract_info)
 // declared under vendor/robotstxtbing/include (reached via the -Ivendor/... path
 // in src/Makevars). It is engine-pure: it never calls the Google engine
-// (robots.cc), the robotstxtyandex engine, or their URL behaviour, and it shares
+// (robots.cc), the robotstxtyandex engine, or their URL behavior, and it shares
 // no parser/matcher/URL-normalizer with them.
 //
 // The three registered routines are Bing-named (there is no "no bing native
@@ -327,7 +327,7 @@ cpp11::list robotstxtr_bing_eval_batch_(cpp11::list bodies,
 // Convert one absolute HTTP(S) URL (UTF-8 bytes) into its origin-form request
 // target, or NA_character_ on lexical failure (spec section 9). This is Bing's
 // OWN extractor -- an independent lexical transform that reuses no Google or
-// Yandex URL behaviour. It removes only scheme and authority, substitutes "/"
+// Yandex URL behavior. It removes only scheme and authority, substitutes "/"
 // when no explicit path exists, retains the query delimiter and exact query
 // spelling (including a bare, empty "?"), and excludes the fragment delimiter
 // and fragment. Percent-escape case, literal Unicode (UTF-8) boundary bytes,

@@ -1074,5 +1074,5 @@ rewrite of the v1 contracts above.
   imply a matcher exists, and a ruleset request MUST NOT fall through to another
   engine's matcher.
 - **Bing** robots status/redirect/network policy stays undocumented and is **not**
-  synthesised from RFC under Bing's name; an explicit `assumed_rfc9309`
+  synthesized from RFC under Bing's name; an explicit `assumed_rfc9309`
   application policy is the only RFC-shaped fallback (ADR-009 §8).

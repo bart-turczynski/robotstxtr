@@ -30,6 +30,32 @@ repos:
       - id: mixed-line-ending
         exclude: ^(src/vendor/|inst/yandex-corpus/|tests/testthat/_snaps/)
       - id: check-case-conflict
+  # The spelling gate (dev/gates.R) reads DESCRIPTION, roxygen, vignettes,
+  # README and NEWS, but not code, comments, string literals or tooling. This
+  # covers those for British spellings. Skipped: generated man/, the tracker
+  # snapshot, the byte-pinned conformance corpora, and vendored upstream code
+  # (src/vendor/, and the four Google matcher files inst/PROVENANCE lists).
+  # SEOR-xtmnpmae.
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.3
+    hooks:
+      - id: codespell
+        name: codespell (British spellings, en-GB_to_en-US; SEOR-xtmnpmae)
+        args: [--builtin, en-GB_to_en-US]
+        stages: [pre-commit, pre-push]
+        # The last three lines (four files) are temporary:
+        # remove once ROBO-zexhmhic respells their fail() messages
+        exclude: |
+          (?x)^(
+            man/|
+            design/tracker-snapshot\.md$|
+            inst/(bing|yandex)-corpus/|
+            src/vendor/|
+            src/(reporting_)?robots\.(cc|h)$|
+            R/(bing|yandex)-corpus\.R$|
+            tests/testthat/test-bing-corpus-onwulhga\.R$|
+            tests/testthat/test-yandex-corpus-novczgii\.R$
+          )
   - repo: local
     hooks:
       # Toolchain drift makes the gate red on a tree nobody changed, and it

@@ -136,7 +136,7 @@ escaping. Unicode paths need zero handling from us — Google escapes them itsel
 `ID_Encoding` behavior).
 
 **Binding is trivial:** R `character` vector → `std::string` → `AllowedByRobots` → R `logical`.
-No component marshalling. Vectorize over a character vector.
+No component marshaling. Vectorize over a character vector.
 
 ## 7. rurl integration (the front door)
 
