@@ -8,14 +8,20 @@
 #' HTTP outcome.
 #'
 #' For every input URL the fetch-origin grouping key
-#' `scheme://host[:port]/robots.txt` is constructed (see the fetch-origin rules
-#' in the package PRD). Within one call each distinct grouping key is fetched
-#' exactly once and every input row sharing that key references the same source
-#' row and stored body. Grouping is keyed on the requested robots URL, not on
-#' the final redirect destination. Input order is preserved in `map`, and fetch
-#' groups run sequentially in first-occurrence order; source IDs are assigned
-#' `robots_1`, `robots_2`, and so on in that order. There is no persistent,
-#' cross-call, or hidden HTTP cache.
+#' `scheme://host[:port]/robots.txt` is built from the URL alone. The URL must
+#' begin with an explicit `http://` or `https://` (in any letter case); a
+#' scheme-relative (`//host/...`) or scheme-less URL is invalid, never defaulted
+#' to HTTP. The scheme and host are put in lower case, an IDN host is converted
+#' to its ASCII form, a default port (80 for `http`, 443 for `https`) is dropped
+#' while any other port is kept, an IPv6 literal stays bracketed, userinfo is
+#' dropped, and the path, query, and fragment are replaced by `/robots.txt`.
+#' Within one call each distinct grouping key is fetched exactly once and every
+#' input row sharing that key references the same source row and stored body.
+#' Grouping is keyed on the requested robots URL, not on the final redirect
+#' destination. Input order is preserved in `map`, and fetch groups run
+#' sequentially in first-occurrence order; source IDs are assigned `robots_1`,
+#' `robots_2`, and so on in that order. There is no persistent, cross-call, or
+#' hidden HTTP cache.
 #'
 #' A URL whose fetch-origin cannot be constructed (missing, empty, malformed, or
 #' non-HTTP(S)) is invalid: it never triggers an HTTP request and appears in

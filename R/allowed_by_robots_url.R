@@ -7,9 +7,15 @@
 #' per-row decisions, returning a `robots_decisions` object.
 #'
 #' Each URL's fetch-origin grouping key `scheme://host[:port]/robots.txt` is
-#' constructed (see the fetch-origin rules in the package PRD). Within one call
-#' each distinct grouping key is fetched exactly once and every fetch-eligible
-#' row sharing that key reuses the same source body; source IDs are assigned
+#' built from the URL alone. The URL must begin with an explicit `http://` or
+#' `https://` (in any letter case); a scheme-relative (`//host/...`) or
+#' scheme-less URL is invalid, never defaulted to HTTP. The scheme and host are
+#' put in lower case, an IDN host is converted to its ASCII form, a default
+#' port (80 for `http`, 443 for `https`) is dropped while any other port is
+#' kept, an IPv6 literal stays bracketed, userinfo is dropped, and the path,
+#' query, and fragment are replaced by `/robots.txt`. Within one call each
+#' distinct grouping key is fetched exactly once and every fetch-eligible row
+#' sharing that key reuses the same source body; source IDs are assigned
 #' `robots_1`, `robots_2`, and so on in first-occurrence order. There is no
 #' persistent, cross-call, or hidden HTTP cache.
 #'
