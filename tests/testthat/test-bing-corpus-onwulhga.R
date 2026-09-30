@@ -4,7 +4,7 @@
 #   1. Fail-closed OFFLINE data invariants over inst/bing-corpus/ (no engine):
 #      counts, profile split, the matched_rule null-iff-default rule, the
 #      tester<->golden decision link, per-file SHA-256, and byte-identical
-#      canonical re-serialisation. Mutation tests operate on a fresh copy so the
+#      canonical re-serialization. Mutation tests operate on a fresh copy so the
 #      committed fixtures are never touched.
 #   2. PUBLIC v2 facade replay: every one of the 191 accepted observation-level
 #      cases is driven end-to-end through robots_evaluate_text_v1 (backend
@@ -278,7 +278,7 @@ test_that("a record that the canonical writer cannot serialize is rejected", {
   # the determinism check reports the failure instead of silently passing.
   dir <- corpus_minimal_dir("[{\"expectation_ids\": [[\"a\", \"b\"]]}]\n")
   on.exit(unlink(dir, recursive = TRUE))
-  expect_corpus_rejects(verify_bing_corpus(dir), "Re-serialisation failed")
+  expect_corpus_rejects(verify_bing_corpus(dir), "Re-serialization failed")
 })
 
 test_that("a record missing a required field is rejected", {
@@ -473,7 +473,7 @@ test_that("a non-canonical cases.json rendering is rejected", {
   corpus_write_cases(dir, paste0(bing_corpus_serialize(records), "\n"))
   expect_corpus_rejects(
     verify_bing_corpus(dir),
-    "cases.json is not byte-identical to its canonical serialisation."
+    "cases.json is not byte-identical to its canonical serialization."
   )
 })
 

@@ -66,7 +66,7 @@ yandex_corpus_sha256_file <- function(path) {
 }
 
 # Canonicalise a single parsed record into a named list with a fixed key order
-# and normalised scalar types. Deterministic serialisation depends on this: it
+# and normalized scalar types. Deterministic serialization depends on this: it
 # is the one place that decides key order, integer coercion, the null-versus-
 # object shape of `matched_rule`, and the array-ness of `sources`.
 yandex_corpus_build_record <- function(rec) {
@@ -160,7 +160,7 @@ read_yandex_corpus <- function(dir = yandex_corpus_dir()) {
 #' allowed set; every decision in the allowed set; `matched_rule` is null if
 #' and only if source == "default_allow"; every referenced body file is present
 #' with a SHA-256 and byte size matching the record; and deterministic
-#' serialisation (re-serialising the parsed records with the shared canonical
+#' serialization (re-serializing the parsed records with the shared canonical
 #' writer reproduces the committed cases.json bytes exactly).
 #'
 #' @param dir Corpus directory. Defaults to the installed corpus.
@@ -301,20 +301,20 @@ verify_yandex_corpus <- function(dir = yandex_corpus_dir()) {
   }
   n_bodies <- length(unique(body_ids))
 
-  # Determinism: re-serialise and compare bytes with the committed file.
+  # Determinism: re-serialize and compare bytes with the committed file.
   reserialized <- tryCatch(
     yandex_corpus_serialize(records),
     error = function(e) e
   )
   if (inherits(reserialized, "error")) {
     fail(sprintf(
-      "Re-serialisation failed: %s", conditionMessage(reserialized)
+      "Re-serialization failed: %s", conditionMessage(reserialized)
     ))
   } else {
     committed <- readBin(cases_path, "raw", n = file.size(cases_path))
     produced <- charToRaw(enc2utf8(reserialized))
     if (!identical(committed, produced)) {
-      fail("cases.json is not byte-identical to its canonical serialisation.")
+      fail("cases.json is not byte-identical to its canonical serialization.")
     }
   }
 
