@@ -3,6 +3,8 @@ message: "If you use this software, please cite it as below."
 type: software
 title: "robotstxtr: Engine-Aware 'robots.txt' Policy with Google's Matcher Algorithm"
 version: 0.3.0
+date-released: "2026-09-28"
+doi: 10.5281/zenodo.23018995
 abstract: >-
   Evaluates whether URLs may be crawled according to robots.txt rules. A
   versioned engine-aware facade keeps neutral fetch evidence, per-engine status
@@ -18,6 +20,13 @@ authors:
 repository-code: "https://gitlab.com/bart-turczynski/robotstxtr"
 url: "https://bart-turczynski.gitlab.io/robotstxtr/"
 license: MIT
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.23018995
+    description: "Concept DOI (all versions; resolves to the latest release)"
+  - type: doi
+    value: 10.5281/zenodo.23018996
+    description: "Version DOI for robotstxtr 0.3.0"
 keywords:
   - robots.txt
   - robots exclusion protocol

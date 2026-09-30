@@ -20,6 +20,7 @@ knitr::opts_chunk$set(
 [![CRAN status](https://www.r-pkg.org/badges/version/robotstxtr)](https://CRAN.R-project.org/package=robotstxtr)
 [![Coverage](https://gitlab.com/bart-turczynski/robotstxtr/badges/main/coverage.svg)](https://gitlab.com/bart-turczynski/robotstxtr/-/pipelines)
 [![Lifecycle: maturing](https://img.shields.io/badge/lifecycle-maturing-blue.svg)](https://lifecycle.r-lib.org/articles/stages.html#maturing)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23018995.svg)](https://doi.org/10.5281/zenodo.23018995)
 <!-- badges: end -->
 
 Faithful `robots.txt` parsing and URL-allowed decisions for R, powered by
@@ -155,3 +156,15 @@ crawlers (every other Yandex-backend token resolves to a checked
 compatibility profile and makes no production-crawler parity claim. See
 [the engine-aware contract](https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/design/engine-contract-v1.md) and
 `robots_engine_contract_v1()` for schema revisions and capability metadata.
+
+## Citation
+
+If you use `robotstxtr` in your work, please cite it. Run
+`citation("robotstxtr")` for the current citation, or see
+[`CITATION.cff`](https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/CITATION.cff).
+
+Each release is archived on Zenodo. Cite the concept DOI
+[10.5281/zenodo.23018995](https://doi.org/10.5281/zenodo.23018995) to refer to
+`robotstxtr` in general; it always resolves to the latest release. Use the
+version-specific DOI shown on the [Zenodo
+record](https://doi.org/10.5281/zenodo.23018995) for a particular release.
