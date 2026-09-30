@@ -38,3 +38,10 @@ cost an afternoon (SEOR-tcytizic).
 
 If that check passes and the gate is still red on a tree you have not touched,
 say so and keep the evidence rather than assuming your change caused it.
+
+A third cause is a reinstall in flight. `there is no package called '<pkg>'`
+for a package in the rurl stack (rurl, pslr, punycoder) usually means another
+session is installing a dev build of it, and the library directory is briefly
+absent. Re-run the gate before investigating. `ls -ld` on that package's
+directory in the R library, showing an mtime from the last few minutes, or a
+`.9000` version, confirms it.

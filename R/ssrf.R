@@ -1,7 +1,11 @@
 # Structural SSRF guard for the robots.txt fetch policy (ROBO-quovenef).
 #
 # Ported from sitemapr's ADR-003 structural SSRF guard; keep the two matchers in
-# sync. Pure, side-effect-free, no-network, no-DNS: the fetch engine calls it
+# sync. The duplication is deliberate until a package depends on ssrfr
+# (ROBO-mgumaoyf): do not deduplicate it, and land a matcher patch in both
+# repositories together, identical in the shared functions.
+#
+# Pure, side-effect-free, no-network, no-DNS: the fetch engine calls it
 # once per redirect hop on each URL before issuing a request. It does range and
 # pattern matching on host/scheme components; it never resolves DNS or opens a
 # socket. The reason codes returned are machine-readable and stable:
