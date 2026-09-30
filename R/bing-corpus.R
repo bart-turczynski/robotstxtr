@@ -103,7 +103,7 @@ bing_corpus_sha256_string <- function(s) {
 }
 
 # Canonicalise a single parsed record into a named list with a fixed key order
-# and normalised scalar types. Deterministic serialisation depends on this: it
+# and normalized scalar types. Deterministic serialization depends on this: it
 # is the one place that decides key order, integer coercion, the null-versus-
 # object shape of `matched_rule`, and the array-ness of `expectation_ids`.
 bing_corpus_build_record <- function(rec) {
@@ -214,7 +214,7 @@ read_bing_corpus <- function(dir = bing_corpus_dir()) {
 #' request-target bytes (the sibling probe-case pin); the tester-observed
 #' decision equals the golden `matcher_expected.url_decision` (the SS16.3
 #' authority link) and every case is `evaluated`; and deterministic
-#' serialisation (re-serialising the parsed records with the shared canonical
+#' serialization (re-serializing the parsed records with the shared canonical
 #' writer reproduces the committed cases.json bytes exactly).
 #'
 #' @param dir Corpus directory. Defaults to the installed corpus.
@@ -446,19 +446,19 @@ verify_bing_corpus <- function(dir = bing_corpus_dir()) {
     ))
   }
 
-  # Determinism: re-serialise and compare bytes with the committed file.
+  # Determinism: re-serialize and compare bytes with the committed file.
   reserialized <- tryCatch(
     bing_corpus_serialize(records),
     error = function(e) e
   )
   if (inherits(reserialized, "error")) {
-    fail(sprintf("Re-serialisation failed: %s",
+    fail(sprintf("Re-serialization failed: %s",
                  conditionMessage(reserialized)))
   } else {
     committed <- readBin(cases_path, "raw", n = file.size(cases_path))
     produced <- charToRaw(enc2utf8(reserialized))
     if (!identical(committed, produced)) {
-      fail("cases.json is not byte-identical to its canonical serialisation.")
+      fail("cases.json is not byte-identical to its canonical serialization.")
     }
   }
 

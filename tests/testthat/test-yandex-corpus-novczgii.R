@@ -255,7 +255,7 @@ test_that("a record that the canonical writer cannot serialize is rejected", {
   # determinism check reports the failure instead of silently passing.
   dir <- corpus_minimal_dir("[{\"sources\": [[\"a\", \"b\"]]}]\n")
   on.exit(unlink(dir, recursive = TRUE))
-  expect_corpus_rejects(verify_yandex_corpus(dir), "Re-serialisation failed")
+  expect_corpus_rejects(verify_yandex_corpus(dir), "Re-serialization failed")
 })
 
 test_that("a record missing a required field is rejected", {
@@ -346,7 +346,7 @@ test_that("a non-canonical cases.json rendering is rejected", {
   corpus_write_cases(dir, paste0(yandex_corpus_serialize(records), "\n"))
   expect_corpus_rejects(
     verify_yandex_corpus(dir),
-    "cases.json is not byte-identical to its canonical serialisation."
+    "cases.json is not byte-identical to its canonical serialization."
   )
 })
 
