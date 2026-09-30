@@ -52,5 +52,8 @@ git archive HEAD | tar -x -C "$docsdir"
 Rscript dev/check-docs-drift.R "$docsdir"
 
 # 3) R CMD check --as-cran against a clean export of HEAD in a temp dir.
+#    rcmdcheck reads a check that halted partway as 0/0/0 and returns normally,
+#    so error_on never fires. The guard also fails on R CMD check's own exit
+#    status (SEOR-maavnxdm).
 git archive HEAD | tar -x -C "$workdir"
-Rscript -e 'rcmdcheck::rcmdcheck(path = commandArgs(TRUE)[1], args = "--as-cran", error_on = "warning")' "$workdir"
+Rscript -e 'res <- rcmdcheck::rcmdcheck(path = commandArgs(TRUE)[1], args = "--as-cran", error_on = "warning"); if (!identical(as.integer(res$status), 0L)) stop("R CMD check exited with status ", res$status, "; the run did not complete.", call. = FALSE)' "$workdir"
