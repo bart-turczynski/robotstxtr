@@ -55,3 +55,9 @@
 # source. seor carries the same entry for the same reason; punycoder hit the
 # WARNING for real before this was added here.
 ^\.r-lib$
+# In a git worktree .git is a regular file (a gitdir: pointer), which R CMD build
+# does not exclude the way it does a .git directory; it would ship as a hidden file.
+^\.git$
+# Logs and build output for the house workflow. Without this, R CMD build copies
+# it into the tarball and the check reports a top-level-files NOTE.
+^tmp$

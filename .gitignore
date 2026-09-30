@@ -49,3 +49,6 @@ Meta/
 # Fiberplane local issue tracking
 .fp/
 docs
+
+# Logs and build output for the house workflow (tarballs, check logs).
+tmp/
