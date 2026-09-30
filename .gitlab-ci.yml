@@ -286,6 +286,9 @@ check:
     # Strict CRAN-grade pass on the fast gate, warnings fatal. The
     # cross-platform matrix repeats this on Windows and the self-hosted macOS
     # runner in the manually triggered pipeline.
+    # rcmdcheck reads a check that halted partway as 0/0/0 and returns normally,
+    # so error_on never fires. The guard also fails on R CMD check's own exit
+    # status (SEOR-maavnxdm).
     - |
       Rscript -e '
         res <- rcmdcheck::rcmdcheck(
@@ -293,6 +296,7 @@ check:
           build_args = "--no-manual",
           error_on = "warning"
         )
+        if (!identical(as.integer(res$status), 0L)) stop("R CMD check exited with status ", res$status, "; the run did not complete.", call. = FALSE)
       '
   artifacts:
     when: always

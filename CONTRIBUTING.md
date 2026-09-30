@@ -9,7 +9,7 @@ Rscript -e 'pak::local_install_deps(dependencies = TRUE)'
 Run verification:
 
 ```sh
-Rscript -e 'lints <- lintr::lint_package(); if (length(lints)) { print(lints); quit(status = 1) }' && Rscript -e 'rcmdcheck::rcmdcheck(args = "--as-cran", error_on = "warning")'
+Rscript -e 'lints <- lintr::lint_package(); if (length(lints)) { print(lints); quit(status = 1) }' && Rscript -e 'res <- rcmdcheck::rcmdcheck(args = "--as-cran", error_on = "warning"); if (!identical(as.integer(res$status), 0L)) stop("R CMD check exited with status ", res$status, "; the run did not complete.", call. = FALSE)'
 ```
 
 `man/` and `NAMESPACE` are generated from the roxygen comments in `R/`: edit the
