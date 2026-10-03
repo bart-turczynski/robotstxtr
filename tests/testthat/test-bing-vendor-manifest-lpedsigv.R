@@ -89,6 +89,8 @@ test_that("missing / extra / changed files each fail closed", {
 })
 
 test_that("missing manifest or tree fails closed with an error", {
+  # make_bing_fixture() hashes its synthetic tree with tools::sha256sum().
+  skip_if_no_sha256()
   tmp <- local_tmpdir()
   fx <- make_bing_fixture(tmp)
   expect_error(
