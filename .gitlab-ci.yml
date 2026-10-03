@@ -177,8 +177,17 @@ stages:
   apt-get install -y --no-install-recommends pandoc git ca-certificates
   rm -rf /var/lib/apt/lists/*
 
+# pak from r-lib's own binary repository, not the repos above. p3m serves no
+# binaries for rocker/r-ver:devel's Ubuntu (resolute), so install.packages()
+# built pak from source there, its bundled curl found no libcurl headers, the
+# install failed with only a warning, and the next step died on "there is no
+# package called 'pak'" (pipeline 2909410786, the devel leg). The r-lib repo
+# serves a self-contained build for every R version and architecture; once pak
+# is in, it apt-installs the headers the rest of the source builds need
+# (libcurl4-openssl-dev, libssl-dev, libicu-dev, cmake, libuv1-dev). seor,
+# punycoder and sitemapr install pak the same way.
 .install-pak: &install-pak |
-  Rscript -e 'if (!requireNamespace("pak", quietly = TRUE)) install.packages("pak")'
+  Rscript -e 'if (!requireNamespace("pak", quietly = TRUE)) install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/stable/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))'
 
 # ---- stage: verify -----------------------------------------------------------
 
