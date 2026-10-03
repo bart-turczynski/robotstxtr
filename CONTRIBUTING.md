@@ -1,21 +1,32 @@
 # Contributing
 
+Report bugs and request features in the GitLab issue tracker:
+<https://gitlab.com/bart-turczynski/robotstxtr/-/work_items>. Report security issues
+privately as described in `SECURITY.md`. Send changes as merge requests on
+GitLab; the GitHub repository is a read-only mirror.
+
+New code needs tests, and each user-facing change needs one `NEWS.md` bullet.
+A merge request must pass the verification command below.
+
 Install dependencies:
 
 ```sh
 Rscript -e 'pak::local_install_deps(dependencies = TRUE)'
 ```
 
-Run verification:
+Run verification (the pre-push chain: the hygiene hooks and codespell, the
+toolchain check, the NEWS, codemeta and spelling gates, the URL check, then
+lintr, the generated-docs drift check and `R CMD check --as-cran` in the
+`verify` hook, then the citation and BugReports checks):
 
 ```sh
-Rscript -e 'lints <- lintr::lint_package(); if (length(lints)) { print(lints); quit(status = 1) }' && Rscript -e 'res <- rcmdcheck::rcmdcheck(args = "--as-cran", error_on = "warning"); if (!identical(as.integer(res$status), 0L)) stop("R CMD check exited with status ", res$status, "; the run did not complete.", call. = FALSE)'
+pre-commit run --hook-stage pre-push --all-files
 ```
 
 `man/` and `NAMESPACE` are generated from the roxygen comments in `R/`: edit the
 comment, then run `devtools::document()` and commit the regenerated files with
-the change. A stale `.Rd` is still valid `.Rd`, so neither the lint nor the
-check above notices when the two drift apart — `dev/check-docs-drift.R`
+the change. A stale `.Rd` is still valid `.Rd`, so neither lintr nor
+`R CMD check` notices when the two drift apart — `dev/check-docs-drift.R`
 regenerates and diffs them, and both the pre-push hook and CI run it:
 
 ```sh
@@ -28,7 +39,8 @@ It needs the exact roxygen2 version pinned by `Config/roxygen2/version` in
 runs `cpp11::cpp_register()` first — so `cpp11:::get_cpp_register_needs()`
 (`brio`, `cli`, `decor`, `desc`, `glue`, `tibble`, `vctrs`) must be installed.
 
-Source lives in `src/`, behavior features live in `features/`, tests live in `tests/`, and durable project context lives in `docs/`.
+Source lives in `src/`, tests live in `tests/`, and durable project context
+lives in `design/`. `docs/` is the generated pkgdown site, not design docs.
 
 Keep local-only planning state in `_scratch/`. Do not commit `_scratch/`, `.fp/`, secrets, dependency folders, build outputs, or generated caches.
 
@@ -92,6 +104,6 @@ robotstxtr's deltas:
   valgrind matter here because of the compiled code. By the owner's
   decision, those three were recorded on the release issue, not in
   `cran-comments.md`.
-- **Step 7: submit from a clean clone, always.** `tmp/` is neither
-  gitignored nor Rbuildignored (ROBO-bqvkezdp), so a tarball built from a
-  working copy can ship it.
+- **Step 7: submit from a clean clone, always.** A tarball built from a
+  working copy can ship untracked files that no ignore list names
+  (ROBO-bqvkezdp; `tmp/` itself is now both gitignored and Rbuildignored).

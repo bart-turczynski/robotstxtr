@@ -1,15 +1,20 @@
 # Fast verification gate: lint + a single Ubuntu --as-cran R CMD check +
-# coverage + README-sync + generated-docs-sync + the two vendored-tree fidelity
-# checks, on every push to main (and on tag pipelines). Merge-request and
-# feature-branch pipelines are suppressed fleet-wide (SEOR-bmgkzhvy) -- see the
-# `workflow:` block below -- so this no longer runs "on every merge request".
-# The cross-platform matrix and the ASAN/valgrind sanitizer runs live in a
-# separate, manually triggered pipeline (ROBO-mkuskipr) because this namespace
-# has 400 compute minutes per month and a 6-entry matrix would exhaust them in
-# two runs.
+# coverage (failing below 95%) + README-sync + generated-docs-sync + the two
+# vendored-tree fidelity checks, on every push to main (and on tag pipelines).
+# Merge-request and feature-branch pipelines are suppressed fleet-wide
+# (SEOR-bmgkzhvy) -- see the `workflow:` block below -- so this no longer runs
+# "on every merge request".
 #
-# Ported from .github/workflows/verify.yml (ROBO-tkmclvsg). The GitHub account
-# `bart-turczynski` is suspended, so GitLab is now the only forge.
+# The R-version legs (release, oldrel, devel), the leg at the declared R floor
+# and the ASAN/UBSAN sanitizer leg run only on the weekly pipeline schedule
+# that sets SCHEDULE_KIND=deep-check, and the dependency audits only on the one
+# that sets SCHEDULE_KIND=dependency-audit (seor design/fleet-standard.md,
+# design/fleet.md). Each such job requires `$CI_PIPELINE_SOURCE == "schedule"`
+# AND its own SCHEDULE_KIND, so one schedule cannot fire the other's jobs. A
+# hand-started `web` pipeline offers them as manual, non-blocking jobs.
+#
+# Ported from .github/workflows/verify.yml (ROBO-tkmclvsg). GitLab is the
+# forge; the GitHub repository is a read-only mirror and runs no CI.
 #
 # DEPENDENCY RESOLUTION. When this gate was written `rurl (>= 2.2.1)` was not on
 # CRAN -- CRAN served 1.2.0 -- and the R-universe staging repo that used to cover
@@ -289,9 +294,9 @@ check:
     - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "rcmdcheck"))'
     - Rscript -e 'pak::local_install_deps(dependencies = TRUE, upgrade = FALSE)'
   script:
-    # Strict CRAN-grade pass on the fast gate, warnings fatal. The
-    # cross-platform matrix repeats this on Windows and the self-hosted macOS
-    # runner in the manually triggered pipeline.
+    # Strict CRAN-grade pass on the fast gate, warnings fatal. The scheduled
+    # deep-check legs below repeat it on R release, oldrel, devel and the
+    # declared floor.
     # rcmdcheck reads a check that halted partway as 0/0/0 and returns normally,
     # so error_on never fires. The guard also fails on R CMD check's own exit
     # status (SEOR-maavnxdm).
@@ -310,6 +315,140 @@ check:
     paths:
       - "*.Rcheck/"
 
+# ---- deep-check (scheduled) -------------------------------------------------
+
+# The weekly release-shaped checks (seor design/fleet-standard.md,
+# "deep-check"). Only a pipeline schedule that sets SCHEDULE_KIND=deep-check
+# runs them, blocking; any other schedule falls to `when: never`. A
+# hand-started `web` pipeline offers them as manual, non-blocking jobs, as the
+# audits below do. Never on a push to main or a tag.
+#
+# `cache: []` on every leg: the shared cache holds a library built under the
+# default image's R, and loading it under another R, or under the sanitizer
+# build, fails in ways that read like package bugs; a leg writing its own
+# library back would poison the merge gate's cache the same way.
+.deep-check:
+  stage: check
+  needs: []
+  cache: []
+  interruptible: false
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_KIND == "deep-check"
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+      allow_failure: true
+    - when: never
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - check/
+      - "*.Rcheck/"
+
+# R release, oldrel and devel, each the same --as-cran check as `check`.
+# 'latest' tracks the current R release; bump the pinned oldrel tag when a new
+# minor R ships. The two R_CRAN_* variables move `checking CRAN incoming
+# feasibility` off p3m, which serves none of the metadata that step reads, to
+# cloud.r-project.org; package installs still come from p3m (SEOR-ygzjighu,
+# punycoder's full-check).
+full-check:
+  extends: .deep-check
+  image: $R_IMAGE
+  variables:
+    R_CRAN_SRC: "https://cloud.r-project.org"
+    R_CRAN_WEB: "https://cloud.r-project.org"
+  parallel:
+    matrix:
+      - R_IMAGE:
+          - "rocker/r-ver:latest"
+          - "rocker/r-ver:4.5"
+          - "rocker/r-ver:devel"
+  before_script:
+    - *r-binaries
+    - *apt-pandoc
+    - *install-pak
+    - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "rcmdcheck"))'
+    - Rscript -e 'pak::local_install_deps(dependencies = TRUE, upgrade = FALSE)'
+  script:
+    # rcmdcheck reads a check that halted partway as 0/0/0 and returns
+    # normally, so error_on never fires; the guard also fails on R CMD check's
+    # own exit status (SEOR-maavnxdm).
+    - >
+      Rscript -e 'res <- rcmdcheck::rcmdcheck(args = c("--no-manual", "--as-cran"),
+      build_args = "--no-manual", error_on = "warning", check_dir = "check");
+      if (!identical(as.integer(res$status), 0L)) stop("R CMD check exited with status ", res$status, "; the run did not complete.", call. = FALSE)'
+
+# The leg at the declared R floor, `Depends: R (>= 4.1.0)`, in punycoder's
+# floor-check shape. 4.1 is the oldest minor with an arm64 rocker/r-ver image,
+# which the runner needs (4.0.5 has none).
+#
+# - Third-party packages come from one dated Posit Package Manager snapshot,
+#   FLOOR_SNAPSHOT, installed with base install.packages() (source builds).
+#   2025-04-10 is the day before R 4.5.0, when R 4.1 was still inside every
+#   dependency's support window. The snapshot lives in this job alone, so it
+#   cannot conflict with what the release and devel legs install.
+# - The fleet packages (punycoder, pslr, rurl) postdate that snapshot, so they
+#   come from current CRAN, whose versions declare R >= 4.0 or 4.1. Their own
+#   dependencies are already installed from the snapshot by then.
+# - Only what the check needs is installed: the hard dependencies, the test
+#   and vignette Suggests, and rcmdcheck. oysteR and rosv serve only the
+#   scheduled audits, whose tests skip without them, so
+#   _R_CHECK_FORCE_SUGGESTS_=false lets --as-cran report them as a NOTE
+#   instead of stopping.
+# - Vignettes are neither built nor checked: no pandoc in this job, and the
+#   vignette exercises the same functions the tests do.
+floor-check:
+  extends: .deep-check
+  image: rocker/r-ver:4.1.3
+  variables:
+    FLOOR_SNAPSHOT: "https://packagemanager.posit.co/cran/2025-04-10"
+    R_CRAN_SRC: "https://cloud.r-project.org"
+    R_CRAN_WEB: "https://cloud.r-project.org"
+    _R_CHECK_FORCE_SUGGESTS_: "false"
+  script:
+    - apt-get update -qq && apt-get install -y --no-install-recommends libcurl4-openssl-dev libssl-dev zlib1g-dev pkg-config
+    - >
+      Rscript -e 'install.packages(c("cpp11", "httr2", "Rcpp", "stringi", "digest",
+      "testthat", "callr", "httpuv", "jsonlite", "knitr", "rmarkdown", "rcmdcheck"),
+      repos = Sys.getenv("FLOOR_SNAPSHOT"), Ncpus = 4L);
+      install.packages(c("punycoder", "pslr", "rurl"),
+      repos = "https://cloud.r-project.org", Ncpus = 4L);
+      stopifnot(all(vapply(c("cpp11", "httr2", "rurl", "testthat", "rcmdcheck"), requireNamespace, NA, quietly = TRUE)));
+      print(R.version.string)'
+    # Same guard as full-check (SEOR-maavnxdm).
+    - >
+      Rscript -e 'res <- rcmdcheck::rcmdcheck(args = c("--no-manual", "--as-cran", "--ignore-vignettes"),
+      build_args = c("--no-manual", "--no-build-vignettes"),
+      error_on = "warning", check_dir = "check");
+      if (!identical(as.integer(res$status), 0L)) stop("R CMD check exited with status ", res$status, "; the run did not complete.", call. = FALSE)'
+
+# Dynamic analysis of the compiled code -- the vendored Google, Bing and
+# Yandex matchers and this package's cpp11 bindings -- in punycoder's
+# `sanitizers` shape: R CMD check inside R-hub's clang-ASAN/UBSAN container,
+# pulled directly. No p3m binaries here: everything builds from source under
+# the sanitizer toolchain.
+#
+# There is no valgrind leg. R-hub's valgrind image is x86_64 and cannot start
+# R under Rosetta on this fleet's arm64 runner (punycoder PUNY-pxdhoaov);
+# valgrind comes from R-hub's own runners before a CRAN submission
+# (CONTRIBUTING.md, release checklist step 6).
+#
+# `--ignore-vignettes`: the tarball is built without vignettes (no pandoc in
+# the image), and checking it otherwise reports WARNINGs about the missing
+# vignette output on every run. The test suite exercises the same functions.
+sanitizers:
+  extends: .deep-check
+  image: ghcr.io/r-hub/containers/clang-asan
+  script:
+    - mkdir -p "$R_LIBS_USER"
+    - Rscript -e 'if (!requireNamespace("pak", quietly = TRUE)) install.packages("pak")'
+    - Rscript -e 'pak::pkg_install(Sys.getenv("RURL_GIT"))'
+    - Rscript -e 'pak::local_install_deps(dependencies = TRUE, upgrade = FALSE)'
+    - R CMD build --no-build-vignettes --no-manual .
+    - R CMD check --no-manual --ignore-vignettes robotstxtr_*.tar.gz
+
 # ---- stage: report -----------------------------------------------------------
 
 coverage:
@@ -327,11 +466,18 @@ coverage:
     # covr's coverage percentage only reaches the log if the object is
     # printed; passing it straight to to_cobertura() would leave the
     # `coverage:` regex below with nothing to match.
+    #
+    # The job fails below 95% total coverage, the fleet minimum (seor
+    # design/fleet-standard.md, ADR 0007 there). It writes cobertura.xml first,
+    # so a failing run still annotates the diff. The threshold is never
+    # lowered: a package under it adds tests.
     - |
       Rscript -e '
         cov <- covr::package_coverage(quiet = FALSE)
         print(cov)
         covr::to_cobertura(cov)
+        pct <- covr::percent_coverage(cov)
+        if (pct < 95) stop(sprintf("total coverage %.2f%% is below the fleet minimum of 95%%; add tests, never lower the threshold", pct), call. = FALSE)
       '
   coverage: '/Coverage: \d+\.\d+\%/'
   artifacts:
@@ -345,8 +491,8 @@ coverage:
 # ---- stage: deploy -----------------------------------------------------------
 
 # The pkgdown site. Ported from .github/workflows/pkgdown.yaml, which targeted
-# the suspended GitHub account and last ran 2026-08-07 (ROBO-qqwkldzv), and
-# modeled on the sibling pagerankr's `pages` job.
+# GitHub (now a read-only mirror that runs no CI) and last ran 2026-08-07
+# (ROBO-qqwkldzv), and modeled on the sibling pagerankr's `pages` job.
 #
 # `pkgdown::build_site()` writes to docs/, which is both .gitignored and
 # .Rbuildignored here, so the site is a pure build artifact; GitLab Pages

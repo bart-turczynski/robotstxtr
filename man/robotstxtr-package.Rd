@@ -58,11 +58,11 @@ Google's open-source C++ robots.txt matcher. Fetch origins are constructed
 with the \pkg{rurl} package and HTTP is performed by \pkg{httr2}.
 }
 \author{
-\strong{Maintainer}: Bart Turczynski \email{bartek@turczynski.pl} (\href{https://orcid.org/0000-0002-8788-7980}{ORCID})
+\strong{Maintainer}: Bart Turczynski \email{bartek@turczynski.pl} (\href{https://orcid.org/0000-0002-8788-7980}{ORCID}) [copyright holder]
 
 Authors:
 \itemize{
-  \item Bart Turczynski \email{bartek@turczynski.pl} (\href{https://orcid.org/0000-0002-8788-7980}{ORCID})
+  \item Bart Turczynski \email{bartek@turczynski.pl} (\href{https://orcid.org/0000-0002-8788-7980}{ORCID}) [copyright holder]
 }
 
 }
