@@ -42,10 +42,18 @@ with_body_server <- function(body_raw, headers, fn) {
       req <- httr2::req_error(httr2::request(url), is_error = function(r) FALSE)
       httr2::req_perform(httr2::req_timeout(req, 1))
       TRUE
-    }, error = function(e) FALSE)
-    if (ok) {
+    }, error = function(e) e)
+    if (isTRUE(ok)) {
       ready <- TRUE
       break
+    }
+    # httr2 >= 1.2.0 builds every response from the request method libcurl
+    # reports, which libcurl does only from 7.72.0. On an older libcurl, such as
+    # Ubuntu 20.04's 7.68.0 under the R 4.1 floor image, every request fails
+    # with this message, so waiting longer cannot make the server reachable.
+    if (grepl("`method` must be a single string", conditionMessage(ok),
+              fixed = TRUE)) {
+      skip("httr2 cannot complete a request: libcurl < 7.72.0 gives no method")
     }
     Sys.sleep(0.05)
   }
