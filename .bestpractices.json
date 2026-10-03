@@ -8,7 +8,7 @@
   "contribution_status": "Met",
   "contribution_justification": "CONTRIBUTING.md (https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/CONTRIBUTING.md) opens by explaining how to report bugs and request features in the GitLab issue tracker and how to send changes: as merge requests on GitLab (the GitHub repository is a read-only mirror). It then states what a merge request needs: tests for new code, one NEWS.md bullet per user-facing change, and a passing verification command.",
   "contribution_requirements_status": "Met",
-  "contribution_requirements_justification": "CONTRIBUTING.md states the requirements for acceptable contributions: a clean lintr run against the goodpractice-aligned .lintr set, R CMD check --as-cran with error_on = \"warning\", and regenerated man/ and NAMESPACE committed with the change (checked by dev/check-docs-drift.R): https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/CONTRIBUTING.md",
+  "contribution_requirements_justification": "CONTRIBUTING.md states the requirements for acceptable contributions: a clean lintr run against the goodpractice-aligned .lintr set, R CMD check --as-cran in the pre-push verify chain, and regenerated man/ and NAMESPACE committed with the change (checked by dev/check-docs-drift.R): https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/CONTRIBUTING.md",
   "license_location_status": "Met",
   "license_location_justification": "DESCRIPTION declares License: MIT + file LICENSE; LICENSE and the full text in LICENSE.md are at the repository top level (https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/LICENSE.md), with the vendored Apache-2.0 matcher's terms in inst/NOTICE and THIRD_PARTY_NOTICES.md.",
   "floss_license_status": "Met",
