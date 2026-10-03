@@ -23,7 +23,10 @@ yandex_sha256_file <- function(path) {
   if (!exists("sha256sum", where = asNamespace("tools"), inherits = FALSE)) {
     stop("tools::sha256sum() is required (R >= 4.5.0) to verify files.")
   }
-  digest <- unname(tools::sha256sum(path))
+  # Looked up at run time: a literal `tools::sha256sum` reference makes
+  # R CMD check warn "Missing or unexported object" on R < 4.5.0.
+  sha256sum <- get("sha256sum", envir = asNamespace("tools"))
+  digest <- unname(sha256sum(path))
   if (is.na(digest)) {
     stop(sprintf("Could not read file for hashing: %s", path))
   }
@@ -177,7 +180,10 @@ bing_sha256_file <- function(path) {
   if (!exists("sha256sum", where = asNamespace("tools"), inherits = FALSE)) {
     stop("tools::sha256sum() is required (R >= 4.5.0) to verify files.")
   }
-  digest <- unname(tools::sha256sum(path))
+  # Looked up at run time: a literal `tools::sha256sum` reference makes
+  # R CMD check warn "Missing or unexported object" on R < 4.5.0.
+  sha256sum <- get("sha256sum", envir = asNamespace("tools"))
+  digest <- unname(sha256sum(path))
   if (is.na(digest)) {
     stop(sprintf("Could not read file for hashing: %s", path))
   }
