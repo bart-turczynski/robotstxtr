@@ -1,7 +1,7 @@
 header:
   schema-version: 2.2.0
-  last-updated: '2026-09-11'
-  last-reviewed: '2026-09-11'
+  last-updated: '2026-10-03'
+  last-reviewed: '2026-10-03'
   url: https://gitlab.com/bart-turczynski/robotstxtr/-/raw/main/SECURITY-INSIGHTS.yml
   comment: |
     OpenSSF Security Insights self-report for robotstxtr, an R package that
@@ -84,6 +84,8 @@ repository:
     changelog: https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/NEWS.md
     automated-pipeline: false
     distribution-points:
+      - uri: https://bart-turczynski.r-universe.dev/robotstxtr
+        comment: Binary and source builds from r-universe.
       - uri: https://gitlab.com/bart-turczynski/robotstxtr/-/releases
         comment: Tagged GitLab releases.
   security:
@@ -99,11 +101,9 @@ repository:
         results: {}
         comment: |
           Audit of the runtime dependency closure against the OSV database
-          (osv.dev). No account or secrets required. Runs from the package's own
-          test suite (tests/testthat/test-security.R), which the `check` job in
-          .gitlab-ci.yml exercises on every push to main (merge-request
-          pipelines are suppressed fleet-wide; see .gitlab-ci.yml's
-          `workflow:` block).
+          (osv.dev). No account or secrets required. Runs as the `osv-audit`
+          job in .gitlab-ci.yml on the weekly dependency-audit pipeline
+          schedule only; under R CMD check the test skips (skip_on_cran()).
       - name: oysteR (Sonatype OSS Index)
         type: SCA
         rulesets:
@@ -116,12 +116,11 @@ repository:
         comment: |
           Audit of the declared hard dependencies (Depends + Imports) against
           the Sonatype OSS Index, with allow-listed advisories carrying a written
-          reason and a review date. Runs from the package's own test suite
-          (tests/testthat/test-security.R), which the `check` job in
-          .gitlab-ci.yml exercises on every push to main (merge-request
-          pipelines are suppressed fleet-wide; see .gitlab-ci.yml's
-          `workflow:` block).
-      - name: AddressSanitizer / valgrind
+          reason and a review date. Runs as the `security-audit` job in
+          .gitlab-ci.yml on the weekly dependency-audit pipeline schedule only,
+          and fails when its OSS Index credentials are missing rather than
+          skipping green; under R CMD check the test skips.
+      - name: AddressSanitizer / UndefinedBehaviorSanitizer
         type: SAST
         rulesets:
           - default
@@ -131,7 +130,8 @@ repository:
           release: false
         results: {}
         comment: |
-          ASAN/UBSAN and valgrind runs over the vendored C++ matcher and its
-          bindings. Not part of the fast gate in .gitlab-ci.yml: they live in a
-          separate, manually triggered pipeline because this namespace has a 400
-          compute-minute monthly budget (ROBO-mkuskipr).
+          R CMD check of the package inside R-hub's clang-ASAN/UBSAN container,
+          the `sanitizers` job in .gitlab-ci.yml, on the weekly deep-check
+          pipeline schedule. It covers the vendored C++ matchers and their
+          bindings. There is no valgrind job in CI; valgrind runs on R-hub
+          before a CRAN submission.
