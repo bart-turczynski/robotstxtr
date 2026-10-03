@@ -44,6 +44,7 @@
 ^CITATION\.cff$
 ^\.zenodo\.json$
 ^SECURITY-INSIGHTS\.yml$
+^\.bestpractices\.json$
 ^CODE_OF_CONDUCT\.md$
 ^ARCHITECTURE\.md$
 # The citation gate ported from seor (design/adr/0002 there). Not part
