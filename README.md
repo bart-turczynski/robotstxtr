@@ -6,14 +6,22 @@
 
 <!-- badges: start -->
 
-[![Pipeline
-status](https://gitlab.com/bart-turczynski/robotstxtr/badges/main/pipeline.svg)](https://gitlab.com/bart-turczynski/robotstxtr/-/pipelines)
-[![CRAN
-status](https://www.r-pkg.org/badges/version/robotstxtr)](https://CRAN.R-project.org/package=robotstxtr)
+[![r-universe](https://bart-turczynski.r-universe.dev/robotstxtr/badges/version)](https://bart-turczynski.r-universe.dev/robotstxtr)
+[![Pipeline](https://gitlab.com/bart-turczynski/robotstxtr/badges/main/pipeline.svg)](https://gitlab.com/bart-turczynski/robotstxtr/-/pipelines)
 [![Coverage](https://gitlab.com/bart-turczynski/robotstxtr/badges/main/coverage.svg)](https://gitlab.com/bart-turczynski/robotstxtr/-/pipelines)
+[![Docs](https://img.shields.io/website?url=https%3A%2F%2Fbart-turczynski.gitlab.io%2Frobotstxtr%2F&label=docs&logo=gitlab&logoColor=white&up_message=pkgdown&up_color=1f75cb)](https://bart-turczynski.gitlab.io/robotstxtr/)
 [![Lifecycle:
-maturing](https://img.shields.io/badge/lifecycle-maturing-blue.svg)](https://lifecycle.r-lib.org/articles/stages.html#maturing)
+experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![Project Status:
+Active](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23018995.svg)](https://doi.org/10.5281/zenodo.23018995)
+[![Zenodo](https://img.shields.io/badge/Zenodo-all_software-1682D4?logo=zenodo&logoColor=white)](https://zenodo.org/search?q=metadata.creators.person_or_org.identifiers.identifier:0000-0002-8788-7980)
+<!-- The OpenSSF Best Practices badge (slot 13 of seor's
+     design/fleet-standard.md) joins once the bestpractices.dev project id
+     exists. -->
+[![License](https://img.shields.io/gitlab/license/bart-turczynski%2Frobotstxtr)](https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/LICENSE.md)
+[![Last
+commit](https://img.shields.io/gitlab/last-commit/bart-turczynski%2Frobotstxtr)](https://gitlab.com/bart-turczynski/robotstxtr/-/commits/main)
 <!-- badges: end -->
 
 Faithful `robots.txt` parsing and URL-allowed decisions for R, powered
@@ -34,10 +42,13 @@ matcher, not a claim of universal behavioral identity with Googlebot.
 
 ## Installation
 
-Install the released version from CRAN:
+Install the released version from r-universe:
 
 ``` r
-install.packages("robotstxtr")
+install.packages(
+  "robotstxtr",
+  repos = c("https://bart-turczynski.r-universe.dev", "https://cloud.r-project.org")
+)
 ```
 
 The development version lives on GitLab. Its dependencies, including

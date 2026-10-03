@@ -189,5 +189,5 @@
   ],
   "releaseNotes": "https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/NEWS.md",
   "contIntegration": ["https://gitlab.com/bart-turczynski/robotstxtr/-/pipelines"],
-  "developmentStatus": "https://lifecycle.r-lib.org/articles/stages.html#maturing"
+  "developmentStatus": "https://lifecycle.r-lib.org/articles/stages.html#experimental"
 }

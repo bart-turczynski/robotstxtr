@@ -4,7 +4,7 @@ Title: Engine-Aware 'robots.txt' Policy with Google's Matcher Algorithm
 Version: 0.3.0
 Language: en-US
 Authors@R:
-    person("Bart", "Turczynski", email = "bartek@turczynski.pl", role = c("aut", "cre"),
+    person("Bart", "Turczynski", email = "bartek@turczynski.pl", role = c("aut", "cre", "cph"),
            comment = c(ORCID = "0000-0002-8788-7980"))
 Description: Evaluates whether URLs may be crawled according to 'robots.txt'
     rules. A versioned engine-aware facade keeps neutral fetch evidence,
@@ -21,8 +21,8 @@ Description: Evaluates whether URLs may be crawled according to 'robots.txt'
     <https://github.com/google/robotstxt>, distributed under the Apache License
     2.0; see the package NOTICE.
 License: MIT + file LICENSE
-URL: https://gitlab.com/bart-turczynski/robotstxtr,
-    https://bart-turczynski.gitlab.io/robotstxtr/,
+URL: https://bart-turczynski.gitlab.io/robotstxtr/,
+    https://gitlab.com/bart-turczynski/robotstxtr,
     https://bart-turczynski.r-universe.dev/robotstxtr
 BugReports: https://gitlab.com/bart-turczynski/robotstxtr/-/issues
 Encoding: UTF-8
