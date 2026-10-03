@@ -24,9 +24,7 @@ knitr::opts_chunk$set(
 [![Project Status: Active](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23018995.svg)](https://doi.org/10.5281/zenodo.23018995)
 [![Zenodo](https://img.shields.io/badge/Zenodo-all_software-1682D4?logo=zenodo&logoColor=white)](https://zenodo.org/search?q=metadata.creators.person_or_org.identifiers.identifier:0000-0002-8788-7980)
-<!-- The OpenSSF Best Practices badge (slot 13 of seor's
-     design/fleet-standard.md) joins once the bestpractices.dev project id
-     exists. -->
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15192/badge)](https://www.bestpractices.dev/projects/15192)
 [![License](https://img.shields.io/gitlab/license/bart-turczynski%2Frobotstxtr)](https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/LICENSE.md)
 [![Last commit](https://img.shields.io/gitlab/last-commit/bart-turczynski%2Frobotstxtr)](https://gitlab.com/bart-turczynski/robotstxtr/-/commits/main)
 <!-- badges: end -->
