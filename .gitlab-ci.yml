@@ -116,6 +116,19 @@ variables:
   # rurl pinned to its v3.0.1 tag; see the DEPENDENCY RESOLUTION note above.
   RURL_GIT: "git::https://gitlab.com/bart-turczynski/rurl.git@v3.0.1"
   GIT_DEPTH: "1"
+  # The pandoc every R job runs, installed by the `.apt-pandoc` setup below.
+  # Top level rather than in a template because this file has none: the R jobs
+  # share their setup through YAML anchors, so this is where every one of them
+  # sees it. scripts/check-toolchain.R reads this line and fails the pre-push
+  # gate when the local pandoc differs; seor's check-fleet-standard.py checks
+  # it against the fleet's version (seor design/fleet-standard.md, "CI on every
+  # push to `main`"; SEOR-egfbijyi). A bump moves these together, in one
+  # change:
+  #   - this PANDOC_VERSION;
+  #   - both sha256 digests in `.apt-pandoc` (amd64, arm64), the release's own
+  #     published values;
+  #   - README.md, re-knit under the new pandoc.
+  PANDOC_VERSION: "3.10"
 
 stages:
   - verify
@@ -172,10 +185,46 @@ stages:
   echo '.libPaths(c(Sys.getenv("R_LIBS_USER"), .libPaths()))' >> "${R_HOME}/etc/Rprofile.site"
   Rscript -e 'cat("Library paths:\n"); print(.libPaths())'
 
-.apt-pandoc: &apt-pandoc |
-  apt-get update -qq
-  apt-get install -y --no-install-recommends pandoc git ca-certificates
-  rm -rf /var/lib/apt/lists/*
+# pandoc is PINNED, in every R job, as the fleet standard requires (seor
+# design/fleet-standard.md, "CI on every push to `main`"; SEOR-egfbijyi). Its
+# markdown writer reflows text and pads tables differently between versions,
+# so README.md is byte-stable only under the pandoc that knit it,
+# PANDOC_VERSION above. Every R job on a push (gates, check, coverage, pages)
+# and full-check and the audits take this anchor, so they all render with it.
+#
+# The release .deb is installed over the apt pandoc, which stays as the
+# fallback; curl is installed for the download, since rocker/r-ver does not
+# ship it. The two sha256 values are the release's own published digests
+# (checked 2026-10-04), the same ones seor's `.r` template carries. A failed or
+# mismatched download only warns and leaves the apt pandoc in place, so README
+# drift `gates` reports after that warning is suspect. Nothing unverified is
+# ever installed. --max-time bounds each attempt and --retry-max-time the
+# retries, so a stalled CDN reaches the warning instead of hanging the job.
+#
+# A sequence, not one `|` scalar like the anchors above: `- *apt-pandoc` puts
+# it into each job's before_script as a nested list, which GitLab flattens, so
+# the checked install is a script item of its own, in seor's `.r` shape.
+.apt-pandoc: &apt-pandoc
+  - |
+    apt-get update -qq
+    apt-get install -y --no-install-recommends pandoc git ca-certificates curl
+    rm -rf /var/lib/apt/lists/*
+  - |
+    ARCH=$(dpkg --print-architecture)
+    case "$ARCH" in
+      amd64) PANDOC_SHA256=d502599878eb29af3ae5f0cb5d559134df96534125d452c7a0674a5bad2c5ecf ;;
+      arm64) PANDOC_SHA256=b651c8bfd5a0a2f6650d6c0830131747ef67a1d9c0475b1399626611419e2205 ;;
+      *) PANDOC_SHA256=unknown ;;
+    esac
+    if curl -fsSL --retry 3 --retry-delay 5 --retry-max-time 300 --connect-timeout 20 --max-time 120 \
+      -o /tmp/pandoc.deb "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-1-${ARCH}.deb" \
+      && echo "${PANDOC_SHA256}  /tmp/pandoc.deb" | sha256sum -c - \
+      && dpkg -i /tmp/pandoc.deb; then
+      echo "pandoc ${PANDOC_VERSION} installed"
+    else
+      echo "WARNING: pandoc ${PANDOC_VERSION} not installed; this job runs on the apt pandoc"
+    fi
+    pandoc --version | sed -n 1p
 
 # pak from r-lib's own binary repository, not the repos above. p3m serves no
 # binaries for rocker/r-ver:devel's Ubuntu (resolute), so install.packages()
