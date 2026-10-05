@@ -129,9 +129,10 @@ gate_readme <- function() {
 }
 
 # ---- docs --------------------------------------------------------------
-# Verbatim `docs` job script.
+# The `docs` job script, now calling the vendored copy of seor's script in
+# place of the retired dev/check-docs-drift.R fork (SEOR-lyciowif).
 gate_docs <- function() {
-  run_step("docs", "Rscript", "dev/check-docs-drift.R")
+  run_step("docs", "Rscript", "scripts/check-docs-drift.R")
 }
 
 # ---- vendor-fidelity:yandex ----------------------------------------------

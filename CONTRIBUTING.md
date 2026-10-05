@@ -26,11 +26,14 @@ pre-commit run --hook-stage pre-push --all-files
 `man/` and `NAMESPACE` are generated from the roxygen comments in `R/`: edit the
 comment, then run `devtools::document()` and commit the regenerated files with
 the change. A stale `.Rd` is still valid `.Rd`, so neither lintr nor
-`R CMD check` notices when the two drift apart — `dev/check-docs-drift.R`
-regenerates and diffs them, and both the pre-push hook and CI run it:
+`R CMD check` notices when the two drift apart — `scripts/check-docs-drift.R`
+regenerates them (and `DESCRIPTION`, whose roxygen-owned fields drift the same
+way) and diffs them, and both the pre-push hook and CI run it. It is seor's
+script, vendored byte for byte, so a fix goes into seor's copy and is copied
+here, never edited in place:
 
 ```sh
-Rscript dev/check-docs-drift.R
+Rscript scripts/check-docs-drift.R
 ```
 
 It needs the exact roxygen2 version pinned by `Config/roxygen2/version` in
