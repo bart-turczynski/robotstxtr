@@ -60,7 +60,7 @@
 #   lint                      Rscript -e 'lintr::lint_package()'
 #   readme                    Rscript -e 'devtools::build_readme()'
 #                              + `git diff --exit-code -- README.md`
-#   docs                      Rscript scripts/check-docs-drift.R
+#   docs                      Rscript dev/check-docs-drift.R
 #   vendor-fidelity:yandex    Rscript dev/verify-yandex-vendor.R
 #   vendor-fidelity:bing      Rscript dev/verify-bing-vendor.R
 # Every one of those commands is still run, verbatim, below -- none dropped,
@@ -129,7 +129,8 @@ gate_readme <- function() {
 }
 
 # ---- docs --------------------------------------------------------------
-# Verbatim `docs` job script.
+# The `docs` job script, now calling the vendored copy of seor's script in
+# place of the retired dev/check-docs-drift.R fork (SEOR-lyciowif).
 gate_docs <- function() {
   run_step("docs", "Rscript", "scripts/check-docs-drift.R")
 }
