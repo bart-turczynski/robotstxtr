@@ -39,17 +39,19 @@ docsdir="$(mktemp -d)"
 workdir="$(mktemp -d)"
 trap 'rm -rf "$docsdir" "$workdir"' EXIT
 
-# 2) Generated-docs drift: regenerate man/ and NAMESPACE from the roxygen
-#    comments in R/ and fail if they differ from what is committed. A stale .Rd
-#    is still valid .Rd, so neither the lint above nor the check below can see
-#    it (ROBO-cbzemsnq). Runs before the check because it is the cheaper of the
-#    two and fails fast.
+# 2) Generated-docs drift: regenerate man/, NAMESPACE and DESCRIPTION from the
+#    roxygen comments in R/ and fail if they differ from what is committed. The
+#    check is seor's scripts/check-docs-drift.R, vendored byte for byte
+#    (SEOR-lyciowif); repo specifics go in its argument, never into the copy.
+#    A stale .Rd is still valid .Rd, so neither the lint above nor the check
+#    below can see it (ROBO-cbzemsnq). Runs before the check because it is the
+#    cheaper of the two and fails fast.
 #
 #    It gets its OWN export, not the one the check builds from: roxygen loads
 #    the package through pkgload, which compiles src/ in place and leaves .o
 #    files and a .so behind that would contaminate the R CMD build below.
 git archive HEAD | tar -x -C "$docsdir"
-Rscript dev/check-docs-drift.R "$docsdir"
+Rscript scripts/check-docs-drift.R "$docsdir"
 
 # 3) R CMD check --as-cran against a clean export of HEAD in a temp dir.
 #    rcmdcheck reads a check that halted partway as 0/0/0 and returns normally,
