@@ -98,26 +98,28 @@ robotstxtr's deltas:
   (`vendor-fidelity:yandex`, `vendor-fidelity:bing`) run only in CI's `gates`
   job, not in the pre-push hook. Confirm that job passed on the release
   commit, or run `Rscript dev/gates.R`, which runs them all.
-- **Step 6 is the only Windows, macOS and valgrind check.** CI is Linux
-  only: `check` on every push to `main`, plus the weekly R release, oldrel,
-  devel and R-floor legs and the clang ASAN/UBSAN leg (`.gitlab-ci.yml`). The
-  fleet's runners are Docker on an arm64 Mac, which can host neither Windows
-  nor R-hub's x86_64 valgrind image. That gap is deliberate: those platforms
-  are checked once per release, on the release SHA, and a release does not
-  go out without them. win-builder devel, release and oldrelease are the
-  Windows check, because R-hub's `windows` fails here (next item); R-hub's
-  `macos` and `macos-arm64` and step 5's local run cover macOS, and R-hub's
-  `valgrind` covers valgrind. Chosen on 2026-10-08 instead of Windows and
-  macOS CI legs (ROBO-mkuskipr).
-- **Step 6: three R-hub platforms fail for platform reasons.** On 0.3.0
-  (ROBO-lvddphcx): `windows`, because R-hub checks the tarball out of git and
-  `.gitattributes` is Rbuildignored, so line-ending conversion rewrites the
-  byte-exact corpus files (win-builder, which tests the tarball itself, is
-  the Windows control); `valgrind`, with no frame in robotstxtr code; and
-  `nosuggests`, where the vignette needs `rmarkdown`. The sanitizers and
-  valgrind matter here because of the compiled code. By the owner's
-  decision, those three were recorded on the release issue, not in
-  `cran-comments.md`.
+- **Step 6 is the only Windows, macOS and valgrind check.** Every CI job is
+  Linux (`.gitlab-ci.yml`): the fleet's runners are Docker on an arm64 Mac,
+  which can host neither Windows nor R-hub's x86_64 valgrind image. That was
+  chosen on 2026-10-08 instead of Windows and macOS CI legs (ROBO-mkuskipr).
+  So step 6, on the release SHA, gates the release on:
+  - win-builder devel, release and oldrelease, the Windows check, because
+    they test the tarball itself;
+  - R-hub `macos` and `macos-arm64`, the macOS check;
+  - R-hub `linux`, `clang-asan` and `clang-ubsan`. The sanitizers matter here
+    because of the compiled code.
+
+  Three R-hub platforms fail for platform reasons and do not gate (0.3.0,
+  ROBO-lvddphcx). By the owner's decision they are recorded on the release
+  issue, not in `cran-comments.md`:
+  - `windows`: R-hub checks the tarball out of git and `.gitattributes` is
+    Rbuildignored, so line-ending conversion rewrites the byte-exact corpus
+    files.
+  - `valgrind`: the job fails on any valgrind error, and R's own regex and
+    DCF code and the test-only dependencies report some. Read its log: an
+    error with a frame in robotstxtr code blocks the release; on 0.3.0 there
+    was none.
+  - `nosuggests`: the vignette needs `rmarkdown`.
 - **Step 7: submit from a clean clone, always.** A tarball built from a
   working copy can ship untracked files that no ignore list names
   (ROBO-bqvkezdp; `tmp/` itself is now both gitignored and Rbuildignored).
