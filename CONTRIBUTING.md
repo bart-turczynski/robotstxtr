@@ -98,6 +98,17 @@ robotstxtr's deltas:
   (`vendor-fidelity:yandex`, `vendor-fidelity:bing`) run only in CI's `gates`
   job, not in the pre-push hook. Confirm that job passed on the release
   commit, or run `Rscript dev/gates.R`, which runs them all.
+- **Step 6 is the only Windows, macOS and valgrind check.** CI is Linux
+  only: `check` on every push to `main`, plus the weekly R release, oldrel,
+  devel and R-floor legs and the clang ASAN/UBSAN leg (`.gitlab-ci.yml`). The
+  fleet's runners are Docker on an arm64 Mac, which can host neither Windows
+  nor R-hub's x86_64 valgrind image. That gap is deliberate: those platforms
+  are checked once per release, on the release SHA, and a release does not
+  go out without them. win-builder devel, release and oldrelease are the
+  Windows check, because R-hub's `windows` fails here (next item); R-hub's
+  `macos` and `macos-arm64` and step 5's local run cover macOS, and R-hub's
+  `valgrind` covers valgrind. Chosen on 2026-10-08 instead of Windows and
+  macOS CI legs (ROBO-mkuskipr).
 - **Step 6: three R-hub platforms fail for platform reasons.** On 0.3.0
   (ROBO-lvddphcx): `windows`, because R-hub checks the tarball out of git and
   `.gitattributes` is Rbuildignored, so line-ending conversion rewrites the
