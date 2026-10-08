@@ -13,6 +13,10 @@
 # AND its own SCHEDULE_KIND, so one schedule cannot fire the other's jobs. A
 # hand-started `web` pipeline offers them as manual, non-blocking jobs.
 #
+# Every job here is Linux. Windows, macOS and valgrind are checked once per
+# release, by win-builder and R-hub, not in CI (CONTRIBUTING.md, release
+# checklist step 6; ROBO-mkuskipr).
+#
 # Ported from .github/workflows/verify.yml (ROBO-tkmclvsg). GitLab is the
 # forge; the GitHub repository is a read-only mirror and runs no CI.
 #
