@@ -6,6 +6,7 @@ CGNAT
 CRAN's
 CVE
 DNS
+GCE
 GCP
 GitLab
 GitLab's
@@ -31,6 +32,7 @@ SSRF
 TLS
 Teredo
 URL's
+UTS
 WAF
 WHATWG
 Yandex
@@ -51,6 +53,7 @@ depmsgpz
 dxrljrde
 embeddings
 fftbjnpl
+fullwidth
 gcnlckao
 gitlab
 gzip
@@ -61,11 +64,13 @@ hextets
 httr
 htvtajbr
 hzcnolhe
+ideographic
 inspectable
 integrations
 ipwcbcov
 laydgesq
 libcurl
+libidn
 lifecycle
 loopback
 lpedsigv

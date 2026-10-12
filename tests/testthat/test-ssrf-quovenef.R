@@ -75,6 +75,45 @@ test_that("ssrf_check matches the metadata name under a Turkish locale", {
   skip_if(!nzchar(set), "tr_TR.UTF-8 locale not installed")
   expect_identical(reason_of("METADATA.GOOGLE.INTERNAL"), "cloud-metadata")
   expect_identical(reason_of("METADATA.GOOGLE.INTERNAL."), "cloud-metadata")
+  # Pins the fold itself, which also catches the bug where tolower() does not
+  # special-case tr_TR (macOS).
+  expect_identical(ascii_lower("METADATA.GOOGLE.INTERNAL"), "metadata.google.internal")
+})
+
+test_that("ssrf_check blocks the bare metadata name GCE resolves", {
+  # ROBO-dxrljrde: the google.internal search domain on GCE resolves the
+  # single label "metadata" to the metadata server.
+  expect_identical(reason_of("metadata"), "cloud-metadata")
+  expect_identical(reason_of("Metadata."), "cloud-metadata")
+  expect_true(is.na(reason_of("metadata.example.com")))
+})
+
+test_that("ssrf_check reads a trailing-dot literal as the undotted literal", {
+  # ROBO-dxrljrde: the dotted spelling of an IP literal names the same address.
+  expect_identical(reason_of("169.254.169.254."), "cloud-metadata")
+  expect_identical(reason_of("127.0.0.1."), "loopback")
+  expect_identical(
+    reason_of("0x7f000001.", raw_host = "0x7f000001."), "numeric-literal"
+  )
+  expect_identical(
+    reason_of("2130706433.", raw_host = "2130706433."), "numeric-literal"
+  )
+})
+
+test_that("robots_ssrf_check blocks UTS #46 spellings of the metadata name", {
+  # ROBO-dxrljrde: rurl's default host ACE-encodes these whole, but libcurl
+  # with libidn2 (and WHATWG) maps them to metadata.google.internal first.
+  for (url in c(
+    "http://metadata。google。internal/robots.txt",
+    "http://metadata．google．internal/robots.txt",
+    "http://metadata｡google｡internal/robots.txt",
+    "http://ｍｅｔａｄａｔａ.google.internal/robots.txt",
+    "http://metadata/robots.txt"
+  )) {
+    expect_identical(robots_ssrf_check(url)$reason, "cloud-metadata", info = url)
+  }
+  # A Unicode host that maps to an ordinary name stays allowed.
+  expect_true(robots_ssrf_check("http://bücher.example/robots.txt")$allowed)
 })
 
 test_that("ssrf_check decodes every documented IPv6->IPv4 embedding", {
