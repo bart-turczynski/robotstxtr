@@ -17,7 +17,9 @@ Untrusted input:
   `robots_evaluate_url_v1()` and `robots_validate_url()`: status, `Location` headers,
   `Content-Encoding`, and the body. Fetched bodies reach the Bing and Yandex cores as raw
   bytes, embedded NULs included; `robots_body()` renders the stored bytes.
-- **URLs** (the `url` argument of every exported function), parsed by `rurl`, by `httr2`,
+- **URLs** (the `url` argument of `allowed_by_robots_text()`, `robots_evaluate_text_v1()`,
+  `allowed_by_robots_url()`, `robots_evaluate_url_v1()`, `robots_fetch()` and
+  `robots_validate_url()`), parsed by `rurl`, by `httr2`,
   and lexically by the package's own C++ request-target extractors.
 - **Product tokens** (`user_agent`, `robots_product_token`), passed into the native matchers.
 
@@ -63,15 +65,20 @@ unsafely, for example by trusting a parse that differs from the one that opens t
 ## How to exercise it
 
 The image has the checkout at `/src`, robotstxtr installed from it (C++ built with
-`-g -O1 -fno-omit-frame-pointer`), every Import and Suggest installed, and `gdb` and
-`valgrind`. There is no network, but loopback works.
+`-g -O1 -fno-omit-frame-pointer` plus the default hardening flags), every Import and
+Suggest installed, and `gdb` and `valgrind`. There is no network, but loopback works.
+After patching any C/C++ file or header under `src/`, rebuild with
+`R CMD INSTALL --preclean /src`: the image build and `test_local()`'s `load_all()` leave
+object files in `/src/src`, and `src/Makevars` declares no header dependencies.
 
 - Whole suite: `Rscript -e 'testthat::test_local("/src")'`; one area:
   `Rscript -e 'testthat::test_local("/src", filter = "ssrf")'`. Tests need no internet:
   fetches are mocked with `httr2::with_mocked_responses()` or served by a local
   `httpuv` server in a `callr` process (`tests/testthat/test-robots_fetch-r7.R`). The OSV
   and OSS Index audits (`test-osv.R`, `test-security.R`) skip offline.
-- Native code under a debugger: `R -d valgrind --vanilla -f repro.R`, `R -d gdb`.
+- Native code under a debugger: `R -d valgrind --vanilla -f repro.R`, and
+  `R -d gdb --debugger-args='-batch -ex run -ex bt' -e 'source("repro.R")'` (batch mode
+  runs to the crash and prints the backtrace; plain `R -d gdb` waits at a `(gdb)` prompt).
 - Entry points from `Rscript -e`:
 
   ```r
@@ -116,18 +123,23 @@ The image has the checkout at `/src`, robotstxtr installed from it (C++ built wi
 - **Low**: wrong results with no security consequence: an allow/disallow that diverges from
   RFC 9309 or from the upstream engine the backend replicates (robots.txt is advisory, not
   access control; report these, they matter for fidelity). Problems that need
-  `ssrf_guard = FALSE`, a hostile `fetch_user_agent`, `timeout` or `max_bytes`, or a call
-  to an internal `robotstxtr:::` routine with hand-built arguments (a wrong body index,
-  mismatched lengths).
+  `ssrf_guard = FALSE`, a hostile `fetch_user_agent`, `timeout` or `max_bytes`, or a defect
+  in an internal `robotstxtr:::` routine that needs malformed index or length arguments
+  (an out-of-range `body_index`, mismatched list lengths). A hostile body or target fed to
+  a native core through such a call, as in the Bing and Yandex examples above, rates as if
+  it had been fetched.
 
 ## Anything to leave alone
 
 - Classed R errors (`robotstxtr_error` subclasses from `robots_abort()`) on wrong argument
   types, lengths or values: documented call-level validation, not a crash.
 - `ssrf_guard = FALSE`: an explicit, documented opt-out for trusted intranet hosts.
-- The guard is structural and never resolves DNS (`R/ssrf.R` header): a registered name that
-  resolves to a blocked address, `localhost` included, and DNS rebinding pass by design,
-  pending the shared `ssrfr` package. Deployment-configured NAT64 prefixes are out of scope.
+- Names whose answer depends on DNS: the guard is structural and never resolves DNS
+  (`R/ssrf.R` header), so a registered name that a resolver maps to a blocked address, and
+  DNS rebinding, pass by design, pending the shared `ssrfr` package. This does not cover a
+  name that reaches loopback with no DNS lookup (RFC 6761 `localhost` and `*.localhost`,
+  which libcurl resolves locally) or any spelling of a hostname the guard blocks; those
+  stay in scope. Deployment-configured NAT64 prefixes are out of scope.
 - NUL bytes are dropped before the Google matcher and its parse collector
   (`R/body-decode.R`), a documented divergence from upstream Google;
   `robots_validate_text()` flags each line carrying one as a `nul_byte` error.
