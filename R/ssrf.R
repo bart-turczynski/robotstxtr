@@ -198,7 +198,7 @@ ssrf_ipv6_candidate <- function(s) {
   if (length(s) != 1L || is.na(s) || !nzchar(s)) {
     return(NULL)
   }
-  low <- tolower(s)
+  low <- ascii_lower(s)
   if (!grepl(":", low, fixed = TRUE) || !grepl("^[0-9a-f:.]+$", low)) {
     return(NULL)
   }
@@ -428,6 +428,34 @@ ssrf_numeric_literal_blocked <- function(raw_host) {
     grepl("^0[0-7]+(\\.0?[0-7]*){1,3}$", raw) # octal-style dotted form
 }
 
+# ASCII-only lowercase. tolower() follows the locale: under tr_TR it maps "I"
+# to dotless "ı", so "METADATA.GOOGLE.INTERNAL" stopped matching the blocked
+# name. Same body as sitemapr's ascii_lower() (ROBO-dxrljrde).
+ascii_lower <- function(x) {
+  chartr(paste(LETTERS, collapse = ""), paste(letters, collapse = ""), x)
+}
+
+# Drop the trailing dots of a fully qualified spelling. "metadata.google.
+# internal." and "169.254.169.254." name the same host as their undotted forms,
+# so every check below runs on the undotted form (ROBO-dxrljrde).
+ssrf_strip_trailing_dots <- function(x) {
+  if (length(x) != 1L || is.na(x)) {
+    return(x)
+  }
+  sub("[.]+$", "", x)
+}
+
+# Registered names that reach a cloud metadata server without a DNS answer an
+# attacker controls. GCE resolves the bare "metadata" through its
+# google.internal search domain, so it is blocked with the full name.
+ssrf_blocked_names <- c("metadata.google.internal", "metadata")
+
+# The form a registered name is compared in: ASCII-lowercased, with trailing
+# dots dropped.
+ssrf_name_key <- function(name) {
+  ssrf_strip_trailing_dots(ascii_lower(name))
+}
+
 # Range/name matching on the normalized host (brackets already stripped).
 # Returns an ssrf_result: blocked with a reason code for a matched IP range or
 # the well-known metadata hostname; allowed otherwise. Registered names other
@@ -437,7 +465,7 @@ ssrf_classify_literal <- function(bare) {
     ssrf_classify_ipv6(bare) # IPv6 literal (contains a colon)
   } else if (ssrf_is_dotted_quad(bare)) {
     ssrf_classify_ipv4(bare) # IPv4 dotted-quad
-  } else if (tolower(bare) == "metadata.google.internal") {
+  } else if (ssrf_name_key(bare) %in% ssrf_blocked_names) {
     "cloud-metadata"
   } else {
     NA_character_
@@ -465,10 +493,16 @@ ssrf_classify_literal <- function(bare) {
 #' @noRd
 ssrf_check <- function(host, scheme, is_ip_host = FALSE, raw_host = host) {
   # 1. Scheme gate — only http/https allowed.
-  scheme_l <- if (is.na(scheme)) "" else tolower(scheme)
+  scheme_l <- if (is.na(scheme)) "" else ascii_lower(scheme)
   if (!scheme_l %in% c("http", "https")) {
     return(ssrf_result(FALSE, "scheme"))
   }
+
+  # A fully qualified spelling names the same host, so the checks below see
+  # it undotted: "0x7f000001." is a numeric literal, "169.254.169.254." the
+  # metadata address (ROBO-dxrljrde).
+  raw_host <- ssrf_strip_trailing_dots(raw_host)
+  host <- ssrf_strip_trailing_dots(host)
 
   # 2. Numeric-literal obfuscation: reject raw decimal/hex/octal encodings on
   #    the raw, pre-normalization host. Checked before the empty-host guard so a
@@ -514,17 +548,46 @@ robots_ssrf_check <- function(url) {
   if (length(host) != 1L || is.na(host) || !nzchar(host)) {
     host <- NA_character_
   } else {
-    host <- tolower(host)
+    host <- ascii_lower(host)
   }
   # Recover the scheme from the raw string when rurl reports none (rurl returns
   # an empty/NA scheme for an authority it cannot parse, e.g. a numeric host).
   if (length(scheme) != 1L || is.na(scheme) || !nzchar(scheme)) {
     scheme <- ssrf_raw_scheme_of(url)
   } else {
-    scheme <- tolower(scheme)
+    scheme <- ascii_lower(scheme)
   }
 
-  ssrf_check(host = host, scheme = scheme, raw_host = ssrf_raw_host_of(url))
+  verdict <- ssrf_check(
+    host = host, scheme = scheme, raw_host = ssrf_raw_host_of(url)
+  )
+  ssrf_whatwg_second_look(verdict, url, host, scheme)
+}
+
+# The host rurl reports by default is not always the host libcurl connects to.
+# rurl's default path ACE-encodes a host whole, while libcurl built with
+# libidn2 applies the UTS #46 mapping first: "metadata。google。
+# internal" (ideographic full stops) or a fullwidth spelling reaches
+# metadata.google.internal there. WHATWG's host parser applies the same
+# mapping, so a URL the default view allows is classified again on its WHATWG
+# host, and blocked if that view is (ROBO-dxrljrde).
+ssrf_whatwg_second_look <- function(verdict, url, host, scheme) {
+  if (!isTRUE(verdict$allowed)) {
+    return(verdict)
+  }
+  whatwg <- tryCatch(
+    rurl::safe_parse_url(url, url_standard = "whatwg")$host,
+    error = function(e) NA_character_
+  )
+  if (length(whatwg) != 1L || is.na(whatwg) || !nzchar(whatwg)) {
+    return(verdict)
+  }
+  whatwg <- ascii_lower(whatwg)
+  if (identical(whatwg, host)) {
+    return(verdict)
+  }
+  second <- ssrf_check(host = whatwg, scheme = scheme, raw_host = whatwg)
+  if (isTRUE(second$allowed)) verdict else second
 }
 
 # Recover the scheme from a raw URL string without full parsing, used only when
@@ -539,7 +602,7 @@ ssrf_raw_scheme_of <- function(url) {
   if (length(m) == 0L) {
     return(NA_character_)
   }
-  tolower(m)
+  ascii_lower(m)
 }
 
 # Extract the host substring from a raw URL string WITHOUT re-parsing semantics:

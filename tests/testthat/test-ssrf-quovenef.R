@@ -55,6 +55,72 @@ test_that("ssrf_check blocks IPv6 loopback, embeddings, and metadata names", {
   expect_identical(reason_of("metadata.google.internal"), "cloud-metadata")
 })
 
+test_that("ssrf_check blocks the fully qualified metadata name", {
+  # ROBO-dxrljrde: a trailing dot names the same host to DNS, so
+  # "metadata.google.internal." resolves to the metadata server on GCP. The
+  # name comparison must not let the dotted spelling through.
+  expect_identical(reason_of("metadata.google.internal."), "cloud-metadata")
+  expect_identical(reason_of("METADATA.google.internal."), "cloud-metadata")
+  expect_identical(reason_of("metadata.google.internal.."), "cloud-metadata")
+  # A name that merely ends in the metadata name is not the metadata host.
+  expect_true(is.na(reason_of("notmetadata.google.internal.")))
+})
+
+test_that("ssrf_check matches the metadata name under a Turkish locale", {
+  # ROBO-dxrljrde: tolower() follows LC_CTYPE, and tr_TR maps "I" to dotless
+  # "ı", so an upper-case spelling stopped matching there.
+  old <- Sys.getlocale("LC_CTYPE")
+  on.exit(Sys.setlocale("LC_CTYPE", old), add = TRUE)
+  set <- suppressWarnings(Sys.setlocale("LC_CTYPE", "tr_TR.UTF-8"))
+  skip_if(!nzchar(set), "tr_TR.UTF-8 locale not installed")
+  expect_identical(reason_of("METADATA.GOOGLE.INTERNAL"), "cloud-metadata")
+  expect_identical(reason_of("METADATA.GOOGLE.INTERNAL."), "cloud-metadata")
+  # Pins the fold itself, which also catches the bug where tolower() does not
+  # special-case tr_TR (macOS).
+  expect_identical(
+    ascii_lower("METADATA.GOOGLE.INTERNAL"), "metadata.google.internal"
+  )
+})
+
+test_that("ssrf_check blocks the bare metadata name GCE resolves", {
+  # ROBO-dxrljrde: the google.internal search domain on GCE resolves the
+  # single label "metadata" to the metadata server.
+  expect_identical(reason_of("metadata"), "cloud-metadata")
+  expect_identical(reason_of("Metadata."), "cloud-metadata")
+  expect_true(is.na(reason_of("metadata.example.com")))
+})
+
+test_that("ssrf_check reads a trailing-dot literal as the undotted literal", {
+  # ROBO-dxrljrde: the dotted spelling of an IP literal names the same address.
+  expect_identical(reason_of("169.254.169.254."), "cloud-metadata")
+  expect_identical(reason_of("127.0.0.1."), "loopback")
+  expect_identical(
+    reason_of("0x7f000001.", raw_host = "0x7f000001."), "numeric-literal"
+  )
+  expect_identical(
+    reason_of("2130706433.", raw_host = "2130706433."), "numeric-literal"
+  )
+})
+
+test_that("robots_ssrf_check blocks UTS #46 spellings of the metadata name", {
+  # ROBO-dxrljrde: rurl's default host ACE-encodes these whole, but libcurl
+  # with libidn2 (and WHATWG) maps them to metadata.google.internal first.
+  for (url in c(
+    "http://metadata。google。internal/robots.txt",
+    "http://metadata．google．internal/robots.txt",
+    "http://metadata｡google｡internal/robots.txt",
+    "http://ｍｅｔａｄａｔａ.google.internal/robots.txt",
+    "http://metadata/robots.txt"
+  )) {
+    expect_identical(
+      robots_ssrf_check(url)$reason, "cloud-metadata",
+      info = url
+    )
+  }
+  # A Unicode host that maps to an ordinary name stays allowed.
+  expect_true(robots_ssrf_check("http://bücher.example/robots.txt")$allowed)
+})
+
 test_that("ssrf_check decodes every documented IPv6->IPv4 embedding", {
   # Each spelling below carries a blocked IPv4 address in its low 32 bits.
   # Left undecoded, any one of them walks straight past the IPv4 matrix, so
@@ -323,6 +389,20 @@ test_that("robots_ssrf_check blocks reserved hosts via the rurl parse path", {
     robots_ssrf_check("http://169.254.169.254/x")$reason, "cloud-metadata"
   )
   expect_false(robots_ssrf_check("http://[::1]/robots.txt")$allowed)
+})
+
+test_that("robots_ssrf_check blocks the dotted metadata name end to end", {
+  # ROBO-dxrljrde: the spellings a caller can actually pass, through rurl.
+  for (url in c(
+    "http://metadata.google.internal./robots.txt",
+    "http://METADATA.google.internal./robots.txt",
+    "http://metadata.google.internal.:80/robots.txt"
+  )) {
+    expect_identical(
+      robots_ssrf_check(url)$reason, "cloud-metadata",
+      info = url
+    )
+  }
 })
 
 test_that("robots_ssrf_check allows ordinary public hosts", {

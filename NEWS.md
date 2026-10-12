@@ -1,3 +1,20 @@
+# robotstxtr (development version)
+
+* The SSRF guard now blocks more spellings of the GCP metadata host name.
+  The guard compared names exactly, so under the default
+  `ssrf_guard = TRUE` it allowed
+  `metadata.google.internal.` (trailing dot, in any case, with or without a
+  port), the bare `metadata` that GCE resolves through its search domain, and
+  spellings that UTS #46 maps to the name: ideographic or fullwidth full stops
+  (`metadata\u3002google\u3002internal`) and fullwidth letters. libcurl built
+  with libidn2 applies that mapping, while the host rurl reports by default ACE-encodes such
+  a host whole, so the guard now also classifies the host the WHATWG host
+  parser reports and blocks the URL when either view is blocked. Trailing dots are
+  dropped before every check, so `169.254.169.254.` and `0x7f000001.` are
+  read as the literals they spell. Host and scheme case folds are
+  ASCII-only: `tolower()` follows the locale, and under `tr_TR` an upper-case
+  `METADATA.GOOGLE.INTERNAL` stopped matching (#ROBO-dxrljrde).
+
 # robotstxtr 0.3.0
 
 * The engine contract now publishes which product tokens each
