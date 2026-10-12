@@ -55,7 +55,7 @@ test_that("ssrf_check blocks IPv6 loopback, embeddings, and metadata names", {
   expect_identical(reason_of("metadata.google.internal"), "cloud-metadata")
 })
 
-test_that("ssrf_check blocks the metadata name in its fully qualified spellings", {
+test_that("ssrf_check blocks the fully qualified metadata name", {
   # ROBO-dxrljrde: a trailing dot names the same host to DNS, so
   # "metadata.google.internal." resolves to the metadata server on GCP. The
   # name comparison must not let the dotted spelling through.
@@ -77,7 +77,9 @@ test_that("ssrf_check matches the metadata name under a Turkish locale", {
   expect_identical(reason_of("METADATA.GOOGLE.INTERNAL."), "cloud-metadata")
   # Pins the fold itself, which also catches the bug where tolower() does not
   # special-case tr_TR (macOS).
-  expect_identical(ascii_lower("METADATA.GOOGLE.INTERNAL"), "metadata.google.internal")
+  expect_identical(
+    ascii_lower("METADATA.GOOGLE.INTERNAL"), "metadata.google.internal"
+  )
 })
 
 test_that("ssrf_check blocks the bare metadata name GCE resolves", {
@@ -110,7 +112,10 @@ test_that("robots_ssrf_check blocks UTS #46 spellings of the metadata name", {
     "http://ｍｅｔａｄａｔａ.google.internal/robots.txt",
     "http://metadata/robots.txt"
   )) {
-    expect_identical(robots_ssrf_check(url)$reason, "cloud-metadata", info = url)
+    expect_identical(
+      robots_ssrf_check(url)$reason, "cloud-metadata",
+      info = url
+    )
   }
   # A Unicode host that maps to an ordinary name stays allowed.
   expect_true(robots_ssrf_check("http://bücher.example/robots.txt")$allowed)
@@ -393,7 +398,10 @@ test_that("robots_ssrf_check blocks the dotted metadata name end to end", {
     "http://METADATA.google.internal./robots.txt",
     "http://metadata.google.internal.:80/robots.txt"
   )) {
-    expect_identical(robots_ssrf_check(url)$reason, "cloud-metadata", info = url)
+    expect_identical(
+      robots_ssrf_check(url)$reason, "cloud-metadata",
+      info = url
+    )
   }
 })
 
