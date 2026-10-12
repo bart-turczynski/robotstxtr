@@ -55,6 +55,28 @@ test_that("ssrf_check blocks IPv6 loopback, embeddings, and metadata names", {
   expect_identical(reason_of("metadata.google.internal"), "cloud-metadata")
 })
 
+test_that("ssrf_check blocks the metadata name in its fully qualified spellings", {
+  # ROBO-dxrljrde: a trailing dot names the same host to DNS, so
+  # "metadata.google.internal." resolves to the metadata server on GCP. The
+  # name comparison must not let the dotted spelling through.
+  expect_identical(reason_of("metadata.google.internal."), "cloud-metadata")
+  expect_identical(reason_of("METADATA.google.internal."), "cloud-metadata")
+  expect_identical(reason_of("metadata.google.internal.."), "cloud-metadata")
+  # A name that merely ends in the metadata name is not the metadata host.
+  expect_true(is.na(reason_of("notmetadata.google.internal.")))
+})
+
+test_that("ssrf_check matches the metadata name under a Turkish locale", {
+  # ROBO-dxrljrde: tolower() follows LC_CTYPE, and tr_TR maps "I" to dotless
+  # "ı", so an upper-case spelling stopped matching there.
+  old <- Sys.getlocale("LC_CTYPE")
+  on.exit(Sys.setlocale("LC_CTYPE", old), add = TRUE)
+  set <- suppressWarnings(Sys.setlocale("LC_CTYPE", "tr_TR.UTF-8"))
+  skip_if(!nzchar(set), "tr_TR.UTF-8 locale not installed")
+  expect_identical(reason_of("METADATA.GOOGLE.INTERNAL"), "cloud-metadata")
+  expect_identical(reason_of("METADATA.GOOGLE.INTERNAL."), "cloud-metadata")
+})
+
 test_that("ssrf_check decodes every documented IPv6->IPv4 embedding", {
   # Each spelling below carries a blocked IPv4 address in its low 32 bits.
   # Left undecoded, any one of them walks straight past the IPv4 matrix, so
@@ -323,6 +345,17 @@ test_that("robots_ssrf_check blocks reserved hosts via the rurl parse path", {
     robots_ssrf_check("http://169.254.169.254/x")$reason, "cloud-metadata"
   )
   expect_false(robots_ssrf_check("http://[::1]/robots.txt")$allowed)
+})
+
+test_that("robots_ssrf_check blocks the dotted metadata name end to end", {
+  # ROBO-dxrljrde: the spellings a caller can actually pass, through rurl.
+  for (url in c(
+    "http://metadata.google.internal./robots.txt",
+    "http://METADATA.google.internal./robots.txt",
+    "http://metadata.google.internal.:80/robots.txt"
+  )) {
+    expect_identical(robots_ssrf_check(url)$reason, "cloud-metadata", info = url)
+  }
 })
 
 test_that("robots_ssrf_check allows ordinary public hosts", {

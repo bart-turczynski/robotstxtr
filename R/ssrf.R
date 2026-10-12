@@ -428,6 +428,21 @@ ssrf_numeric_literal_blocked <- function(raw_host) {
     grepl("^0[0-7]+(\\.0?[0-7]*){1,3}$", raw) # octal-style dotted form
 }
 
+# The form a registered name is compared in: ASCII-lowercased, with trailing
+# dots dropped. "metadata.google.internal." is the fully qualified spelling of
+# the same name, and DNS resolves it to the same address, so a comparison on
+# the raw spelling lets it through. The case fold is ASCII-only because
+# tolower() follows the locale: under tr_TR it maps "I" to dotless "ı", and
+# "METADATA.GOOGLE.INTERNAL" stopped matching (ROBO-dxrljrde).
+ssrf_name_key <- function(name) {
+  folded <- chartr(
+    paste(LETTERS, collapse = ""),
+    paste(letters, collapse = ""),
+    name
+  )
+  sub("[.]+$", "", folded)
+}
+
 # Range/name matching on the normalized host (brackets already stripped).
 # Returns an ssrf_result: blocked with a reason code for a matched IP range or
 # the well-known metadata hostname; allowed otherwise. Registered names other
@@ -437,7 +452,7 @@ ssrf_classify_literal <- function(bare) {
     ssrf_classify_ipv6(bare) # IPv6 literal (contains a colon)
   } else if (ssrf_is_dotted_quad(bare)) {
     ssrf_classify_ipv4(bare) # IPv4 dotted-quad
-  } else if (tolower(bare) == "metadata.google.internal") {
+  } else if (ssrf_name_key(bare) == "metadata.google.internal") {
     "cloud-metadata"
   } else {
     NA_character_

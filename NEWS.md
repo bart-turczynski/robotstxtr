@@ -1,3 +1,14 @@
+# robotstxtr (development version)
+
+* The SSRF guard now blocks the GCP metadata host name in its fully qualified
+  spelling. `metadata.google.internal.`, with a trailing dot, names the same
+  host to DNS, but the guard compared names exactly, so that spelling (in any
+  case, with or without a port) was allowed under the default
+  `ssrf_guard = TRUE`. The name is now compared with trailing dots dropped and
+  with an ASCII-only case fold: `tolower()` follows the locale, and under
+  `tr_TR` an upper-case `METADATA.GOOGLE.INTERNAL` stopped matching too
+  (#ROBO-dxrljrde).
+
 # robotstxtr 0.3.0
 
 * The engine contract now publishes which product tokens each
