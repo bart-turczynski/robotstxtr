@@ -1,7 +1,7 @@
 # robotstxtr (development version)
 
-* The SSRF guard now blocks the GCP metadata host name in every spelling that
-  reaches it. The guard compared names exactly, so under the default
+* The SSRF guard now blocks more spellings of the GCP metadata host name.
+  The guard compared names exactly, so under the default
   `ssrf_guard = TRUE` it allowed
   `metadata.google.internal.` (trailing dot, in any case, with or without a
   port), the bare `metadata` that GCE resolves through its search domain, and
