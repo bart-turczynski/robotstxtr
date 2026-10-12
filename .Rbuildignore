@@ -24,6 +24,7 @@
 ^\.gitattributes$
 ^\.gitignore$
 ^\.pre-commit-config\.yaml$
+^\.oss-scanner$
 ^\.fp$
 ^\.claude$
 ^_scratch$
