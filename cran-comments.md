@@ -1,20 +1,22 @@
 ## Resubmission
 
-This resubmits the first submission, 0.3.0, which CRAN returned on
-2026-10-08 asking that every copyright holder be listed in `Authors@R`.
+CRAN returned the first submission, 0.3.0, on 2026-10-08, asking that every
+copyright holder be listed in `Authors@R`.
 
 * The bundled matcher, `src/robots.cc`, `src/robots.h`,
-  `src/reporting_robots.cc` and `src/reporting_robots.h`, is Google's
-  Apache-2.0 code, and its copyright headers name Google LLC alone. Google
-  LLC is now in `Authors@R` with the `cph` role, and its comment names those
-  four files. The headers name no individual authors, so there is no `ctb`
-  entry for them.
-* The maintainer is now listed as `cph` as well. The rest of the package,
-  the bundled Bing and Yandex matchers under `src/vendor/` included, is the
-  maintainer's own MIT-licensed work.
-* The provenance and checksums of the Google files are in `inst/PROVENANCE`.
-  The Apache License 2.0 text and the package's notice for those files ship
-  as `inst/APACHE-2.0-LICENSE` and `inst/NOTICE`.
+  `src/reporting_robots.cc` and `src/reporting_robots.h`, is derived from
+  Google's Apache-2.0 `robotstxt` project, and each file carries Google LLC's
+  copyright notice. Google LLC is now in `Authors@R` with the `cph` role, and
+  its comment names those four files. The upstream sources name no individual
+  authors, so there is no `ctb` entry for them.
+* The maintainer, who wrote the local changes to those files, is now listed
+  as `cph` as well. The rest of the package is the maintainer's own work,
+  including the bundled Bing matcher under `src/vendor/robotstxtbing/`
+  (Apache-2.0, its own LICENSE and NOTICE alongside) and the Yandex matcher
+  under `src/vendor/robotstxtyandex/` (MIT).
+* The source repository and pinned commits of the Google files are in
+  `inst/PROVENANCE`. The Apache License 2.0 text and the package's notice for
+  those files ship as `inst/APACHE-2.0-LICENSE` and `inst/NOTICE`.
 
 ## R CMD check results
 
