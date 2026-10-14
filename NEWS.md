@@ -1,4 +1,8 @@
-# robotstxtr (development version)
+# robotstxtr 0.3.1
+
+* `DESCRIPTION` now names Google LLC as copyright holder of the bundled
+  Google matcher, and `inst/COPYRIGHTS` gives the copyright and license of
+  every bundled component.
 
 * The SSRF guard now blocks more spellings of the GCP metadata host name.
   The guard compared names exactly, so under the default
@@ -14,6 +18,14 @@
   read as the literals they spell. Host and scheme case folds are
   ASCII-only: `tolower()` follows the locale, and under `tr_TR` an upper-case
   `METADATA.GOOGLE.INTERNAL` stopped matching (#ROBO-dxrljrde).
+
+* `httr2` is now required at `>= 1.2.0`. The fetch path reads bodies through
+  `req_perform_connection()` and relies on the `StreamingBody` that httr2
+  1.2.0 introduced. Under httr2 1.1.x the body is a bare curl connection, so a
+  fetch that ends without a stored body leaves its connection open, a body is
+  read whole before `max_bytes` is checked instead of being cut off mid-stream,
+  and the mocked transport the examples and tests use is ignored, so the
+  examples make live requests. The R 4.1 floor check found it (#SEOR-thlzqzac).
 
 # robotstxtr 0.3.0
 
@@ -185,14 +197,6 @@
   against it installed from CRAN. The installation instructions no longer set
   up the R-universe staging repository, since every dependency now comes from
   CRAN (#ROBO-depmsgpz).
-
-* `httr2` is now required at `>= 1.2.0`. The fetch path reads bodies through
-  `req_perform_connection()` and relies on the `StreamingBody` that httr2
-  1.2.0 introduced. Under httr2 1.1.x the body is a bare curl connection, so a
-  fetch that ends without a stored body leaves its connection open, a body is
-  read whole before `max_bytes` is checked instead of being cut off mid-stream,
-  and the mocked transport the examples and tests use is ignored, so the
-  examples make live requests. The R 4.1 floor check found it (#SEOR-thlzqzac).
 
 ## Internal
 

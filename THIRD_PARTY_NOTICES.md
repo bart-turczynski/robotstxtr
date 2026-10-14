@@ -16,12 +16,13 @@ compiled into the package:
     the pinned commit is the durable identifier)
   - Upstream baseline: https://github.com/google/robotstxt
     @ commit `22b355ff855419e6a3ff8ff09c0ad7fdb17116f9`
-  - License: Apache License 2.0, with Google's original copyright headers
-    intact.
+  - License: Apache License 2.0. Each file carries Google LLC's copyright
+    notice, kept from upstream or, for the two reporting files that upstream
+    ships without a per-file header, added from its repository license.
 
 The binding notice and the full Apache License 2.0 text ship with the package
 at `inst/NOTICE` and `inst/APACHE-2.0-LICENSE`. See `inst/PROVENANCE` for the
-full vendored-file manifest and checksums.
+vendored-file manifest and pinned commits.
 
 ## Third-party R packages
 

@@ -1,0 +1,38 @@
+robotstxtr copyright and license summary
+========================================
+
+The robotstxtr package is licensed under the MIT License (see the LICENSE
+file and the DESCRIPTION License field), Copyright (c) 2026 Bart Turczynski.
+It bundles the components below, which keep their own licenses. Paths under
+src/ are in the source package; inst/ files are also installed.
+
+Google robots.txt matcher
+-------------------------
+
+  Files:      src/robots.cc, src/robots.h,
+              src/reporting_robots.cc, src/reporting_robots.h
+  Copyright:  Copyright 1999 Google LLC
+  Changes:    Abseil replaced with the C++17 standard library, by
+              Bart Turczynski; behavior unchanged
+  License:    Apache License 2.0 (inst/APACHE-2.0-LICENSE)
+  Notice:     inst/NOTICE
+  Source:     derived from https://github.com/google/robotstxt;
+              provenance and pinned commits in inst/PROVENANCE
+
+Bing-compatible matcher (robotstxtbing)
+---------------------------------------
+
+  Files:      src/vendor/robotstxtbing/
+  Copyright:  Copyright 2026 Bart Turczynski
+  License:    Apache License 2.0 (src/vendor/robotstxtbing/LICENSE)
+  Notice:     src/vendor/robotstxtbing/NOTICE
+  Manifest:   inst/vendor/robotstxtbing/MANIFEST.dcf
+
+Yandex-compatible matcher (robotstxtyandex)
+-------------------------------------------
+
+  Files:      src/vendor/robotstxtyandex/
+  Copyright:  Copyright 2026 Bart Turczynski
+  License:    MIT (src/vendor/robotstxtyandex/LICENSE)
+  Notice:     src/vendor/robotstxtyandex/NOTICE
+  Manifest:   inst/vendor/robotstxtyandex/MANIFEST.dcf
