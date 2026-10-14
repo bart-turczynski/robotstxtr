@@ -1,7 +1,9 @@
 ## Resubmission
 
 CRAN returned the first submission, 0.3.0, on 2026-10-08, asking that every
-copyright holder be listed in `Authors@R`.
+copyright holder be listed in `Authors@R`. This resubmission is 0.3.1: the
+version moved on because 0.3.0 had already been tagged and archived outside
+CRAN, and 0.3.1 also carries one bug fix made since, listed in `NEWS.md`.
 
 * The bundled matcher, `src/robots.cc`, `src/robots.h`,
   `src/reporting_robots.cc` and `src/reporting_robots.h`, is derived from
@@ -14,6 +16,10 @@ copyright holder be listed in `Authors@R`.
   including the bundled Bing matcher under `src/vendor/robotstxtbing/`
   (Apache-2.0, its own LICENSE and NOTICE alongside) and the Yandex matcher
   under `src/vendor/robotstxtyandex/` (MIT).
+* `DESCRIPTION` gains `Copyright: file inst/COPYRIGHTS`. That file gives the
+  copyright holder, license and notice of every bundled component, since the
+  `License:` field (MIT) covers the package's own code and the Google and
+  Bing components keep the Apache License 2.0.
 * The source repository and pinned commits of the Google files are in
   `inst/PROVENANCE`. The Apache License 2.0 text and the package's notice for
   those files ship as `inst/APACHE-2.0-LICENSE` and `inst/NOTICE`.
