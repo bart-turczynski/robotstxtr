@@ -65,5 +65,10 @@ Authors:
   \item Bart Turczynski \email{bartek@turczynski.pl} (\href{https://orcid.org/0000-0002-8788-7980}{ORCID}) [copyright holder]
 }
 
+Other contributors:
+\itemize{
+  \item Google LLC (Bundled 'robots.txt' matcher: src/robots.cc, src/robots.h, src/reporting_robots.cc, src/reporting_robots.h) [copyright holder]
+}
+
 }
 \keyword{internal}

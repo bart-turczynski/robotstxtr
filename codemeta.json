@@ -24,6 +24,19 @@
       "@id": "https://orcid.org/0000-0002-8788-7980"
     }
   ],
+  "copyrightHolder": [
+    {
+      "@type": "Person",
+      "givenName": "Bart",
+      "familyName": "Turczynski",
+      "email": "bartek@turczynski.pl",
+      "@id": "https://orcid.org/0000-0002-8788-7980"
+    },
+    {
+      "@type": "Organization",
+      "name": "Google LLC"
+    }
+  ],
   "maintainer": [
     {
       "@type": "Person",
