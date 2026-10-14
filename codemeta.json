@@ -8,7 +8,7 @@
   "codeRepository": "https://gitlab.com/bart-turczynski/robotstxtr",
   "issueTracker": "https://gitlab.com/bart-turczynski/robotstxtr/-/work_items",
   "license": "https://spdx.org/licenses/MIT",
-  "version": "0.3.0.9000",
+  "version": "0.3.1",
   "programmingLanguage": {
     "@type": "ComputerLanguage",
     "name": "R",

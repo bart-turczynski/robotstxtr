@@ -1,4 +1,8 @@
-# robotstxtr (development version)
+# robotstxtr 0.3.1
+
+* `DESCRIPTION` now names Google LLC as copyright holder of the bundled
+  Google matcher, and `inst/COPYRIGHTS` gives the copyright and license of
+  every bundled component.
 
 * The SSRF guard now blocks more spellings of the GCP metadata host name.
   The guard compared names exactly, so under the default
