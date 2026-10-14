@@ -2,8 +2,9 @@
 
 CRAN returned the first submission, 0.3.0, on 2026-10-08, asking that every
 copyright holder be listed in `Authors@R`. This resubmission is 0.3.1: the
-version moved on because 0.3.0 had already been tagged and archived outside
-CRAN, and 0.3.1 also carries one bug fix made since, listed in `NEWS.md`.
+version moved on because 0.3.0 had already been tagged and deposited on
+Zenodo. 0.3.1 also carries two changes made since, listed in `NEWS.md`: an
+SSRF guard fix, and an `httr2 (>= 1.2.0)` floor.
 
 * The bundled matcher, `src/robots.cc`, `src/robots.h`,
   `src/reporting_robots.cc` and `src/reporting_robots.h`, is derived from

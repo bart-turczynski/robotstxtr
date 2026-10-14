@@ -20,8 +20,10 @@ package, the faithful Google robots.txt matcher:
   Upstream baseline: https://github.com/google/robotstxt
   Pinned commit:     22b355ff855419e6a3ff8ff09c0ad7fdb17116f9
 
-These vendored files remain under the Apache License 2.0 with Google's
-original copyright headers intact, NOT the MIT license. The full Apache
+These vendored files remain under the Apache License 2.0, NOT the MIT
+license, and each carries Google LLC's copyright notice: kept from the
+upstream file, or, for the two reporting files, which upstream ships without
+a per-file header, added from the upstream repository's license. The full Apache
 License 2.0 text is included at inst/APACHE-2.0-LICENSE.
 
 The package-code license (MIT) and the bundled-code license (Apache-2.0) are

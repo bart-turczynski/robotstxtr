@@ -6,7 +6,7 @@ faithful Google robots.txt matcher. They are NOT downloaded or fetched at
 configure, build, test, or install time; they are vendored source.
 
 Vendored files (copied verbatim from the immediate source below, a modified
-derivative of Google's upstream; Apache-2.0, Google copyright notices kept):
+derivative of Google's upstream; Apache-2.0, Google LLC notice on each file):
   src/robots.cc
   src/robots.h
   src/reporting_robots.cc

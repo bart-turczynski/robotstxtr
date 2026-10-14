@@ -3,7 +3,8 @@ robotstxtr copyright and license summary
 
 The robotstxtr package is licensed under the MIT License (see the LICENSE
 file and the DESCRIPTION License field), Copyright (c) 2026 Bart Turczynski.
-It bundles the components below, which keep their own licenses.
+It bundles the components below, which keep their own licenses. Paths under
+src/ are in the source package; inst/ files are also installed.
 
 Google robots.txt matcher
 -------------------------
