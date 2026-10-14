@@ -21,7 +21,7 @@ compiled into the package:
 
 The binding notice and the full Apache License 2.0 text ship with the package
 at `inst/NOTICE` and `inst/APACHE-2.0-LICENSE`. See `inst/PROVENANCE` for the
-full vendored-file manifest and checksums.
+vendored-file manifest and pinned commits.
 
 ## Third-party R packages
 

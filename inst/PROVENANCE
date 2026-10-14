@@ -5,7 +5,8 @@ The files in `src/` named below are a copied, SHA-pinned snapshot of the
 faithful Google robots.txt matcher. They are NOT downloaded or fetched at
 configure, build, test, or install time; they are vendored source.
 
-Vendored files (copied verbatim, Apache-2.0 + Google copyright headers preserved):
+Vendored files (copied verbatim from the immediate source below, a modified
+derivative of Google's upstream; Apache-2.0, Google copyright notices kept):
   src/robots.cc
   src/robots.h
   src/reporting_robots.cc
@@ -27,8 +28,8 @@ repository's own PROVENANCE.md and NOTICE for the full change manifest, license
 set, and the offline-verifiable sync procedure.
 
 Licensing: the vendored files remain under the Apache License 2.0 with Google's
-original copyright headers intact. The overall R package license arrangement is
-finalized in a later slice (R9); this file records source provenance only.
+copyright notices intact. inst/COPYRIGHTS summarizes the copyright and license
+of every bundled component; inst/NOTICE is the notice for these files.
 
 Not vendored: `matcher_binding.cpp` in `src/` is this package's own cpp11 glue
 and is not part of the upstream snapshot.

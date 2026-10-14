@@ -27,4 +27,4 @@ License 2.0 text is included at inst/APACHE-2.0-LICENSE.
 The package-code license (MIT) and the bundled-code license (Apache-2.0) are
 separate; use of the vendored matcher source is governed by Apache-2.0.
 
-See inst/PROVENANCE for the full vendored-file manifest and checksums.
+See inst/PROVENANCE for the vendored-file manifest and pinned commits.
