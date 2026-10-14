@@ -4,8 +4,10 @@ Title: Engine-Aware 'robots.txt' Policy with Google's Matcher Algorithm
 Version: 0.3.0.9000
 Language: en-US
 Authors@R:
-    person("Bart", "Turczynski", email = "bartek@turczynski.pl", role = c("aut", "cre", "cph"),
-           comment = c(ORCID = "0000-0002-8788-7980"))
+    c(person("Bart", "Turczynski", email = "bartek@turczynski.pl", role = c("aut", "cre", "cph"),
+             comment = c(ORCID = "0000-0002-8788-7980")),
+      person("Google LLC", role = "cph",
+             comment = "Bundled 'robots.txt' matcher: src/robots.cc, src/robots.h, src/reporting_robots.cc, src/reporting_robots.h"))
 Description: Evaluates whether URLs may be crawled according to 'robots.txt'
     rules. A versioned engine-aware facade keeps neutral fetch evidence,
     per-engine status policy, robots product tokens, and matcher capabilities
