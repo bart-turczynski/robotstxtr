@@ -135,6 +135,12 @@ None — this is a new package.
 
 ### 0.3.1: resubmission
 
+* Submitted 2026-10-15 14:08:14 UTC with `devtools::submit_cran()`, from a
+  clean clone of `main` at `e6fe5ee109aee902828c4c9b43419b972acd7623`
+  (recorded in `CRAN-SUBMISSION`).
+* Submitted tarball `robotstxtr_0.3.1.tar.gz`, SHA-256
+  `7561c9d8a29fc5b0c31391d4230a55b135e0acb05984e6efa2c54d1491cc3f3f`, as
+  served from CRAN's `incoming/pretest/`.
 * Checks on `main` at `678759c4aff3c254a6ec4cd799d887ca9e846b1b`; only this
   file changed after it.
   * win-builder R-release <https://win-builder.r-project.org/HCc2dAx0SA38>,
