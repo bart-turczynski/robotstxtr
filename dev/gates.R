@@ -25,7 +25,7 @@
 # fold in safely.
 #
 # citation-version does NOT fold in here, on purpose, and stays its own
-# .gitlab-ci.yml job on `image: python:3.13-alpine`. Folding is folding
+# .gitlab-ci.yml job on `image: python:3.14-alpine`. Folding is folding
 # IMAGES, not just commands: the five gates above all ran (and still run)
 # on no `image:` override, i.e. the pipeline's `rocker/r-ver:4.6.1` default,
 # so combining them changes nothing about what interpreter each command runs
