@@ -287,7 +287,7 @@ stages:
 # vendor-fidelity jobs all already ran on no `image:` override, i.e. the
 # `default:` image (`rocker/r-ver:4.6.1`), so combining them changes nothing
 # about what interpreter each command runs under. citation-version is the one
-# job here that overrode `image:` to `python:3.13-alpine`, and that image
+# job here that overrode `image:` to `python:3.14-alpine`, and that image
 # provides something the default does not: verified directly against the
 # EXACT pinned tag --
 #   docker run --rm rocker/r-ver:4.6.1 sh -c 'which python3 || echo "NO python3"'
@@ -334,9 +334,9 @@ gates:
 citation-version:
   stage: verify
   # Kept on its own image on purpose -- see the `gates` job comment above.
-  # scripts/check-citation.py is stdlib-only, so `python:3.13-alpine` is all
+  # scripts/check-citation.py is stdlib-only, so `python:3.14-alpine` is all
   # this job needs; it never touches the R toolchain.
-  image: python:3.13-alpine
+  image: python:3.14-alpine
   script:
     - python3 scripts/check-citation.py --self-test
     - python3 scripts/check-citation.py
