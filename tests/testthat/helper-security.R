@@ -5,9 +5,11 @@
 #
 # Narrowing the audit to hard dependencies cleared five of the seven repos in
 # this fleet. It does NOT clear robotstxtr: `curl` is a genuine hard
-# dependency here, reached through httr2. The two advisories below name
-# libcurl version ranges that include CRAN's current `curl` 8.0.0, so there is
-# no version to upgrade to and no local change that makes the audit clean.
+# dependency here, reached through httr2. The five advisories below name
+# libcurl version ranges that include CRAN's current `curl` 8.1.0 (OSS Index
+# matches the R package's version against libcurl's, whose fixes start at
+# 8.14), so there is no version to upgrade to and no local change that makes
+# the audit clean.
 # Suppressing the whole gate to get past them would retire it for every OTHER
 # dependency too, so each advisory is allow-listed BY ID with the reason it is
 # permitted (ROBO-oykjiyjj, deciding SEOR-feqgnbwt route (a)).
@@ -33,12 +35,12 @@ oss_index_allowlist <- list(
   list(
     id = "CVE-2026-18924",
     package = "curl",
-    version_seen = "8.0.0",
+    version_seen = "8.1.0",
     review = as.Date("2026-12-01"),
     reason = paste(
       "CWE-416 use-after-free on HTTP/2 server push over a shared",
       "connection handle (CVSS 9.1, published 2026-09-06). Names a libcurl",
-      "range covering CRAN's current curl 8.0.0, so no available version",
+      "range covering CRAN's current curl 8.1.0, so no available version",
       "clears it. The vulnerable path is also unreachable from R:",
       "curl::curl_options() exposes no option matching `push`, and",
       "curl::multi_set() takes only total_con, host_con, max_streams,",
@@ -50,12 +52,12 @@ oss_index_allowlist <- list(
   list(
     id = "CVE-2026-3783",
     package = "curl",
-    version_seen = "8.0.0",
+    version_seen = "8.1.0",
     review = as.Date("2026-12-01"),
     reason = paste(
       "CWE-522: an OAuth2 bearer token is leaked to a redirect target when",
       ".netrc carries a machine/default entry (CVSS 6.9). Names a libcurl",
-      "range covering CRAN's current curl 8.0.0, so no available version",
+      "range covering CRAN's current curl 8.1.0, so no available version",
       "clears it. Not reachable through robotstxtr, which sends no",
       "Authorization header at all: R/ calls no httr2::req_auth_* function",
       "and exposes no credential argument. Re-check that with",
@@ -63,6 +65,54 @@ oss_index_allowlist <- list(
       "because it is unfixable, and recorded as unreachable because that is",
       "what the grep shows -- sitemapr, which does set bearer tokens, is",
       "reachable and says so in its own row."
+    )
+  ),
+  list(
+    id = "CVE-2026-86410",
+    package = "curl",
+    version_seen = "8.1.0",
+    review = as.Date("2026-12-01"),
+    reason = paste(
+      "CWE-297: a redirect to SFTP or SCP skips SSH host verification",
+      "(CVSS 5.1, published 2026-10-14). Names a libcurl range covering",
+      "CRAN's current curl 8.1.0, so no available version clears it. The",
+      "flaw is in the curl command-line tool, not libcurl, and R links only",
+      "libcurl. robotstxtr also requests http/https only: robots_origin()",
+      "rejects any other scheme, build_fetch_request() sets",
+      "followlocation = FALSE, and the manual redirect loop in",
+      "R/fetch-policy.R refuses a non-http(s) target. Re-check those three",
+      "before renewing this row."
+    )
+  ),
+  list(
+    id = "CVE-2026-86414",
+    package = "curl",
+    version_seen = "8.1.0",
+    review = as.Date("2026-12-01"),
+    reason = paste(
+      "CWE-201: an HTTP proxy answering CONNECT with 401 instead of 407",
+      "gets the origin's Basic password or Negotiate ticket (CVSS 6.5,",
+      "published 2026-10-14). Names a libcurl range covering CRAN's current",
+      "curl 8.1.0, so no available version clears it. A proxy can come from",
+      "the environment, but robotstxtr has no origin credentials to leak:",
+      "robots_origin() drops URL userinfo, and R/ sets no auth, httpauth or",
+      "netrc option. Re-check that with",
+      "`grep -rn 'req_auth\\|httpauth\\|netrc' R/` before renewing this row."
+    )
+  ),
+  list(
+    id = "CVE-2026-87865",
+    package = "curl",
+    version_seen = "8.1.0",
+    review = as.Date("2026-12-01"),
+    reason = paste(
+      "CWE-295: with libssh2 and a hashed known_hosts file, a host key",
+      "mismatch reaches CURLOPT_SSH_KEYFUNCTION as a missing key (CVSS 6.9,",
+      "published 2026-10-14). Names a libcurl range covering CRAN's current",
+      "curl 8.1.0, so no available version clears it. Not reachable through",
+      "robotstxtr, which makes no SFTP or SCP request: robots_origin() and",
+      "the redirect loop in R/fetch-policy.R admit http/https only. Re-check",
+      "both before renewing this row."
     )
   )
 )
@@ -80,7 +130,7 @@ oss_index_allowlist_fields <- c(
 # set is well formed. Written as a function returning findings rather than as a
 # block of expectations so that it can be exercised against fixtures: a loop of
 # expectations over `oss_index_allowlist` only ever tests the rows that happen
-# to be live, and would assert nothing at all once the two curl rows above are
+# to be live, and would assert nothing at all once the curl rows above are
 # retired under rule B. The fixtures in test-security.R prove each check fires.
 oss_index_allowlist_violations <- function(rows) {
   out <- character()
