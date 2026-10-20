@@ -32,11 +32,11 @@
 # asked. So under OSSINDEX_AUDIT_REQUIRED=true every precondition below
 # becomes a hard failure with a message naming what is missing.
 #
-# robotstxtr has no such job today: .gitlab-ci.yml carries no
-# `security-audit` job and sets the flag nowhere, so in every current context
-# the preconditions stay skips. The flag path is here so that a credentialed
-# job, when one is added, sets OSSINDEX_AUDIT_REQUIRED=true and cannot go
-# green on nothing (SEOR-fftbjnpl).
+# That job is `security-audit` in .gitlab-ci.yml, run on the dependency-audit
+# schedule or a hand-started pipeline. It cannot go green on nothing because
+# it sets OSSINDEX_AUDIT_REQUIRED=true and fails when any test in this file
+# was skipped (SEOR-fftbjnpl). Everywhere else the flag is unset and the
+# preconditions stay skips.
 #
 # NOTE ON THE PRE-PUSH HOOK. Measured 2026-09-24, the audit does not run on
 # push. robotstxtr's pre-push gate is `dev/verify.sh`: lint, a docs-drift
@@ -48,7 +48,7 @@
 test_that("the OSS Index allow-list is well formed", {
   # No `expect_gt(length(oss_index_allowlist), 0)` here, although this repo
   # has rows. Emptiness is not a malformation: when curl ships a fix, rule B
-  # deletes both rows and an empty list is the correct state. The other way
+  # deletes the rows and an empty list is the correct state. The other way
   # round -- rows removed while the advisories are still reported -- rule A
   # catches in the audit below, so a non-empty assertion would guard nothing
   # and would have to be remembered and deleted along with the last row.

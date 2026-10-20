@@ -429,6 +429,8 @@ test_that("userinfo is dropped and no auth/cookie headers are forwarded", {
   expect_null(req$headers$authorization)
   expect_null(req$headers$Cookie)
   expect_null(req$options$cookie)
+  # .netrc stays off even under options(netrc =), which curl >= 8.1.0 honors.
+  expect_identical(req$options$netrc, 0L)
 })
 
 # --- Call-level validation ---------------------------------------------------
