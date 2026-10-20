@@ -206,13 +206,16 @@ make_source_result <- function(outcome, http_status, effective_url,
 # no Authorization, cookies, or caller session state is ever forwarded (PRD
 # 6.4). Automatic redirect following is disabled so the manual loop can enforce
 # the redirect policy; HTTP status is never treated as an error here because
-# the response classifier owns status handling.
+# the response classifier owns status handling. `netrc = 0` keeps .netrc
+# credentials out too: curl >= 8.1.0 turns netrc on for every handle when the
+# caller sets base R's `options(netrc = <path>)`, and an explicit handle
+# option overrides that default.
 build_fetch_request <- function(url, timeout, fetch_ua) {
   req <- httr2::request(url)
   req <- httr2::req_method(req, "GET")
   req <- httr2::req_user_agent(req, fetch_ua)
   req <- httr2::req_timeout(req, timeout)
-  req <- httr2::req_options(req, followlocation = FALSE)
+  req <- httr2::req_options(req, followlocation = FALSE, netrc = 0L)
   httr2::req_error(req, is_error = function(resp) FALSE)
 }
 

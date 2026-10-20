@@ -32,11 +32,11 @@
 # asked. So under OSSINDEX_AUDIT_REQUIRED=true every precondition below
 # becomes a hard failure with a message naming what is missing.
 #
-# That job is `security-audit` in .gitlab-ci.yml. It sets
-# OSSINDEX_AUDIT_REQUIRED=true and runs only on the dependency-audit schedule
-# or a hand-started pipeline, so it cannot go green on nothing
-# (SEOR-fftbjnpl). Everywhere else the flag is unset and the preconditions
-# stay skips.
+# That job is `security-audit` in .gitlab-ci.yml, run on the dependency-audit
+# schedule or a hand-started pipeline. It cannot go green on nothing because
+# it sets OSSINDEX_AUDIT_REQUIRED=true and fails when any test in this file
+# was skipped (SEOR-fftbjnpl). Everywhere else the flag is unset and the
+# preconditions stay skips.
 #
 # NOTE ON THE PRE-PUSH HOOK. Measured 2026-09-24, the audit does not run on
 # push. robotstxtr's pre-push gate is `dev/verify.sh`: lint, a docs-drift

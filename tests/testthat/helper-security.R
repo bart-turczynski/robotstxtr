@@ -6,10 +6,13 @@
 # Narrowing the audit to hard dependencies cleared five of the seven repos in
 # this fleet. It does NOT clear robotstxtr: `curl` is a genuine hard
 # dependency here, reached through httr2. The five advisories below name
-# libcurl version ranges that include CRAN's current `curl` 8.1.0 (OSS Index
-# matches the R package's version against libcurl's, whose fixes start at
-# 8.14), so there is no version to upgrade to and no local change that makes
-# the audit clean.
+# libcurl version ranges that include CRAN's current `curl` 8.1.0: OSS Index
+# matches the R package's version against libcurl's, and the earliest fixed
+# libcurl in each range is 8.14.x or later, so no R package version clears
+# them and no local change makes the audit clean. What actually runs is the
+# libcurl the package links: the Windows and macOS CRAN binaries bundle one
+# with CVE backports (curl 8.1.0's NEWS), on Linux it is the system's. So a
+# row here is OSS Index's attribution, and each reason argues reachability.
 # Suppressing the whole gate to get past them would retire it for every OTHER
 # dependency too, so each advisory is allow-listed BY ID with the reason it is
 # permitted (ROBO-oykjiyjj, deciding SEOR-feqgnbwt route (a)).
@@ -60,8 +63,14 @@ oss_index_allowlist <- list(
       "range covering CRAN's current curl 8.1.0, so no available version",
       "clears it. Not reachable through robotstxtr, which sends no",
       "Authorization header at all: R/ calls no httr2::req_auth_* function",
-      "and exposes no credential argument. Re-check that with",
-      "`grep -rn 'req_auth' R/` before renewing this row. Allow-listed",
+      "and exposes no credential argument, and build_fetch_request() sets",
+      "netrc = 0L, so the .netrc precondition is off even under",
+      "options(netrc =). Re-check with",
+      "`grep -rn",
+      "'req_auth\\|httpauth\\|userpwd\\|username\\|password\\|req_headers'",
+      "R/`",
+      "(no hits) and `grep -n 'netrc = 0L' R/fetch-policy.R` (one hit)",
+      "before renewing this row. Allow-listed",
       "because it is unfixable, and recorded as unreachable because that is",
       "what the grep shows -- sitemapr, which does set bearer tokens, is",
       "reachable and says so in its own row."
@@ -74,14 +83,15 @@ oss_index_allowlist <- list(
     review = as.Date("2026-12-01"),
     reason = paste(
       "CWE-297: a redirect to SFTP or SCP skips SSH host verification",
-      "(CVSS 5.1, published 2026-10-14). Names a libcurl range covering",
-      "CRAN's current curl 8.1.0, so no available version clears it. The",
-      "flaw is in the curl command-line tool, not libcurl, and R links only",
-      "libcurl. robotstxtr also requests http/https only: robots_origin()",
-      "rejects any other scheme, build_fetch_request() sets",
-      "followlocation = FALSE, and the manual redirect loop in",
-      "R/fetch-policy.R refuses a non-http(s) target. Re-check those three",
-      "before renewing this row."
+      "(CVSS 5.1, published 2026-10-14). OSS Index attributes it to a",
+      "libcurl range covering CRAN's current curl 8.1.0, so no available",
+      "version clears it, but curl.se places the flaw in the curl",
+      "command-line tool, and R links only libcurl. robotstxtr also requests",
+      "http/https only. Re-check the three places that hold that before",
+      "renewing this row: `grep -n 'https?://' R/robots_origin.R` (the",
+      "scheme guard), `grep -n 'followlocation = FALSE' R/fetch-policy.R`",
+      "and `grep -n 'target_scheme %in%' R/fetch-policy.R` (the redirect",
+      "loop's scheme check)."
     )
   ),
   list(
@@ -94,10 +104,13 @@ oss_index_allowlist <- list(
       "gets the origin's Basic password or Negotiate ticket (CVSS 6.5,",
       "published 2026-10-14). Names a libcurl range covering CRAN's current",
       "curl 8.1.0, so no available version clears it. A proxy can come from",
-      "the environment, but robotstxtr has no origin credentials to leak:",
-      "robots_origin() drops URL userinfo, and R/ sets no auth, httpauth or",
-      "netrc option. Re-check that with",
-      "`grep -rn 'req_auth\\|httpauth\\|netrc' R/` before renewing this row."
+      "the environment, but robotstxtr holds no origin credentials to leak:",
+      "robots_origin() drops the caller's URL userinfo, R/ sets no auth",
+      "option, and build_fetch_request() sets netrc = 0L, which overrides",
+      "curl's options(netrc =) default. (A redirect Location can still carry",
+      "userinfo the server itself chose; that is the server's string, not a",
+      "caller secret.) Re-check with the two greps in the CVE-2026-3783 row",
+      "before renewing this row."
     )
   ),
   list(
@@ -110,9 +123,8 @@ oss_index_allowlist <- list(
       "mismatch reaches CURLOPT_SSH_KEYFUNCTION as a missing key (CVSS 6.9,",
       "published 2026-10-14). Names a libcurl range covering CRAN's current",
       "curl 8.1.0, so no available version clears it. Not reachable through",
-      "robotstxtr, which makes no SFTP or SCP request: robots_origin() and",
-      "the redirect loop in R/fetch-policy.R admit http/https only. Re-check",
-      "both before renewing this row."
+      "robotstxtr, which makes no SFTP or SCP request. Re-check with the",
+      "three greps in the CVE-2026-86410 row before renewing this row."
     )
   )
 )
