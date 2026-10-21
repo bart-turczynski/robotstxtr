@@ -5,7 +5,7 @@
 #
 # Narrowing the audit to hard dependencies cleared five of the seven repos in
 # this fleet. It does NOT clear robotstxtr: `curl` is a genuine hard
-# dependency here, reached through httr2. The five advisories below name
+# dependency here, reached through httr2. The six advisories below name
 # libcurl version ranges that include CRAN's current `curl` 8.1.0: OSS Index
 # matches the R package's version against libcurl's, and the earliest fixed
 # libcurl in each range is 8.14.x or later, so no R package version clears
