@@ -126,6 +126,22 @@ oss_index_allowlist <- list(
       "robotstxtr, which makes no SFTP or SCP request. Re-check with the",
       "three greps in the CVE-2026-86410 row before renewing this row."
     )
+  ),
+  list(
+    id = "CVE-2026-87864",
+    package = "curl",
+    version_seen = "8.1.0",
+    review = as.Date("2026-12-01"),
+    reason = paste(
+      "CWE-130: an authenticated IMAP APPEND with CURLOPT_CRLF on",
+      "advertises the raw byte count but sends the CRLF-expanded data, so",
+      "the excess runs as extra IMAP commands (severity Low, published",
+      "2026-10-14). Names a libcurl range covering CRAN's current curl",
+      "8.1.0, so no available version clears it. Not reachable through",
+      "robotstxtr, which makes no IMAP request and never sets crlf.",
+      "Re-check with `grep -rni 'crlf\\|imap' R/` (no hits) and the three",
+      "greps in the CVE-2026-86410 row before renewing this row."
+    )
   )
 )
 
