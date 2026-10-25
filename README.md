@@ -6,9 +6,12 @@
 
 <!-- badges: start -->
 
-[![CRAN status](https://www.r-pkg.org/badges/version/robotstxtr)](https://CRAN.R-project.org/package=robotstxtr)
-[![CRAN downloads](https://cranlogs.r-pkg.org/badges/robotstxtr)](https://CRAN.R-project.org/package=robotstxtr)
-[![CRAN checks](https://badges.cranchecks.info/worst/robotstxtr.svg)](https://cran.r-project.org/web/checks/check_results_robotstxtr.html)
+[![CRAN
+status](https://www.r-pkg.org/badges/version/robotstxtr)](https://CRAN.R-project.org/package=robotstxtr)
+[![CRAN
+downloads](https://cranlogs.r-pkg.org/badges/robotstxtr)](https://CRAN.R-project.org/package=robotstxtr)
+[![CRAN
+checks](https://badges.cranchecks.info/worst/robotstxtr.svg)](https://cran.r-project.org/web/checks/check_results_robotstxtr.html)
 [![r-universe](https://bart-turczynski.r-universe.dev/robotstxtr/badges/version)](https://bart-turczynski.r-universe.dev/robotstxtr)
 [![Pipeline](https://gitlab.com/bart-turczynski/robotstxtr/badges/main/pipeline.svg)](https://gitlab.com/bart-turczynski/robotstxtr/-/pipelines)
 [![Coverage](https://gitlab.com/bart-turczynski/robotstxtr/badges/main/coverage.svg)](https://gitlab.com/bart-turczynski/robotstxtr/-/pipelines)
@@ -60,9 +63,9 @@ install.packages(
 )
 ```
 
-The development version also lives on GitLab. Its dependencies, including
-`rurl`, are all on CRAN, so it installs with no extra repository
-configuration:
+The development version also lives on GitLab. Its dependencies,
+including `rurl`, are all on CRAN, so it installs with no extra
+repository configuration:
 
 ``` r
 # with pak
