@@ -1,7 +1,7 @@
 Package: robotstxtr
 Type: Package
 Title: Engine-Aware 'robots.txt' Policy with Google's Matcher Algorithm
-Version: 0.3.1
+Version: 0.3.1.9000
 Language: en-US
 Authors@R:
     c(person("Bart", "Turczynski", email = "bartek@turczynski.pl", role = c("aut", "cre", "cph"),
@@ -26,7 +26,8 @@ License: MIT + file LICENSE
 Copyright: file inst/COPYRIGHTS
 URL: https://bart-turczynski.gitlab.io/robotstxtr/,
     https://gitlab.com/bart-turczynski/robotstxtr,
-    https://bart-turczynski.r-universe.dev/robotstxtr
+    https://bart-turczynski.r-universe.dev/robotstxtr,
+    https://CRAN.R-project.org/package=robotstxtr
 BugReports: https://gitlab.com/bart-turczynski/robotstxtr/-/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
