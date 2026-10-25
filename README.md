@@ -6,6 +6,9 @@
 
 <!-- badges: start -->
 
+[![CRAN status](https://www.r-pkg.org/badges/version/robotstxtr)](https://CRAN.R-project.org/package=robotstxtr)
+[![CRAN downloads](https://cranlogs.r-pkg.org/badges/robotstxtr)](https://CRAN.R-project.org/package=robotstxtr)
+[![CRAN checks](https://badges.cranchecks.info/worst/robotstxtr.svg)](https://cran.r-project.org/web/checks/check_results_robotstxtr.html)
 [![r-universe](https://bart-turczynski.r-universe.dev/robotstxtr/badges/version)](https://bart-turczynski.r-universe.dev/robotstxtr)
 [![Pipeline](https://gitlab.com/bart-turczynski/robotstxtr/badges/main/pipeline.svg)](https://gitlab.com/bart-turczynski/robotstxtr/-/pipelines)
 [![Coverage](https://gitlab.com/bart-turczynski/robotstxtr/badges/main/coverage.svg)](https://gitlab.com/bart-turczynski/robotstxtr/-/pipelines)
@@ -19,6 +22,7 @@ Active](https://www.repostatus.org/badges/latest/active.svg)](https://www.repost
 [![OpenSSF Best
 Practices](https://www.bestpractices.dev/projects/15192/badge)](https://www.bestpractices.dev/projects/15192)
 [![License](https://img.shields.io/gitlab/license/bart-turczynski%2Frobotstxtr)](https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/LICENSE.md)
+[![Dependencies](https://tinyverse.netlify.app/badge/robotstxtr)](https://CRAN.R-project.org/package=robotstxtr)
 [![Last
 commit](https://img.shields.io/gitlab/last-commit/bart-turczynski%2Frobotstxtr)](https://gitlab.com/bart-turczynski/robotstxtr/-/commits/main)
 <!-- badges: end -->
@@ -41,7 +45,13 @@ matcher, not a claim of universal behavioral identity with Googlebot.
 
 ## Installation
 
-Install the released version from r-universe:
+Install the released version from CRAN:
+
+``` r
+install.packages("robotstxtr")
+```
+
+Or the development version from r-universe:
 
 ``` r
 install.packages(
@@ -50,7 +60,7 @@ install.packages(
 )
 ```
 
-The development version lives on GitLab. Its dependencies, including
+The development version also lives on GitLab. Its dependencies, including
 `rurl`, are all on CRAN, so it installs with no extra repository
 configuration:
 
