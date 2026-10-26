@@ -89,8 +89,9 @@ repos:
       # inst/CITATION, NEWS, README.md) and fails on a dead one: --as-cran in
       # `verify` reports a dead link only as a NOTE, which the gate lets
       # through. A URL that cannot be reached at all only warns, so a network
-      # blip never rejects a push; zero URLs checked fails; the only exemption
-      # is BugReports' /-/issues URL answering exactly 404 (SEOR-ocbtrrnl).
+      # blip never rejects a push; zero URLs checked fails; nothing is exempt
+      # (seor ADR 0011,
+      # https://gitlab.com/bart-turczynski/seor/-/blob/main/design/adr/0011-bugreports-names-work-items.md).
       # The fleet standard's URL check, ported from sitemapr's `urls` stage
       # by way of punycoder's scripts/check-urls.R.
       - id: check-urls
@@ -115,11 +116,12 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-push]
-      # DESCRIPTION's BugReports: keeps the CRAN-incoming-safe /-/issues form
-      # while every human-facing file points at /-/work_items (SEOR-ocbtrrnl).
+      # DESCRIPTION's BugReports: and every tracker link (codemeta.json,
+      # .bestpractices.json, CONTRIBUTING.md, SECURITY.md) name /-/work_items,
+      # and no human-facing file may carry a /-/issues link (seor ADR 0011).
       # Stdlib Python and offline, wired the same way as check-citation.
       - id: check-bugreports
-        name: BugReports split (DESCRIPTION vs human-facing links)
+        name: BugReports and tracker links name /-/work_items
         entry: python3 scripts/check-bugreports.py
         language: system
         pass_filenames: false
