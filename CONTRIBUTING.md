@@ -28,9 +28,7 @@ comment, then run `devtools::document()` and commit the regenerated files with
 the change. A stale `.Rd` is still valid `.Rd`, so neither lintr nor
 `R CMD check` notices when the two drift apart — `scripts/check-docs-drift.R`
 regenerates them (and `DESCRIPTION`, whose roxygen-owned fields drift the same
-way) and diffs them, and both the pre-push hook and CI run it. It is seor's
-script, vendored byte for byte, so a fix goes into seor's copy and is copied
-here, never edited in place:
+way) and diffs them, and both the pre-push hook and CI run it:
 
 ```sh
 Rscript scripts/check-docs-drift.R

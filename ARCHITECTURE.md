@@ -36,3 +36,5 @@ bounded Bing and Yandex compatibility profiles behind the engine-aware facade.
 - Conformance corpora under `inst/bing-corpus/` and `inst/yandex-corpus/` are
   byte-exact fixtures, regenerated only by `dev/gen-*-corpus.R`.
 - `man/` and `NAMESPACE` are generated from roxygen in `R/`.
+- `scripts/check-docs-drift.R` is seor's script, vendored byte for byte, so a
+  fix goes into seor's copy and is copied here, never edited in place.
