@@ -157,9 +157,9 @@ gate_vendor_bing <- function() {
 #   development version, so a release bump that forgets the NEWS heading fails
 #   instead of reaching CRAN as "(development version)".
 # * codemeta also compares every dependency constraint with DESCRIPTION.
-#   codemeta.json is hand-edited and never regenerated: codemetar would put
-#   back the /-/issues tracker that the file deliberately replaces with
-#   /-/work_items (ROBO-zghpvlxu). So nothing else keeps its requirement list
+#   codemeta.json is hand-edited and never regenerated (ROBO-zghpvlxu);
+#   scripts/check-bugreports.py holds its issueTracker equal to BugReports'
+#   /-/work_items (seor ADR 0011). So nothing else keeps its requirement list
 #   in step. That is also why the old codemeta.yaml, which regenerated the
 #   file, is not carried. pagerankr's check for a `host::repo` spec mangled
 #   into a URL is dropped: that damage comes from `Remotes:`, which this
@@ -254,7 +254,7 @@ gate_codemeta <- function() {
   if (length(detail)) {
     detail <- c(detail, paste(
       "Hand-edit codemeta.json to match. Do NOT run",
-      "codemetar::write_codemeta(): it would revert issueTracker to /-/issues",
+      "codemetar::write_codemeta(): the file is hand-maintained",
       "(ROBO-zghpvlxu)."
     ))
   }

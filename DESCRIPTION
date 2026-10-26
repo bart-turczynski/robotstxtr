@@ -28,7 +28,7 @@ URL: https://bart-turczynski.gitlab.io/robotstxtr/,
     https://gitlab.com/bart-turczynski/robotstxtr,
     https://bart-turczynski.r-universe.dev/robotstxtr,
     https://CRAN.R-project.org/package=robotstxtr
-BugReports: https://gitlab.com/bart-turczynski/robotstxtr/-/issues
+BugReports: https://gitlab.com/bart-turczynski/robotstxtr/-/work_items
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Depends:
@@ -50,4 +50,4 @@ Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 VignetteBuilder: knitr
-Config/roxygen2/version: 8.0.0
+Config/roxygen2/version: 8.1.1

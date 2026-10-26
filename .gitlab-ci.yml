@@ -14,8 +14,8 @@
 # hand-started `web` pipeline offers them as manual, non-blocking jobs.
 #
 # Every job here is Linux. Windows, macOS and valgrind are checked once per
-# release, by win-builder and R-hub, not in CI (CONTRIBUTING.md, release
-# checklist step 6; ROBO-mkuskipr).
+# release, by win-builder and R-hub, not in CI (design/release-deltas.md,
+# release checklist step 6; ROBO-mkuskipr).
 #
 # Ported from .github/workflows/verify.yml (ROBO-tkmclvsg). GitLab is the
 # forge; the GitHub repository is a read-only mirror and runs no CI.
@@ -101,7 +101,7 @@ default:
   # maintainer's Mac, which carry this tag. Naming it makes that dependency
   # explicit: while the Mac sleeps, jobs sit pending and then fail as
   # `stuck_pending_no_matching_runners`, which is infrastructure, not code
-  # (seor CONTRIBUTING.md, "Stuck-pending runbook"; SEOR-hhtzaknn).
+  # (seor design/stuck-pending-runbook.md; SEOR-hhtzaknn).
   tags: [local-docker]
   image: rocker/r-ver:4.6.1
   interruptible: true
@@ -340,7 +340,9 @@ citation-version:
   script:
     - python3 scripts/check-citation.py --self-test
     - python3 scripts/check-citation.py
-    # Same image, same reasoning: stdlib-only and offline (SEOR-ocbtrrnl).
+    # BugReports and tracker links name /-/work_items (seor ADR 0011,
+    # https://gitlab.com/bart-turczynski/seor/-/blob/main/design/adr/0011-bugreports-names-work-items.md).
+    # Same image, same reasoning: stdlib-only and offline.
     - python3 scripts/check-bugreports.py --self-test
     - python3 scripts/check-bugreports.py
 
@@ -512,7 +514,7 @@ floor-check:
 # There is no valgrind leg. R-hub's valgrind image is x86_64 and cannot start
 # R under Rosetta on this fleet's arm64 runner (punycoder PUNY-pxdhoaov);
 # valgrind comes from R-hub's own runners before a CRAN submission
-# (CONTRIBUTING.md, release checklist step 6).
+# (design/release-deltas.md, release checklist step 6).
 #
 # `--ignore-vignettes`: the tarball is built without vignettes (no pandoc in
 # the image), and checking it otherwise reports WARNINGs about the missing
