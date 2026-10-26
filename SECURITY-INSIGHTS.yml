@@ -20,7 +20,7 @@ project:
   documentation:
     quickstart-guide: https://bart-turczynski.gitlab.io/robotstxtr/
     detailed-guide: https://bart-turczynski.gitlab.io/robotstxtr/reference/index.html
-    release-process: https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/CONTRIBUTING.md
+    release-process: https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/design/release-deltas.md
   repositories:
     - name: robotstxtr
       url: https://gitlab.com/bart-turczynski/robotstxtr
