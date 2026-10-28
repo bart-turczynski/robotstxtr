@@ -10,15 +10,19 @@
 #
 # macOS's libc does not map "I" specially even under tr_TR, so the locale legs
 # below cannot go red there; the namespace pin runs everywhere.
+#
+# The locales are listed once, in fixtures/case-folding-locales.txt. CI reads
+# the same file to build them, and scripts/check-locale-legs.R fails the job
+# unless every leg named there ran and passed, as in pslr.
 
-lf_locales <- c("tr_TR.UTF-8", "az_AZ.UTF-8")
+lf_locales <- readLines(test_path("fixtures", "case-folding-locales.txt"))
 
 # Run `code` with LC_CTYPE set to `locale`; skip when the platform lacks it.
 lf_with_ctype <- function(locale, code) {
   old <- Sys.getlocale("LC_CTYPE")
   on.exit(Sys.setlocale("LC_CTYPE", old), add = TRUE)
   set <- suppressWarnings(Sys.setlocale("LC_CTYPE", locale))
-  skip_if(!nzchar(set), paste(locale, "locale not installed"))
+  skip_if_not(identical(set, locale), paste(locale, "is not available"))
   force(code)
 }
 
