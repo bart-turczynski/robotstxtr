@@ -148,7 +148,7 @@ RFC 9309 validity. Validation reports file syntax and structure only: it does
 not answer whether a particular URL is allowed, infer whether rules match the
 webmaster's intent, or fetch and check remote sitemap resources.
 
-## Engine-aware v1 contract
+## Engine-aware contract
 
 Multi-engine integrations should use the versioned facade,
 `robots_evaluate_text_v1()` and `robots_evaluate_url_v1()`, which selects the

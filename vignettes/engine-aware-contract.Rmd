@@ -120,6 +120,7 @@ robots_engine_contract_v2()$matcher_status_set
 
 `as_legacy_robots_decisions_v1()` converts a v1 result evaluated with the
 Google policy and the Google matcher to the `robots_decisions` shape the
-headline functions return. The full contract is
-specified in
-[engine-aware contract design document](https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/design/engine-contract-v1.md).
+headline functions return. The v1 contract is specified in the
+[engine-aware contract design document](https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/design/engine-contract-v1.md),
+and the Bing backend and the v2 status set in the
+[Bing integration v2 specification](https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/design/robotstxtbing-integration-v2-spec.md).
