@@ -469,7 +469,7 @@ validation_ascii_action <- function(action, type) {
   if (identical(Encoding(action), "bytes")) {
     return("unknown")
   }
-  tolower(action)
+  ascii_lower(action)
 }
 
 split_validation_lines <- function(bytes) {

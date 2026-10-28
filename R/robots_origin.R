@@ -56,8 +56,8 @@ robots_origin <- function(url) {
     return(NA_character_)
   }
 
-  scheme <- tolower(scheme)
-  host <- tolower(host)
+  scheme <- ascii_lower(scheme)
+  host <- ascii_lower(host)
 
   # --- Preserve non-default ports; omit scheme defaults (http 80, https 443).
   port_part <- ""

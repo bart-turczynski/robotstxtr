@@ -65,7 +65,7 @@ yandex_corpus_sha256_file <- function(path) {
   if (is.na(digest)) {
     stop(sprintf("Could not read file for hashing: %s", path))
   }
-  tolower(digest)
+  ascii_lower(digest)
 }
 
 # Canonicalise a single parsed record into a named list with a fixed key order
@@ -276,7 +276,7 @@ verify_yandex_corpus <- function(dir = yandex_corpus_dir()) {
     body_path <- file.path(dir, body_file)
     if (file.exists(body_path)) {
       got_sha <- yandex_corpus_sha256_file(body_path)
-      want_sha <- tolower(as.character(rec[["body_sha256"]]))
+      want_sha <- ascii_lower(as.character(rec[["body_sha256"]]))
       if (!identical(got_sha, want_sha)) {
         fail(sprintf(
           "Body %s SHA-256 mismatch: file %s vs recorded %s.",

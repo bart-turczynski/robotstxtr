@@ -93,7 +93,7 @@ bing_corpus_sha256_file <- function(path) {
   if (is.na(digest)) {
     stop(sprintf("Could not read file for hashing: %s", path))
   }
-  tolower(digest)
+  ascii_lower(digest)
 }
 
 # SHA-256 of a UTF-8 string's bytes, lower-case hex. Used to re-derive the
@@ -132,7 +132,9 @@ bing_corpus_build_record <- function(rec) {
         value = as.character(matched_rule[["value"]]),
         # Lower-case hex of the exact matched-rule value bytes (SS11). Kept even
         # when it equals the UTF-8 of `value`, so the byte contract is explicit.
-        value_raw_hex = tolower(as.character(matched_rule[["value_raw_hex"]]))
+        value_raw_hex = ascii_lower(
+          as.character(matched_rule[["value_raw_hex"]])
+        )
       )
     )
   }
@@ -155,10 +157,10 @@ bing_corpus_build_record <- function(rec) {
     probe_case_id = as.character(rec[["probe_case_id"]]),
     body_ref = as.character(rec[["body_ref"]]),
     body_file = as.character(rec[["body_file"]]),
-    body_sha256 = tolower(as.character(rec[["body_sha256"]])),
+    body_sha256 = ascii_lower(as.character(rec[["body_sha256"]])),
     byte_size = as.integer(rec[["byte_size"]]),
     request_target = as.character(rec[["request_target"]]),
-    request_target_sha256 = tolower(as.character(
+    request_target_sha256 = ascii_lower(as.character(
       rec[["request_target_sha256"]]
     )),
     tester_observed = tester_out,
@@ -368,10 +370,10 @@ verify_bing_corpus <- function(dir = bing_corpus_dir()) {
         ))
       }
       value <- as.character(matched_rule[["value"]])
-      raw_hex <- tolower(as.character(matched_rule[["value_raw_hex"]]))
+      raw_hex <- ascii_lower(as.character(matched_rule[["value_raw_hex"]]))
       if (!grepl("^([0-9a-f]{2})*$", raw_hex)) {
         fail(sprintf("Record %s value_raw_hex is not even-length hex.", cid))
-      } else if (!identical(raw_hex, tolower(bing_corpus_bytes_to_hex(
+      } else if (!identical(raw_hex, ascii_lower(bing_corpus_bytes_to_hex(
         charToRaw(enc2utf8(value))
       )))) {
         fail(sprintf(
@@ -400,7 +402,7 @@ verify_bing_corpus <- function(dir = bing_corpus_dir()) {
     rt <- as.character(rec[["request_target"]])
     got_rt_sha <- tryCatch(bing_corpus_sha256_string(rt),
                            error = function(e) NA_character_)
-    want_rt_sha <- tolower(as.character(rec[["request_target_sha256"]]))
+    want_rt_sha <- ascii_lower(as.character(rec[["request_target_sha256"]]))
     if (is.na(got_rt_sha) || !identical(got_rt_sha, want_rt_sha)) {
       fail(sprintf("Record %s request_target_sha256 mismatch.", cid))
     }
@@ -410,7 +412,7 @@ verify_bing_corpus <- function(dir = bing_corpus_dir()) {
     body_path <- file.path(dir, body_file)
     if (file.exists(body_path)) {
       got_sha <- bing_corpus_sha256_file(body_path)
-      want_sha <- tolower(as.character(rec[["body_sha256"]]))
+      want_sha <- ascii_lower(as.character(rec[["body_sha256"]]))
       if (!identical(got_sha, want_sha)) {
         fail(sprintf(
           "Body %s SHA-256 mismatch: file %s vs recorded %s.",

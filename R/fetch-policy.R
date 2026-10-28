@@ -373,8 +373,10 @@ perform_fetch <- function(robots_url, timeout, fetch_ua, max_bytes,
           final_http_status = status
         ))
       }
-      target_scheme <- tolower(as.character(httr2::url_parse(target)$scheme))
-      current_scheme <- tolower(
+      target_scheme <- ascii_lower(
+        as.character(httr2::url_parse(target)$scheme)
+      )
+      current_scheme <- ascii_lower(
         as.character(httr2::url_parse(current_url)$scheme)
       )
       if (length(target_scheme) != 1L ||

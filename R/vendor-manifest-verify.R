@@ -30,7 +30,7 @@ yandex_sha256_file <- function(path) {
   if (is.na(digest)) {
     stop(sprintf("Could not read file for hashing: %s", path))
   }
-  tolower(digest)
+  ascii_lower(digest)
 }
 
 # Read the DCF manifest and split it into the single identity/header record and
@@ -63,7 +63,7 @@ read_yandex_vendor_manifest <- function(manifest_path) {
   }
   files <- data.frame(
     file = dcf[is_file, "File"],
-    sha256 = tolower(dcf[is_file, "Sha256"]),
+    sha256 = ascii_lower(dcf[is_file, "Sha256"]),
     stringsAsFactors = FALSE
   )
   if (anyNA(files$sha256) || !all(nzchar(files$sha256))) {
@@ -187,7 +187,7 @@ bing_sha256_file <- function(path) {
   if (is.na(digest)) {
     stop(sprintf("Could not read file for hashing: %s", path))
   }
-  tolower(digest)
+  ascii_lower(digest)
 }
 
 # Read the Bing DCF manifest into its single header record and per-file records.
@@ -220,7 +220,7 @@ read_bing_vendor_manifest <- function(manifest_path) {
   }
   files <- data.frame(
     file = dcf[is_file, "File"],
-    sha256 = tolower(dcf[is_file, "Sha256"]),
+    sha256 = ascii_lower(dcf[is_file, "Sha256"]),
     stringsAsFactors = FALSE
   )
   if (anyNA(files$sha256) || !all(nzchar(files$sha256))) {

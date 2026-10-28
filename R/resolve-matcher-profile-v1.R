@@ -47,8 +47,9 @@ resolve_profile_recycle <- function(x, n, arg) {
 # Is `token` plausibly a crawler identity that a caller mistook for a selector?
 # Only used to sharpen the error message, never to decide acceptance.
 resolve_profile_looks_like_crawler <- function(token, accepted) {
-  lowered <- tolower(token)
-  any(startsWith(lowered, tolower(accepted)) & lowered != tolower(accepted))
+  lowered <- ascii_lower(token)
+  accepted <- ascii_lower(accepted)
+  any(startsWith(lowered, accepted) & lowered != accepted)
 }
 
 #' Resolve a matcher-profile selector before evaluating anything
@@ -185,7 +186,7 @@ resolve_one_matcher_profile_v1 <- function(backend, token, entry) {
   }
 
   profiles <- entry$supported_profiles
-  hit <- match(tolower(token), tolower(profiles$accepted_token))
+  hit <- match(ascii_lower(token), ascii_lower(profiles$accepted_token))
 
   if (is.na(hit)) {
     accepted <- profiles$accepted_token
