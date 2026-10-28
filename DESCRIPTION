@@ -29,6 +29,9 @@ URL: https://bart-turczynski.gitlab.io/robotstxtr/,
     https://bart-turczynski.r-universe.dev/robotstxtr,
     https://CRAN.R-project.org/package=robotstxtr
 BugReports: https://gitlab.com/bart-turczynski/robotstxtr/-/work_items
+X-schema.org-keywords: robots-txt, robots-exclusion-protocol, web-crawler,
+    crawl-policy, googlebot, bingbot, yandex, url-matching,
+    robots-txt-validation
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Depends:
