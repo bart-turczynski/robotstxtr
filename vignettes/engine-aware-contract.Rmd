@@ -1,0 +1,125 @@
+---
+title: "Engine-aware contract"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Engine-aware contract}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(robotstxtr)
+```
+
+## Two axes, selected explicitly
+
+`allowed_by_robots_text()` and `allowed_by_robots_url()` always use Google's
+matcher. Multi-engine integrations should use the parallel, versioned facade
+instead, `robots_evaluate_text_v1()` and `robots_evaluate_url_v1()`, which
+make every caller select both axes explicitly:
+
+- `robots_policy_ruleset`: how fetch evidence (a missing file, a server error,
+  a redirect) becomes a policy action, per engine.
+- `matcher_backend`: which matcher evaluates the rules.
+
+The `robots_product_token` selects the robots user-agent group only; it is
+never sent as an HTTP header. Everything below runs offline.
+
+```{r}
+robots <- "user-agent: *
+disallow: /private
+allow: /private/public
+"
+
+x <- robots_evaluate_text_v1(
+  robots,
+  "https://example.com/private/report",
+  robots_product_token = "Googlebot",
+  robots_policy_ruleset = "google",
+  matcher_backend = "google"
+)
+x
+```
+
+The result keeps neutral fetch evidence, engine policy, matcher availability,
+and the final URL decision in separate columns:
+
+```{r}
+x$results[c(
+  "evidence_status", "policy_status", "matcher_availability",
+  "matcher_status", "url_decision", "reason"
+)]
+```
+
+## Explicit non-decisions
+
+An unavailable matcher returns `capability_unavailable` rather than silently
+falling back to Google. The RFC 9309 backend is such a matcher:
+
+```{r}
+robots_evaluate_text_v1(
+  robots,
+  "https://example.com/private/report",
+  robots_product_token = "mybot",
+  robots_policy_ruleset = "assumed_rfc9309",
+  matcher_backend = "rfc9309"
+)$results[c("matcher_status", "reason", "url_decision")]
+```
+
+## Bounded vendor profiles
+
+The Google backend accepts any valid product token and returns Google
+semantics for it, which is not a claim about the crawler that token names. The
+Yandex and Bing backends are bounded to their supported profiles and never
+generalize to other tokens:
+
+```{r}
+contract <- robots_engine_contract_v1()
+contract$matcher_availability
+contract$matcher_capability$yandex$supported_profiles[
+  c("profile_id", "accepted_token", "profile_revision")
+]
+contract$matcher_capability$bing$supported_profiles[
+  c("profile_id", "accepted_token", "profile_revision")
+]
+```
+
+Any other token on those backends is a checked non-decision, not a decision:
+
+```{r}
+robots_evaluate_text_v1(
+  robots,
+  "https://example.com/private/report",
+  robots_product_token = "YandexImages",
+  robots_policy_ruleset = "yandex",
+  matcher_backend = "yandex"
+)$results[c("matcher_status", "reason", "url_decision")]
+```
+
+The Yandex and Bing backends are independent, unofficial compatibility
+profiles and make no production-crawler parity claim.
+
+## Contract metadata
+
+`robots_engine_contract_v1()` publishes the schema revision, policy and
+matcher revisions, and capability metadata; `robots_engine_contract_v2()`
+adds the extended matcher-status set that the Bing backend uses.
+
+```{r}
+contract$contract_id
+contract$schema_revision
+robots_engine_contract_v2()$matcher_status_set
+```
+
+`as_legacy_robots_decisions_v1()` converts a v1 result evaluated with the
+Google policy and the Google matcher to the `robots_decisions` shape the
+headline functions return. The full contract is
+specified in
+[engine-aware contract design document](https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/design/engine-contract-v1.md).
