@@ -41,6 +41,8 @@ if (!file.exists(manifest_path)) {
                manifest_path))
 }
 
+# Both files below fold with ascii_lower(), defined in ascii.R.
+source(file.path("R", "ascii.R"))
 source(file.path("R", "vendor-manifest-verify.R"))
 source(file.path("R", "bing-corpus.R"))
 
