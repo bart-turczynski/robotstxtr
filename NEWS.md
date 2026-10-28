@@ -1,6 +1,6 @@
 # robotstxtr (development version)
 
-* Case-insensitive matching of URL schemes and hosts, product tokens and robots.txt directive names no longer depends on the session locale: under `tr_TR`, `I` no longer folds to `ı` (SEOR-tldlaxgq).
+* Case-insensitive matching of product tokens and robots.txt directive names no longer depends on the session locale: under `tr_TR`, `I` no longer folds to `ı` (SEOR-tldlaxgq).
 
 # robotstxtr 0.3.1
 
