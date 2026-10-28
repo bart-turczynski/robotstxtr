@@ -6,6 +6,8 @@
 
 * The SSRF guard now blocks more spellings of the GCP metadata host: a trailing dot, the bare `metadata`, UTS #46 fullwidth forms, and upper case under `tr_TR` (ROBO-dxrljrde).
 
+* Trailing dots are dropped before every SSRF check, so `169.254.169.254.` and `0x7f000001.` are read, and blocked, as the IPv4 literals they spell (ROBO-dxrljrde).
+
 * `httr2` is now required at `>= 1.2.0`: under 1.1.x a fetch could leave its connection open, read past `max_bytes`, and ignore the mocked transport (SEOR-thlzqzac).
 
 # robotstxtr 0.3.0
@@ -14,9 +16,9 @@
 
 * The Yandex backend accepts `Yandex` and `YandexAdditionalBot`, not `YandexBot`; Bing accepts `bingbot` and `adidxbot`. `YandexAdditionalBot` and `adidxbot` never fall back to a `User-agent: *` group.
 
-* New `robots_resolve_matcher_profile_v1()` checks a product token against a backend before any fetch, and unsupported-token `error_message` values now name the accepted selectors (ROBO-nvuwpktu).
+* New `robots_resolve_matcher_profile_v1()` checks a product token against a backend before any fetch, raising `robotstxtr_unresolvable_matcher_profile` with the accepted selectors named (ROBO-nvuwpktu).
 
-* Added `robots_engine_contract_v2()` and the Bing `matcher_backend`, bounded to `bingbot` and `adidxbot`, with four new non-decision statuses; an unofficial profile, not affiliated with Microsoft (ROBO-zcgprxtq).
+* Added `robots_engine_contract_v2()` and the Bing `matcher_backend`, bounded to `bingbot` and `adidxbot`, with four new non-decision statuses; an unofficial profile, not affiliated with Microsoft (ROBO-qetsyvwv).
 * The SSRF guard classifies IPv6 unspecified and loopback addresses by value, so `::0.0.0.1` is loopback and `::0.0.0.0` unspecified (ROBO-pzgzxkoj).
 * The SSRF guard's IPv6 link-local (`fe80::/10`) and AWS metadata (`fd00:ec2::/32`) rules match by value, so zero-padded spellings such as `fd00:0ec2::254` are blocked (ROBO-pjvypcjk).
 * The SSRF guard decodes 6to4, Teredo and ISATAP IPv6 addresses and classifies the IPv4 address each wraps, so `2002:a9fe:a9fe::` is blocked (ROBO-laydgesq).

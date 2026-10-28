@@ -17,8 +17,8 @@ Git follows the house `agent-workflow` skill. fp status changes stay decoupled f
 
 - A `NEWS.md` bullet is one terse line, for a change a package user acts on or notices: behavior, API, dependencies, R or system requirements, installation.
 - Where a standard decides the change, cite its clause in a few words, such as "(RFC 9309 §2.2.2)"; the reasoning belongs in the issue.
-- At most one issue or MR reference, at the end. No housekeeping bullets (CI, gates, lint, metadata, agent files) and no Internal section.
-- The pre-push `news-terse` hook (`scripts/check-news.py`) enforces it.
+- At most one issue or MR reference, at the end. No housekeeping bullets (CI, gates, lint, spelling, logos, badges, repository metadata such as `codemeta.json`, `CITATION.cff` and keywords, agent files) and no Internal section.
+- The pre-push `news-terse` hook (`scripts/check-news.py`) enforces the one-line, word-limit, reference and Internal parts, and catches common housekeeping openings.
 
 ## The tracker is not in git unless it is snapshotted
 
