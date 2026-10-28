@@ -25,6 +25,8 @@ if (!file.exists(manifest_path)) {
     manifest_path))
 }
 
+# vendor-manifest-verify.R folds digests with ascii_lower(), defined in ascii.R.
+source(file.path("R", "ascii.R"))
 source(file.path("R", "vendor-manifest-verify.R"))
 
 res <- verify_yandex_vendor_tree(root = root, manifest_path = manifest_path)

@@ -60,6 +60,8 @@ find_pkg_root <- function() {
 }
 
 PKG_ROOT <- find_pkg_root()
+# yandex-corpus.R folds digests with ascii_lower(), defined in ascii.R.
+source(file.path(PKG_ROOT, "R", "ascii.R"))
 source(file.path(PKG_ROOT, "R", "yandex-corpus.R"))
 
 # ---- git-backed, byte-exact read helpers ------------------------------------

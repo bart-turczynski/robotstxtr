@@ -131,6 +131,8 @@ dir.create(extract_dir)
 untar(tarball, exdir = extract_dir)
 pkg_root <- list.files(extract_dir, full.names = TRUE)[[1L]]
 
+# vendor-manifest-verify.R folds digests with ascii_lower(), defined in ascii.R.
+source(file.path(root_dir, "R", "ascii.R"))
 source(file.path(root_dir, "R", "vendor-manifest-verify.R"))
 res <- verify_yandex_vendor_tree(
   root = file.path(pkg_root, "src", "vendor", "robotstxtyandex"),
