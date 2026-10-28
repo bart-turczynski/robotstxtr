@@ -127,3 +127,23 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-push]
+      # NEWS.md bullets are one terse line: check-news.py refuses a bullet
+      # that wraps, runs past its word limit or names only housekeeping, and
+      # any Internal heading (seor design/fleet-standard.md, "NEWS.md
+      # bullets"; SEOR-mjrpwnqz). Ported byte for byte from seor; stdlib
+      # Python and offline, wired the same way as check-citation. Its
+      # self-test runs when the script changes.
+      - id: news-terse
+        name: NEWS.md bullets are one terse line
+        entry: python3 scripts/check-news.py NEWS.md
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+      - id: news-terse-self-test
+        name: check-news self-test
+        entry: python3 scripts/check-news.py --self-test
+        language: system
+        pass_filenames: false
+        files: ^scripts/check-news\.py$
+        stages: [pre-push]
