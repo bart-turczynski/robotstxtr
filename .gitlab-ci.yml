@@ -249,6 +249,48 @@ stages:
 .install-pak: &install-pak |
   Rscript -e 'if (!requireNamespace("pak", quietly = TRUE)) install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/stable/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))'
 
+# The case-folding legs of tests/testthat/test-ascii-case-folding-tldlaxgq.R
+# run only where R can switch LC_CTYPE to each locale listed in
+# tests/testthat/fixtures/case-folding-locales.txt, the one list of them, and
+# rocker/r-ver generates none of them, so without this step they skip on every
+# gate (SEOR-tldlaxgq). Ported from pslr's recipe (PSLR-mgqnsbjz, after ssrfr's
+# SSRF-erprjgmv): localedef against the locale sources the image already
+# ships. Naming the `locales` package in apt-get upgraded glibc under R in
+# ssrfr's probes, so it is not installed. `-c` writes the locale even when the
+# source draws a warning, and localedef then exits 1; only a status above 1
+# means nothing was written. Each locale is also registered in
+# /etc/locale.gen, so a later locale-gen (a `locales` package trigger)
+# regenerates it instead of dropping it. The session locale is unchanged.
+#
+# Then an early probe, before any dependency install, so a lost locale fails in
+# seconds rather than after the long R CMD check: R must switch to each locale
+# the way the tests detect it, Sys.setlocale() returning the exact name, and
+# each must fold "I" to the dotless U+0131, the mapping the legs exist to
+# survive. That the legs themselves ran is proven after the check, by
+# scripts/check-locale-legs.R.
+.case-folding-locales: &case-folding-locales |
+  while IFS= read -r l; do
+    [ -n "$l" ] || continue
+    status=0
+    localedef -c -i "${l%%.*}" -f "${l#*.}" "$l" || status=$?
+    if [ "$status" -gt 1 ]; then
+      echo "localedef could not build $l (exit $status)"
+      exit 1
+    fi
+    printf '%s %s\n' "$l" "${l#*.}" >> /etc/locale.gen
+  done < tests/testthat/fixtures/case-folding-locales.txt
+  Rscript -e '
+    for (l in readLines("tests/testthat/fixtures/case-folding-locales.txt")) {
+      old <- Sys.getlocale("LC_CTYPE")
+      active <- suppressWarnings(Sys.setlocale("LC_CTYPE", l))
+      folds <- identical(tolower("I"), intToUtf8(0x131L))
+      invisible(Sys.setlocale("LC_CTYPE", old))
+      if (!identical(active, l)) stop("R cannot switch LC_CTYPE to ", l, call. = FALSE)
+      if (!folds) stop(l, " does not fold I to dotless i; the test leg would prove nothing", call. = FALSE)
+      cat(l, "usable in R\n")
+    }
+  '
+
 # ---- stage: verify -----------------------------------------------------------
 
 # `gates` folds five formerly-separate verify-stage jobs -- lint, readme,
@@ -358,6 +400,7 @@ check:
   before_script:
     - *r-binaries
     - *apt-pandoc
+    - *case-folding-locales
     - *install-pak
     # `deps::.` installs HARD dependencies only. --as-cran builds the knitr
     # vignette and runs the testthat suite, and knitr/rmarkdown/testthat all
@@ -380,14 +423,21 @@ check:
         res <- rcmdcheck::rcmdcheck(
           args = c("--no-manual", "--as-cran"),
           build_args = "--no-manual",
-          error_on = "warning"
+          error_on = "warning",
+          check_dir = "check"
         )
         if (!identical(as.integer(res$status), 0L)) stop("R CMD check exited with status ", res$status, "; the run did not complete.", call. = FALSE)
       '
+    # R CMD check counts a skipped test as a pass, so prove the case-folding
+    # locale legs ran: every locale in the shared list must have run its legs
+    # and passed, against the package the check installed in
+    # check/robotstxtr.Rcheck. Any skipped leg fails the job.
+    - Rscript scripts/check-locale-legs.R check/robotstxtr.Rcheck
   artifacts:
     when: always
     expire_in: 1 week
     paths:
+      - check/
       - "*.Rcheck/"
 
 # ---- deep-check (scheduled) -------------------------------------------------
@@ -449,6 +499,7 @@ full-check:
     # not ask, which is why `check` on the default image never needed it. No
     # rocker/r-ver image ships qpdf; punycoder's full-check installs it too.
     - apt-get update -qq && apt-get install -y --no-install-recommends qpdf && rm -rf /var/lib/apt/lists/*
+    - *case-folding-locales
     - *install-pak
     - Rscript -e 'pak::pkg_install(c(Sys.getenv("RURL_GIT"), "rcmdcheck"))'
     - Rscript -e 'pak::local_install_deps(dependencies = TRUE, upgrade = FALSE)'
@@ -460,6 +511,9 @@ full-check:
       Rscript -e 'res <- rcmdcheck::rcmdcheck(args = c("--no-manual", "--as-cran"),
       build_args = "--no-manual", error_on = "warning", check_dir = "check");
       if (!identical(as.integer(res$status), 0L)) stop("R CMD check exited with status ", res$status, "; the run did not complete.", call. = FALSE)'
+    # The same proof as in `check`: every case-folding locale leg ran and
+    # passed on this R version.
+    - Rscript scripts/check-locale-legs.R check/robotstxtr.Rcheck
 
 # The leg at the declared R floor, `Depends: R (>= 4.1.0)`, in punycoder's
 # floor-check shape. 4.1 is the oldest minor with an arm64 rocker/r-ver image,

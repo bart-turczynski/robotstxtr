@@ -17,6 +17,11 @@ here instead. Keep it ASCII too: a non-ASCII byte in `.lintr` comes back
 Documented deviations from the goodpractice set — test-idiom and public-API
 reasons a real package hits as it grows:
 
+- `case_folding_linter`: added. An `undesirable_function_linter` that bans
+  `tolower()`, `toupper()` and `casefold()`, which follow the session locale
+  (under `tr_TR`, `I` folds to a dotless `ı`). Protocol text folds through the
+  internal `ascii_lower()` in `R/ascii.R` instead (SEOR-tldlaxgq; pslr's set
+  carries the same ban). Keep it on any resync with the fleet set.
 - `object_name_linter` / `object_usage_linter`: not part of the goodpractice set
   and deliberately NOT added. The cucumber DSL (`when`/`then`/`context`) and the
   testthat helpers read as undefined globals to `object_usage_linter`, and

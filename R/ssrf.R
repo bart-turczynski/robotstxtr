@@ -428,13 +428,6 @@ ssrf_numeric_literal_blocked <- function(raw_host) {
     grepl("^0[0-7]+(\\.0?[0-7]*){1,3}$", raw) # octal-style dotted form
 }
 
-# ASCII-only lowercase. tolower() follows the locale: under tr_TR it maps "I"
-# to dotless "ı", so "METADATA.GOOGLE.INTERNAL" stopped matching the blocked
-# name. Same body as sitemapr's ascii_lower() (ROBO-dxrljrde).
-ascii_lower <- function(x) {
-  chartr(paste(LETTERS, collapse = ""), paste(letters, collapse = ""), x)
-}
-
 # Drop the trailing dots of a fully qualified spelling. "metadata.google.
 # internal." and "169.254.169.254." name the same host as their undotted forms,
 # so every check below runs on the undotted form (ROBO-dxrljrde).

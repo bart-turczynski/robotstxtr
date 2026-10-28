@@ -118,11 +118,11 @@ classify_transport_condition <- function(cnd) {
     classes <- c(classes, class(cur))
     cur <- cur$parent
   }
-  if (any(grepl("timedout|timeout", classes, ignore.case = TRUE))) {
+  if (any(grepl("timedout|timeout", ascii_lower(classes)))) {
     return("timeout")
   }
   if (any(grepl("ssl|tls|peer_failed_verification|cacert|certificate|cert_",
-                classes, ignore.case = TRUE))) {
+                ascii_lower(classes)))) {
     return("tls_error")
   }
   "network_error"
@@ -373,8 +373,10 @@ perform_fetch <- function(robots_url, timeout, fetch_ua, max_bytes,
           final_http_status = status
         ))
       }
-      target_scheme <- tolower(as.character(httr2::url_parse(target)$scheme))
-      current_scheme <- tolower(
+      target_scheme <- ascii_lower(
+        as.character(httr2::url_parse(target)$scheme)
+      )
+      current_scheme <- ascii_lower(
         as.character(httr2::url_parse(current_url)$scheme)
       )
       if (length(target_scheme) != 1L ||

@@ -210,7 +210,7 @@ validate_backend_capability_v1 <- function(capability) {
         backend, toString(unique(profiles$group_selection[bad_mode]))
       ))
     }
-    if (anyDuplicated(tolower(profiles$accepted_token)) > 0L) {
+    if (anyDuplicated(ascii_lower(profiles$accepted_token)) > 0L) {
       capability_abort_v1(sprintf(
         "backend %s publishes case-duplicate accepted_token values.", backend
       ))
