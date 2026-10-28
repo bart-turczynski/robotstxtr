@@ -345,6 +345,10 @@ citation-version:
     # Same image, same reasoning: stdlib-only and offline.
     - python3 scripts/check-bugreports.py --self-test
     - python3 scripts/check-bugreports.py
+    # NEWS.md bullets are one terse line (seor design/fleet-standard.md,
+    # "NEWS.md bullets"). Same image, same reasoning: stdlib-only and offline.
+    - python3 scripts/check-news.py --self-test
+    - python3 scripts/check-news.py NEWS.md
 
 # ---- stage: check ------------------------------------------------------------
 

@@ -97,8 +97,8 @@ English dictionary for R's spell check; win-builder shows all three.
   `/-/work_items`, which returns 200, and was archived at the pretest for that
   reason; it was accepted on resubmission with `/-/issues`. The field here
   follows the check's suggestion, as the dependency `rurl` 3.0.1 does on CRAN.
-  The `NEWS.md` bullet gives the address as code rather than as a link, so the
-  404 is reported once, from `DESCRIPTION` only. `codemeta.json` keeps the
+  `NEWS.md` no longer carries the address, so the 404 is reported once, from
+  `DESCRIPTION` only. `codemeta.json` keeps the
   `/-/work_items` address that a reader can click; it is in `.Rbuildignore`,
   so it is not part of this tarball.
 

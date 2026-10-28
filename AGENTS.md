@@ -13,6 +13,13 @@ Git follows the house `agent-workflow` skill. fp status changes stay decoupled f
 - **On a branch that hook is the only gate.** `.gitlab-ci.yml`'s top-level `workflow:` block admits only a tag, a push to `main`, or a hand-started (`web`) pipeline, so a branch push and its merge request create no pipeline (SEOR-bmgkzhvy). An empty pipeline list is not a pass. For a server-side answer on a branch, start one at **Build > Pipelines > Run pipeline**; `glab ci run` starts an `api` pipeline, which the block refuses.
 - The pages keep-list is `keep=` in the `.pkgdown-site` job of `.gitlab-ci.yml`, pinned by `dev/check-ci-config.R`. A new top-level `.md` meant for the public site is not published until it is added there.
 
+## NEWS.md
+
+- A `NEWS.md` bullet is one terse line, for a change a package user acts on or notices: behavior, API, dependencies, R or system requirements, installation.
+- Where a standard decides the change, cite its clause in a few words, such as "(RFC 9309 §2.2.2)"; the reasoning belongs in the issue.
+- At most one issue or MR reference, at the end. No housekeeping bullets (CI, gates, lint, spelling, logos, badges, repository metadata such as `codemeta.json`, `CITATION.cff` and keywords, agent files) and no Internal section.
+- The pre-push `news-terse` hook (`scripts/check-news.py`) enforces the one-line, word-limit, reference and Internal parts, and catches common housekeeping openings.
+
 ## The tracker is not in git unless it is snapshotted
 
 `.fp/` is gitignored, so the issue tracker is a local database that no commit, no clone and no bundle has ever contained — while `NEWS.md`, the release audits under `design/` and the test suite all cite `ROBO-*` ids as the reasoning behind what they assert. Regenerate the one copy that is in git with:
