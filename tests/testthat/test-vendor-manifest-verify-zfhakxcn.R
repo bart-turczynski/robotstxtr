@@ -46,7 +46,7 @@ make_fixture <- function(dir, vendor_root = "vendorx") {
   }
   shas <- vapply(
     rel_paths,
-    function(rel) unname(tolower(tools::sha256sum(file.path(root, rel)))),
+    function(rel) unname(ascii_lower(tools::sha256sum(file.path(root, rel)))),
     character(1)
   )
 

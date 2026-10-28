@@ -42,7 +42,7 @@ make_bing_fixture <- function(dir, vendor_root = "vendorb") {
   }
   shas <- vapply(
     rel_paths,
-    function(rel) unname(tolower(tools::sha256sum(file.path(root, rel)))),
+    function(rel) unname(ascii_lower(tools::sha256sum(file.path(root, rel)))),
     character(1)
   )
   manifest <- file.path(dir, "MANIFEST.dcf")

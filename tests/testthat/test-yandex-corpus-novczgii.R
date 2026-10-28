@@ -89,7 +89,7 @@ test_that("every body file's SHA-256 matches its record", {
     expect_true(file.exists(path))
     expect_identical(
       yandex_corpus_sha256_file(path),
-      tolower(r$body_sha256)
+      ascii_lower(r$body_sha256)
     )
   }
 })

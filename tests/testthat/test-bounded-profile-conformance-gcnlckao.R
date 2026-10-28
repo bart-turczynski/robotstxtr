@@ -238,7 +238,10 @@ test_that("BP7 selectors resolve ASCII case-insensitively and identically", {
     skip_if_not(bp_available(backend), sprintf("%s unavailable", backend))
 
     for (token in bp_profiles(backend)$accepted_token) {
-      spellings <- unique(c(token, tolower(token), toupper(token)))
+      upper <- chartr(
+        paste(letters, collapse = ""), paste(LETTERS, collapse = ""), token
+      )
+      spellings <- unique(c(token, ascii_lower(token), upper))
       # The group is written in the canonical spelling; only the SELECTOR case
       # varies, so any difference is the comparison mode and nothing else.
       body <- sprintf("User-agent: %s\nDisallow: /private", token)
