@@ -44,7 +44,7 @@ test_that("a zone ID does not hide a blocked IPv6 literal", {
   }
 })
 
-test_that("a zone ID survives a port and userinfo, and spares public addresses", {
+test_that("a zone ID is seen past a port or userinfo, not on public hosts", {
   for (url in c(
     "http://[::1%25lo0]:8080/",
     "http://user:pw@[::1%25lo0]/",

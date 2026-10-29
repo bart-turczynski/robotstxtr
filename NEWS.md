@@ -2,7 +2,7 @@
 
 * Case-insensitive matching of product tokens and robots.txt directive names no longer depends on the session locale: under `tr_TR`, `I` no longer folds to `ı` (SEOR-tldlaxgq).
 
-* The SSRF guard now refuses IPv6 literals with a zone ID as it does their unzoned form, and refuses bracketed hosts that are not IPv6 addresses (ROBO-atvfjuuw).
+* The SSRF guard now refuses an IPv6 literal with a zone ID as it does the same address without one, and refuses bracketed hosts that are not IPv6 addresses (ROBO-atvfjuuw).
 
 # robotstxtr 0.3.1
 
