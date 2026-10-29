@@ -44,6 +44,19 @@ test_that("a zone ID does not hide a blocked IPv6 literal", {
   }
 })
 
+test_that("a zone ID survives a port and userinfo, and spares public addresses", {
+  for (url in c(
+    "http://[::1%25lo0]:8080/",
+    "http://user:pw@[::1%25lo0]/",
+    "http://u@[fe80::1%25eth0]:80/x"
+  )) {
+    res <- robotstxtr:::robots_ssrf_check(url)
+    expect_false(res$allowed, info = url)
+  }
+  res <- robotstxtr:::robots_ssrf_check("http://[2606:4700::1%25eth0]/")
+  expect_true(res$allowed)
+})
+
 test_that("a bracketed host that is no IPv6 literal is refused", {
   for (url in c("http://[not-an-address%25x]/", "http://[v1.foo]/")) {
     res <- robotstxtr:::robots_ssrf_check(url)
