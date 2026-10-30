@@ -52,12 +52,14 @@
 # of the installable package; without this, --as-cran reports it as a
 # non-standard top-level directory.
 ^scripts$
-# The CI job library. `R_LIBS_USER` points here and `cache:` carries it, so
-# once SEOR-dyzgzyot made the cached library actually populate, `R CMD check`
-# would see a hidden directory full of installed packages inside the package
-# source. seor carries the same entry for the same reason; punycoder hit the
-# WARNING for real before this was added here.
+# A local R library some setups keep in the package directory: `R CMD check`
+# would otherwise see a hidden directory full of installed packages inside the
+# package source. The former CI kept its cached dependency library here
+# (SEOR-dyzgzyot); punycoder hit the WARNING for real before this was added.
 ^\.r-lib$
+# R CMD check output, written into the project directory so a CI job can
+# upload it as an artifact, as fleet-ci's FLEET_CHECK_DIR.
+^check$
 # In a git worktree .git is a regular file (a gitdir: pointer), which R CMD build
 # does not exclude the way it does a .git directory; it would ship as a hidden file.
 ^\.git$

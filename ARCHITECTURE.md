@@ -29,8 +29,9 @@ bounded Bing and Yandex compatibility profiles behind the engine-aware facade.
 ## Invariants
 
 - Vendored trees stay identical to their pinned upstream. The
-  `vendor-fidelity` gates in `dev/gates.R` check them against their manifests,
-  and the hygiene hooks never rewrite them.
+  vendor-fidelity checks, `dev/verify-yandex-vendor.R` and
+  `dev/verify-bing-vendor.R`, check them against their manifests in the local
+  gate's full tier (`.fleet-ci.yml`), and the hygiene hooks never rewrite them.
 - Tests, examples and vignettes make no live network request: fetches are
   mocked or served locally.
 - Conformance corpora under `inst/bing-corpus/` and `inst/yandex-corpus/` are
