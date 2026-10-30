@@ -29,7 +29,9 @@ docs_gates:
 # others report. The rest of the former dev/gates.R, which the `gates` CI job
 # and the old pre-push hook ran: the NEWS heading against the version and
 # codemeta.json against DESCRIPTION (its news-version and codemeta gates),
-# man/, NAMESPACE and DESCRIPTION against a fresh roxygen2 run, lintr,
+# man/, NAMESPACE and DESCRIPTION against a fresh roxygen2 run (seor's
+# scripts/check-docs-drift.R, through a wrapper that supplies what
+# cpp11::cpp_register() needs), lintr,
 # README.md against a fresh knit, and the two vendored-tree fidelity checks
 # (offline: the vendored trees against their frozen manifests). Then every
 # declared URL: the gate's R CMD check runs with remote incoming, and so its
@@ -37,7 +39,7 @@ docs_gates:
 cheap_gates:
   - Rscript scripts/check-news-version.R
   - Rscript scripts/check-codemeta.R
-  - Rscript scripts/check-docs-drift.R .
+  - sh scripts/check-docs-drift-gate.sh
   - Rscript -e 'lints <- lintr::lint_package(); if (length(lints)) { print(lints); quit(status = 1) }'
   - sh scripts/check-readme-drift.sh
   - Rscript dev/verify-yandex-vendor.R
@@ -81,7 +83,13 @@ exclude_tests:
     why: queries Sonatype OSS Index with credentials the gate does not have; the security-audit job runs it in T2
 
 # Every skip R CMD check's test run may report; any other fails the gate.
-allowed_skips: []
+# R CMD check tests the installed package, which has no src/, so
+# test-bing-nonregression-onwulhga.R's vendored-tree test skips there, as it
+# did under the former hook; the cheap gate dev/verify-yandex-vendor.R checks
+# the same tree against the same manifest from the source.
+allowed_skips:
+  - reason: vendored src tree not present (installed pkg)
+    why: NR-VENDOR reads src/vendor/robotstxtyandex, absent from an installed check; the cheap gate dev/verify-yandex-vendor.R checks that tree against its manifest
 
 # No allowed_notes: R CMD check NOTEs don't fail the gate, as they did not
 # fail the former pre-push hook or CI (rcmdcheck error_on = "warning", no
