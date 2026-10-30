@@ -1,0 +1,119 @@
+# The fleet-ci local gate's settings: T0 (docs) and T1 (full) before every
+# push, run by .fleet-ci/gate in the fleet image (fleet-ci README, "The
+# .fleet-ci.yml file"; seor ADR 0012). Read from the pushed commit. The
+# t2-locale and pages CI jobs read it too.
+version: 1
+
+# The image the gate runs in. It must be .gitlab-ci.yml's
+# FLEET_RELEASE_VARIANT (default fleet-r).
+variant: fleet-r
+
+# Paths on the classifier's docs allowlist that a gate or hook outside the
+# docs tier reads, so a change to them gets the full tier.
+# scripts/check-bugreports.py forbids a /-/issues link in _pkgdown.yml. It is
+# a pre-commit pre-push hook, so it runs on every push whatever the tier;
+# _pkgdown.yml is excluded anyway, as the migration contract asks for every
+# allowlisted path a script or hook reads. No script under scripts/, dev/,
+# tests/ or data-raw/ reads design/**/*.md: the corpus generators and
+# PROVENANCE files only name a design/ spec as a string.
+docs_exclude:
+  - _pkgdown.yml
+
+# T0, and the start of T1: the former dev/gates.R `spelling` gate, over
+# DESCRIPTION, man/, vignettes, README and NEWS against `Language: en-US`.
+# Genuine terms go in inst/WORDLIST.
+docs_gates:
+  - Rscript -e 'bad <- spelling::spell_check_package(); if (nrow(bad)) { print(bad); cat("Correct the prose, or add genuine terms to inst/WORDLIST (spelling::update_wordlist()).\n"); quit(status = 1) }'
+
+# T1, in the container after the dependency install, each run whatever the
+# others report. The rest of the former dev/gates.R, which the `gates` CI job
+# and the old pre-push hook ran: the NEWS heading against the version and
+# codemeta.json against DESCRIPTION (its news-version and codemeta gates).
+# Then what cpp11::cpp_register() needs and robotstxtr does not declare
+# (cpp11's own Config/Needs/cpp11/cpp_register), into the run library, so
+# man/, NAMESPACE and DESCRIPTION can be checked against a fresh roxygen2 run
+# (seor's scripts/check-docs-drift.R, unchanged), which compiles src/ and
+# runs cpp11::cpp_register() in the export; its wrapper fails when that
+# rewrote the committed R/cpp11.R or src/cpp11.cpp, so stale glue is caught
+# rather than regenerated ahead of R CMD check (both scripts pslr's). Then
+# lintr, README.md against a fresh knit, and the two vendored-tree fidelity
+# checks (offline: the vendored trees against their frozen manifests). Then
+# every declared URL: the gate's R CMD check runs with remote incoming, and
+# so its URL check, off; t2-ascran runs it with incoming on.
+cheap_gates:
+  - Rscript scripts/check-news-version.R
+  - Rscript scripts/check-codemeta.R
+  - Rscript scripts/cpp-register-needs.R "$R_LIBS"
+  - sh scripts/check-docs-drift-glue.sh
+  - Rscript -e 'lints <- lintr::lint_package(); if (length(lints)) { print(lints); quit(status = 1) }'
+  - sh scripts/check-readme-drift.sh
+  - Rscript dev/verify-yandex-vendor.R
+  - Rscript dev/verify-bing-vendor.R
+  - Rscript scripts/check-urls.R
+
+# The case-folding legs of test-ascii-case-folding-tldlaxgq.R switch LC_CTYPE
+# to each locale in tests/testthat/fixtures/case-folding-locales.txt
+# (tr_TR.UTF-8, az_AZ.UTF-8, glibc's dotless-i case folds), and
+# test-ssrf-quovenef.R to tr_TR.UTF-8; each skips when its locale is missing.
+# The former CI built both in `check` and in the three `full-check` legs. The
+# gate runs as the invoking user and reads compiled locales from its own
+# LOCPATH only (fleet-ci README, "A known local/CI difference: locales"), so
+# every locale the checks use is listed: en_US.UTF-8 for R CMD check's syntax
+# check under the LC_ALL=C leg below, which switches to it for the UTF-8
+# sources. t2-locale builds the same list.
+locales:
+  - en_US.UTF-8
+  - tr_TR.UTF-8
+  - az_AZ.UTF-8
+
+# The leg the assertion follows, here and in t2-locale: a second, lighter
+# check (no --as-cran, --ignore-vignettes, no NOTE policy) under LC_ALL=C,
+# the template's default leg.
+locale_legs:
+  - C
+
+# The positive locale assertion the former `check` and `full-check` jobs ran
+# after their checks: every case-folding leg listed in the fixture ran and
+# passed against the package the leg's check installed, and each locale folds
+# "I" to a dotless i. Run after the locale leg's check, here and in t2-locale.
+locale_assertions:
+  - Rscript scripts/check-locale-legs.R "$FLEET_RCHECK_DIR"
+
+# The gate runs R CMD check with NOT_CRAN=true, so skip_on_cran() no longer
+# keeps these out of it. T2 runs both, as osv-audit and security-audit.
+exclude_tests:
+  - path: tests/testthat/test-osv.R
+    why: queries osv.dev over the network; the osv-audit job runs it in T2
+  - path: tests/testthat/test-security.R
+    why: queries Sonatype OSS Index with credentials the gate does not have; the security-audit job runs it in T2
+
+# Every skip R CMD check's test run may report; any other fails the gate.
+# R CMD check tests the installed package, which has no src/, so
+# test-bing-nonregression-onwulhga.R's vendored-tree test skips there, as it
+# did under the former hook; the cheap gate dev/verify-yandex-vendor.R checks
+# the same tree against the same manifest from the source.
+allowed_skips:
+  - reason: vendored src tree not present (installed pkg)
+    why: NR-VENDOR reads src/vendor/robotstxtyandex, absent from an installed check; the cheap gate dev/verify-yandex-vendor.R checks that tree against its manifest
+
+# No allowed_notes: R CMD check NOTEs don't fail the gate, as they did not
+# fail the former pre-push hook or CI (rcmdcheck error_on = "warning", no
+# NOTE list).
+
+# The top-level .md files the pkgdown site publishes; every other one (the
+# agent files among them) is moved out before build_site() (SEOR-wqxhftpv).
+# The former `.pkgdown-site` job's keep-list, which dev/check-ci-config.R
+# pinned, less LICENCE.md, which robotstxtr does not carry (a pages_keep
+# entry whose file is missing fails the job). CHANGELOG.md is grandfathered:
+# its page was live when the keep-list landed (SEOR-wqxhftpv).
+# cran-comments.md is on pkgdown's own skip list either way.
+pages_keep:
+  - README.md
+  - NEWS.md
+  - LICENSE.md
+  - CONTRIBUTING.md
+  - SECURITY.md
+  - CODE_OF_CONDUCT.md
+  - THIRD_PARTY_NOTICES.md
+  - cran-comments.md
+  - CHANGELOG.md

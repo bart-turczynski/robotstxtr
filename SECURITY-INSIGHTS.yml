@@ -97,13 +97,14 @@ repository:
         integration:
           adhoc: true
           ci: true
-          release: false
+          release: true
         results: {}
         comment: |
           Audit of the runtime dependency closure against the OSV database
-          (osv.dev). No account or secrets required. Runs as the `osv-audit`
-          job in .gitlab-ci.yml on the weekly dependency-audit pipeline
-          schedule only; under R CMD check the test skips (skip_on_cran()).
+          (osv.dev). No account or secrets required. Runs as fleet-ci's
+          `osv-audit` job on the weekly deep-check schedule, every RELEASE=1
+          pipeline and v* tags; the T2 check legs, which run with
+          NOT_CRAN=true, run it too. The local pre-push gate excludes it.
       - name: oysteR (Sonatype OSS Index)
         type: SCA
         rulesets:
@@ -111,15 +112,17 @@ repository:
         integration:
           adhoc: true
           ci: true
-          release: false
+          release: true
         results: {}
         comment: |
           Audit of the declared hard dependencies (Depends + Imports) against
           the Sonatype OSS Index, with allow-listed advisories carrying a written
-          reason and a review date. Runs as the `security-audit` job in
-          .gitlab-ci.yml on the weekly dependency-audit pipeline schedule only,
+          reason and a review date. Runs as fleet-ci's `security-audit` job on
+          the weekly deep-check schedule, every RELEASE=1 pipeline and v* tags,
           and fails when its OSS Index credentials are missing rather than
-          skipping green; under R CMD check the test skips.
+          skipping green. The T2 check legs, which run with NOT_CRAN=true and
+          get the credentials as project variables, run the live audit too.
+          The local pre-push gate excludes it.
       - name: AddressSanitizer / UndefinedBehaviorSanitizer
         type: SAST
         rulesets:
@@ -127,11 +130,12 @@ repository:
         integration:
           adhoc: true
           ci: true
-          release: false
+          release: true
         results: {}
         comment: |
           R CMD check of the package inside R-hub's clang-ASAN/UBSAN container,
-          the `sanitizers` job in .gitlab-ci.yml, on the weekly deep-check
-          pipeline schedule. It covers the vendored C++ matchers and their
+          fleet-ci's `t2-sanitizers` job, on the weekly deep-check schedule,
+          every RELEASE=1 pipeline and v* tags; it fails on a sanitizer report
+          in the check output. It covers the vendored C++ matchers and their
           bindings. There is no valgrind job in CI; valgrind runs on R-hub
           before a CRAN submission.
