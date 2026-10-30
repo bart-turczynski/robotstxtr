@@ -39,12 +39,16 @@ The gate refuses a push to `main` that adds more than one first-parent merge, on
 ## A red gate on an untouched tree
 
 The gate runs in the image the fleet-ci pin names, with a private package
-library per run, so this machine's R library cannot turn it red. A
-dependency that moved on CRAN can: the gate resolves the dependencies afresh
-on every run. The pre-push `check-toolchain` hook
-(`scripts/check-toolchain.R`) still checks this machine, roxygen2 and pandoc
-against the pins, so that a local `devtools::document()` or README knit
-writes what the gate accepts (SEOR-tcytizic).
+library per run, so this machine's R library cannot turn the gate itself
+red. A dependency that moved on CRAN can: the gate resolves the dependencies
+afresh on every run. The push can still be blocked from this machine: the
+pre-push `check-toolchain` hook (`scripts/check-toolchain.R`) checks the
+host library and toolchain (roxygen2 against `Config/roxygen2/version`,
+installed packages built under a newer R, the local pandoc against
+`.fleet-ci/toolchain`), so that a local `devtools::document()` or README
+knit writes what the gate accepts (SEOR-tcytizic), and a failure there stops
+the push even when the gate passed. Run `Rscript scripts/check-toolchain.R`
+first when a push is refused on an untouched tree.
 
 If the gate is red on a tree you have not touched, say so and keep the
 evidence (`FLEET_GATE_KEEP=<dir>` keeps the container's output) rather than

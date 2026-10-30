@@ -1,18 +1,19 @@
 # robotstxtr's CI
 
 robotstxtr runs fleet-ci's tiered CI (seor ADR 0012). `.gitlab-ci.yml`
-includes fleet-ci's `templates/r-package.yml`, pinned by commit SHA, and sets
-only package variables, with no `x-*` job; `.fleet-ci.yml` holds the local
-gate's settings, and `.fleet-ci/` is fleet-ci's vendored gate (re-run
-fleet-ci's `bin/vendor`, never edit it). The job names below are the
-template's.
+includes fleet-ci's `templates/r-package.yml`, pinned by commit SHA (v1.2.3,
+`5665e947`), and sets package variables and one job of its own, `x-floor`,
+in place of the template's `t2-floor` (`FLEET_FLOOR: "false"`; "Gaps
+accepted", below); `.fleet-ci.yml` holds the local gate's settings, and
+`.fleet-ci/` is fleet-ci's vendored gate (re-run fleet-ci's `bin/vendor`,
+never edit it). The other job names below are the template's.
 
 | Tier | Where | What runs |
 | --- | --- | --- |
 | hygiene hooks | pre-commit, at commit and at push | `.pre-commit-config.yaml`. At commit and again at push: the hygiene fixers (end of file, trailing whitespace, line endings; the vendored trees, the Yandex corpus and testthat snapshots excluded), the large-file, merge-conflict, YAML and case-conflict checks, and codespell. At push only: the toolchain, citation, BugReports and NEWS terseness checks, the `check-citation.py`, `check-bugreports.py` and `check-news.py` self-tests when those scripts change, and the warn-only `fleet-ci-hook-installed` check |
 | T0 | every push whose diff against `main` is docs-only (`design/**/*.md` and the like, minus `.fleet-ci.yml`'s `docs_exclude`, `_pkgdown.yml`), locally, the pre-push hook | the gate's docs tier, `.fleet-ci/gate` in the fleet image (`fleet-r`): spelling and `pkgdown::check_pkgdown()` |
-| T1 | every other push, locally, the pre-push hook | the gate's full tier: T0's checks, then the `NEWS.md` heading (`scripts/check-news-version.R`), `codemeta.json` against `DESCRIPTION` (`scripts/check-codemeta.R`), docs drift, lintr, README drift (`scripts/check-readme-drift.sh`), the two vendored-tree fidelity checks (`dev/verify-yandex-vendor.R`, `dev/verify-bing-vendor.R`), the URL check, one `R CMD check --as-cran` (incoming checks off) with the Turkish and Azeri locales built, then a second check under `LC_ALL=C` and `scripts/check-locale-legs.R` against it |
-| T2 | the weekly `deep-check` schedule; every T3 run | `t2-check-release`, `t2-check-oldrel`, `t2-check-devel`, `t2-floor` (R 4.1.3), `t2-sanitizers` (R-hub's clang-asan container), `t2-locale` (the locales built, `R CMD check` under `LC_ALL=C`, then `scripts/check-locale-legs.R`), `t2-ascran`, `coverage` (fails below 95%), `osv-audit`, `security-audit`, `citation-version` |
+| T1 | every other push, locally, the pre-push hook | the gate's full tier: T0's checks, then the `NEWS.md` heading (`scripts/check-news-version.R`), `codemeta.json` against `DESCRIPTION` (`scripts/check-codemeta.R`), cpp11's register needs (`scripts/cpp-register-needs.R`), docs drift with a stale-cpp11-glue check (`scripts/check-docs-drift-glue.sh`), lintr, README drift (`scripts/check-readme-drift.sh`), the two vendored-tree fidelity checks (`dev/verify-yandex-vendor.R`, `dev/verify-bing-vendor.R`), the URL check, one `R CMD check --as-cran` (incoming checks off) with the Turkish and Azeri locales built, then a second check under `LC_ALL=C` and `scripts/check-locale-legs.R` against it |
+| T2 | the weekly `deep-check` schedule; every T3 run | `t2-check-release`, `t2-check-oldrel`, `t2-check-devel`, `x-floor` (R 4.1.3, in place of `t2-floor`), `t2-sanitizers` (R-hub's clang-asan container), `t2-locale` (the locales built, `R CMD check` under `LC_ALL=C`, then `scripts/check-locale-legs.R`), `t2-ascran`, `coverage` (fails below 95%), `osv-audit`, `security-audit`, `citation-version` |
 | T3 | a `RELEASE=1` web pipeline on `main`; a `v*` tag | all of T2 plus `t3-manual` (the PDF manual); the tag, or `RELEASE=1` on a tag, adds `pages` |
 
 Pushes to `main` or a branch, merge requests and API pipelines (`glab ci run`)
@@ -70,8 +71,9 @@ pass to `R CMD check`, so two things prove the legs ran:
 
 - the gate's skip policy: `.fleet-ci.yml` builds both locales (and
   `en_US.UTF-8`, which `R CMD check`'s syntax check needs under the `C` leg)
-  before T1's check, and `allowed_skips` is empty, so a leg that skips fails
-  T1;
+  before T1's check, and `allowed_skips` holds only the one vendored-src
+  reason (`vendored src tree not present (installed pkg)`), so a leg that
+  skips fails T1;
 - `scripts/check-locale-legs.R`, a `locale_assertions` entry: after the
   `LC_ALL=C` leg's check, in T1 and in `t2-locale`, it switches to each
   locale by its exact name, asserts it folds "I" to the dotless U+0131 (the
@@ -134,7 +136,7 @@ would inherit it.
   devel, and `floor-check` ran `--as-cran` too. Now only `t2-ascran`
   (release R) runs `--as-cran` with incoming on; `t2-check-release`,
   `t2-check-oldrel` and `t2-check-devel` run a plain `R CMD check`
-  (`--no-manual`), and `t2-floor` keeps `--as-cran` with incoming off. An
+  (`--no-manual`), and `x-floor` keeps `--as-cran` with incoming off. An
   `--as-cran`-only finding on oldrel or devel now surfaces at win-builder, or
   at CRAN.
 - **The case-folding legs run on R release only.** The former `check` and
@@ -156,6 +158,16 @@ would inherit it.
   HTTP 429 or the shutdown of the endpoint oysteR calls turns all of them
   red, and on a `v*` tag that blocks `pages`. Scoping the credentials to the
   audit job is a fleet follow-up (seor SEOR-yrsmlrvp).
+- **The audits lost their no-skip guard.** The former `osv-audit` and
+  `security-audit` failed when `test_local()` ran no test or any test in
+  their file skipped (`nrow(res) == 0L || any(res$skipped)`), since a
+  skipped audit reports success having audited nothing (PUNY-rsxtbbln).
+  fleet-ci's audit jobs run `test_local(..., stop_on_failure = TRUE)`
+  alone. `security-audit` still fails on a missing precondition, through
+  `OSSINDEX_AUDIT_REQUIRED=true`, but `test-osv.R` has no such flag, so
+  `osv-audit` can pass green having audited nothing (a skip on an empty
+  dependency closure, say). Restoring the guard in the template is a fleet
+  follow-up (seor SEOR-hpodlopi).
 - **T1 drops `test-security.R`'s offline tests.** `exclude_tests` drops the
   whole file, so its allow-list well-formedness tests no longer run before a
   push; they run in T2. Moving them into a file of their own changes
@@ -181,17 +193,31 @@ would inherit it.
   legs (`t2-check-release`, `-oldrel`, `-devel`, the only CI jobs that would
   apply the list) fail on a NOTE. Read `t2-ascran`'s NOTEs, the only leg with
   the incoming feasibility and URL checks, before a submission.
-- **The floor leg is unproven.** `t2-floor` installs every dependency,
-  `Suggests` included, from one dated snapshot (`FLEET_FLOOR_SNAPSHOT`), and
-  `rurl (>= 3.0.1)` puts that snapshot in late 2026, after R 4.6.0. The former
-  `floor-check` took a 2025-07-15 snapshot for the third-party packages and
-  installed punycoder, pslr and rurl from current CRAN; the template has no
-  such mix. Two risks: a dependency in the snapshot that no longer supports
-  R 4.1, and rurl 3.1.0's zero-padded IPv6 serialization under R < 4.2,
-  which ssrfr's floor leg hit and which `test-robots_origin-r5.R`'s
-  bracketed IPv6 origins could meet. If the first T2 run fails on either,
-  move the date, carry the former recipe as an `x-floor` job (ssrfr's
-  shape), or record `FLEET_FLOOR: "false"` here with the reason.
+- **The floor leg is `x-floor`, not the template's `t2-floor`.**
+  `t2-floor` cannot build curl at the floor. It installs every dependency,
+  `Suggests` included, from one dated snapshot, and `rurl (>= 3.0.1)` puts
+  that snapshot in late 2026 (2026-10-28), whose curl, which httr2 needs,
+  wants libcurl >= 7.73; `rocker/r-ver:4.1.3` has focal's libcurl 7.68 and
+  no headers, and the arm64 runner gets source packages only, so the
+  template's job, which installs no system library, cannot build it. So
+  `.gitlab-ci.yml` sets `FLEET_FLOOR: "false"` and carries the former
+  `floor-check` as `x-floor` on `.t2-job` (sitemapr's and ssrfr's shape): it
+  apt-installs the libcurl and OpenSSL headers, takes the third-party
+  packages from the former 2025-07-15 snapshot (httr2 1.2.0, curl 6.4.0,
+  which builds against libcurl 7.68), then punycoder, pslr, raddr and rurl
+  from current CRAN, as the former job took punycoder, pslr and rurl, with
+  rlang and vctrs, which raddr needs newer than the snapshot's. It runs
+  `--as-cran` with `_R_CHECK_CRAN_INCOMING_=false` and the template's
+  guard (a `Status:` line in `00check.log`, exit status 0, no ERROR or
+  WARNING). A cold run of its script in `rocker/r-ver:4.1.3` (arm64)
+  passed on 2026-10-30 with rurl 3.1.0: 4 NOTEs, no WARNING. rurl 3.1.0
+  zero-pads IPv6 pieces under R < 4.2, which ssrfr's floor leg hit; that
+  run did not meet it. `robots_origin()` calls `rurl::safe_parse_url()`
+  without setting `url_standard`, so `test-robots_origin-r5.R`'s bracketed
+  IPv6 origins are not shown to reach that path (only `R/ssrf.R`'s WHATWG
+  second look passes `url_standard = "whatwg"`). If `x-floor` ever fails on
+  an IPv6 host, pin rurl to a fixed commit as ssrfr's `x-floor` does, until
+  CRAN serves the fix.
 - **rurl comes from CRAN, not a git tag.** The former CI installed rurl from
   its `v3.0.1` git tag (`RURL_GIT`, ROBO-hzcnolhe) in every job; the template
   resolves `Imports: rurl (>= 3.0.1)` from Posit Package Manager like any

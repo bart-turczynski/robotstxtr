@@ -43,7 +43,11 @@ readme_diff=$(cat "$work/readme.diff")
 if [ -n "$readme_diff" ]; then
   printf '%s\n' "$readme_diff"
   echo "ERROR: README.md is out of sync with README.Rmd."
-  echo "Knit README.Rmd under pandoc $(sed -n 's/^PANDOC_VERSION=//p' .fleet-ci/toolchain 2>/dev/null || echo '(the pin)') and commit the result."
+  pin=$(sed -n 's/^PANDOC_VERSION=//p' .fleet-ci/toolchain 2>/dev/null) || pin=
+  if [ -z "$pin" ]; then
+    pin="(the pin in .fleet-ci/toolchain)"
+  fi
+  echo "Knit README.Rmd under pandoc $pin and commit the result."
   exit 1
 fi
 echo "readme: README.md matches a fresh knit of README.Rmd"

@@ -28,18 +28,23 @@ docs_gates:
 # T1, in the container after the dependency install, each run whatever the
 # others report. The rest of the former dev/gates.R, which the `gates` CI job
 # and the old pre-push hook ran: the NEWS heading against the version and
-# codemeta.json against DESCRIPTION (its news-version and codemeta gates),
-# man/, NAMESPACE and DESCRIPTION against a fresh roxygen2 run (seor's
-# scripts/check-docs-drift.R, through a wrapper that supplies what
-# cpp11::cpp_register() needs), lintr,
-# README.md against a fresh knit, and the two vendored-tree fidelity checks
-# (offline: the vendored trees against their frozen manifests). Then every
-# declared URL: the gate's R CMD check runs with remote incoming, and so its
-# URL check, off; t2-ascran runs it with incoming on.
+# codemeta.json against DESCRIPTION (its news-version and codemeta gates).
+# Then what cpp11::cpp_register() needs and robotstxtr does not declare
+# (cpp11's own Config/Needs/cpp11/cpp_register), into the run library, so
+# man/, NAMESPACE and DESCRIPTION can be checked against a fresh roxygen2 run
+# (seor's scripts/check-docs-drift.R, unchanged), which compiles src/ and
+# runs cpp11::cpp_register() in the export; its wrapper fails when that
+# rewrote the committed R/cpp11.R or src/cpp11.cpp, so stale glue is caught
+# rather than regenerated ahead of R CMD check (both scripts pslr's). Then
+# lintr, README.md against a fresh knit, and the two vendored-tree fidelity
+# checks (offline: the vendored trees against their frozen manifests). Then
+# every declared URL: the gate's R CMD check runs with remote incoming, and
+# so its URL check, off; t2-ascran runs it with incoming on.
 cheap_gates:
   - Rscript scripts/check-news-version.R
   - Rscript scripts/check-codemeta.R
-  - sh scripts/check-docs-drift-gate.sh
+  - Rscript scripts/cpp-register-needs.R "$R_LIBS"
+  - sh scripts/check-docs-drift-glue.sh
   - Rscript -e 'lints <- lintr::lint_package(); if (length(lints)) { print(lints); quit(status = 1) }'
   - sh scripts/check-readme-drift.sh
   - Rscript dev/verify-yandex-vendor.R

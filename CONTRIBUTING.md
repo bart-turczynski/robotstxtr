@@ -69,8 +69,11 @@ Rscript scripts/check-docs-drift.R
 It needs the exact roxygen2 version pinned by `Config/roxygen2/version` in
 `DESCRIPTION`, since roxygen output formatting changes between releases. Like
 `devtools::document()` itself, it loads the package through `pkgload`, which
-runs `cpp11::cpp_register()` first — so `cpp11:::get_cpp_register_needs()`
-(`brio`, `cli`, `decor`, `desc`, `glue`, `tibble`, `vctrs`) must be installed.
+runs `cpp11::cpp_register()` first — so what cpp11's own
+`Config/Needs/cpp11/cpp_register` field names (`brio`, `cli`, `decor`,
+`desc`, `glue`, `tibble`, `vctrs` in cpp11 0.5.5) must be installed;
+`Rscript scripts/cpp-register-needs.R <library>` installs the missing ones
+into `<library>`, as the gate does.
 
 Source lives in `src/`, tests live in `tests/`, and durable project context
 lives in `ARCHITECTURE.md` and `design/`: CI, the local gate and the project

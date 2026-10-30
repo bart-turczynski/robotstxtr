@@ -1,34 +1,101 @@
 # GitLab CI for robotstxtr: fleet-ci's template, pinned by commit SHA (seor
 # ADR 0012, fleet-ci README "The CI template"). The template owns the event
 # table, the jobs and the images; this file sets only the package's switches
-# and settings. A push to main or a branch, and a merge request, create no
-# pipeline: the merge gate is the local one (.fleet-ci/gate, run by the
-# .fleet-ci/pre-push hook; settings in .fleet-ci.yml). T2 runs on the
+# and adds its x-floor job. A push to main or a branch, and a merge request,
+# create no pipeline: the merge gate is the local one (.fleet-ci/gate, run by
+# the .fleet-ci/pre-push hook; settings in .fleet-ci.yml). T2 runs on the
 # deep-check schedule (SCHEDULE_KIND=deep-check, schedule 4472810), T3 on a
 # RELEASE=1 web pipeline and a v* tag. The dependency-audit schedule
 # (4467473) gets no pipeline: osv-audit and security-audit run in T2.
 # design/ci.md says what moved where.
 #
-# Every switch keeps the template's default. robotstxtr has compiled code
-# (the vendored Google, Bing and Yandex matchers and its cpp11 bindings), so
-# t2-sanitizers runs R-hub's clang-asan container, an amd64 image, under
-# emulation on the arm64 runner; t2-locale builds .fleet-ci.yml's case-folding
-# locales and runs scripts/check-locale-legs.R after its leg.
+# Every other switch keeps the template's default. robotstxtr has compiled
+# code (the vendored Google, Bing and Yandex matchers and its cpp11
+# bindings), so t2-sanitizers runs R-hub's clang-asan container, an amd64
+# image, under emulation on the arm64 runner; t2-locale builds .fleet-ci.yml's
+# case-folding locales and runs scripts/check-locale-legs.R after its leg.
 #
 # Bump the pin by changing `ref:` and re-running fleet-ci's bin/vendor at the
 # same SHA, in one merge request: .fleet-ci/VERSION must equal `ref:`.
 include:
   - project: bart-turczynski/fleet-ci
-    ref: 864e5386511de38b0dff594ba3118a800f662cc7
+    ref: 5665e94723729437a1bf272e5d1587481c075187
     file: templates/r-package.yml
 
 variables:
-  # The declared floor, `Depends: R (>= 4.1.0)`: 4.1 is the oldest minor with
-  # an arm64 rocker/r-ver image, which the runner needs. The snapshot must
-  # serve `Imports: rurl (>= 3.0.1)` (on CRAN 2026-09-09) and the punycoder,
-  # pslr and raddr releases rurl needs, so it is fleet-ci's own p3m date. Its
-  # Ubuntu 20.04 binary path spares source builds on rocker/r-ver:4.1.3,
-  # whose image has no libcurl headers. Unproven until the first T2 run:
-  # design/ci.md, "Gaps accepted".
-  FLEET_FLOOR_R: "4.1.3"
-  FLEET_FLOOR_SNAPSHOT: "https://packagemanager.posit.co/cran/__linux__/focal/2026-10-28"
+  # The template's t2-floor installs every dependency from one dated
+  # snapshot, and robotstxtr's floor closure cannot come from one: rurl (>=
+  # 3.0.1) puts that snapshot in late 2026, whose curl (httr2's) wants
+  # libcurl >= 7.73, while rocker/r-ver:4.1.3 has focal's 7.68 and no headers,
+  # and the arm64 runner gets source packages only. So the floor leg is
+  # x-floor, on .t2-job, in its place.
+  FLEET_FLOOR: "false"
+
+# The deep-check leg at the declared R floor, `Depends: R (>= 4.1.0)`, in
+# place of the template's t2-floor (FLEET_FLOOR above): the former
+# `floor-check` job, with the template's completion guard and its rules from
+# .t2-job. 4.1.3 is the last 4.1 patch and the oldest minor rocker publishes
+# an arm64 image for, which the runner needs.
+#
+# - Third-party packages come from one dated Posit Package Manager snapshot,
+#   FLOOR_SNAPSHOT, as source builds (the runner is arm64 and that URL serves
+#   source), with the libcurl and OpenSSL headers apt installs. 2025-07-15,
+#   the former floor-check's date: the first snapshot carrying httr2 1.2.0
+#   (`Imports: httr2 (>= 1.2.0)`), while its curl is still 6.4.0, which builds
+#   against focal's libcurl 7.68.
+# - The fleet packages postdate that snapshot, so they come after it from
+#   current CRAN: punycoder, pslr, raddr and rurl (DESCRIPTION wants >=
+#   3.0.1), as the former floor-check took punycoder, pslr and rurl. raddr
+#   needs rlang >= 1.1.7 and vctrs >= 0.7.0, newer than the snapshot's, so
+#   those two come from CRAN in the same call. All declare R >= 4.1 or lower.
+# - Only what the check needs is installed: the hard dependencies, the test
+#   and vignette Suggests, and rcmdcheck. oysteR and rosv serve the audits,
+#   whose tests skip without them, so _R_CHECK_FORCE_SUGGESTS_=false lets
+#   --as-cran report them as a NOTE instead of stopping.
+# - Vignettes are neither built nor checked: no pandoc in this image.
+# - No hostile locales are built, so the case-folding legs skip here;
+#   t2-locale and the local gate run them.
+#
+# BLOCKING, like every T2 leg: a scheduled detector that cannot go red is
+# worthless. A cold docker run of this job's script in rocker/r-ver:4.1.3
+# (arm64) passed on 2026-10-30 with rurl 3.1.0: 4 NOTEs, no WARNING.
+x-floor:
+  extends: .t2-job
+  image: rocker/r-ver:4.1.3
+  variables:
+    FLOOR_SNAPSHOT: "https://packagemanager.posit.co/cran/2025-07-15"
+    R_CRAN_SRC: "https://cloud.r-project.org"
+    R_CRAN_WEB: "https://cloud.r-project.org"
+    _R_CHECK_FORCE_SUGGESTS_: "false"
+    # Incoming off: .t2-job runs this leg in v* tag pipelines too, where the
+    # incoming feasibility check's "Insufficient package version" (the tag's
+    # version already on CRAN) would fail it and so block `pages`. t2-ascran
+    # runs the incoming checks, on R release.
+    _R_CHECK_CRAN_INCOMING_: "false"
+  script:
+    - apt-get update -qq && apt-get install -y --no-install-recommends libcurl4-openssl-dev libssl-dev zlib1g-dev pkg-config
+    - >
+      Rscript -e 'install.packages(c("cpp11", "httr2", "Rcpp", "stringi", "digest",
+      "testthat", "callr", "httpuv", "jsonlite", "knitr", "rmarkdown", "rcmdcheck"),
+      repos = Sys.getenv("FLOOR_SNAPSHOT"), Ncpus = 4L);
+      install.packages(c("rlang", "vctrs", "punycoder", "pslr", "raddr", "rurl"),
+      repos = "https://cloud.r-project.org", Ncpus = 4L);
+      stopifnot(all(vapply(c("cpp11", "httr2", "rurl", "testthat", "rcmdcheck"), requireNamespace, NA, quietly = TRUE)));
+      print(R.version.string)'
+    # The template's guard: rcmdcheck reads a check that halted partway as
+    # 0/0/0 and returns normally, so the check must have written a Status
+    # line, exited 0 and reported no ERROR or WARNING (SEOR-maavnxdm).
+    - >
+      Rscript -e 'res <- rcmdcheck::rcmdcheck(args = c("--no-manual", "--as-cran", "--ignore-vignettes"),
+      build_args = c("--no-manual", "--no-build-vignettes"),
+      error_on = "never", check_dir = "check");
+      print(res);
+      log <- file.path(res$checkdir, "00check.log");
+      if (!file.exists(log) || !any(grepl("^Status:", readLines(log, warn = FALSE)))) stop("R CMD check did not complete", call. = FALSE);
+      if (!identical(as.integer(res$status), 0L)) stop("R CMD check exited with status ", res$status, call. = FALSE);
+      if (length(res$errors) || length(res$warnings)) stop("ERROR or WARNING", call. = FALSE)'
+  artifacts:
+    when: always
+    paths:
+      - check/
+    expire_in: 1 week

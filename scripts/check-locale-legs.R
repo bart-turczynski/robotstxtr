@@ -17,9 +17,14 @@
 # it after each locale leg's check (full tier), and CI's `t2-locale` after
 # each of its legs, with FLEET_RCHECK_DIR naming the leg's .Rcheck
 # directory, which holds the robotstxtr that check installed. The locales
-# come from .fleet-ci.yml's `locales`. testthat and robotstxtr's
-# dependencies come from the run library: R_LIBS in the local gate, and
-# FLEET_RUN_LIB in CI, where the command runs without the tooling library.
+# come from .fleet-ci.yml's `locales`. In the local gate, gate-run.R starts
+# the command with R_PROFILE_USER set to the image's tooling Rprofile and
+# R_LIBS set to the run library, so the library path is the leg's .Rcheck
+# directory, then the tooling library, then the run library: testthat, and
+# any robotstxtr dependency the tooling library holds, come from the tooling
+# library, the rest from the run library (FLEET_RUN_LIB is unset there). In
+# CI the run library is FLEET_RUN_LIB, and the command runs without the
+# tooling library.
 #
 # Usage, from the package root:
 #   Rscript scripts/check-locale-legs.R [<library holding robotstxtr>]
