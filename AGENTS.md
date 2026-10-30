@@ -4,14 +4,14 @@ Use committed docs for durable project knowledge. Keep raw planning notes, tempo
 
 Do not commit `_scratch/`, `.fp/`, secrets, dependencies, build outputs, or local caches.
 
-## Git and the verify gate
+## Verification
 
-Git follows the house `agent-workflow` skill. fp status changes stay decoupled from git (the `fp` skill's `references/decoupling.md`). What is specific to this repository:
+Gate: local
+Verify: .fleet-ci/gate auto
 
-- Each clone enables the hooks once: `pre-commit install && pre-commit install --hook-type pre-push`. `pre-commit` is a Python tool; install it with `uv tool install pre-commit` or `pipx install pre-commit`.
-- The pre-push `verify` hook runs `dev/verify.sh`, the chain CI runs. Run it by hand with `pre-commit run --hook-stage pre-push --all-files`.
-- **On a branch that hook is the only gate.** `.gitlab-ci.yml`'s top-level `workflow:` block admits only a tag, a push to `main`, or a hand-started (`web`) pipeline, so a branch push and its merge request create no pipeline (SEOR-bmgkzhvy). An empty pipeline list is not a pass. For a server-side answer on a branch, start one at **Build > Pipelines > Run pipeline**; `glab ci run` starts an `api` pipeline, which the block refuses.
-- The pages keep-list is `keep=` in the `.pkgdown-site` job of `.gitlab-ci.yml`, pinned by `dev/check-ci-config.R`. A new top-level `.md` meant for the public site is not published until it is added there.
+Git follows the house `agent-workflow` skill. fp status changes stay decoupled from git (the `fp` skill's `references/decoupling.md`).
+
+The merge gate is fleet-ci's local gate, run in the fleet image by the pre-push hook (install the hooks once per clone with `pre-commit install`, then `.fleet-ci/pre-push --install`); its settings are `.fleet-ci.yml`. Until it is installed, the warn-only pre-commit hook `fleet-ci-hook-installed` (`scripts/check-fleet-hook.sh`) prints a WARNING on every push, which then ran only the hygiene hooks. A diff against `main` that the classifier calls docs-only (`design/**/*.md` and the like; `_pkgdown.yml` is excluded here) gets T0, spelling and `pkgdown::check_pkgdown()`; any other gets T1, the cheap gates, one `R CMD check` and the case-folding locale leg. Branch pushes, merge requests and pushes to `main` create no pipeline, and an empty pipeline list is not a pass. CI runs fleet-ci's template: T2 on the weekly `deep-check` schedule, T3 on a `RELEASE=1` web pipeline and on the `v*` tag (seor ADR 0012; design/ci.md). The pages keep-list is `.fleet-ci.yml`'s `pages_keep`: a new top-level `.md` meant for the public site is not published until it is added there.
 
 ## NEWS.md
 
@@ -34,21 +34,22 @@ It writes `design/tracker-snapshot.md`. Not `docs/`: that path here is the gener
 
 Refresh it before taking any copy of the repository you intend to keep: a mirror push to the `backup` remote at `~/Projects/_backups/robotstxtr.git`, or a `git bundle create <path> --all`. Both exist for this repository. A snapshot that is never regenerated is worse than none, because it looks current.
 
+The gate refuses a push to `main` that adds more than one first-parent merge, on any remote it gates. It does not gate the `backup` mirror: its URL is a local path, so the gate prints `gate: skipped, backup is a local mirror` and exits 0, and a mirror push carrying several merges, or branches from before the fleet-ci migration, needs no `--no-verify`. Under pre-commit's migration mode (`hooks/pre-push.legacy`) pre-commit's own pre-push hooks still run on that push; only the owner bypasses them, with `--no-verify`, and an agent asks before using it (a gate bypass is confirm-first).
+
 ## A red gate on an untouched tree
 
-Toolchain drift makes the verify gate go red on a tree nobody changed, and it
-looks exactly like a defect in the change being made. `scripts/check-toolchain.R`
-runs ahead of the expensive step and names it in one line: roxygen2's installed
-version against this package's `Config/roxygen2/version`, and any installed
-package built under a newer R than the one running. Both have happened, and both
-cost an afternoon (SEOR-tcytizic).
+The gate runs in the image the fleet-ci pin names, with a private package
+library per run, so this machine's R library cannot turn the gate itself
+red. A dependency that moved on CRAN can: the gate resolves the dependencies
+afresh on every run. The push can still be blocked from this machine: the
+pre-push `check-toolchain` hook (`scripts/check-toolchain.R`) checks the
+host library and toolchain (roxygen2 against `Config/roxygen2/version`,
+installed packages built under a newer R, the local pandoc against
+`.fleet-ci/toolchain`), so that a local `devtools::document()` or README
+knit writes what the gate accepts (SEOR-tcytizic), and a failure there stops
+the push even when the gate passed. Run `Rscript scripts/check-toolchain.R`
+first when a push is refused on an untouched tree.
 
-If that check passes and the gate is still red on a tree you have not touched,
-say so and keep the evidence rather than assuming your change caused it.
-
-A third cause is a reinstall in flight. `there is no package called '<pkg>'`
-for a package in the rurl stack (rurl, pslr, punycoder) usually means another
-session is installing a dev build of it, and the library directory is briefly
-absent. Re-run the gate before investigating. `ls -ld` on that package's
-directory in the R library, showing an mtime from the last few minutes, or a
-`.9000` version, confirms it.
+If the gate is red on a tree you have not touched, say so and keep the
+evidence (`FLEET_GATE_KEEP=<dir>` keeps the container's output) rather than
+assuming your change caused it.
