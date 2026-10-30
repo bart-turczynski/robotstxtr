@@ -11,22 +11,57 @@
 #
 # So this script runs the test file against an installed robotstxtr and
 # demands, for every locale in the list, a test of each expected name that was
-# not skipped, did not fail or error, and passed at least one expectation. The
-# CI jobs that build the locales run it after R CMD check, against the package
-# the check installed.
+# not skipped, did not fail or error, and passed at least one expectation.
+#
+# A `locale_assertions` entry of .fleet-ci.yml: the fleet-ci local gate runs
+# it after each locale leg's check (full tier), and CI's `t2-locale` after
+# each of its legs, with FLEET_RCHECK_DIR naming the leg's .Rcheck
+# directory, which holds the robotstxtr that check installed. The locales
+# come from .fleet-ci.yml's `locales`. testthat and robotstxtr's
+# dependencies come from the run library: R_LIBS in the local gate, and
+# FLEET_RUN_LIB in CI, where the command runs without the tooling library.
 #
 # Usage, from the package root:
-#   Rscript scripts/check-locale-legs.R <library holding robotstxtr>
+#   Rscript scripts/check-locale-legs.R [<library holding robotstxtr>]
+# The library defaults to FLEET_RCHECK_DIR.
 
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) != 1L) {
-  stop("usage: check-locale-legs.R <library holding robotstxtr>", call. = FALSE)
+if (length(args) > 1L) {
+  stop("usage: check-locale-legs.R [<library holding robotstxtr>]",
+    call. = FALSE
+  )
 }
-.libPaths(c(args[[1L]], .libPaths()))
+lib <- if (length(args)) args[[1L]] else Sys.getenv("FLEET_RCHECK_DIR")
+if (!nzchar(lib) || !dir.exists(file.path(lib, "robotstxtr"))) {
+  stop("no robotstxtr installed in '", lib, "' (FLEET_RCHECK_DIR or the ",
+    "argument)",
+    call. = FALSE
+  )
+}
+run_lib <- Sys.getenv("FLEET_RUN_LIB")
+.libPaths(c(lib, if (dir.exists(run_lib)) run_lib, .libPaths()))
 
 locales <- readLines("tests/testthat/fixtures/case-folding-locales.txt")
 if (!length(locales)) {
   stop("case-folding-locales.txt lists no locales", call. = FALSE)
+}
+# The probe the former CI ran ahead of its checks: R switches LC_CTYPE to each
+# locale by its exact name, the way the tests detect it, and each folds "I" to
+# the dotless U+0131, the mapping the legs exist to survive. A locale built on
+# the wrong charmap would let its legs pass having proved nothing.
+old <- Sys.getlocale("LC_CTYPE")
+for (l in locales) {
+  active <- suppressWarnings(Sys.setlocale("LC_CTYPE", l))
+  folds <- identical(tolower("I"), intToUtf8(0x131L))
+  invisible(Sys.setlocale("LC_CTYPE", old))
+  if (!identical(active, l)) {
+    stop("R cannot switch LC_CTYPE to ", l, call. = FALSE)
+  }
+  if (!folds) {
+    stop(l, " does not fold I to a dotless i; its legs would prove nothing",
+      call. = FALSE
+    )
+  }
 }
 results <- as.data.frame(testthat::test_file(
   "tests/testthat/test-ascii-case-folding-tldlaxgq.R",
