@@ -1,8 +1,8 @@
 # robotstxtr's CI
 
 robotstxtr runs fleet-ci's tiered CI (seor ADR 0012). `.gitlab-ci.yml`
-includes fleet-ci's `templates/r-package.yml`, pinned by commit SHA (v1.2.4,
-`162f35db`), and sets package variables and one job of its own, `x-floor`,
+includes fleet-ci's `templates/r-package.yml`, pinned by commit SHA (v1.3.0,
+`66d8d2d4`), and sets package variables and one job of its own, `x-floor`,
 in place of the template's `t2-floor` (`FLEET_FLOOR: "false"`; "Gaps
 accepted", below); `.fleet-ci.yml` holds the local gate's settings, and
 `.fleet-ci/` is fleet-ci's vendored gate (re-run fleet-ci's `bin/vendor`,
