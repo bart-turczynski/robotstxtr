@@ -101,6 +101,7 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
   validate_fetch_user_agent(fetch_user_agent)
   max_bytes_int <- validate_max_bytes(max_bytes)
   validate_ssrf_guard(ssrf_guard)
+  warn_ssrf_guard_deprecated(ssrf_guard)
   fetch_ua <- if (is.null(fetch_user_agent)) {
     package_fetch_user_agent()
   } else {
@@ -127,7 +128,7 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
   # Fetch each distinct origin sequentially in first-occurrence order.
   results <- vector("list", n_src)
   for (i in seq_len(n_src)) {
-    results[[i]] <- perform_fetch(
+    results[[i]] <- acquire_robots(
       distinct_origins[[i]], timeout, fetch_ua, max_bytes_int, ssrf_guard
     )
   }

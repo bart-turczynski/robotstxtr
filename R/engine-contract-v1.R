@@ -10,8 +10,12 @@ engine_contract_id_v1 <- function() {
   "robotstxtr.engine-aware/v1"
 }
 
+# 2026-11-05.1: the evidence `safety_block_reason` set gains "userinfo",
+# "port", "parse", "multicast" and "reserved", the refusals ssrfr adds
+# (ROBO-jbralthm; design/engine-profiles.md section 2). Both facades share the
+# evidence schema, so both revisions moved.
 engine_schema_revision_v1 <- function() {
-  "2026-08-25.1"
+  "2026-11-05.1"
 }
 
 # The engine-aware/v2 facade identity (BI-V2-SCHEMA, spec SS15). Introduced by
@@ -26,7 +30,7 @@ engine_contract_id_v2 <- function() {
 }
 
 engine_schema_revision_v2 <- function() {
-  "2026-08-25.1"
+  "2026-11-05.1"
 }
 
 engine_rulesets_v1 <- function() {
@@ -769,7 +773,7 @@ fetch_evidence_v1 <- function(url, timeout, max_bytes, fetch_ua, ssrf_guard) {
   source_ids <- paste0("robots_", seq_along(distinct_origins))
   fetched <- vector("list", length(distinct_origins))
   for (i in seq_along(distinct_origins)) {
-    fetched[[i]] <- perform_fetch(
+    fetched[[i]] <- acquire_robots(
       distinct_origins[[i]], timeout, fetch_ua, max_bytes, ssrf_guard
     )
   }
@@ -1567,6 +1571,7 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
   max_bytes <- validate_max_bytes(max_bytes)
   validate_fetch_user_agent(fetch_user_agent)
   validate_ssrf_guard(ssrf_guard)
+  warn_ssrf_guard_deprecated(ssrf_guard)
   n <- length(url)
   token <- expand_product_token_v1(robots_product_token, n)
   ruleset <- expand_engine_argument_v1(
