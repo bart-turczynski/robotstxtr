@@ -2,7 +2,7 @@
 
 validation_mock_response <- function(status = 200L, body = raw()) {
   function(req) {
-    httr2::response(status_code = status, url = req$url, body = body)
+    fake_response(status_code = status, url = req$url, body = body)
   }
 }
 
@@ -160,9 +160,9 @@ test_that("URL validation reuses one fetched raw body per origin", {
   body <- charToRaw("user-agent: *\ndisallow: /private\n")
   state <- new.env(parent = emptyenv())
   state$calls <- 0L
-  httr2::local_mocked_responses(function(req) {
+  local_fake_ssrfr(function(req) {
     state$calls <- state$calls + 1L
-    httr2::response(status_code = 200L, url = req$url, body = body)
+    fake_response(status_code = 200L, url = req$url, body = body)
   })
   x <- robots_validate_url(c(
     "https://example.com/one", "https://example.com/two"
@@ -180,7 +180,7 @@ test_that("URL validation reuses one fetched raw body per origin", {
 })
 
 test_that("URL acquisition outcomes remain explicit validation evidence", {
-  httr2::local_mocked_responses(validation_mock_response(206L,
+  local_fake_ssrfr(validation_mock_response(206L,
                                                          charToRaw("partial")))
   partial <- robots_validate_url("https://example.com/x")
   expect_identical(partial$documents$validation_status, "not_validated")
@@ -188,7 +188,7 @@ test_that("URL acquisition outcomes remain explicit validation evidence", {
   expect_false(partial$documents$body_truncated)
 
   large_body <- charToRaw(strrep("x", 100L))
-  httr2::local_mocked_responses(validation_mock_response(200L, large_body))
+  local_fake_ssrfr(validation_mock_response(200L, large_body))
   limited <- robots_validate_url("https://example.com/x", max_bytes = 10L)
   expect_identical(limited$documents$fetch_outcome, "body_too_large")
   expect_identical(limited$documents$validation_status, "not_validated")
@@ -260,7 +260,7 @@ test_that("validation_status reports not_validated when nothing was parsed", {
 })
 
 test_that("a generic acquisition failure is one acquisition_failed error", {
-  httr2::local_mocked_responses(validation_mock_response(500L))
+  local_fake_ssrfr(validation_mock_response(500L))
   failed <- robots_validate_url("https://example.com/x")
 
   expect_identical(failed$documents$fetch_outcome, "http_error")
@@ -291,7 +291,7 @@ test_that("an acquisition error message is reported verbatim", {
 })
 
 test_that("missing and invalid URL acquisitions are not document validation", {
-  httr2::local_mocked_responses(validation_mock_response(404L))
+  local_fake_ssrfr(validation_mock_response(404L))
   missing <- robots_validate_url("https://example.com/x")
   expect_identical(missing$documents$validation_status, "not_validated")
   expect_identical(missing$diagnostics$severity, "info")

@@ -32,7 +32,7 @@ yc_response <- function(status, body = "") {
   force(status)
   force(body)
   function(req) {
-    httr2::response(
+    fake_response(
       status_code = status, url = req$url, headers = list(),
       body = charToRaw(body)
     )
@@ -43,7 +43,7 @@ yc_mock_router <- function(routes, recorder = NULL) {
   function(req) {
     if (!is.null(recorder)) {
       recorder$urls <- c(recorder$urls, req$url)
-      recorder$agents <- c(recorder$agents, req$options$useragent)
+      recorder$agents <- c(recorder$agents, req$user_agent)
     }
     handler <- routes[[req$url]]
     if (is.null(handler)) {
@@ -80,7 +80,7 @@ yc_expect_active <- function() {
   expect_identical(
     engine_matcher_availability_v1()[["yandex"]], "available"
   )
-  expect_identical(engine_schema_revision_v1(), "2026-08-25.1")
+  expect_identical(engine_schema_revision_v1(), "2026-11-05.1")
   expect_type(engine_matcher_registry_v1()$yandex$callable, "closure")
 }
 
@@ -132,7 +132,6 @@ test_that("A4 the policy body-limit constants are pinned per ruleset", {
 })
 
 test_that("A5 an over-limit yandex fetch allows all without any matcher", {
-  skip_if_not_installed("httr2")
   calls <- new.env(parent = emptyenv())
   calls$google <- 0L
   fake_google <- function(body, url, product_token) {
@@ -148,7 +147,7 @@ test_that("A5 an over-limit yandex fetch allows all without any matcher", {
     match_google_v1 = fake_google, .package = "robotstxtr"
   )
   big_body <- strrep("a", 500001L)
-  httr2::local_mocked_responses(yc_mock_router(list(
+  local_fake_ssrfr(yc_mock_router(list(
     "http://example.test/robots.txt" = yc_response(200L, big_body)
   )))
 
@@ -196,9 +195,8 @@ test_that("B1 a valid yandex token now evaluates to a real Yandex decision", {
 })
 
 test_that("B2 an invalid token never triggers a fetch in the url facade", {
-  skip_if_not_installed("httr2")
   recorder <- yc_recorder()
-  httr2::local_mocked_responses(yc_mock_router(
+  local_fake_ssrfr(yc_mock_router(
     list(
       "http://example.test/robots.txt" = yc_response(
         200L, "user-agent: *\ndisallow: /"

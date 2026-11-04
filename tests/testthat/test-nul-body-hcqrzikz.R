@@ -18,7 +18,7 @@
 nul_ok_bytes <- function(bytes) {
   force(bytes)
   function(req) {
-    httr2::response(
+    fake_response(
       status_code = 200L, url = req$url,
       headers = list(`content-type` = "text/plain"), body = bytes
     )
@@ -85,7 +85,7 @@ test_that("the NUL rule removes bytes rather than truncating the document", {
 # --- Entry point 1: robots_body() preview ------------------------------------
 
 test_that("robots_body() previews a NUL-bearing fetched body byte-safely", {
-  httr2::local_mocked_responses(nul_router(list(
+  local_fake_ssrfr(nul_router(list(
     "http://a/robots.txt" = nul_ok_bytes(nul_body_bytes)
   )))
   x <- allowed_by_robots_url("http://a/x", "TestBot")
@@ -102,7 +102,7 @@ test_that("robots_body() previews a NUL-bearing fetched body byte-safely", {
 # --- Entry point 2: allowed_by_robots_url() ----------------------------------
 
 test_that("allowed_by_robots_url() matches a NUL-bearing body, no abort", {
-  httr2::local_mocked_responses(nul_router(list(
+  local_fake_ssrfr(nul_router(list(
     "http://a/robots.txt" = nul_ok_bytes(nul_body_bytes)
   )))
   urls <- c("http://a/x", "http://a/y", "http://a/z")
@@ -125,13 +125,12 @@ test_that("allowed_by_robots_url() matches a NUL-bearing body, no abort", {
 # --- Entry point 3: robots_evaluate_url_v1() (and sitemapr's caller) ---------
 
 test_that("robots_evaluate_url_v1() evaluates a NUL-bearing body", {
-  httr2::local_mocked_responses(nul_router(list(
+  local_fake_ssrfr(nul_router(list(
     "http://a/robots.txt" = nul_ok_bytes(nul_body_bytes)
   )))
   x <- robots_evaluate_url_v1(
     "http://a/x", robots_product_token = "TestBot",
-    robots_policy_ruleset = "google", matcher_backend = "google",
-    ssrf_guard = FALSE
+    robots_policy_ruleset = "google", matcher_backend = "google"
   )
 
   expect_identical(x$results$url_decision, "disallow")

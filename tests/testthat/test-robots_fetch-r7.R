@@ -1,71 +1,39 @@
-# Slice R7: streaming decoded-byte `max_bytes` enforcement plus strict
-# `max_bytes` call-level validation (PRD 6.4 streaming note, 6.6 shared fetch
-# controls). No external network is used: the compressed/plain-body cases stand
-# up a localhost httpuv server in a SEPARATE process (an in-process server would
-# deadlock, since httpuv runs its R app callback on the main thread while the
-# HTTP client blocks it). The decoded-byte accumulator is also unit-tested with
-# synthetic chunks, proving count/abort/no-store independently of any transport.
+# Slice R7: decoded-byte `max_bytes` enforcement plus strict `max_bytes`
+# call-level validation (PRD 6.4 streaming note, 6.6 shared fetch controls).
+#
+# Since ROBO-jbralthm the bytes are counted by ssrfr, after any gzip or deflate
+# decoding, as they arrive, so a compressed body cannot pass a limit its
+# decoded form exceeds. These cases fetch from a loopback webfakes server
+# through the real ssrfr, with loopback reopened on the server's port for the
+# test only (local_loopback_policy(), helper-fake-ssrfr.R). No external network
+# is used.
 
-# --- Localhost server harness (separate process via callr) ------------------
+# --- Loopback server harness ---------------------------------------------------
 
-# Start a background httpuv server that returns `body_raw` with `headers` on
-# every request, poll until it is ready, run `fn(srv)`, and always kill the
-# server afterwards (on.exit fires even if an expectation inside `fn` fails).
-with_body_server <- function(body_raw, headers, fn) {
-  # This harness binds a real localhost server on 127.0.0.1, which the SSRF
-  # guard (ROBO-quovenef) refuses by default. Override the guard binding for the
-  # duration of this harness ONLY (test-scoped, no production disable path) so
-  # the real fetch/streaming machinery can be exercised against loopback.
-  testthat::local_mocked_bindings(
-    robots_ssrf_check = function(url) list(allowed = TRUE, reason = NA)
-  )
-  port <- httpuv::randomPort()
-  proc <- callr::r_bg(
-    function(port, body_raw, headers) {
-      httpuv::runServer("127.0.0.1", port, list(
-        call = function(req) {
-          list(status = 200L, headers = headers, body = body_raw)
-        }
-      ))
-    },
-    args = list(port = port, body_raw = body_raw, headers = headers)
-  )
-  on.exit(proc$kill(), add = TRUE)
-
-  url <- sprintf("http://127.0.0.1:%d/robots.txt", port)
-  ready <- FALSE
-  for (i in seq_len(100L)) {
-    if (!proc$is_alive()) {
-      break
+# Serve `body_raw` with `headers` at every path, and return the robots URL.
+local_body_server <- function(body_raw, headers = list(),
+                              env = parent.frame()) {
+  skip_if_not_installed("webfakes")
+  app <- webfakes::new_app()
+  app$locals$body <- body_raw
+  app$locals$headers <- headers
+  app$get(webfakes::new_regexp("^/"), function(req, res) {
+    for (name in names(req$app$locals$headers)) {
+      res$set_header(name, req$app$locals$headers[[name]])
     }
-    ok <- tryCatch({
-      req <- httr2::req_error(httr2::request(url), is_error = function(r) FALSE)
-      httr2::req_perform(httr2::req_timeout(req, 1))
-      TRUE
-    }, error = function(e) e)
-    if (isTRUE(ok)) {
-      ready <- TRUE
-      break
-    }
-    # httr2 >= 1.2.0 builds every response from the request method libcurl
-    # reports, which libcurl does only from 7.72.0. On an older libcurl, such as
-    # Ubuntu 20.04's 7.68.0 under the R 4.1 floor image, every request fails
-    # with this message, so waiting longer cannot make the server reachable.
-    if (grepl("`method` must be a single string", conditionMessage(ok),
-              fixed = TRUE)) {
-      skip("httr2 cannot complete a request: libcurl < 7.72.0 gives no method")
-    }
-    Sys.sleep(0.05)
-  }
-  fn(list(url = url, port = port, ready = ready))
+    res$set_type("text/plain")
+    res$send(req$app$locals$body)
+  })
+  server <- webfakes::local_app_process(app, .local_envir = env)
+  url <- server$url("/robots.txt")
+  port <- as.integer(sub("^http://127\\.0\\.0\\.1:([0-9]+)/.*$", "\\1", url))
+  local_loopback_policy(port, env = env)
+  url
 }
 
 # --- Tracer bullet: gzip body under the limit, decoded body over it ---------
 
 test_that("gzip body under limit but decoded over limit is body_too_large", {
-  skip_if_not_installed("httpuv")
-  skip_if_not_installed("callr")
-
   # Highly compressible ~100 KB decoded body; its gzip encoding is a few hundred
   # bytes. With max_bytes between the two, a compressed Content-Length or
   # compressed-byte check would wrongly pass; only decoded counting fails it.
@@ -74,136 +42,109 @@ test_that("gzip body under limit but decoded over limit is body_too_large", {
   expect_lt(length(gz), 50000L)
   expect_gt(length(decoded), 50000L)
 
-  with_body_server(gz, list("Content-Encoding" = "gzip"), function(srv) {
-    if (!srv$ready) {
-      skip("localhost test server did not become ready")
-    }
-    x <- robots_fetch(srv$url, max_bytes = 50000L, timeout = 5)
+  url <- local_body_server(gz, list("Content-Encoding" = "gzip"))
+  x <- robots_fetch(url, max_bytes = 50000L, timeout = 5)
 
-    expect_identical(x$robots$fetch_outcome, "body_too_large")
-    # No body is stored and none is matched: NULL body, NA size.
-    expect_null(x$robots$body[[1]])
-    expect_true(is.na(x$robots$body_size))
-    # Response-stage error metadata for body_too_large.
-    expect_identical(x$robots$error_stage, "response")
-    expect_identical(x$robots$error_class, "robots_body_too_large")
-    # The real final status and effective URL are still recorded.
-    expect_identical(x$robots$http_status, 200L)
-    expect_identical(x$robots$effective_url, srv$url)
-    # And the per-input map row reflects the same outcome/metadata.
-    expect_identical(x$map$fetch_outcome, "body_too_large")
-    expect_identical(x$map$error_class, "robots_body_too_large")
-  })
+  expect_identical(x$robots$fetch_outcome, "body_too_large")
+  # No body is stored and none is matched: NULL body, NA size.
+  expect_null(x$robots$body[[1]])
+  expect_true(is.na(x$robots$body_size))
+  # Response-stage error metadata for body_too_large.
+  expect_identical(x$robots$error_stage, "response")
+  expect_identical(x$robots$error_class, "robots_body_too_large")
+  # The real final status and effective URL are still recorded.
+  expect_identical(x$robots$http_status, 200L)
+  expect_identical(x$robots$effective_url, url)
+  # And the per-input map row reflects the same outcome/metadata.
+  expect_identical(x$map$fetch_outcome, "body_too_large")
+  expect_identical(x$map$error_class, "robots_body_too_large")
 })
 
 # --- Boundary: exactly at the limit vs one byte over ------------------------
 
 test_that("a body exactly at the limit is fetched and stored", {
-  skip_if_not_installed("httpuv")
-  skip_if_not_installed("callr")
-
   limit <- 4096L
   body <- charToRaw(strrep("a", limit)) # decoded length == limit
-  with_body_server(body, list(), function(srv) {
-    if (!srv$ready) {
-      skip("localhost test server did not become ready")
-    }
-    x <- robots_fetch(srv$url, max_bytes = limit, timeout = 5)
+  url <- local_body_server(body)
+  x <- robots_fetch(url, max_bytes = limit, timeout = 5)
 
-    expect_identical(x$robots$fetch_outcome, "fetched")
-    expect_identical(x$robots$body[[1]], body)
-    expect_identical(x$robots$body_size, limit)
-    expect_true(is.na(x$robots$error_class))
-  })
+  expect_identical(x$robots$fetch_outcome, "fetched")
+  expect_identical(x$robots$body[[1]], body)
+  expect_identical(x$robots$body_size, limit)
+  expect_true(is.na(x$robots$error_class))
 })
 
 test_that("a body one byte over the limit is body_too_large", {
-  skip_if_not_installed("httpuv")
-  skip_if_not_installed("callr")
-
   limit <- 4096L
   body <- charToRaw(strrep("a", limit + 1L)) # one byte over
-  with_body_server(body, list(), function(srv) {
-    if (!srv$ready) {
-      skip("localhost test server did not become ready")
-    }
-    x <- robots_fetch(srv$url, max_bytes = limit, timeout = 5)
+  url <- local_body_server(body)
+  x <- robots_evaluate_url_v1(
+    url, "Googlebot", "google", "google", max_bytes = limit, timeout = 5
+  )
+  evidence <- x$evidence
 
-    expect_identical(x$robots$fetch_outcome, "body_too_large")
-    expect_null(x$robots$body[[1]])
-    expect_true(is.na(x$robots$body_size))
-    expect_identical(x$robots$error_class, "robots_body_too_large")
-  })
+  expect_identical(evidence$legacy_fetch_outcome, "body_too_large")
+  expect_identical(evidence$evidence_status, "incomplete")
+  expect_identical(evidence$termination_reason, "ceiling")
+  # ROBO-jbralthm: ssrfr returns none of an oversized body, so nothing was
+  # truncated and nothing is stored.
+  expect_false(evidence$body_truncated)
+  expect_false(evidence$body_present)
+  expect_identical(evidence$stored_bytes, 0L)
+  expect_gt(evidence$observed_bytes, limit)
+  expect_identical(evidence$final_http_status, 200L)
 })
 
 # --- A small uncompressed body under the limit fetches normally -------------
 
 test_that("a small uncompressed body under the limit is fetched", {
-  skip_if_not_installed("httpuv")
-  skip_if_not_installed("callr")
-
   body <- charToRaw("user-agent: *\ndisallow: /admin")
-  with_body_server(body, list(), function(srv) {
-    if (!srv$ready) {
-      skip("localhost test server did not become ready")
-    }
-    x <- robots_fetch(srv$url, timeout = 5) # default max_bytes = 524288
+  url <- local_body_server(body)
+  x <- robots_fetch(url, timeout = 5) # default max_bytes = 524288
 
-    expect_identical(x$robots$fetch_outcome, "fetched")
-    expect_identical(x$robots$body[[1]], body)
-    expect_identical(x$robots$body_size, length(body))
+  expect_identical(x$robots$fetch_outcome, "fetched")
+  expect_identical(x$robots$body[[1]], body)
+  expect_identical(x$robots$body_size, length(body))
+})
+
+test_that("the fetch sends the package user agent over the wire", {
+  skip_if_not_installed("webfakes")
+  app <- webfakes::new_app()
+  app$get("/robots.txt", function(req, res) {
+    res$set_type("text/plain")
+    res$send(paste0("# ", req$get_header("User-Agent")))
   })
+  server <- webfakes::local_app_process(app)
+  url <- server$url("/robots.txt")
+  local_loopback_policy(
+    as.integer(sub("^http://127\\.0\\.0\\.1:([0-9]+)/.*$", "\\1", url))
+  )
+  x <- robots_fetch(url, timeout = 5)
+  expect_identical(
+    rawToChar(x$robots$body[[1]]), paste0("# ", package_fetch_user_agent())
+  )
 })
 
-# --- Decoded-byte accumulator unit tests (synthetic chunks, no transport) ---
-
-test_that("accumulate_within_limit assembles a body under the limit", {
-  chunks <- list(as.raw(1:10), as.raw(11:20), as.raw(21:30))
-  state <- new.env(parent = emptyenv())
-  state$i <- 0L
-  read_chunk <- function() {
-    state$i <- state$i + 1L
-    if (state$i > length(chunks)) raw(0) else chunks[[state$i]]
-  }
-  res <- accumulate_within_limit(read_chunk, max_bytes = 100L)
-  expect_false(res$exceeded)
-  expect_identical(res$body, as.raw(1:30))
-})
-
-test_that("accumulate_within_limit accepts a body exactly at the limit", {
-  chunks <- list(as.raw(1:10), as.raw(11:20))
-  state <- new.env(parent = emptyenv())
-  state$i <- 0L
-  read_chunk <- function() {
-    state$i <- state$i + 1L
-    if (state$i > length(chunks)) raw(0) else chunks[[state$i]]
-  }
-  res <- accumulate_within_limit(read_chunk, max_bytes = 20L)
-  expect_false(res$exceeded)
-  expect_identical(res$body, as.raw(1:20))
-})
-
-test_that("accumulate_within_limit aborts early and stores no body when over", {
-  # Total would be 30 bytes; limit is 15. Reading must stop as soon as the
-  # running total crosses the limit and never assemble a truncated body.
-  state <- new.env(parent = emptyenv())
-  state$reads <- 0L
-  chunks <- list(as.raw(1:10), as.raw(11:20), as.raw(21:30))
-  read_chunk <- function() {
-    state$reads <- state$reads + 1L
-    if (state$reads > length(chunks)) raw(0) else chunks[[state$reads]]
-  }
-  res <- accumulate_within_limit(read_chunk, max_bytes = 15L)
-  expect_true(res$exceeded)
-  expect_null(res$body)
-  # It crossed the limit on the second chunk and stopped pulling further chunks.
-  expect_identical(state$reads, 2L)
-})
-
-test_that("accumulate_within_limit yields raw(0) for an empty stream", {
-  res <- accumulate_within_limit(function() raw(0), max_bytes = 10L)
-  expect_false(res$exceeded)
-  expect_identical(res$body, raw(0))
+test_that("a redirect is followed over the wire", {
+  skip_if_not_installed("webfakes")
+  app <- webfakes::new_app()
+  app$get("/robots.txt", function(req, res) {
+    res$redirect("/moved.txt", 301L)
+  })
+  app$get("/moved.txt", function(req, res) {
+    res$set_type("text/plain")
+    res$send("user-agent: *\ndisallow: /")
+  })
+  server <- webfakes::local_app_process(app)
+  url <- server$url("/robots.txt")
+  local_loopback_policy(
+    as.integer(sub("^http://127\\.0\\.0\\.1:([0-9]+)/.*$", "\\1", url))
+  )
+  x <- robots_fetch(url, timeout = 5)
+  expect_identical(x$robots$fetch_outcome, "fetched")
+  expect_identical(x$robots$redirect_count, 1L)
+  expect_identical(x$robots$effective_url, server$url("/moved.txt"))
+  expect_identical(x$robots$robots_url, url)
 })
 
 # --- Strict max_bytes validation (PRD 6.6) ----------------------------------

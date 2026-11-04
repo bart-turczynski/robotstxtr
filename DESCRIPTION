@@ -44,14 +44,13 @@ LinkingTo:
     cpp11
 SystemRequirements: C++17
 Suggests:
-    callr,
-    httpuv,
     jsonlite,
     knitr,
     oysteR,
     rmarkdown,
     rosv,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    webfakes
 Config/testthat/edition: 3
 VignetteBuilder: knitr
 Config/roxygen2/version: 8.1.1

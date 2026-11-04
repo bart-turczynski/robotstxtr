@@ -99,7 +99,7 @@ fc_mock_router <- function(routes) {
 fc_ok_body <- function(body) {
   force(body)
   function(req) {
-    httr2::response(
+    fake_response(
       status_code = 200L, url = req$url,
       headers = list(`content-type` = "text/plain"), body = charToRaw(body)
     )
@@ -244,7 +244,7 @@ test_that("the fetched path resolves every shape alike, URL kept verbatim", {
     paste0("disallow: ", unique(fc_shape_paths), "$", collapse = "\n"),
     "\n"
   )
-  httr2::local_mocked_responses(fc_mock_router(list(
+  local_fake_ssrfr(fc_mock_router(list(
     "http://a/robots.txt" = fc_ok_body(body),
     "http://example.com/robots.txt" = fc_ok_body(body)
   )))

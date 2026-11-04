@@ -4,7 +4,7 @@ engine_mock_router <- function(routes, recorder = NULL) {
   function(req) {
     if (!is.null(recorder)) {
       recorder$urls <- c(recorder$urls, req$url)
-      recorder$agents <- c(recorder$agents, req$options$useragent)
+      recorder$agents <- c(recorder$agents, req$user_agent)
     }
     handler <- routes[[req$url]]
     if (is.null(handler)) {
@@ -19,7 +19,7 @@ engine_response <- function(status, body = "", headers = list()) {
   force(body)
   force(headers)
   function(req) {
-    httr2::response(
+    fake_response(
       status_code = status, url = req$url, headers = headers,
       body = charToRaw(body)
     )
@@ -37,7 +37,7 @@ test_that("contract metadata publishes revisions and sibling ranges", {
   contract <- robots_engine_contract_v1()
   expect_s3_class(contract, "robots_engine_contract_v1")
   expect_identical(contract$contract_id, "robotstxtr.engine-aware/v1")
-  expect_identical(contract$schema_revision, "2026-08-25.1")
+  expect_identical(contract$schema_revision, "2026-11-05.1")
   expect_match(contract$matcher_revisions[["google"]], "22b355ff")
   expect_identical(
     contract$matcher_availability[["google"]], "available"
@@ -254,7 +254,7 @@ test_that("matcher registry metadata and registration fail closed on drift", {
 
 test_that("HTTP User-Agent is distinct from the robots product token", {
   recorder <- engine_recorder()
-  httr2::local_mocked_responses(engine_mock_router(
+  local_fake_ssrfr(engine_mock_router(
     list(
       "http://example.test/robots.txt" = engine_response(
         200L, "user-agent: crawler-token\ndisallow: /private"
@@ -275,7 +275,7 @@ test_that("HTTP User-Agent is distinct from the robots product token", {
 })
 
 test_that("engine status policies do not fabricate universal behavior", {
-  httr2::local_mocked_responses(engine_mock_router(list(
+  local_fake_ssrfr(engine_mock_router(list(
     "http://example.test/robots.txt" = engine_response(404L)
   )))
   x <- robots_evaluate_url_v1(
@@ -298,7 +298,7 @@ test_that("engine status policies do not fabricate universal behavior", {
 })
 
 test_that("lifecycle-dependent and undocumented outcomes stay unresolved", {
-  httr2::local_mocked_responses(engine_mock_router(list(
+  local_fake_ssrfr(engine_mock_router(list(
     "http://example.test/robots.txt" = engine_response(500L)
   )))
   x <- robots_evaluate_url_v1(
@@ -337,7 +337,7 @@ test_that("safety refusal never becomes an allow or deny", {
 })
 
 test_that("over-ceiling evidence is incomplete and never matched", {
-  httr2::local_mocked_responses(engine_mock_router(list(
+  local_fake_ssrfr(engine_mock_router(list(
     "http://example.test/robots.txt" = engine_response(
       200L, "user-agent: *\ndisallow: /"
     )
@@ -358,7 +358,7 @@ test_that("over-ceiling evidence is incomplete and never matched", {
 })
 
 test_that("partial response resolves policy but does not run a matcher", {
-  httr2::local_mocked_responses(engine_mock_router(list(
+  local_fake_ssrfr(engine_mock_router(list(
     "http://example.test/robots.txt" = engine_response(
       206L, "user-agent: *\ndisallow: /"
     )
@@ -382,7 +382,7 @@ test_that("redirect evidence records terminal reason and ordered hops", {
     ),
     "http://example.test/one" = engine_response(301L)
   )
-  httr2::local_mocked_responses(engine_mock_router(routes))
+  local_fake_ssrfr(engine_mock_router(routes))
   x <- robots_evaluate_url_v1(
     "http://example.test/path", "bot", "google", "google"
   )
@@ -404,7 +404,7 @@ test_that("redirect evidence records terminal reason and ordered hops", {
 })
 
 test_that("HTTPS downgrade redirect is an engine-independent safety refusal", {
-  httr2::local_mocked_responses(engine_mock_router(list(
+  local_fake_ssrfr(engine_mock_router(list(
     "https://example.test/robots.txt" = engine_response(
       302L, headers = list(Location = "http://example.test/robots.txt")
     )
@@ -436,7 +436,7 @@ test_that("Google applies its 500 KiB matcher prefix independently", {
 })
 
 test_that("legacy adapter retains generic HTTP failures as unknown", {
-  httr2::local_mocked_responses(engine_mock_router(list(
+  local_fake_ssrfr(engine_mock_router(list(
     "http://example.test/robots.txt" = engine_response(403L)
   )))
   versioned <- robots_evaluate_url_v1(

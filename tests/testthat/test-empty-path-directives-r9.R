@@ -4,15 +4,15 @@
 # as default_allow/none/NA/NA even though the reporting layer reports a positive
 # matching line for the ignored empty-path directive. The crawl decision
 # (allowed = TRUE) is unchanged. This is normalized identically on BOTH the text
-# path (allowed_by_robots_text) and the URL path (allowed_by_robots_url, mocked
-# offline via httr2::local_mocked_responses).
+# path (allowed_by_robots_text) and the URL path (allowed_by_robots_url, offline
+# through the fake at the ssrfr boundary, helper-fake-ssrfr.R).
 
 # --- Local URL-path mock helper (offline) -----------------------------------
 
 serve_body <- function(body) {
   force(body)
-  httr2::local_mocked_responses(function(req) {
-    httr2::response(status_code = 200L, url = req$url, body = charToRaw(body))
+  local_fake_ssrfr(function(req) {
+    fake_response(status_code = 200L, url = req$url, body = charToRaw(body))
   }, env = parent.frame())
 }
 
