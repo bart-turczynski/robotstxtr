@@ -38,7 +38,8 @@ Depends:
     R (>= 4.1.0)
 Imports:
     httr2 (>= 1.2.0),
-    rurl (>= 3.0.1)
+    rurl (>= 3.0.1),
+    ssrfr (>= 1.0.0)
 LinkingTo:
     cpp11
 SystemRequirements: C++17
