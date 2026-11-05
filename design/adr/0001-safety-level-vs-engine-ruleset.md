@@ -154,36 +154,55 @@ five as a labeled `application_choice` fallback, never reported as documented.
 
 ### 5. Oversized files belong to the ruleset
 
-A body over `max_bytes` stays an L0 fact (`body_too_large`, `termination_reason = ceiling`).
-The ruleset decides what it means:
+What reaches the ruleset depends on the response (main at 9fa9937; ROBO-ldpahknv):
 
-- **`yandex`:** when the acquisition limit is at least **512,000 bytes**, the body exceeds
-  Yandex's documented "500 KB" under either reading of the unit (500,000 or 512,000 bytes;
-  the unit is a `documentation_gap`). Yandex treats a file that fails its requirements as
-  "considered open", so the result is `allow_all` `[documented]`. The default `max_bytes`,
-  524,288, is above that threshold. Below it, the overflow does not prove the file broke
-  Yandex's limit, and the result stays `incomplete`.
+- **A 2xx over `max_bytes`** is kept as its first `max_bytes` bytes: ssrfr's `truncate_body`
+  returns the prefix, and robotstxtr records `fetch_outcome = fetched`, `body_truncated = TRUE`,
+  `stored_bytes = max_bytes`, ssrfr's `observed_bytes` and `termination_reason = ceiling`. The
+  legacy path matches the prefix. The v1 evidence calls it `incomplete`, so every ruleset
+  resolves it `not_evaluated` / `incomplete_evidence`.
+- **A 3xx, an unknown status, or a 2xx whose status libcurl and the status line disagree on**
+  over `max_bytes` is `body_too_large`, `termination_reason = ceiling`, with nothing stored.
+  None of these is a robots.txt file whose size an engine rule speaks to, so it stays
+  `incomplete` under every ruleset.
+- **A 4xx or 5xx over `max_bytes`** is classified by its status (engine-profiles.md §4), as if
+  the body had fit.
 
-  This extends the existing path rather than adding a second one. The Yandex branch of
+The cut 2xx stays an L0 fact. The ruleset decides what it means:
+
+- **`yandex`:** when the stored prefix is at least **512,000 bytes**, the file exceeds Yandex's
+  documented "500 KB" under either reading of the unit (500,000 or 512,000 bytes; the unit is a
+  `documentation_gap`). Yandex treats a file that fails its requirements as "considered open",
+  so the result is `allow_all` `[documented]`. The default `max_bytes`, 524,288, is above that
+  threshold. Below it, the cut does not prove the file broke Yandex's limit, and the result
+  stays `incomplete`.
+
+  This uses the existing path rather than adding a second one. The Yandex branch of
   `resolve_policy_v1()` in `R/engine-contract-v1.R` already turns a retained body with
   `stored_bytes > 500000L` into `allow_all` / `yandex_file_over_500000_bytes` `[documented]`.
-  Slice 8 makes the same branch also accept `body_too_large` with
-  `acquisition_max_bytes ≥ 512000`. It reports the same reason, or a sibling reason recorded
-  in the schema entry, so that one code path carries the Yandex size rule.
+  A cut 2xx never reaches it today, because its `incomplete` evidence returns first. Slice 8
+  lets the `yandex` ruleset take a cut 2xx with `stored_bytes ≥ 512000` past that return and
+  into the same branch, with the same reason or a sibling recorded in the schema entry.
+- **`google`:** Google parses the first 500 KiB (524,288 bytes) and ignores the rest
+  `[documented]`. A cut 2xx with `stored_bytes ≥ 524288` holds Google's whole parse window, and
+  `match_google_v1()` already reads at most 524,288 bytes. So the `google` ruleset can resolve it
+  `use_rules` on the prefix `[documented]`, matched as Google would. With a smaller prefix the
+  window is not all there, and the result stays `incomplete`. This was out of reach when this
+  ADR was first drafted (ssrfr kept no prefix). It is slice 9, separable from the rest.
+- **`rfc9309`, `assumed_rfc9309`, `bing`:** RFC 9309 §2.5 sets a parse floor of 500 KiB, not a
+  maximum, and no source says what happens beyond a limit. A verdict from the prefix would be
+  one compliant crawler's reading, not the protocol's. The result stays `incomplete`.
 
-  **This conflicts with sitemapr ADR-009 §3 as written.** That section maps "body ceiling
-  reached" to `incomplete` and says "Neither is ever `allow_all` / `disallow_all`". Its last
-  sentence leaves "per-engine parse limits and excess-content behavior" to the interpretation
-  layer, and a per-ruleset reading of an L0 `body_too_large` is exactly that. But the
-  sentence before it rules the outcome out explicitly, so it cannot be argued away. The
+  **Both readings conflict with sitemapr ADR-009 §3 as written.** That section, as amended by
+  ADR-010 §2, maps a reached body ceiling to `incomplete`, or to `partial` for an intentional
+  truncate-and-retain cap, and says "Neither is ever `allow_all` / `disallow_all`; a
+  `use_rules` result over a `partial`/unusable body keeps `matcher_status = not_evaluated`".
+  Its last sentence leaves "per-engine parse limits and excess-content behavior" to the
+  interpretation layer, and a per-ruleset reading of a ceiling-cut body is exactly that. But the
+  sentence before it rules both outcomes out explicitly, so it cannot be argued away. The
   sitemapr amendment (slice 6) therefore has to cover both points: the safety level, and a
-  ruleset's documented meaning for the acquisition ceiling. Until that amendment is accepted,
-  slice 8 does not ship.
-- **`google`:** Google parses the first 500 KiB. robotstxtr cannot, because ssrfr returns no
-  part of an oversized body, so the result stays `incomplete` until ssrfr can keep a prefix
-  (engine-profiles.md §7 and §9(c), unchanged).
-- **`rfc9309`, `assumed_rfc9309`, `bing`:** no source says what happens beyond the limit, so the
-  result stays `incomplete`.
+  ruleset's documented meaning for a ceiling-cut body. Until that amendment is accepted, slices
+  8 and 9 do not ship.
 
 ### 6. What replaces `ssrf_guard`
 
@@ -297,7 +316,8 @@ as the plan of record because it moves chain bookkeeping that ssrfr owns (the ch
 - **This ADR alone does not override sitemapr ADR-009 §3** for robotstxtr, since engine-profiles.md
   is governed by it. Accepting this ADR needs a sitemapr ADR that amends ADR-009 §3 on two
   points (slice 6): safety precedence applies under `safety_level = "strict"`, and a ruleset
-  may give the acquisition ceiling a documented meaning (§5, the Yandex `allow_all`).
+  may give a ceiling-cut body a documented meaning (§5: the Yandex `allow_all`, and Google's
+  `use_rules` on the prefix if slice 9 is kept).
 - Revisit if an engine documents a robots.txt hop count other than five, documents refusing a
   downgrade, or documents a behavior for a URL-shape refusal.
 
@@ -370,15 +390,19 @@ Applied by slice 2. Do not apply before then.
    is `[documentation_gap]` for `bing`."
 
 8. **§7.** Replace the "**Over-limit body**" bullet with:
-   "**Over-limit body** (`body_too_large`, an L0 fact) — by ruleset: `yandex` with
-   `acquisition_max_bytes ≥ 512000` → `allow_all` `[documented]` (the file exceeds 500 KB
-   under either reading of the unit; same rule as a retained body over 500,000 bytes,
-   `yandex_file_over_500000_bytes`; sitemapr ADR-009 §3 as amended); `yandex` below that, `google`, `rfc9309`, `assumed_rfc9309`, `bing` →
-   `evidence_status = incomplete`. Google parses the ≤-limit prefix; robotstxtr cannot, because
-   `ssrfr` returns no part of an over-limit body (implementation delta, §9). A 4xx/5xx over the
-   limit is classified by its status (§4)."
+   "**Over-limit body** — robotstxtr retains the ≤-limit prefix of a 2xx (ROBO-ldpahknv;
+   `body_truncated = TRUE`, `termination_reason = ceiling`); the legacy path matches it. In the
+   v1 path the ruleset decides what it means: `yandex` with `stored_bytes ≥ 512000` →
+   `allow_all` `[documented]` (the file exceeds 500 KB under either reading of the unit; same
+   rule as a retained body over 500,000 bytes, `yandex_file_over_500000_bytes`); `google` with
+   `stored_bytes ≥ 524288` → `use_rules` on the prefix `[documented]` (Google parses the first
+   500 KiB); both under sitemapr ADR-009 §3 as amended. `yandex` and `google` below those sizes,
+   `rfc9309`, `assumed_rfc9309`, `bing` → `evidence_status = incomplete`. A 3xx, an unknown
+   status or a status mismatch over the limit is `body_too_large`, nothing stored, `incomplete`
+   under every ruleset. A 4xx/5xx over the limit is classified by its status (§4)."
    And replace the `yandex` bullet's "500 KB file" with "500 KB file (read as 500,000 bytes;
-   the unit is not stated `[documentation_gap]`)".
+   the unit is not stated `[documentation_gap]`)". And in §9(c), replace "the v1 evidence keeps
+   it `incomplete` (§7)" with "the v1 ruleset reading is §7's (ADR 0001 slices 8 and 9)".
 
 9. **§10.** Add: "**Fetch rules (redirect count, size, downgrade, per engine)** —
    `design/engine-fetch-rules-sources.md` (read 2026-11-05). **Safety level** —
@@ -424,23 +448,26 @@ acceptance test.
 6. **sitemapr amends ADR-009 §3 and stops passing `ssrf_guard`** (in sitemapr). Depends on 2.
    Acceptance: a new sitemapr ADR amends ADR-009 §3 on two points. Safety precedence applies
    under `safety_level = "strict"`; under `crawler`, an address-class refusal is
-   `transport_fail`. And a ruleset may give the acquisition ceiling (`body_too_large`) a
-   documented meaning, today only Yandex's `allow_all`. `robots-facts.R` no longer passes
+   `transport_fail`. And a ruleset may give a ceiling-cut body a documented meaning: Yandex's
+   `allow_all` for a file over 500 KB, and Google's `use_rules` on its 500 KiB prefix. `robots-facts.R` no longer passes
    `ssrf_guard`, and its tests pass against a robotstxtr with and without the argument.
 7. **`ssrf_guard` is removed** (robotstxtr). Depends on 5 and 6, plus one minor release.
    Acceptance: passing it is an unused-argument error. The evidence column `ssrf_guard` is
    dropped under a new schema revision.
-8. **The `yandex` ruleset reads an oversized file as open** (robotstxtr). Depends on 2 and on
+8. **The `yandex` ruleset reads a cut file as open** (robotstxtr). Depends on 2 and on
    slice 6's ADR being accepted. Acceptance: the existing `yandex_file_over_500000_bytes`
-   branch in `resolve_policy_v1()` is extended, with no parallel branch added. With it,
-   `body_too_large` with `max_bytes ≥ 512000` under `yandex` resolves `allow_all`
-   (`[documented]`). With `max_bytes < 512000` it stays `incomplete`. Retained bodies over
-   500,000 bytes behave as today. Other rulesets are unchanged. If the maintainer adopts it, the `yandex` × `redirect_over_budget` cell becomes
-   `allow_all` `[application_choice]` in the same slice.
-
-A Google prefix parse for oversized files stays outside this list. It needs ssrfr to keep a
-body prefix and is engine-profiles.md §9(c)'s existing delta. File it top-level, depending on
-the ssrfr work, if it is wanted.
+   branch in `resolve_policy_v1()` is reached, with no parallel branch added. With it, a cut
+   2xx (`body_truncated = TRUE`) with `stored_bytes ≥ 512000` under `yandex` resolves
+   `allow_all` (`[documented]`). With `stored_bytes < 512000` it stays `incomplete`, and so
+   does `body_too_large` (3xx, unknown status). Retained uncut bodies over 500,000 bytes behave
+   as today. Other rulesets are unchanged. If the maintainer adopts it, the `yandex` ×
+   `redirect_over_budget` cell becomes `allow_all` `[application_choice]` in the same slice.
+9. **The `google` ruleset reads a cut file's prefix** (robotstxtr). Depends on 2 and on slice
+   6's ADR being accepted. Acceptance: a cut 2xx with `stored_bytes ≥ 524288` under `google`
+   resolves `use_rules` (`[documented]`) and is matched on its first 524,288 bytes, as
+   `match_google_v1()` already reads; with a smaller prefix it stays `incomplete`. Other
+   rulesets are unchanged. This slice can be dropped, or filed top-level instead, without
+   touching the rest of this ADR.
 
 ## Open for the maintainer
 
@@ -453,20 +480,31 @@ the ssrfr work, if it is wanted.
    a documented open fallback to an undocumented trigger. It can be dropped without affecting
    the rest of the ADR. If dropped, the cell stays `documentation_gap`.
 4. **The Yandex "500 KB" unit.** 500,000 bytes (the current reading) or 512,000 bytes? §5 uses
-   512,000 as the ceiling threshold, which holds under both readings. The retained-body path
-   stays at 500,000.
+   512,000 as the threshold for a cut file, which holds under both readings. The uncut
+   retained-body path stays at 500,000. *(Changed: the threshold now applies to a cut 2xx's
+   stored prefix, not to `body_too_large`.)*
 5. **If ssrfr declines the downgrade flag**, is the robotstxtr-side new-chain fallback (§7)
    acceptable, or does `crawler` wait?
 6. **The sitemapr ADR (slice 6)** is a change in another repository's accepted ADR set. Confirm
    it should be written as a new sitemapr ADR amending ADR-009 §3, not as an edit.
 7. **Bing.** Still no primary source for any fetch rule (research record). Keep searching each
    release, or treat Bing's fetch as permanently `assumed_rfc9309`-only?
-8. **sitemapr ADR-009 §3 and the acquisition ceiling.** §5 / slice 8 need ADR-009 §3's "Neither
-   is ever `allow_all`" relaxed for a ruleset's documented ceiling meaning. Its last sentence
-   ("excess-content behavior belongs to the interpretation layer") supports the change but
-   does not license it. Accept the widened amendment, or drop slice 8 and keep the Yandex
-   over-ceiling case `incomplete`?
+8. **sitemapr ADR-009 §3 and the acquisition ceiling.** §5 / slices 8 and 9 need ADR-009 §3
+   (as amended by ADR-010 §2) relaxed for a ruleset's documented meaning of a ceiling-cut
+   body: "Neither is ever `allow_all`" for Yandex, and "`use_rules` over a `partial` body keeps
+   `not_evaluated`" for Google. Its last sentence ("excess-content behavior belongs to the
+   interpretation layer") supports the change but does not license it. Accept the widened
+   amendment, or drop slices 8 and 9 and keep a cut file `incomplete` under every ruleset?
+   *(Changed: covers the cut 2xx now retained, and Google's prefix as well as Yandex.)*
 9. **The narrowed invariant** (§3): is "`safety_block_reason` set ⇒ `safety_refused` under
    `strict` only" acceptable for sitemapr's findings mapping? The alternative is a new
    `evidence_status` value (for example `unreachable_local`) under a schema revision, which
    would keep the old invariant intact.
+10. **Google's prefix (slice 9): in this ADR, or top-level?** It became possible today
+    (ROBO-ldpahknv) and follows §5's rule, but it is not needed for the safety-level decision.
+    Keep it as slice 9, or file it top-level depending on slice 6? *(New.)*
+11. **What to call a cut 2xx in the v1 evidence.** robotstxtr records it `incomplete`. sitemapr
+    ADR-010 §2 calls an intentional truncate-and-retain cap `partial` (usable prefix), while
+    robotstxtr's v1 `partial` today means a 206. Keep `incomplete` and let the ruleset read the
+    prefix (this ADR), or adopt ADR-010's `partial` for it under a schema revision, which would
+    need the 206 case renamed? *(New.)*
