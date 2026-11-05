@@ -114,16 +114,23 @@ over either limit is a \code{network_error}.
 
 A 429 or 503 for robots.txt may say when to try again (RFC 9110 section
 10.2.3). Each source row keeps the final response's \code{Retry-After} field
-value as \code{retry_after}, exactly as received (several fields joined with
-\code{", "}), and the delay it asks for as \code{retry_after_seconds}: the
-\code{delay-seconds} value, or an HTTP-date less the response's \code{Date} (the
-fetch time when \code{Date} is absent or invalid), with a date already past
-giving \code{0}. Both are \code{NA} when the final response has no \code{Retry-After};
-\code{retry_after_seconds} alone is \code{NA} when the value is neither form. Only the
-final response counts, never a redirect before it; an outcome that ends
-without a final non-redirect response (a refusal, a transport failure, a
-redirect error, or an over-limit body) records none. \code{robots_fetch()} never
-retries: honoring the delay is the caller's choice.
+value as \code{retry_after}, as \pkg{ssrfr} delivers it (optional whitespace
+trimmed, obs-fold unfolded; several fields joined with \code{", "}), and the
+delay it asks for as \code{retry_after_seconds}: the \code{delay-seconds} value, or
+an HTTP-date less the response's \code{Date} (the fetch time when \code{Date} is
+absent or invalid), with a date already past giving \code{0}. The delay is
+unbounded, since RFC 9110 sets no maximum, so clamp it before waiting.
+\code{retry_after_seconds} alone is \code{NA} when the value is neither form. Only
+the final response counts, never a redirect before it.
+
+\code{NA} in both columns means the delay is not available, not that none was
+requested. That is the case when the final response has no \code{Retry-After},
+and also when the fetch ends without a usable final response: a refusal, a
+transport failure, a redirect error, or a body over \code{max_bytes}. A 4xx or
+5xx whose body exceeds \code{max_bytes} keeps its status and outcome, but its
+headers are not available, so its \code{Retry-After} is \code{NA} even when the
+server sent one. \code{robots_fetch()} never retries: honoring the delay is the
+caller's choice.
 
 \code{timeout} is one budget for the whole chain of one origin, redirects
 included, rounded up to whole seconds; each connection attempt also gets at

@@ -232,12 +232,13 @@ make_source_result <- function(outcome, http_status, effective_url,
 # 10.2.3): `delay-seconds` (1*DIGIT) as is, or an HTTP-date less `reference`,
 # the response's own Date when it carries a valid one, else `fetched_at`
 # (both seconds since the epoch). A date already past is 0. NA when the value
-# is absent or is neither form.
+# is absent or is neither form. Unbounded: RFC 9110 sets no maximum, so the
+# caller clamps.
 retry_after_delay <- function(value, date, fetched_at) {
   if (length(value) != 1L || is.na(value)) {
     return(NA_real_)
   }
-  value <- http_trim_ows(value)
+  value <- trimws(value, whitespace = "[ \t]")
   if (grepl("^[0-9]+$", value)) {
     return(as.double(value))
   }
@@ -255,17 +256,13 @@ retry_after_delay <- function(value, date, fetched_at) {
   max(0, target - reference)
 }
 
-http_trim_ows <- function(x) {
-  gsub("^[ \t]+|[ \t]+$", "", x)
-}
-
 # An HTTP-date (RFC 9110 section 5.6.7) as seconds since the epoch, or NA.
 # Recipients accept all three formats: IMF-fixdate and the obsolete RFC 850
 # and asctime forms. Names are case-sensitive. An RFC 850 two-digit year that
 # would lie more than 50 years past `now` (seconds since the epoch) is the
 # most recent past year with those digits.
 http_date_seconds <- function(x, now) {
-  x <- http_trim_ows(x)
+  x <- trimws(x, whitespace = "[ \t]")
   days <- "(Mon|Tue|Wed|Thu|Fri|Sat|Sun)"
   long_days <- "(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)"
   months <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep",
@@ -298,28 +295,39 @@ http_date_seconds <- function(x, now) {
     m <- m[-1L]
     f <- form$fields
     year <- as.integer(m[[f[["year"]]]])
-    if (identical(name, "rfc850")) {
-      now_year <- as.integer(format(
-        as.POSIXct(now, origin = "1970-01-01", tz = "UTC"), "%Y", tz = "UTC"
-      ))
-      year <- (now_year %/% 100L) * 100L + year
-      if (year > now_year + 50L) {
-        year <- year - 100L
-      }
-    }
+    month_day <- c(
+      match(m[[f[["month"]]]], months), as.integer(m[[f[["day"]]]])
+    )
     hms <- as.integer(m[f[["hour"]] + 0:2])
     if (hms[[1L]] > 23L || hms[[2L]] > 59L || hms[[3L]] > 60L) {
       return(NA_real_)
     }
-    date <- as.Date(
-      sprintf("%04d-%02d-%02d", year, match(m[[f[["month"]]]], months),
-              as.integer(m[[f[["day"]]]])),
-      format = "%Y-%m-%d"
-    )
-    if (is.na(date)) {
-      return(NA_real_)
+    if (!identical(name, "rfc850")) {
+      return(http_date_epoch(year, month_day, hms))
     }
-    return(as.double(date) * 86400 + sum(hms * c(3600, 60, 1)))
+    # RFC 850: the century of `now`, unless that puts the timestamp more than
+    # 50 years after `now`; then the century before.
+    later <- as.POSIXlt(now, origin = "1970-01-01", tz = "UTC")
+    century <- ((later$year + 1900L) %/% 100L) * 100L
+    later$year <- later$year + 50L
+    target <- http_date_epoch(century + year, month_day, hms)
+    if (!is.na(target) && target > as.double(as.POSIXct(later))) {
+      target <- http_date_epoch(century - 100L + year, month_day, hms)
+    }
+    return(target)
   }
   NA_real_
+}
+
+# Seconds since the epoch for a UTC calendar time, or NA for a date that does
+# not exist (such as 31 February).
+http_date_epoch <- function(year, month_day, hms) {
+  date <- as.Date(
+    sprintf("%04d-%02d-%02d", year, month_day[[1L]], month_day[[2L]]),
+    format = "%Y-%m-%d"
+  )
+  if (is.na(date)) {
+    return(NA_real_)
+  }
+  as.double(date) * 86400 + sum(hms * c(3600, 60, 1))
 }

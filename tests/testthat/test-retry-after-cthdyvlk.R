@@ -79,12 +79,21 @@ test_that("ROBO-cthdyvlk: 429 and 503 with delay-seconds", {
   }
 })
 
-test_that("ROBO-cthdyvlk: delay-seconds keeps the raw value, trims OWS", {
-  row <- ra_fetch_one(fake_response(
-    503L, headers = list("Retry-After" = " 0 ")
-  ))
-  expect_identical(row$retry_after, " 0 ")
-  expect_identical(row$retry_after_seconds, 0)
+test_that("ROBO-cthdyvlk: the parser trims optional whitespace", {
+  expect_identical(retry_after_delay(" \t0 ", NA_character_, 0), 0)
+  expect_identical(
+    retry_after_delay(
+      " Thu, 01 Jan 1970 00:02:00 GMT\t", NA_character_, 0
+    ),
+    120
+  )
+  expect_identical(retry_after_delay("\n0", NA_character_, 0), NA_real_)
+})
+
+test_that("ROBO-cthdyvlk: the delay is not clamped", {
+  expect_identical(
+    retry_after_delay("99999999999", NA_character_, 0), 99999999999
+  )
 })
 
 # --- HTTP-date --------------------------------------------------------------
@@ -133,6 +142,25 @@ test_that("ROBO-cthdyvlk: the obsolete RFC 850 and asctime forms parse", {
     "Retry-After" = "Thu Nov  5 12:02:00 2026"
   )))
   expect_identical(row$retry_after_seconds, 120)
+})
+
+test_that("ROBO-cthdyvlk: RFC 850 dates past now + 50y are last century", {
+  # now = Thu, 05 Nov 2026 12:00:00 GMT. Dec 2076 is past now + 50 years by
+  # the full timestamp, though not by whole years.
+  expect_identical(
+    retry_after_delay(
+      "Saturday, 05-Dec-76 12:00:00 GMT", NA_character_, ra_fetched_at
+    ),
+    0
+  )
+  expect_identical(
+    http_date_seconds("Saturday, 05-Dec-76 12:00:00 GMT", ra_fetched_at),
+    as.double(as.POSIXct("1976-12-05 12:00:00", tz = "UTC"))
+  )
+  expect_identical(
+    http_date_seconds("Thursday, 05-Nov-76 11:00:00 GMT", ra_fetched_at),
+    as.double(as.POSIXct("2076-11-05 11:00:00", tz = "UTC"))
+  )
 })
 
 # --- invalid and absent -----------------------------------------------------
@@ -216,4 +244,52 @@ test_that("ROBO-cthdyvlk: no final response, no Retry-After", {
   )
   expect_identical(x$robots$retry_after, rep(NA_character_, 3L))
   expect_identical(x$robots$retry_after_seconds, rep(NA_real_, 3L))
+})
+
+test_that("ROBO-cthdyvlk: a 5xx over max_bytes keeps its status, no header", {
+  # ssrfr's decoded-bytes failure carries no headers: NA is "not available".
+  local_fake_ssrfr(ra_router(list(
+    "http://a/robots.txt" = fake_response(
+      503L, headers = list("Retry-After" = "120"), body = strrep("x", 64L)
+    )
+  )))
+  row <- robots_fetch("http://a/", max_bytes = 8L)$robots
+  expect_identical(row$http_status, 503L)
+  expect_identical(row$fetch_outcome, "http_error")
+  expect_identical(row$retry_after, NA_character_)
+  expect_identical(row$retry_after_seconds, NA_real_)
+})
+
+# --- one robots schema across entry points ----------------------------------
+
+test_that("ROBO-cthdyvlk: text and url robots frames share a schema", {
+  text <- allowed_by_robots_text("user-agent: *\n", "http://a/", "bot")
+  expect_named(text$robots, ra_robots_columns)
+  expect_identical(text$robots$retry_after, NA_character_)
+  expect_identical(text$robots$retry_after_seconds, NA_real_)
+
+  local_fake_ssrfr(ra_router(list(
+    "http://a/robots.txt" = fake_response(
+      503L, headers = list("Retry-After" = "120")
+    )
+  )))
+  url <- allowed_by_robots_url("http://a/", "bot")
+  expect_named(url$robots, names(text$robots))
+  expect_identical(
+    vapply(text$robots, typeof, character(1L)),
+    vapply(url$robots, typeof, character(1L))
+  )
+  both <- rbind(text$robots, url$robots)
+  expect_identical(both$retry_after, c(NA, "120"))
+  expect_identical(both$retry_after_seconds, c(NA, 120))
+})
+
+test_that("ROBO-cthdyvlk: the legacy adapter writes NA Retry-After columns", {
+  engine <- robots_evaluate_text_v1(
+    "user-agent: *\n", "http://a/", "bot", "google", "google"
+  )
+  legacy <- as_legacy_robots_decisions_v1(engine)
+  expect_named(legacy$robots, ra_robots_columns)
+  expect_identical(legacy$robots$retry_after, NA_character_)
+  expect_identical(legacy$robots$retry_after_seconds, NA_real_)
 })

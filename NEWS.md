@@ -1,6 +1,6 @@
 # robotstxtr (development version)
 
-* `robots_fetch()$robots` gains `retry_after` and `retry_after_seconds`: the final response's `Retry-After` and its delay, so a caller can honor a 429 or 503 (RFC 9110 §10.2.3) (ROBO-cthdyvlk).
+* The `robots` frame of `robots_fetch()` and `allowed_by_robots_*()` gains `retry_after` and `retry_after_seconds`: the final response's `Retry-After` and its delay, so a caller can honor a 429 or 503 (RFC 9110 §10.2.3) (ROBO-cthdyvlk).
 
 * Case-insensitive matching of product tokens and robots.txt directive names no longer depends on the session locale: under `tr_TR`, `I` no longer folds to `ı` (SEOR-tldlaxgq).
 

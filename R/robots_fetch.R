@@ -67,16 +67,23 @@
 #'
 #' A 429 or 503 for robots.txt may say when to try again (RFC 9110 section
 #' 10.2.3). Each source row keeps the final response's `Retry-After` field
-#' value as `retry_after`, exactly as received (several fields joined with
-#' `", "`), and the delay it asks for as `retry_after_seconds`: the
-#' `delay-seconds` value, or an HTTP-date less the response's `Date` (the
-#' fetch time when `Date` is absent or invalid), with a date already past
-#' giving `0`. Both are `NA` when the final response has no `Retry-After`;
-#' `retry_after_seconds` alone is `NA` when the value is neither form. Only the
-#' final response counts, never a redirect before it; an outcome that ends
-#' without a final non-redirect response (a refusal, a transport failure, a
-#' redirect error, or an over-limit body) records none. `robots_fetch()` never
-#' retries: honoring the delay is the caller's choice.
+#' value as `retry_after`, as \pkg{ssrfr} delivers it (optional whitespace
+#' trimmed, obs-fold unfolded; several fields joined with `", "`), and the
+#' delay it asks for as `retry_after_seconds`: the `delay-seconds` value, or
+#' an HTTP-date less the response's `Date` (the fetch time when `Date` is
+#' absent or invalid), with a date already past giving `0`. The delay is
+#' unbounded, since RFC 9110 sets no maximum, so clamp it before waiting.
+#' `retry_after_seconds` alone is `NA` when the value is neither form. Only
+#' the final response counts, never a redirect before it.
+#'
+#' `NA` in both columns means the delay is not available, not that none was
+#' requested. That is the case when the final response has no `Retry-After`,
+#' and also when the fetch ends without a usable final response: a refusal, a
+#' transport failure, a redirect error, or a body over `max_bytes`. A 4xx or
+#' 5xx whose body exceeds `max_bytes` keeps its status and outcome, but its
+#' headers are not available, so its `Retry-After` is `NA` even when the
+#' server sent one. `robots_fetch()` never retries: honoring the delay is the
+#' caller's choice.
 #'
 #' `timeout` is one budget for the whole chain of one origin, redirects
 #' included, rounded up to whole seconds; each connection attempt also gets at
