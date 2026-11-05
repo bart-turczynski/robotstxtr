@@ -19,6 +19,15 @@ Explicit compatibility adapter for callers that still consume the original
 backend are both \code{"google"}; unsupported legacy fetch outcomes remain
 unknown exactly as in the original API.
 }
+\details{
+A source whose 2xx body was cut at \code{max_bytes} has
+\code{fetch_outcome = "fetched"} and \code{body_truncated = TRUE}, yet its rows are
+\code{allowed = NA} / \code{decision_source = "fetch_unknown"} with \code{NA} error
+fields: the v1 evidence of a cut body is \code{incomplete} and never matched,
+and the legacy \code{error_class} set has no class for a cut body (the v1
+result's \code{reason} is \code{"incomplete_evidence"}). \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}}
+matches the same prefix instead.
+}
 \examples{
 # Build a v1 engine result offline, then adapt it for a legacy consumer.
 engine <- robots_evaluate_text_v1(

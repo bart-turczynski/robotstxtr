@@ -237,6 +237,27 @@ make_source_result <- function(outcome, http_status, effective_url,
   )
 }
 
+# --- A cut body's complete lines (ROBO-ldpahknv) -----------------------------
+
+# The bytes of `body` up to and including its last CR or LF; raw(0) when it
+# has none. A body cut at `max_bytes` usually ends inside a line, and that
+# partial line would be read as a rule of its own ("Disallow: /private/" cut
+# to "Disallow: /"), so matching and validation read only the complete lines.
+# The stored body keeps every byte ssrfr returned.
+complete_lines_prefix <- function(body) {
+  breaks <- which(body == as.raw(0x0a) | body == as.raw(0x0d))
+  if (length(breaks) == 0L) {
+    return(raw(0))
+  }
+  body[seq_len(max(breaks))]
+}
+
+# The bytes of a stored body that matching and validation read: the whole
+# body, or a cut body's complete lines.
+readable_body <- function(body, body_truncated) {
+  if (isTRUE(body_truncated)) complete_lines_prefix(body) else body
+}
+
 # --- Retry-After (ROBO-cthdyvlk) ---------------------------------------------
 
 # The delay a Retry-After field value asks for, in seconds (RFC 9110 section

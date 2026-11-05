@@ -62,7 +62,8 @@ SHA. The Google 500 KiB limit is applied at the matcher stage: the neutral
 evidence retains a complete caller-supplied or within-acquisition-limit body,
 and Google parses only its first 524,288 bytes. A fetched 2xx body over the
 acquisition limit is retained as its first `max_bytes` bytes, marked
-`body_truncated` and `incomplete`, and not matched (see "A robots.txt over
+`body_truncated` and `incomplete`, and not matched by the v1 engines; the
+legacy path matches it, up to its last complete line (see "A robots.txt over
 `max_bytes`" below).
 
 The Yandex matcher backend is `available` (as of schema revision
@@ -210,8 +211,8 @@ split a character.
 | `fetch_outcome` (legacy `robots` and `map` rows, v1 `legacy_fetch_outcome`) | `fetched`, with no error fields |
 | legacy `body`, `body_size` | the first `max_bytes` bytes; `body_size` equals `max_bytes` |
 | legacy `body_truncated` | `TRUE`; `FALSE` on every other row |
-| `robots_validate_url()` documents | the prefix is validated; `body_truncated` and `limit_exceeded` are `TRUE`, with no `acquisition_limit_exceeded` diagnostic |
-| legacy matching (`allowed_by_robots_url()`) | the prefix is matched like any body; a rule after the cut does not exist |
+| `robots_validate_url()` documents | the prefix is validated up to its last complete line; `body_truncated` and `limit_exceeded` are `TRUE`, `final_newline` is `NA`, `byte_size` is the stored size; one `body_truncated` warning diagnostic, no `acquisition_limit_exceeded` |
+| legacy matching (`allowed_by_robots_url()`) | the prefix is matched up to its last CR or LF; the partial line after it, and every rule after the cut, do not exist; a prefix with no line break yields no rules |
 | `content_flag` | read from the prefix; a split character at the end is at most three invalid bytes, under the eight `binary` needs |
 | v1 `body_present`, `stored_bytes` | `TRUE`, `max_bytes` |
 | v1 `body_truncated` | `TRUE`; `FALSE` on every other row |
@@ -247,6 +248,15 @@ Decisions:
   `allowed_by_robots_url()` fill it from the fetch, `allowed_by_robots_text()`
   writes `FALSE` (the caller supplied the whole text), and
   `as_legacy_robots_decisions_v1()` copies the v1 evidence's `body_truncated`.
+- Matching and validation stop at the cut body's last CR or LF. The cut
+  usually lands inside a line, and the partial line is not the site's rule:
+  `Disallow: /private-drafts/` cut to `Disallow: /` would disallow
+  everything. Dropping it is the cautious reading; the stored `body`,
+  `body_size` and v1 `stored_bytes` keep every byte ssrfr returned.
+- `as_legacy_robots_decisions_v1()` leaves `error_class` `NA` on a cut
+  source's rows (`fetched`, `allowed = NA`, `fetch_unknown`): the legacy
+  `error_class` set has no class for a cut body, and the v1 `reason`
+  `incomplete_evidence` is not a legacy class. Its documentation says so.
   `observed_bytes` stays in the v1 evidence only.
 - `robots_validate_url()` validates a cut prefix and reports the cut in its
   documents frame. A body refused whole (a 3xx over `max_bytes`) is still

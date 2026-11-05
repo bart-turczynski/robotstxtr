@@ -8,15 +8,15 @@
 
 * `robots_fetch()` and every URL entry point now fetch through the `ssrfr` guard: a host name is resolved once, its addresses checked, and the connection pinned to them (ROBO-jbralthm).
 
-* `ssrfr (>= 1.0.0)` replaces `httr2` in Imports.
+* `ssrfr (>= 1.0.0.9000)`, installed from its GitLab repository through `Remotes`, replaces `httr2` in Imports.
 
 * `timeout` is now one budget per origin, redirects included, as documented, rounded up to whole seconds (ROBO-tyhouhua).
 
 * `ssrf_guard = FALSE` is deprecated and warns: it reopens private and loopback ranges, but cloud-metadata endpoints and IPv6 transition forms stay refused (ROBO-jbralthm).
 
-* A 2xx robots.txt over `max_bytes` is now `fetched` as its first `max_bytes` bytes, then matched and validated, not `body_too_large` (RFC 9309 §2.5); requires `ssrfr (>= 1.0.0.9000)` (ROBO-ldpahknv).
+* A 2xx robots.txt over `max_bytes` is now `fetched` as its first `max_bytes` bytes, then matched and validated up to its last complete line, not `body_too_large` (RFC 9309 §2.5) (ROBO-ldpahknv).
 
-* Every `robots` frame gains a logical `body_truncated` column, `TRUE` for such a cut body; `robots_validate_url()` reports the cut in `body_truncated` and `limit_exceeded` (ROBO-ldpahknv).
+* Every `robots` frame gains a logical `body_truncated` column; `robots_validate_url()` reports a cut file in `body_truncated`, `limit_exceeded` and a `body_truncated` warning (ROBO-ldpahknv).
 
 * A v1 evidence row over the ceiling now has `legacy_fetch_outcome = "fetched"`, `body_present`, `stored_bytes = max_bytes` and `body_truncated = TRUE`; `evidence_status` stays `incomplete` (ROBO-ldpahknv).
 

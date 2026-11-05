@@ -50,9 +50,13 @@ Uses \code{\link[=robots_fetch]{robots_fetch()}} unchanged, then validates each 
 exactly once. Shared origins therefore remain shared and no second HTTP path
 or refetch is introduced. Acquisition failures are retained as evidence and
 produce \code{"not_validated"} document rows. A 2xx body over \code{max_bytes} is cut
-at the limit: its first \code{max_bytes} bytes are validated, as RFC 9309
-section 2.5 allows a crawler to parse, and the document row reports the cut
-with \code{body_truncated} and \code{limit_exceeded} both \code{TRUE}. A 3xx body over
+at the limit: its first \code{max_bytes} bytes are validated up to their last
+complete line (the partial line after the last line break is not read), as
+RFC 9309 section 2.5 allows a crawler to parse. The document row reports
+the cut with \code{body_truncated} and \code{limit_exceeded} both \code{TRUE} and
+\code{final_newline = NA} (the file's end was never read), \code{byte_size} is the
+stored size, and a warning diagnostic with code \code{body_truncated} says most
+of the file may not have been validated. A 3xx body over
 \code{max_bytes} is refused whole and reported as \code{acquisition_limit_exceeded},
 and a 4xx or 5xx keeps its status outcome whatever its body size.
 }

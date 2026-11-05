@@ -273,14 +273,74 @@ test_that("ROBO-ldpahknv: a Disallow line crossing the cut", {
   x <- allowed_by_robots_url(
     c("http://a/public", "http://a/private-drafts/x"), "bot", max_bytes = 25L
   )
+  # The stored body keeps every byte; matching stops at the last line break,
+  # so the partial "Disallow: /" is not read as a rule.
   expect_identical(x$robots$body_size, 25L)
-  expect_identical(x$results$allowed, c(FALSE, FALSE))
+  expect_identical(x$robots$body[[1L]], charToRaw(tr_crossing)[1:25])
+  expect_true(x$robots$body_truncated)
+  expect_identical(x$results$allowed, c(TRUE, TRUE))
+  expect_identical(
+    x$results$decision_source, c("default_allow", "default_allow")
+  )
+})
+
+test_that("ROBO-ldpahknv: a line cut short is not validated either", {
+  local_fake_ssrfr(function(req) fake_response(200L, body = tr_crossing))
+  x <- robots_validate_url("http://a/", max_bytes = 25L)
+  expect_identical(x$documents$byte_size, 25L)
+  expect_identical(x$documents$line_count, 1L)
+  expect_identical(x$documents$disallow_directives, 0L)
 })
 
 test_that("ROBO-ldpahknv: validating a body cut inside a character", {
   local_fake_ssrfr(function(req) fake_response(200L, body = tr_split_char))
   x <- robots_validate_url("http://a/", max_bytes = 29L)
-  expect_identical(x$documents$byte_size, 29L)
-  expect_true("invalid_utf8" %in% x$diagnostics$code)
-  expect_false(x$documents$final_newline)
+  doc <- x$documents
+  expect_identical(doc$byte_size, 29L)
+  expect_false("invalid_utf8" %in% x$diagnostics$code)
+  expect_identical(doc$encoding, "utf-8")
+  # The file's end was never read: no final-newline verdict.
+  expect_identical(doc$final_newline, NA)
+  expect_true(doc$body_truncated)
+  expect_true(doc$limit_exceeded)
+  expect_identical(x$diagnostics$code, "body_truncated")
+  expect_identical(x$diagnostics$severity, "warning")
+  expect_identical(doc$validation_status, "warning")
+})
+
+test_that("ROBO-ldpahknv: a cut body with no line break has no rules", {
+  local_fake_ssrfr(function(req) {
+    body <- c(charToRaw("Disallow: /"), rep(charToRaw("x"), 100L))
+    fake_response(200L, body = body)
+  })
+  x <- allowed_by_robots_url("http://a/x", "bot", max_bytes = 20L)
+  expect_true(x$robots$body_truncated)
+  expect_true(x$results$allowed)
+  expect_identical(x$results$decision_source, "default_allow")
+  v <- robots_validate_url("http://a/", max_bytes = 20L)
+  expect_identical(v$documents$line_count, 0L)
+  expect_identical(v$documents$byte_size, 20L)
+  expect_setequal(
+    v$diagnostics$code, c("missing_user_agent", "body_truncated")
+  )
+})
+
+test_that("ROBO-ldpahknv: complete_lines_prefix() keeps up to the last break", {
+  expect_identical(complete_lines_prefix(charToRaw("a\nb")), charToRaw("a\n"))
+  expect_identical(
+    complete_lines_prefix(charToRaw("a\r\nb\rc")), charToRaw("a\r\nb\r")
+  )
+  expect_identical(complete_lines_prefix(charToRaw("abc")), raw(0))
+  expect_identical(complete_lines_prefix(raw(0)), raw(0))
+  expect_identical(readable_body(charToRaw("a\nb"), FALSE), charToRaw("a\nb"))
+  # A whole file is matched and validated to its last byte.
+  local_fake_ssrfr(function(req) {
+    fake_response(200L, body = "User-agent: *\nDisallow: /x")
+  })
+  x <- allowed_by_robots_url("http://a/x", "bot")
+  expect_false(x$results$allowed)
+  v <- robots_validate_url("http://a/")
+  expect_false(v$documents$final_newline)
+  expect_false(v$documents$body_truncated)
+  expect_false("body_truncated" %in% v$diagnostics$code)
 })

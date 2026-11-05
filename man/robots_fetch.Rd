@@ -113,7 +113,11 @@ the limit is cut at it: its first \code{max_bytes} decoded bytes are stored as a
 RFC 9309 section 2.5 allows. The cut falls at a byte, so the stored body may
 end inside a multibyte character, and \code{body_size} then equals \code{max_bytes}.
 The source row's logical \code{body_truncated} is \code{TRUE} for such a cut body and
-\code{FALSE} otherwise.
+\code{FALSE} otherwise. The cut usually falls inside a line, so
+\code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} matches, and \code{\link[=robots_validate_url]{robots_validate_url()}} validates, a
+cut body only up to its last complete line (its last line break): a rule cut
+short is never read as a shorter rule. A cut body with no line break yields
+no rules. \code{body} and \code{body_size} keep every stored byte.
 A 4xx or 5xx keeps its status outcome whatever its body size, with no
 stored body. A 3xx whose body is over the limit ends as \code{body_too_large} and
 is not followed, because \pkg{ssrfr} keeps no \code{Location} for it.
