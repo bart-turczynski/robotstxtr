@@ -208,6 +208,8 @@ allowed_by_robots_text <- function(robots_txt, url, user_agent,
     error_stage = NA_character_,
     error_class = NA_character_,
     error_message = NA_character_,
+    retry_after = NA_character_,
+    retry_after_seconds = NA_real_,
     stringsAsFactors = FALSE
   )
   # `body` is a list-of-raw column: the supplied body stored exactly once.

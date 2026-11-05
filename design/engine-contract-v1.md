@@ -104,12 +104,48 @@ as Bing.
 ## Legacy compatibility
 
 The existing `allowed_by_robots_text()`, `allowed_by_robots_url()`,
-`robots_fetch()`, and `robots_body()` remain unchanged. For consumers migrating
+`robots_fetch()`, and `robots_body()` remain unchanged, apart from the additive
+Retry-After columns below. For consumers migrating
 incrementally, `as_legacy_robots_decisions_v1()` explicitly converts a v1 result
 whose policy and matcher are both Google into the original `robots_decisions`
 schema. The adapter deliberately keeps legacy generic HTTP/redirect failures
 unknown even where the new Google policy has a documented `allow_all` action;
 this prevents a silent semantic change in old consumers.
+
+### Retry-After on legacy fetch rows (ROBO-cthdyvlk)
+
+Every `robots_decisions$robots` and `robots_fetches$robots` frame gains two
+columns between `error_message` and `body`, so the frame has one schema
+whichever function built it:
+
+| column | type | value |
+|---|---|---|
+| `retry_after` | character | The final response's `Retry-After` field value as ssrfr delivers it (optional whitespace trimmed, obs-fold unfolded), several fields joined with `", "`; `NA` when not available. |
+| `retry_after_seconds` | double | The delay it asks for (RFC 9110 §10.2.3): `delay-seconds` as is, or an HTTP-date (any of the three RFC 9110 §5.6.7 forms) less the response's `Date`, or less the fetch time when `Date` is absent or invalid; a past date is `0`; `NA` when not available or neither form. Unbounded, since RFC 9110 sets no maximum: the caller clamps it. |
+
+`robots_fetch()` and `allowed_by_robots_url()`, which carries its frame
+unchanged, fill them. "Final response" is the non-3xx response that ends the
+chain; a redirect's `Retry-After` never counts.
+
+`NA` means "not available", not "no delay requested". Besides a final
+response without the field, that covers an outcome with no usable final
+response: a refusal, a transport failure, a `redirect_error`, and a body
+over `max_bytes`. A 4xx or 5xx whose body exceeds `max_bytes` keeps its
+status and outcome, but ssrfr's size failure carries no headers, so its
+`Retry-After` is `NA` even when the server sent one. robotstxtr never
+retries; the caller decides whether to wait.
+
+`allowed_by_robots_text()` (a supplied body) and
+`as_legacy_robots_decisions_v1()` (the v1 evidence keeps no Retry-After)
+always write `NA`. The v1/v2 `evidence` frame and the `robots_validate_url()`
+`documents` frame (which copies named fetch fields, not the row) are
+unchanged, so the engine schema revision does not move.
+
+Decision: keep `Retry-After` only, not a generic list of the final response's
+headers. A header list would publish ssrfr's header representation as
+robotstxtr API and carry fields no caller acts on. Each header a caller needs
+gets its own typed column: `Content-Type` and its content flags are the
+follow-up ROBO-nhuirvrd.
 
 ## Sibling compatibility
 

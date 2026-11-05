@@ -177,7 +177,9 @@ make_source_result <- function(outcome, http_status, effective_url,
                                transport_error_kind = NA_character_,
                                safety_block_reason = NA_character_,
                                termination_reason = "none",
-                               final_http_status = NULL) {
+                               final_http_status = NULL,
+                               retry_after = NA_character_,
+                               retry_after_seconds = NA_real_) {
   meta <- fetch_error_meta(outcome)
   stored_bytes <- if (is.null(body)) 0L else length(body)
   if (is.null(observed_bytes)) {
@@ -214,6 +216,118 @@ make_source_result <- function(outcome, http_status, effective_url,
     termination_reason = termination_reason,
     error_stage = unname(meta[["stage"]]),
     error_class = unname(meta[["class"]]),
-    error_message = if (is.null(error_message)) NA_character_ else error_message
+    error_message = if (is.null(error_message)) {
+      NA_character_
+    } else {
+      error_message
+    },
+    retry_after = retry_after,
+    retry_after_seconds = as.double(retry_after_seconds)
   )
+}
+
+# --- Retry-After (ROBO-cthdyvlk) ---------------------------------------------
+
+# The delay a Retry-After field value asks for, in seconds (RFC 9110 section
+# 10.2.3): `delay-seconds` (1*DIGIT) as is, or an HTTP-date less `reference`,
+# the response's own Date when it carries a valid one, else `fetched_at`
+# (both seconds since the epoch). A date already past is 0. NA when the value
+# is absent or is neither form. Unbounded: RFC 9110 sets no maximum, so the
+# caller clamps.
+retry_after_delay <- function(value, date, fetched_at) {
+  if (length(value) != 1L || is.na(value)) {
+    return(NA_real_)
+  }
+  value <- trimws(value, whitespace = "[ \t]")
+  if (grepl("^[0-9]+$", value)) {
+    return(as.double(value))
+  }
+  reference <- NA_real_
+  if (!is.na(date)) {
+    reference <- http_date_seconds(date, fetched_at)
+  }
+  if (is.na(reference)) {
+    reference <- fetched_at
+  }
+  target <- http_date_seconds(value, reference)
+  if (is.na(target)) {
+    return(NA_real_)
+  }
+  max(0, target - reference)
+}
+
+# An HTTP-date (RFC 9110 section 5.6.7) as seconds since the epoch, or NA.
+# Recipients accept all three formats: IMF-fixdate and the obsolete RFC 850
+# and asctime forms. Names are case-sensitive. An RFC 850 two-digit year that
+# would lie more than 50 years past `now` (seconds since the epoch) is the
+# most recent past year with those digits.
+http_date_seconds <- function(x, now) {
+  x <- trimws(x, whitespace = "[ \t]")
+  days <- "(Mon|Tue|Wed|Thu|Fri|Sat|Sun)"
+  long_days <- "(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)"
+  months <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep",
+              "Oct", "Nov", "Dec")
+  month <- paste0("(", paste(months, collapse = "|"), ")")
+  time <- "([0-9]{2}):([0-9]{2}):([0-9]{2})"
+  forms <- list(
+    imf = list(
+      pattern = paste0("^", days, ", ([0-9]{2}) ", month, " ([0-9]{4}) ",
+                       time, " GMT$"),
+      fields = c(day = 2L, month = 3L, year = 4L, hour = 5L)
+    ),
+    rfc850 = list(
+      pattern = paste0("^", long_days, ", ([0-9]{2})-", month, "-([0-9]{2}) ",
+                       time, " GMT$"),
+      fields = c(day = 2L, month = 3L, year = 4L, hour = 5L)
+    ),
+    asctime = list(
+      pattern = paste0("^", days, " ", month, " ([0-9]{2}| [0-9]) ", time,
+                       " ([0-9]{4})$"),
+      fields = c(day = 3L, month = 2L, year = 7L, hour = 4L)
+    )
+  )
+  for (name in names(forms)) {
+    form <- forms[[name]]
+    m <- regmatches(x, regexec(form$pattern, x, perl = TRUE))[[1L]]
+    if (length(m) == 0L) {
+      next
+    }
+    m <- m[-1L]
+    f <- form$fields
+    year <- as.integer(m[[f[["year"]]]])
+    month_day <- c(
+      match(m[[f[["month"]]]], months), as.integer(m[[f[["day"]]]])
+    )
+    hms <- as.integer(m[f[["hour"]] + 0:2])
+    if (hms[[1L]] > 23L || hms[[2L]] > 59L || hms[[3L]] > 60L) {
+      return(NA_real_)
+    }
+    if (!identical(name, "rfc850")) {
+      return(http_date_epoch(year, month_day, hms))
+    }
+    # RFC 850: the century of `now`, unless that puts the timestamp more than
+    # 50 years after `now`; then the century before.
+    later <- as.POSIXlt(now, origin = "1970-01-01", tz = "UTC")
+    century <- ((later$year + 1900L) %/% 100L) * 100L
+    later$year <- later$year + 50L
+    target <- http_date_epoch(century + year, month_day, hms)
+    if (!is.na(target) && target > as.double(as.POSIXct(later))) {
+      target <- http_date_epoch(century - 100L + year, month_day, hms)
+    }
+    return(target)
+  }
+  NA_real_
+}
+
+# Seconds since the epoch for a UTC calendar time, or NA for a date that does
+# not exist (such as 31 February).
+http_date_epoch <- function(year, month_day, hms) {
+  date <- as.Date(
+    sprintf("%04d-%02d-%02d", year, month_day[[1L]], month_day[[2L]]),
+    format = "%Y-%m-%d"
+  )
+  if (is.na(date)) {
+    return(NA_real_)
+  }
+  as.double(date) * 86400 + sum(hms * c(3600, 60, 1))
 }
