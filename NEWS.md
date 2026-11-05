@@ -22,7 +22,11 @@
 
 * GCP's IPv6 metadata endpoint `fd20:ce::254` is now refused as `cloud-metadata` (ROBO-xzbyxipg).
 
-* A 3xx other than 301, 302, 303, 307 or 308, or one with several `Location` fields, is now `redirect_error` with `no_location` (ROBO-jbralthm).
+* A 3xx other than 301, 302, 303, 307 or 308, or one with several `Location` fields, is now `redirect_error` with `no_location`; any other response with several `Location` fields is now `network_error` (ROBO-jbralthm).
+
+* A 3xx whose body exceeds `max_bytes` is now `body_too_large`, not followed: `ssrfr` keeps no `Location` from it. A 4xx or 5xx keeps its status outcome whatever its body size (ROBO-jbralthm).
+
+* A response header may take up to 64 KiB and 256 fields; over either it is a `network_error` (ROBO-jbralthm).
 
 * `fetch_user_agent` must now be a valid HTTP field value: a control character or leading or trailing whitespace is a call-level error (ROBO-jbralthm).
 

@@ -54,6 +54,10 @@ acquire_call <- function(expr) {
 # five consecutive redirects.
 acquire_redirect_limit <- 5L
 
+# The response header limits per hop (acquire_policy()).
+acquire_max_header_bytes <- 65536L
+acquire_max_header_fields <- 256L
+
 # The policy for one origin's chain.
 #
 # - `max_redirects` is the budget plus one, so the sixth 3xx comes back as a
@@ -64,6 +68,9 @@ acquire_redirect_limit <- 5L
 #   `timeout` is rounded up to whole seconds.
 # - `allow_ports = 1:65535` keeps the any-port behavior robotstxtr has always
 #   had; port 0 is still refused as "port".
+# - The response header may take 64 KiB and 256 fields, four and two times
+#   ssrfr's defaults: large news and CDN sites send 20 KB of header, and a
+#   header over its limit is a `network_error` with no status.
 # - `ssrf_guard = FALSE` is deprecated. ssrfr has no off switch, so it
 #   becomes a permissive policy: every address range reopened, and the
 #   metadata host names. Exact provider endpoints, and the transition and
@@ -76,6 +83,8 @@ acquire_policy <- function(timeout, fetch_ua, max_bytes, ssrf_guard = TRUE) {
     connect_timeout = min(3, total),
     total_timeout = total,
     max_response_size = max_bytes,
+    max_header_bytes = acquire_max_header_bytes,
+    max_header_fields = acquire_max_header_fields,
     user_agent = fetch_ua
   )
   if (!isTRUE(ssrf_guard)) {
@@ -128,17 +137,44 @@ acquire_refusal_message <- function(code, terminal) {
   )
 }
 
-# The result for a failure (`x` of class `ssrfr_failure`). A decoded body over
-# `max_bytes` keeps the final status and URL; ssrfr never returns any of that
-# body, so nothing is stored and `body_truncated` stays FALSE.
+# The result for a failure (`x` of class `ssrfr_failure`).
+#
+# ssrfr applies `max_response_size` to every response's body, so a decoded
+# body over `max_bytes` is classified by the status it carries: a 4xx or 5xx
+# as classify_status() says, as if the body had fit, since its body is never
+# read anyway. A 2xx, a 3xx (ssrfr records no Location for it, so it cannot
+# be followed) and an unknown status are `body_too_large`, keeping the final
+# status and URL; ssrfr never returns any of that body, so nothing is stored
+# and `body_truncated` stays FALSE.
+#
+# ssrfr fails a response with more than one Location field as
+# "protocol-error" with check "location", whatever its status. On a 3xx that
+# is the redirect without a usable Location it would have been. On any other
+# status ssrfr has refused the body, so it stays a `network_error`.
 acquire_failure_result <- function(x, binding, redirect_count, redirect_hops,
                                    max_bytes) {
+  if (identical(x$cause, "protocol-error") &&
+        identical(x$detail$check, "location")) {
+    status <- binding$state$status
+    if (!is.null(status) && status >= 300L && status <= 399L) {
+      return(acquire_no_location_result(
+        binding$url, as.integer(status), redirect_count, redirect_hops
+      ))
+    }
+  }
   row <- acquire_cause_row(x$cause, x$detail$check)
   if (identical(row$fetch_outcome, "body_too_large")) {
     observed <- x$detail$observed_bytes
     status <- x$detail$status
     if (is.null(status)) {
       status <- binding$state$status
+    }
+    if (!is.null(status) && status >= 400L) {
+      return(make_source_result(
+        classify_status(as.integer(status)), status, binding$url,
+        redirect_count, NULL, NA_character_,
+        redirect_hops = redirect_hops
+      ))
     }
     return(make_source_result(
       "body_too_large", status, binding$url, redirect_count, NULL,
@@ -205,6 +241,22 @@ acquire_followable <- function(status) {
   status %in% c(301L, 302L, 303L, 307L, 308L)
 }
 
+# A 3xx from `url` that names no target: not a followable status, an empty
+# Location, or several Location fields.
+acquire_no_location_result <- function(url, status, redirect_count,
+                                       redirect_hops) {
+  redirect_hops[[length(redirect_hops) + 1L]] <- list(
+    from_url = url, status = status, location_target = NA_character_
+  )
+  make_source_result(
+    "redirect_error", NULL, NULL, redirect_count, NULL,
+    sprintf("HTTP %d redirect without a usable Location header.", status),
+    redirect_hops = redirect_hops,
+    terminal_redirect_reason = "no_location",
+    final_http_status = status
+  )
+}
+
 # --- The hop loop -------------------------------------------------------------
 
 # Fetch one robots URL and return a source result (make_source_result()).
@@ -242,22 +294,13 @@ acquire_robots <- function(robots_url, timeout, fetch_ua, max_bytes,
       ))
     }
 
-    # A 3xx. ssrfr follows only a 301, 302, 303, 307 or 308 with exactly one
-    # Location field; any other 3xx, and an empty Location, has no target.
+    # A 3xx. Only a 301, 302, 303, 307 or 308 with a non-empty Location is
+    # followed. ssrfr returns a response with at most one Location field
+    # (several are a failure, acquire_failure_result()).
     location <- binding$state$location
-    if (!acquire_followable(status) ||
-          !identical(as.integer(binding$state$location_count), 1L) ||
-          is.null(location) || !nzchar(location)) {
-      redirect_hops[[length(redirect_hops) + 1L]] <- list(
-        from_url = binding$url, status = status,
-        location_target = NA_character_
-      )
-      return(make_source_result(
-        "redirect_error", NULL, NULL, redirect_count, NULL,
-        sprintf("HTTP %d redirect without a usable Location header.", status),
-        redirect_hops = redirect_hops,
-        terminal_redirect_reason = "no_location",
-        final_http_status = status
+    if (!acquire_followable(status) || is.null(location) || !nzchar(location)) {
+      return(acquire_no_location_result(
+        binding$url, status, redirect_count, redirect_hops
       ))
     }
     redirect_hops[[length(redirect_hops) + 1L]] <- list(
