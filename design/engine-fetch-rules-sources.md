@@ -43,8 +43,8 @@ Source: RFC 9309, <https://www.rfc-editor.org/rfc/rfc9309.html>, read 2026-11-05
 
 - **Hops.** §2.3.1.2: "The crawlers SHOULD follow at least five consecutive redirects, even
   across authorities". `[documented]` The requirement is a SHOULD floor. It sets no maximum.
-  engine-profiles.md §3 says "requires", which is stronger than the RFC's wording; the ADR
-  proposes the correction.
+  engine-profiles.md §3 said "requires", which is stronger than the RFC's wording; corrected
+  on ADR 0001's acceptance.
 - **robotstxtr's count.** robotstxtr follows exactly five and stops on the sixth 3xx
   (`acquire_redirect_limit <- 5L` in `R/acquire.R`; `max_redirects` is that budget plus one,
   so the sixth 3xx comes back as `over_budget` with its `Location`).
@@ -222,7 +222,8 @@ Nothing executes differently because of this record. The ADR uses it for three t
 3. Oversized files are engine-specific in meaning: Google parses the prefix, Yandex opens the
    site, and the RFC and Bing say nothing. That belongs in the ruleset, not the fetch.
 
-Corrections the ADR proposes for engine-profiles.md:
+Corrections ADR 0001 makes to engine-profiles.md (the first on acceptance, the second with
+slice 2):
 
 - §3 says RFC 9309 "requires" at least five. The RFC says SHOULD.
 - §2 lists `non_http_target` among the `http_protocol_error` triggers, while §3 and the code
