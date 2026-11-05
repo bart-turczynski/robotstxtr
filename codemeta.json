@@ -159,12 +159,12 @@
       "name": "ssrfr",
       "version": ">= 1.0.0",
       "provider": {
-        "@id": "https://cran.r-project.org",
+        "@id": "https://gitlab.com",
         "@type": "Organization",
-        "name": "Comprehensive R Archive Network (CRAN)",
-        "url": "https://cran.r-project.org"
+        "name": "GitLab",
+        "url": "https://gitlab.com"
       },
-      "sameAs": "https://CRAN.R-project.org/package=ssrfr"
+      "sameAs": "https://gitlab.com/bart-turczynski/ssrfr"
     },
     "SystemRequirements": "C++17"
   },

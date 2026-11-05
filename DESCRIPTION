@@ -51,6 +51,8 @@ Suggests:
     rosv,
     testthat (>= 3.0.0),
     webfakes
+Remotes:
+    gitlab::bart-turczynski/ssrfr@ddb33892d343c890bcca8345c8f15e9f82da9f63
 Config/testthat/edition: 3
 VignetteBuilder: knitr
 Config/roxygen2/version: 8.1.1
