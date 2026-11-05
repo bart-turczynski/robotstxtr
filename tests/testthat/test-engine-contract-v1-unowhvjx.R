@@ -350,8 +350,11 @@ test_that("over-ceiling evidence is incomplete and never matched", {
   expect_identical(x$evidence$evidence_status, "incomplete")
   expect_identical(x$evidence$termination_reason, "ceiling")
   expect_gt(x$evidence$observed_bytes, 8L)
-  expect_identical(x$evidence$stored_bytes, 0L)
-  expect_false(x$evidence$body_present)
+  # ROBO-ldpahknv: the first max_bytes bytes are kept and marked truncated,
+  # but a cut body is still incomplete evidence and never matched.
+  expect_identical(x$evidence$stored_bytes, 8L)
+  expect_true(x$evidence$body_present)
+  expect_true(x$evidence$body_truncated)
   expect_identical(x$results$policy_status, "not_evaluated")
   expect_identical(x$results$reason, "incomplete_evidence")
   expect_true(is.na(x$results$url_decision))

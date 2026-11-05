@@ -83,10 +83,16 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' Uses [robots_fetch()] unchanged, then validates each distinct stored raw body
 #' exactly once. Shared origins therefore remain shared and no second HTTP path
 #' or refetch is introduced. Acquisition failures are retained as evidence and
-#' produce `"not_validated"` document rows; a 2xx or 3xx response exceeding
-#' `max_bytes` is explicitly reported as `acquisition_limit_exceeded`, a 4xx or
-#' 5xx keeps its status outcome whatever its body size, and no truncated body
-#' is parsed.
+#' produce `"not_validated"` document rows. A 2xx body over `max_bytes` is cut
+#' at the limit: its first `max_bytes` bytes are validated up to their last
+#' complete line (the partial line after the last line break is not read), as
+#' RFC 9309 section 2.5 allows a crawler to parse. The document row reports
+#' the cut with `body_truncated` and `limit_exceeded` both `TRUE` and
+#' `final_newline = NA` (the file's end was never read), `byte_size` is the
+#' stored size, and a warning diagnostic with code `body_truncated` says most
+#' of the file may not have been validated. A 3xx body over
+#' `max_bytes` is refused whole and reported as `acquisition_limit_exceeded`,
+#' and a 4xx or 5xx keeps its status outcome whatever its body size.
 #'
 #' This function validates the acquired robots.txt document. It does not answer
 #' whether any target URL is allowed; use [allowed_by_robots_url()] for that
@@ -250,7 +256,14 @@ validate_document_bytes <- function(bytes, source_id, source_type,
                                     effective_url = NA_character_,
                                     http_status = NA_integer_,
                                     fetch_outcome = "supplied",
-                                    max_bytes = NA_integer_) {
+                                    max_bytes = NA_integer_,
+                                    body_truncated = FALSE) {
+  # A 2xx body cut at max_bytes (RFC 9309 section 2.5, ROBO-ldpahknv) is
+  # validated up to its last complete line: the partial line after it is not
+  # the site's. `byte_size` stays the stored size; the file's real end was
+  # never read, so `final_newline` is NA.
+  stored_size <- length(bytes)
+  bytes <- readable_body(bytes, body_truncated)
   parsed <- as.data.frame(
     robotstxtr_validation_parse_(bytes),
     stringsAsFactors = FALSE
@@ -407,6 +420,18 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       "Document has no non-empty User-agent directive."
     )
   }
+  if (body_truncated) {
+    add_diagnostic(
+      NA_integer_, "warning", "body_truncated", NA_character_,
+      sprintf(
+        paste0(
+          "Decoded body exceeded max_bytes (%d); only its first %d bytes ",
+          "up to the last complete line were validated."
+        ),
+        as.integer(max_bytes), length(bytes)
+      )
+    )
+  }
 
   diagnostic_frame <- if (length(diag_env$items) == 0L) {
     empty_validation_diagnostics()
@@ -418,6 +443,9 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   unknown <- sum(parsed$has_directive & parsed$type == "unknown" & !unsupported)
   final_newline <- length(bytes) > 0L &&
     bytes[[length(bytes)]] %in% as.raw(c(0x0a, 0x0d))
+  if (body_truncated) {
+    final_newline <- NA
+  }
 
   document <- data.frame(
     source_id = source_id,
@@ -428,7 +456,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     fetch_outcome = fetch_outcome,
     validation_status = validation_status(diagnostic_frame),
     profile = robots_validation_profile,
-    byte_size = as.integer(length(bytes)),
+    byte_size = as.integer(stored_size),
     line_count = as.integer(line_count),
     active_line_count = as.integer(sum(active)),
     recognized_directives = as.integer(recognized),
@@ -444,8 +472,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     nul_byte_count = as.integer(sum(nul_counts)),
     final_newline = final_newline,
     max_bytes = as.integer(max_bytes),
-    body_truncated = FALSE,
-    limit_exceeded = FALSE,
+    body_truncated = body_truncated,
+    limit_exceeded = body_truncated,
     diagnostic_count = as.integer(nrow(diagnostic_frame)),
     warning_count = as.integer(sum(diagnostic_frame$severity == "warning")),
     error_count = as.integer(sum(diagnostic_frame$severity == "error")),
@@ -524,7 +552,8 @@ validate_fetched_documents <- function(fetched) {
         effective_url = source$effective_url,
         http_status = source$http_status,
         fetch_outcome = source$fetch_outcome,
-        max_bytes = source$max_bytes
+        max_bytes = source$max_bytes,
+        body_truncated = isTRUE(robots$body_truncated[[i]])
       )
     } else {
       validated <- unavailable_validation(source)

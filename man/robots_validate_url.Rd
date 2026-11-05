@@ -24,7 +24,9 @@ origin, including redirects, rounded up to whole seconds. Defaults to
 limit no greater than \code{.Machine$integer.max}, coerced to integer and
 recorded on each source row. A whole-number double (for example \code{524288})
 is accepted; fractional, non-positive, out-of-range, or non-scalar values
-are call-level errors. Defaults to \code{524288L}.}
+are call-level errors. Defaults to \code{524288L} (512 KiB). RFC 9309 section
+2.5 asks a crawler to parse at least 500 KiB (\code{512000} bytes) of a
+robots.txt file; a smaller value is accepted but falls below that floor.}
 
 \item{fetch_user_agent}{\code{NULL} (use the package fetch user agent) or a single
 non-empty character HTTP user agent to send instead. It must be a valid
@@ -47,10 +49,16 @@ per input URL), \code{documents} (one row per distinct fetch source), and
 Uses \code{\link[=robots_fetch]{robots_fetch()}} unchanged, then validates each distinct stored raw body
 exactly once. Shared origins therefore remain shared and no second HTTP path
 or refetch is introduced. Acquisition failures are retained as evidence and
-produce \code{"not_validated"} document rows; a 2xx or 3xx response exceeding
-\code{max_bytes} is explicitly reported as \code{acquisition_limit_exceeded}, a 4xx or
-5xx keeps its status outcome whatever its body size, and no truncated body
-is parsed.
+produce \code{"not_validated"} document rows. A 2xx body over \code{max_bytes} is cut
+at the limit: its first \code{max_bytes} bytes are validated up to their last
+complete line (the partial line after the last line break is not read), as
+RFC 9309 section 2.5 allows a crawler to parse. The document row reports
+the cut with \code{body_truncated} and \code{limit_exceeded} both \code{TRUE} and
+\code{final_newline = NA} (the file's end was never read), \code{byte_size} is the
+stored size, and a warning diagnostic with code \code{body_truncated} says most
+of the file may not have been validated. A 3xx body over
+\code{max_bytes} is refused whole and reported as \code{acquisition_limit_exceeded},
+and a 4xx or 5xx keeps its status outcome whatever its body size.
 }
 \details{
 This function validates the acquired robots.txt document. It does not answer

@@ -55,11 +55,20 @@
 #' `max_bytes` caps the decoded response body. The limit is enforced on decoded
 #' entity bytes (after any HTTP content decoding, such as gzip) as they arrive,
 #' and the transfer stops the moment the decoded byte count exceeds the limit;
-#' the compressed entity is never fully downloaded before the check. A 2xx body
-#' over the limit ends as `body_too_large` with no stored body (never a
-#' truncated body); a body at or under the limit is stored normally as a
-#' `fetched` result. A 4xx or 5xx keeps its status outcome whatever its body
-#' size. A 3xx whose body is over the limit also ends as `body_too_large` and
+#' the compressed entity is never fully downloaded before the check. A body at
+#' or under the limit is stored normally as a `fetched` result. A 2xx body over
+#' the limit is cut at it: its first `max_bytes` decoded bytes are stored as a
+#' `fetched` result and matched, and anything after the cut is ignored, as
+#' RFC 9309 section 2.5 allows. The cut falls at a byte, so the stored body may
+#' end inside a multibyte character, and `body_size` then equals `max_bytes`.
+#' The source row's logical `body_truncated` is `TRUE` for such a cut body and
+#' `FALSE` otherwise. The cut usually falls inside a line, so
+#' [allowed_by_robots_url()] matches, and [robots_validate_url()] validates, a
+#' cut body only up to its last complete line (its last line break): a rule cut
+#' short is never read as a shorter rule. A cut body with no line break yields
+#' no rules. `body` and `body_size` keep every stored byte.
+#' A 4xx or 5xx keeps its status outcome whatever its body size, with no
+#' stored body. A 3xx whose body is over the limit ends as `body_too_large` and
 #' is not followed, because \pkg{ssrfr} keeps no `Location` for it.
 #'
 #' The response header may take up to 64 KiB and 256 fields per hop; a header
@@ -79,7 +88,7 @@
 #' `NA` in both columns means the delay is not available, not that none was
 #' requested. That is the case when the final response has no `Retry-After`,
 #' and also when the fetch ends without a usable final response: a refusal, a
-#' transport failure, a redirect error, or a body over `max_bytes`. A 4xx or
+#' transport failure, a redirect error, or a 3xx body over `max_bytes`. A 4xx or
 #' 5xx whose body exceeds `max_bytes` keeps its status and outcome, but its
 #' headers are not available, so its `Retry-After` is `NA` even when the
 #' server sent one. `robots_fetch()` never retries: honoring the delay is the
@@ -112,7 +121,9 @@
 #'   limit no greater than `.Machine$integer.max`, coerced to integer and
 #'   recorded on each source row. A whole-number double (for example `524288`)
 #'   is accepted; fractional, non-positive, out-of-range, or non-scalar values
-#'   are call-level errors. Defaults to `524288L`.
+#'   are call-level errors. Defaults to `524288L` (512 KiB). RFC 9309 section
+#'   2.5 asks a crawler to parse at least 500 KiB (`512000` bytes) of a
+#'   robots.txt file; a smaller value is accepted but falls below that floor.
 #' @param fetch_user_agent `NULL` (use the package fetch user agent) or a single
 #'   non-empty character HTTP user agent to send instead. It must be a valid
 #'   HTTP field value: no control character, and no leading or trailing
@@ -129,7 +140,8 @@
 #'   row per fetched source, with the fetched body stored once as a raw vector
 #'   in `robots$body`, and the final response's `Retry-After` as the character
 #'   `retry_after` and the double `retry_after_seconds`, its `Content-Type` as
-#'   the character `content_type`, and the character `content_flag`).
+#'   the character `content_type`, the character `content_flag`, and the
+#'   logical `body_truncated`).
 #'
 #' @examples
 #' # A refused origin is decided before any request, so this runs offline.
@@ -207,6 +219,9 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
     ),
     content_type = vapply(results, function(r) r$content_type, character(1L)),
     content_flag = vapply(results, function(r) r$content_flag, character(1L)),
+    body_truncated = vapply(
+      results, function(r) r$body_truncated, logical(1L)
+    ),
     stringsAsFactors = FALSE
   )
   # `body` is a list-of-raw column: each fetched body stored exactly once.

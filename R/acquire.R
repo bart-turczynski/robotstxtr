@@ -71,6 +71,10 @@ acquire_max_header_fields <- 256L
 # - The response header may take 64 KiB and 256 fields, four and two times
 #   ssrfr's defaults: large news and CDN sites send 20 KB of header, and a
 #   header over its limit is a `network_error` with no status.
+# - `truncate_body = TRUE`: a 2xx body over `max_bytes` comes back as its
+#   first `max_bytes` decoded bytes, marked truncated, instead of failing.
+#   RFC 9309 section 2.5 lets a crawler parse that prefix (ROBO-ldpahknv).
+#   Any other status over the limit still fails, with no body.
 # - `ssrf_guard = FALSE` is deprecated. ssrfr has no off switch, so it
 #   becomes a permissive policy: every address range reopened, and the
 #   metadata host names. Exact provider endpoints, and the transition and
@@ -85,7 +89,8 @@ acquire_policy <- function(timeout, fetch_ua, max_bytes, ssrf_guard = TRUE) {
     max_response_size = max_bytes,
     max_header_bytes = acquire_max_header_bytes,
     max_header_fields = acquire_max_header_fields,
-    user_agent = fetch_ua
+    user_agent = fetch_ua,
+    truncate_body = TRUE
   )
   if (!isTRUE(ssrf_guard)) {
     args$allow_ranges <- c("0.0.0.0/0", "::/0")
@@ -139,13 +144,14 @@ acquire_refusal_message <- function(code, terminal) {
 
 # The result for a failure (`x` of class `ssrfr_failure`).
 #
-# ssrfr applies `max_response_size` to every response's body, so a decoded
-# body over `max_bytes` is classified by the status it carries: a 4xx or 5xx
-# as classify_status() says, as if the body had fit, since its body is never
-# read anyway. A 2xx, a 3xx (ssrfr records no Location for it, so it cannot
-# be followed) and an unknown status are `body_too_large`, keeping the final
-# status and URL; ssrfr never returns any of that body, so nothing is stored
-# and `body_truncated` stays FALSE.
+# A 2xx body over `max_bytes` is not a failure: the policy's `truncate_body`
+# returns its prefix as a response (acquire_final_result()). ssrfr fails any
+# other decoded body over `max_bytes`, which is classified by the status it
+# carries: a 4xx or 5xx as classify_status() says, as if the body had fit,
+# since its body is never read anyway. A 3xx (ssrfr records no Location for
+# it, so it cannot be followed), an unknown status, and a 2xx whose status
+# libcurl and the status line disagree on are `body_too_large`, keeping the
+# final status and URL; ssrfr returns none of that body, so nothing is stored.
 #
 # ssrfr fails a response with more than one Location field as
 # "protocol-error" with check "location", whatever its status. On a 3xx that
@@ -183,7 +189,7 @@ acquire_failure_result <- function(x, binding, redirect_count, redirect_hops,
         max_bytes
       ),
       redirect_hops = redirect_hops,
-      observed_bytes = if (is.null(observed)) NA_integer_ else observed,
+      observed_bytes = acquire_observed_bytes(observed),
       termination_reason = "ceiling"
     ))
   }
@@ -372,8 +378,24 @@ acquire_header <- function(response, name) {
   toString(values)
 }
 
+# ssrfr's `observed_bytes` (a double) as an integer, NA when absent or past
+# the integer range.
+acquire_observed_bytes <- function(observed) {
+  if (is.null(observed) || length(observed) != 1L || is.na(observed) ||
+        observed > .Machine$integer.max) {
+    return(NA_integer_)
+  }
+  as.integer(observed)
+}
+
 # The result for a final (non-3xx) response. Only `fetched` stores a body: the
 # exact decoded bytes ssrfr read, within `max_bytes` (an empty body is raw(0)).
+# A 2xx body over `max_bytes` is its first `max_bytes` bytes, which ssrfr
+# marks `truncated` (RFC 9309 section 2.5, ROBO-ldpahknv): it stays `fetched`
+# and is matched like any body, with `body_truncated = TRUE`, ssrfr's
+# `observed_bytes`, and `termination_reason = "ceiling"`, so the v1 evidence
+# keeps calling it `incomplete`. The cut may split a character; the content
+# flag reads the kept prefix.
 # Retry-After comes from this response only, never from a redirect before it
 # (ROBO-cthdyvlk; RFC 9110 section 10.2.3). So does Content-Type, as
 # received; the content flag reads the stored body only (ROBO-nhuirvrd).
@@ -385,15 +407,22 @@ acquire_final_result <- function(response, status, url, redirect_count,
   )
   outcome <- classify_status(status)
   body <- NULL
+  truncated <- FALSE
   if (identical(outcome, "fetched")) {
     body <- response$body
     if (is.null(body)) {
       body <- raw(0)
     }
+    truncated <- isTRUE(response$truncated)
   }
   make_source_result(
     outcome, status, url, redirect_count, body, NA_character_,
     redirect_hops = redirect_hops,
+    observed_bytes = if (truncated) {
+      acquire_observed_bytes(response$observed_bytes)
+    },
+    body_truncated = truncated,
+    termination_reason = if (truncated) "ceiling" else "none",
     retry_after = retry_after,
     retry_after_seconds = retry_after_seconds,
     content_type = acquire_header(response, "content-type"),

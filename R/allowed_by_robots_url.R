@@ -60,7 +60,11 @@
 #'   limit no greater than `.Machine$integer.max`, coerced to integer. A
 #'   whole-number double (for example `524288`) is accepted; fractional,
 #'   non-positive, out-of-range, or non-scalar values are call-level errors.
-#'   Defaults to `524288L`.
+#'   Defaults to `524288L` (512 KiB). A 2xx body over the limit is cut at it
+#'   and matched up to its last complete line, as RFC 9309 section 2.5 allows;
+#'   its source row has `body_truncated = TRUE`. RFC 9309 section 2.5 asks a
+#'   crawler to parse at least 500 KiB (`512000` bytes); a smaller value is
+#'   accepted but falls below that floor.
 #' @param fetch_user_agent `NULL` (use the package fetch user agent) or a single
 #'   non-empty character HTTP user agent to send instead. This is never the
 #'   matcher `user_agent`.
@@ -173,7 +177,10 @@ allowed_by_robots_url <- function(url, user_agent, timeout = 10,
   names(source_body_utf8) <- robots$source_id
   for (i in seq_len(nrow(robots))) {
     if (identical(robots$fetch_outcome[[i]], "fetched")) {
-      source_body_utf8[[i]] <- decode_matcher_body(robots$body[[i]])
+      # A cut body is read up to its last complete line (ROBO-ldpahknv).
+      source_body_utf8[[i]] <- decode_matcher_body(readable_body(
+        robots$body[[i]], robots$body_truncated[[i]]
+      ))
     }
   }
 

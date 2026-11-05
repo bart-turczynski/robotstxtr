@@ -24,7 +24,9 @@ origin, including redirects, rounded up to whole seconds. Defaults to
 limit no greater than \code{.Machine$integer.max}, coerced to integer and
 recorded on each source row. A whole-number double (for example \code{524288})
 is accepted; fractional, non-positive, out-of-range, or non-scalar values
-are call-level errors. Defaults to \code{524288L}.}
+are call-level errors. Defaults to \code{524288L} (512 KiB). RFC 9309 section
+2.5 asks a crawler to parse at least 500 KiB (\code{512000} bytes) of a
+robots.txt file; a smaller value is accepted but falls below that floor.}
 
 \item{fetch_user_agent}{\code{NULL} (use the package fetch user agent) or a single
 non-empty character HTTP user agent to send instead. It must be a valid
@@ -44,7 +46,8 @@ components, \code{map} (one row per input URL, in input order) and \code{robots}
 row per fetched source, with the fetched body stored once as a raw vector
 in \code{robots$body}, and the final response's \code{Retry-After} as the character
 \code{retry_after} and the double \code{retry_after_seconds}, its \code{Content-Type} as
-the character \code{content_type}, and the character \code{content_flag}).
+the character \code{content_type}, the character \code{content_flag}, and the
+logical \code{body_truncated}).
 }
 \description{
 Performs the grouped robots.txt fetch stage for one or more target URLs and
@@ -103,11 +106,20 @@ no body.
 \code{max_bytes} caps the decoded response body. The limit is enforced on decoded
 entity bytes (after any HTTP content decoding, such as gzip) as they arrive,
 and the transfer stops the moment the decoded byte count exceeds the limit;
-the compressed entity is never fully downloaded before the check. A 2xx body
-over the limit ends as \code{body_too_large} with no stored body (never a
-truncated body); a body at or under the limit is stored normally as a
-\code{fetched} result. A 4xx or 5xx keeps its status outcome whatever its body
-size. A 3xx whose body is over the limit also ends as \code{body_too_large} and
+the compressed entity is never fully downloaded before the check. A body at
+or under the limit is stored normally as a \code{fetched} result. A 2xx body over
+the limit is cut at it: its first \code{max_bytes} decoded bytes are stored as a
+\code{fetched} result and matched, and anything after the cut is ignored, as
+RFC 9309 section 2.5 allows. The cut falls at a byte, so the stored body may
+end inside a multibyte character, and \code{body_size} then equals \code{max_bytes}.
+The source row's logical \code{body_truncated} is \code{TRUE} for such a cut body and
+\code{FALSE} otherwise. The cut usually falls inside a line, so
+\code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} matches, and \code{\link[=robots_validate_url]{robots_validate_url()}} validates, a
+cut body only up to its last complete line (its last line break): a rule cut
+short is never read as a shorter rule. A cut body with no line break yields
+no rules. \code{body} and \code{body_size} keep every stored byte.
+A 4xx or 5xx keeps its status outcome whatever its body size, with no
+stored body. A 3xx whose body is over the limit ends as \code{body_too_large} and
 is not followed, because \pkg{ssrfr} keeps no \code{Location} for it.
 
 The response header may take up to 64 KiB and 256 fields per hop; a header
@@ -127,7 +139,7 @@ the final response counts, never a redirect before it.
 \code{NA} in both columns means the delay is not available, not that none was
 requested. That is the case when the final response has no \code{Retry-After},
 and also when the fetch ends without a usable final response: a refusal, a
-transport failure, a redirect error, or a body over \code{max_bytes}. A 4xx or
+transport failure, a redirect error, or a 3xx body over \code{max_bytes}. A 4xx or
 5xx whose body exceeds \code{max_bytes} keeps its status and outcome, but its
 headers are not available, so its \code{Retry-After} is \code{NA} even when the
 server sent one. \code{robots_fetch()} never retries: honoring the delay is the

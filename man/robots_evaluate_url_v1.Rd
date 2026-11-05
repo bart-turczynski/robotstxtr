@@ -44,7 +44,9 @@ origin, including redirects, rounded up to whole seconds. Defaults to
 limit no greater than \code{.Machine$integer.max}, coerced to integer and
 recorded on each source row. A whole-number double (for example \code{524288})
 is accepted; fractional, non-positive, out-of-range, or non-scalar values
-are call-level errors. Defaults to \code{524288L}.}
+are call-level errors. Defaults to \code{524288L} (512 KiB). RFC 9309 section
+2.5 asks a crawler to parse at least 500 KiB (\code{512000} bytes) of a
+robots.txt file; a smaller value is accepted but falls below that floor.}
 
 \item{fetch_user_agent}{\code{NULL} (use the package fetch user agent) or a single
 non-empty character HTTP user agent to send instead. It must be a valid

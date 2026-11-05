@@ -60,7 +60,11 @@ Google matching uses the vendored matcher pinned to upstream commit
 `22b355ff855419e6a3ff8ff09c0ad7fdb17116f9`. The backend revision embeds that
 SHA. The Google 500 KiB limit is applied at the matcher stage: the neutral
 evidence retains a complete caller-supplied or within-acquisition-limit body,
-and Google parses only its first 524,288 bytes.
+and Google parses only its first 524,288 bytes. A fetched 2xx body over the
+acquisition limit is retained as its first `max_bytes` bytes, marked
+`body_truncated` and `incomplete`, and not matched by the v1 engines; the
+legacy path matches it, up to its last complete line (see "A robots.txt over
+`max_bytes`" below).
 
 The Yandex matcher backend is `available` (as of schema revision
 `2026-07-18.2`). It is bounded to its supported Yandex vendor profiles
@@ -129,8 +133,10 @@ chain; a redirect's `Retry-After` never counts.
 
 `NA` means "not available", not "no delay requested". Besides a final
 response without the field, that covers an outcome with no usable final
-response: a refusal, a transport failure, a `redirect_error`, and a body
-over `max_bytes`. A 4xx or 5xx whose body exceeds `max_bytes` keeps its
+response: a refusal, a transport failure, a `redirect_error`, and a 3xx
+body over `max_bytes`. A 2xx body over `max_bytes` is a final response, cut
+(ROBO-ldpahknv below), so its `Retry-After` is kept. A 4xx or 5xx whose body
+exceeds `max_bytes` keeps its
 status and outcome, but ssrfr's size failure carries no headers, so its
 `Retry-After` is `NA` even when the server sent one. robotstxtr never
 retries; the caller decides whether to wait.
@@ -191,6 +197,72 @@ Decisions:
   value rather than a new column, and a caller filters on `!is.na()`.
 - Plain-text error pages ("404 Not Found" served with a 200) are not
   detected: no cheap test separates them from a short robots.txt.
+
+### A robots.txt over `max_bytes` (ROBO-ldpahknv)
+
+RFC 9309 §2.5 lets a crawler impose a parsing limit of at least 500 KiB and
+parse the part of the file it read. robotstxtr fetches with ssrfr's
+`truncate_body`, so a 2xx body over `max_bytes` comes back as its first
+`max_bytes` decoded bytes instead of failing. The cut falls at a byte and may
+split a character.
+
+| surface | a 2xx over `max_bytes` |
+|---|---|
+| `fetch_outcome` (legacy `robots` and `map` rows, v1 `legacy_fetch_outcome`) | `fetched`, with no error fields |
+| legacy `body`, `body_size` | the first `max_bytes` bytes; `body_size` equals `max_bytes` |
+| legacy `body_truncated` | `TRUE`; `FALSE` on every other row |
+| `robots_validate_url()` documents | the prefix is validated up to its last complete line; `body_truncated` and `limit_exceeded` are `TRUE`, `final_newline` is `NA`, `byte_size` is the stored size; one `body_truncated` warning diagnostic, no `acquisition_limit_exceeded` |
+| legacy matching (`allowed_by_robots_url()`) | the prefix is matched up to its last CR or LF; the partial line after it, and every rule after the cut, do not exist; a prefix with no line break yields no rules |
+| `content_flag` | read from the prefix; a split character at the end is at most three invalid bytes, under the eight `binary` needs |
+| v1 `body_present`, `stored_bytes` | `TRUE`, `max_bytes` |
+| v1 `body_truncated` | `TRUE`; `FALSE` on every other row |
+| v1 `observed_bytes` | ssrfr's count of the decoded bytes reached, past the limit by up to one delivery; not the file's size, which is never read |
+| v1 `termination_reason` | `ceiling` |
+| v1 `evidence_status` | `incomplete`, as before: no v1 policy verdict or URL decision is made from a prefix |
+
+A 3xx body over `max_bytes` is still `body_too_large` with no body, and a 4xx
+or 5xx still keeps its status outcome with no body: ssrfr truncates only a 2xx.
+A 206 stays `partial_response` with no body.
+
+Decisions:
+
+- `fetch_outcome` stays `fetched`; no `fetched_truncated` value. The legacy
+  `fetch_outcome` set is closed in practice: `allowed_by_robots_url()` matches
+  only `fetched` rows and classifies every other value it knows as a fetch
+  failure, so a new value would leave the prefix unmatched and its rows with
+  no `decision_source`. The cut is carried by `body_truncated`,
+  `observed_bytes` and `termination_reason`, which the v1 evidence already
+  publishes. No v1 enum or column changes, so the engine schema revision does
+  not move. The values of a v1 row over the ceiling do change: it now carries
+  `legacy_fetch_outcome = "fetched"`, `body_present = TRUE`, `stored_bytes =
+  max_bytes` and `body_truncated = TRUE`, while `evidence_status` is still
+  `incomplete`.
+- The v1 evidence of a cut body stays `incomplete`. `engine-profiles.md`
+  §2 maps `termination_reason = ceiling` there, and a prefix cannot stand in
+  for a whole file under every engine: Yandex's documented over-500 KB
+  `allow_all` needs the file's real size, which a prefix under a smaller
+  `max_bytes` hides.
+- Every legacy `robots` frame gains a logical `body_truncated` column,
+  between `content_flag` and `body`, under the one-schema rule of the
+  Retry-After and Content-Type columns above: `robots_fetch()` and
+  `allowed_by_robots_url()` fill it from the fetch, `allowed_by_robots_text()`
+  writes `FALSE` (the caller supplied the whole text), and
+  `as_legacy_robots_decisions_v1()` copies the v1 evidence's `body_truncated`.
+- Matching and validation stop at the cut body's last CR or LF. The cut
+  usually lands inside a line, and the partial line is not the site's rule:
+  `Disallow: /private-drafts/` cut to `Disallow: /` would disallow
+  everything. Dropping it is the cautious reading; the stored `body`,
+  `body_size` and v1 `stored_bytes` keep every byte ssrfr returned.
+- `as_legacy_robots_decisions_v1()` leaves `error_class` `NA` on a cut
+  source's rows (`fetched`, `allowed = NA`, `fetch_unknown`): the legacy
+  `error_class` set has no class for a cut body, and the v1 `reason`
+  `incomplete_evidence` is not a legacy class. Its documentation says so.
+  `observed_bytes` stays in the v1 evidence only.
+- `robots_validate_url()` validates a cut prefix and reports the cut in its
+  documents frame. A body refused whole (a 3xx over `max_bytes`) is still
+  `not_validated` with `acquisition_limit_exceeded`.
+- `max_bytes` below RFC 9309's 500 KiB floor (`512000`) stays accepted, and
+  is documented as below it. The default, `524288`, meets the floor.
 
 ## Sibling compatibility
 

@@ -1610,6 +1610,14 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
 #' backend are both `"google"`; unsupported legacy fetch outcomes remain
 #' unknown exactly as in the original API.
 #'
+#' A source whose 2xx body was cut at `max_bytes` has
+#' `fetch_outcome = "fetched"` and `body_truncated = TRUE`, yet its rows are
+#' `allowed = NA` / `decision_source = "fetch_unknown"` with `NA` error
+#' fields: the v1 evidence of a cut body is `incomplete` and never matched,
+#' and the legacy `error_class` set has no class for a cut body (the v1
+#' result's `reason` is `"incomplete_evidence"`). [allowed_by_robots_url()]
+#' matches the same prefix instead.
+#'
 #' @param x A `robots_engine_decisions_v1` object using the Google policy and
 #'   Google matcher backend for every row.
 #'
@@ -1717,6 +1725,9 @@ as_legacy_robots_decisions_v1 <- function(x) {
     retry_after_seconds = rep(NA_real_, nrow(evidence)),
     content_type = rep(NA_character_, nrow(evidence)),
     content_flag = rep(NA_character_, nrow(evidence)),
+    # A cut 2xx body (ROBO-ldpahknv); FALSE where the evidence has no value.
+    body_truncated = !is.na(evidence$body_truncated) &
+      evidence$body_truncated,
     stringsAsFactors = FALSE
   )
   robots$body <- evidence$body
