@@ -85,6 +85,17 @@
 #' server sent one. `robots_fetch()` never retries: honoring the delay is the
 #' caller's choice.
 #'
+#' Each source row also keeps the final response's `Content-Type` field value
+#' as `content_type`, exactly as received (`NA` when absent or when there is
+#' no final response), and a heuristic `content_flag` read from the first
+#' 4096 bytes of a stored body: `"binary"` (a NUL byte, or at least 8 bytes,
+#' and more than 10% of them, not valid UTF-8), `"html"` (a line starting
+#' with `<!doctype html`, `<html`, `<head` or `<body`, possibly after an
+#' `<?xml ...?>` or `<!-- ... -->` on that line), `"xml"` (the body starts
+#' with `<`), `"json"` (the body starts with a JSON object or array), or `NA`.
+#' The flag comes from the body alone, never from `content_type`, and changes
+#' nothing: the body is matched as it is either way.
+#'
 #' `timeout` is one budget for the whole chain of one origin, redirects
 #' included, rounded up to whole seconds; each connection attempt also gets at
 #' most three seconds. Two things can make a fetch overrun it: the time spent
@@ -117,7 +128,8 @@
 #'   components, `map` (one row per input URL, in input order) and `robots` (one
 #'   row per fetched source, with the fetched body stored once as a raw vector
 #'   in `robots$body`, and the final response's `Retry-After` as the character
-#'   `retry_after` and the double `retry_after_seconds`).
+#'   `retry_after` and the double `retry_after_seconds`, its `Content-Type` as
+#'   the character `content_type`, and the character `content_flag`).
 #'
 #' @examples
 #' # A refused origin is decided before any request, so this runs offline.
@@ -193,6 +205,8 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
     retry_after_seconds = vapply(
       results, function(r) r$retry_after_seconds, numeric(1L)
     ),
+    content_type = vapply(results, function(r) r$content_type, character(1L)),
+    content_flag = vapply(results, function(r) r$content_flag, character(1L)),
     stringsAsFactors = FALSE
   )
   # `body` is a list-of-raw column: each fetched body stored exactly once.

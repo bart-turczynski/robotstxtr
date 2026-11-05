@@ -32,7 +32,7 @@ test_that("robots carries the full contract schema with a raw body column", {
     "source_id", "source_type", "robots_url", "effective_url", "http_status",
     "fetch_outcome", "redirect_count", "body_size", "timeout", "max_bytes",
     "error_stage", "error_class", "error_message", "retry_after",
-    "retry_after_seconds", "body"
+    "retry_after_seconds", "content_type", "content_flag", "body"
   ))
   expect_identical(nrow(x$robots), 1L)
   expect_type(x$robots$body, "list")
