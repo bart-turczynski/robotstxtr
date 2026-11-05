@@ -20,10 +20,9 @@ validate_timeout <- function(timeout) {
 }
 
 # `fetch_user_agent` must be NULL or one non-empty, non-missing character value
-# that is a valid HTTP field value: no control character (CR, LF, NUL and the
-# rest; HTAB is allowed inside), and no space or HTAB at either end. ssrfr
-# refuses such a value too, but with its own error class, so it is caught here
-# first and the call-level error keeps robotstxtr's (ROBO-jbralthm).
+# that ssrfr accepts as a `user_agent`: a valid HTTP field value. ssrfr's own
+# check decides, and its error is re-classed so the call-level error keeps
+# robotstxtr's class (ROBO-jbralthm).
 validate_fetch_user_agent <- function(fetch_user_agent) {
   if (is.null(fetch_user_agent)) {
     return(invisible(NULL))
@@ -38,18 +37,18 @@ validate_fetch_user_agent <- function(fetch_user_agent) {
       "robotstxtr_invalid_fetch_user_agent"
     )
   }
-  bytes <- as.integer(charToRaw(enc2utf8(fetch_user_agent)))
-  ok <- bytes == 0x09L | (bytes >= 0x20L & bytes != 0x7FL)
-  edge <- bytes[c(1L, length(bytes))] %in% c(0x09L, 0x20L)
-  if (!all(ok) || any(edge)) {
-    robots_abort(
-      paste(
-        "`fetch_user_agent` must be a valid HTTP field value: no control",
-        "character, and no leading or trailing whitespace."
-      ),
-      "robotstxtr_invalid_fetch_user_agent"
-    )
-  }
+  tryCatch(
+    ssrfr::ssrf_policy(user_agent = fetch_user_agent),
+    ssrfr_error_invalid_policy = function(e) {
+      robots_abort(
+        paste(
+          "`fetch_user_agent` must be a valid HTTP field value: no control",
+          "character, and no leading or trailing whitespace."
+        ),
+        "robotstxtr_invalid_fetch_user_agent"
+      )
+    }
+  )
   invisible(fetch_user_agent)
 }
 

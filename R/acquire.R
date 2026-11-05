@@ -257,6 +257,18 @@ acquire_no_location_result <- function(url, status, redirect_count,
   )
 }
 
+acquire_loop_result <- function(location, status, redirect_count,
+                                redirect_hops) {
+  make_source_result(
+    "redirect_error", NULL, NULL, redirect_count, NULL,
+    "Redirect loop detected.",
+    redirect_hops = redirect_hops,
+    terminal_redirect_reason = "loop",
+    location_header = location,
+    final_http_status = status
+  )
+}
+
 # --- The hop loop -------------------------------------------------------------
 
 # Fetch one robots URL and return a source result (make_source_result()).
@@ -303,9 +315,9 @@ acquire_robots <- function(robots_url, timeout, fetch_ua, max_bytes,
         binding$url, status, redirect_count, redirect_hops
       ))
     }
+    target <- acquire_location_target(location, binding$url)
     redirect_hops[[length(redirect_hops) + 1L]] <- list(
-      from_url = binding$url, status = status,
-      location_target = acquire_location_target(location, binding$url)
+      from_url = binding$url, status = status, location_target = target
     )
     if (redirect_count >= acquire_redirect_limit) {
       return(make_source_result(
@@ -318,6 +330,15 @@ acquire_robots <- function(robots_url, timeout, fetch_ua, max_bytes,
       ))
     }
 
+    # The loop check runs on the resolved target before the hop is prepared,
+    # so a loop resolves no name; the check after preparing, on the URL ssrfr
+    # will request, is the backstop.
+    seen <- c(visited, binding$url)
+    if (sub("#.*$", "", target) %in% seen) {
+      return(acquire_loop_result(
+        location, status, redirect_count, redirect_hops
+      ))
+    }
     redirect <- list(status = status, location = location)
     following <- acquire_call(acquire_prepare_hop(
       location, policy, from = binding
@@ -328,14 +349,9 @@ acquire_robots <- function(robots_url, timeout, fetch_ua, max_bytes,
         redirect = redirect
       ))
     }
-    if (following$url %in% c(visited, binding$url)) {
-      return(make_source_result(
-        "redirect_error", NULL, NULL, redirect_count, NULL,
-        "Redirect loop detected.",
-        redirect_hops = redirect_hops,
-        terminal_redirect_reason = "loop",
-        location_header = location,
-        final_http_status = status
+    if (following$url %in% seen) {
+      return(acquire_loop_result(
+        location, status, redirect_count, redirect_hops
       ))
     }
     visited <- c(visited, binding$url)

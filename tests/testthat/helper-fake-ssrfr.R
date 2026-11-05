@@ -126,7 +126,9 @@ fake_fetch <- function(binding, handler) {
     binding$state$location <- locations[[1L]]
   }
   if (length(locations) > 1L) {
-    return(fake_failure("protocol-error", check = "location", hop = binding$hop))
+    return(fake_failure(
+      "protocol-error", check = "location", hop = binding$hop
+    ))
   }
   res
 }
