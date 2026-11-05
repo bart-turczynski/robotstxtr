@@ -6,7 +6,7 @@
 \alias{robotstxtr-package}
 \title{robotstxtr: Engine-Aware 'robots.txt' Policy with Google's Matcher Algorithm}
 \description{
-Evaluates whether URLs may be crawled according to 'robots.txt' rules. A versioned engine-aware facade keeps neutral fetch evidence, per-engine status policy, robots product tokens, and matcher capabilities separate, returning explicit non-decisions when policy is undocumented or a matcher is unavailable. The available matcher is a bundled, upstream-test-validated snapshot of Google's open-source C++ 'robots.txt' matcher, preserving 'Googlebot' behavior. Fetches use a deterministic, conservative policy built on 'httr2', with fetch origins constructed by 'rurl'. All network access in tests, examples, and vignettes is mocked or served locally, so no internet connection is required to install, test, or check the package. This matcher derives from Google's 'robotstxt' project \url{https://github.com/google/robotstxt}, distributed under the Apache License 2.0; see the package NOTICE.
+Evaluates whether URLs may be crawled according to 'robots.txt' rules. A versioned engine-aware facade keeps neutral fetch evidence, per-engine status policy, robots product tokens, and matcher capabilities separate, returning explicit non-decisions when policy is undocumented or a matcher is unavailable. The available matcher is a bundled, upstream-test-validated snapshot of Google's open-source C++ 'robots.txt' matcher, preserving 'Googlebot' behavior. Fetches follow a deterministic, conservative policy, with fetch origins constructed by 'rurl' and every request made through the 'ssrfr' server-side request forgery guard. All network access in tests, examples, and vignettes is mocked, served locally, or refused before any request, so no internet connection is required to install, test, or check the package. This matcher derives from Google's 'robotstxt' project \url{https://github.com/google/robotstxt}, distributed under the Apache License 2.0; see the package NOTICE.
 }
 \examples{
 # A short offline tour; no call below performs a network request.
@@ -55,7 +55,8 @@ Result inspection: \code{\link[=robots_body]{robots_body()}}, \code{\link[=as_le
 
 The bundled matcher is a vendored, upstream-test-validated snapshot of
 Google's open-source C++ robots.txt matcher. Fetch origins are constructed
-with the \pkg{rurl} package and HTTP is performed by \pkg{httr2}.
+with the \pkg{rurl} package, and every request goes through the
+\pkg{ssrfr} guard.
 }
 \author{
 \strong{Maintainer}: Bart Turczynski \email{bartek@turczynski.pl} (\href{https://orcid.org/0000-0002-8788-7980}{ORCID}) [copyright holder]

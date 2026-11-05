@@ -1537,27 +1537,30 @@ robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
 #' @return A `robots_engine_decisions_v1` object with `results`, neutral
 #'   `evidence`, and `contract` components.
 #' @examples
-#' # This entry point fetches /robots.txt over HTTP. The transport is mocked
-#' # here so the example runs offline; a real call needs no such wrapper.
-#' decisions <- httr2::with_mocked_responses(
-#'   function(req) {
-#'     httr2::response(
-#'       status_code = 200L, url = req$url,
-#'       body = charToRaw("user-agent: *\nDisallow: /private\n")
-#'     )
-#'   },
-#'   robots_evaluate_url_v1(
-#'     c("https://example.com/page", "https://example.com/private"),
-#'     robots_product_token = "my-bot",
-#'     robots_policy_ruleset = "google",
-#'     matcher_backend = "google"
-#'   )
+#' # A refused origin is decided before any request, so this runs offline. The
+#' # evidence records why, apart from the (absent) decision.
+#' refused <- robots_evaluate_url_v1(
+#'   "http://[fd00:ec2::254]/latest",
+#'   robots_product_token = "my-bot",
+#'   robots_policy_ruleset = "google",
+#'   matcher_backend = "google"
+#' )
+#' refused$evidence[c("source_id", "safety_block_reason", "evidence_status")]
+#'
+#' \dontrun{
+#' # A live fetch of https://example.com/robots.txt.
+#' decisions <- robots_evaluate_url_v1(
+#'   c("https://example.com/page", "https://example.com/private"),
+#'   robots_product_token = "my-bot",
+#'   robots_policy_ruleset = "google",
+#'   matcher_backend = "google"
 #' )
 #' decisions$results[c("url", "policy_status", "url_decision", "reason")]
 #'
 #' # Acquisition evidence is recorded neutrally, apart from the decision, so
 #' # the policy applied to the response stays auditable.
 #' decisions$evidence[c("source_id", "final_http_status", "evidence_status")]
+#' }
 #' @export
 robots_evaluate_url_v1 <- function(url, robots_product_token,
 # nolint start: object_length_linter

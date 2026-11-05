@@ -40,8 +40,9 @@ allow and disallow decisions match Googlebot’s behavior — including the
 quirky parts (longest-match wins, `Allow`-beats-`Disallow` ties, `*`/`$`
 wildcards, case-sensitive paths, percent-escape canonicalization). It
 can also fetch `robots.txt` for you under a deterministic, conservative
-`httr2` policy, construct fetch origins with `rurl`, and return richly
-typed, vectorized decisions with per-rule match metadata.
+policy, through the `ssrfr` guard against server-side request forgery,
+construct fetch origins with `rurl`, and return richly typed, vectorized
+decisions with per-rule match metadata.
 
 This is a faithful, upstream-test-validated replica of the pinned
 matcher, not a claim of universal behavioral identity with Googlebot.

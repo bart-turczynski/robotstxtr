@@ -23,7 +23,8 @@ passed to the matcher unchanged (upstream extraction semantics apply, so
 e.g. \code{"Googlebot/2.1"} is not pre-trimmed by R).}
 
 \item{timeout}{A single positive, finite numeric total timeout in seconds per
-origin, including redirects. Defaults to \code{10}.}
+origin, including redirects, rounded up to whole seconds. Defaults to
+\code{10}.}
 
 \item{max_bytes}{A single positive, finite, whole-number decoded-body byte
 limit no greater than \code{.Machine$integer.max}, coerced to integer. A
@@ -35,13 +36,12 @@ Defaults to \code{524288L}.}
 non-empty character HTTP user agent to send instead. This is never the
 matcher \code{user_agent}.}
 
-\item{ssrf_guard}{A single logical. When \code{TRUE} (the default) a structural
-SSRF guard refuses, before any request, both the initial origin and every
-redirect target that resolves to a private, loopback, link-local, or
-cloud-metadata address (outcome \code{ssrf_blocked}, no socket opened). Set to
-\code{FALSE} to deliberately opt out — for example to fetch \code{robots.txt} from a
-trusted intranet host. Opting out removes that protection; only disable it
-for hosts you control and trust.}
+\item{ssrf_guard}{A single logical, \code{TRUE} by default. \code{FALSE} is
+deprecated and warns: the guard has no off switch any more. It now
+selects a permissive policy, which reopens private, loopback and other
+internal address ranges and the metadata host names, for example to fetch
+\code{robots.txt} from a trusted intranet host. Known cloud-metadata endpoints
+and the IPv6 transition forms that embed an address stay refused.}
 }
 \value{
 An S3 object of class \code{robots_decisions}: a named list with two
@@ -103,21 +103,24 @@ callbacks of the same source body (the canonical value the matcher used,
 after upstream \code{MaybeEscapePattern} canonicalization).
 }
 \examples{
-# allowed_by_robots_url() fetches /robots.txt over HTTP and matches in one
-# step. The transport is mocked here so the example runs offline; a real call
-# needs no such wrapper.
-httr2::with_mocked_responses(
-  function(req) {
-    httr2::response(
-      status_code = 200L, url = req$url,
-      body = charToRaw("user-agent: *\nDisallow: /private\n")
-    )
-  },
-  allowed_by_robots_url(
-    c("https://example.com/page", "https://example.com/private"),
-    "my-bot"
-  )
+# A refused origin is decided before any request, so this runs offline: a
+# loopback address is never fetched, and its decision is unknown (NA).
+allowed_by_robots_url("http://127.0.0.1/page", "my-bot")$results
+
+# Matching a body you already hold needs no HTTP at all.
+allowed_by_robots_text(
+  "user-agent: *\nDisallow: /private\n",
+  c("https://example.com/page", "https://example.com/private"),
+  "my-bot"
 )
+
+\dontrun{
+# A live fetch of https://example.com/robots.txt, then matching.
+allowed_by_robots_url(
+  c("https://example.com/page", "https://example.com/private"),
+  "my-bot"
+)
+}
 
 }
 \seealso{

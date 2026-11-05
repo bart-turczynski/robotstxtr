@@ -45,9 +45,21 @@ records a neutral fact record plus one `evidence_status`.
 auditable), `redirect_count`, `terminal_redirect_reason` (`none` | `over_budget` | `no_location` |
 `loop` | `non_http_target` | `downgrade`), `final_http_status`, `location_header` (on a terminal
 redirect), `body_present` (bool), `observed_bytes`, `stored_bytes`, `body_truncated`,
-`transport_error_kind` (`timeout` | `tls_error` | `network_error`), `safety_block_reason` (a **closed, stable enum** = the `R/ssrf.R` code set — which
-already includes `scheme`, to which `non_http_target` maps — PLUS `https_downgrade`; any future safety
+`transport_error_kind` (`timeout` | `tls_error` | `network_error`), `safety_block_reason` (a **closed, stable enum**; any future safety
 reason requires a versioned schema addition), `termination_reason` (`none` | `deadline` | `ceiling`).
+
+`safety_block_reason` values. Schema revision `2026-08-25.1` published the code set of robotstxtr's
+own guard (`R/ssrf.R`, removed): `loopback`, `private`, `link-local`, `cloud-metadata`, `shared`,
+`unspecified`, `this-network`, `ipv4-mapped`, `ipv4-translated`, `ipv4-compatible`, `nat64`, `6to4`,
+`teredo`, `isatap`, `malformed-address`, `numeric-literal`, `scheme` (to which `non_http_target`
+maps), PLUS `https_downgrade` (ssrfr's `downgrade`). Schema revision `2026-11-05.1` (ROBO-jbralthm,
+the switch to `ssrfr`) adds the refusals ssrfr makes that the old guard did not: `userinfo` (a redirect
+`Location` carrying credentials), `port` (port 0), `parse` (a URL the WHATWG and libcurl parsers
+read differently, a zoned IPv6 literal, an invalid `xn--` label), `multicast` and `reserved`. The
+mapping from ssrfr's reason codes is data in `R/acquire-map.R`; ssrfr's `host-denied` and
+`range-denied` are not admitted, since robotstxtr's policy states no deny rules. `body_truncated` is
+`FALSE` on every row: ssrfr never returns part of a body, so a body over the ceiling is
+`fetch_outcome = body_too_large` with `termination_reason = ceiling`.
 
 **`evidence_status` (exhaustive):**
 

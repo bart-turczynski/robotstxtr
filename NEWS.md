@@ -2,7 +2,29 @@
 
 * Case-insensitive matching of product tokens and robots.txt directive names no longer depends on the session locale: under `tr_TR`, `I` no longer folds to `ı` (SEOR-tldlaxgq).
 
-* The SSRF guard now refuses an IPv6 literal with a zone ID as it does the same address without one, and refuses bracketed hosts that are not IPv6 addresses (ROBO-atvfjuuw).
+* `robots_fetch()` and every URL entry point now fetch through the `ssrfr` guard: a host name is resolved once, its addresses checked, and the connection pinned to them (ROBO-jbralthm).
+
+* `ssrfr (>= 1.0.0)` replaces `httr2` in Imports.
+
+* `timeout` is now one budget per origin, redirects included, as documented, rounded up to whole seconds (ROBO-tyhouhua).
+
+* `ssrf_guard = FALSE` is deprecated and warns: it reopens private and loopback ranges, but cloud-metadata endpoints and IPv6 transition forms stay refused (ROBO-jbralthm).
+
+* `body_truncated` is now `FALSE` on every evidence row: a body over `max_bytes` is `body_too_large` and none of it is kept (ROBO-jbralthm).
+
+* `safety_block_reason` gains `userinfo`, `port`, `parse`, `multicast` and `reserved`, at engine schema revision `2026-11-05.1` (ROBO-jbralthm).
+
+* Unique local IPv6 addresses (`fd00::/8`) are now refused as `private`; they were allowed (ROBO-jbralthm).
+
+* A malformed or zoned IPv6 literal in a redirect `Location` is now refused as `parse`, not `malformed-address`; as an origin it stays `input_invalid` (ROBO-atvfjuuw).
+
+* An ideographic-dot or fullwidth spelling of the metadata host, such as `metadata。google。internal`, is now refused as `parse`, not `cloud-metadata`: its origin is an invalid `xn--` label (ROBO-pvntbjlb).
+
+* GCP's IPv6 metadata endpoint `fd20:ce::254` is now refused as `cloud-metadata` (ROBO-xzbyxipg).
+
+* A 3xx other than 301, 302, 303, 307 or 308, or one with several `Location` fields, is now `redirect_error` with `no_location` (ROBO-jbralthm).
+
+* `fetch_user_agent` must now be a valid HTTP field value: a control character or leading or trailing whitespace is a call-level error (ROBO-jbralthm).
 
 # robotstxtr 0.3.1
 

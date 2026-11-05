@@ -99,16 +99,16 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #'   `diagnostics` data frames.
 #'
 #' @examples
-#' fetched_validation <- httr2::with_mocked_responses(
-#'   function(req) {
-#'     httr2::response(
-#'       status_code = 200L, url = req$url,
-#'       body = charToRaw("user-agent: *\nDisallow: /private\n")
-#'     )
-#'   },
-#'   robots_validate_url("https://example.com/private")
-#' )
+#' # A refused origin is never fetched, so its document is not validated.
+#' # This runs offline.
+#' refused <- robots_validate_url("http://169.254.169.254/latest")
+#' refused$documents[c("source_id", "validation_status")]
+#'
+#' \dontrun{
+#' # A live fetch of https://example.com/robots.txt, then validation.
+#' fetched_validation <- robots_validate_url("https://example.com/private")
 #' fetched_validation$documents
+#' }
 #'
 #' @seealso [robots_validate_text()] for supplied bytes and [robots_fetch()] for
 #'   acquisition without document validation.
@@ -133,17 +133,8 @@ robots_validate_url <- function(url, timeout = 10, max_bytes = 524288L,
 #' @return `x`, invisibly.
 #' @examples
 #' # A robots_validations object comes from robots_validate_url() or
-#' # robots_validate_text(); the transport is mocked here so the example runs
-#' # offline.
-#' validations <- httr2::with_mocked_responses(
-#'   function(req) {
-#'     httr2::response(
-#'       status_code = 200L, url = req$url,
-#'       body = charToRaw("user-agent: *\nDisallow: /private\n")
-#'     )
-#'   },
-#'   robots_validate_url("https://example.com/private")
-#' )
+#' # robots_validate_text(); validating supplied text needs no network.
+#' validations <- robots_validate_text("user-agent: *\nDisallow: /private\n")
 #' print(validations)
 #' @export
 print.robots_validations <- function(x, ...) {

@@ -14,11 +14,12 @@ Description: Evaluates whether URLs may be crawled according to 'robots.txt'
     separate, returning explicit non-decisions when policy is undocumented or
     a matcher is unavailable. The available matcher is a bundled,
     upstream-test-validated snapshot of Google's open-source C++ 'robots.txt'
-    matcher, preserving 'Googlebot' behavior. Fetches use a deterministic,
-    conservative policy built on 'httr2', with fetch origins constructed by
-    'rurl'. All network access in tests, examples, and vignettes is mocked or
-    served locally, so no internet connection is required to install, test, or
-    check the package. This matcher derives from Google's 'robotstxt'
+    matcher, preserving 'Googlebot' behavior. Fetches follow a deterministic,
+    conservative policy, with fetch origins constructed by 'rurl' and every
+    request made through the 'ssrfr' server-side request forgery guard. All
+    network access in tests, examples, and vignettes is mocked, served
+    locally, or refused before any request, so no internet connection is
+    required to install, test, or check the package. This matcher derives from Google's 'robotstxt'
     project
     <https://github.com/google/robotstxt>, distributed under the Apache License
     2.0; see the package NOTICE.
@@ -37,7 +38,6 @@ Roxygen: list(markdown = TRUE)
 Depends:
     R (>= 4.1.0)
 Imports:
-    httr2 (>= 1.2.0),
     rurl (>= 3.0.1),
     ssrfr (>= 1.0.0)
 LinkingTo:
