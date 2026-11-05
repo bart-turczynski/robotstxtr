@@ -186,8 +186,9 @@ robots_validate_url("https://example.com/some/page")
 ```
 
 URL validation reuses `robots_fetch()` and never parses a truncated body. For
-example, a decoded body over `max_bytes` is reported as an acquisition limit
-failure with `validation_status = "not_validated"`.
+example, a 2xx or 3xx response whose decoded body is over `max_bytes` is
+reported as an acquisition limit failure with
+`validation_status = "not_validated"`; a 4xx or 5xx keeps its status outcome.
 
 The validation profile is explicitly `google-parser-compatible`: it reflects
 the package's pinned parser (including accepted typo and missing-colon forms)

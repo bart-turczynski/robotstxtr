@@ -47,8 +47,9 @@ per input URL), \code{documents} (one row per distinct fetch source), and
 Uses \code{\link[=robots_fetch]{robots_fetch()}} unchanged, then validates each distinct stored raw body
 exactly once. Shared origins therefore remain shared and no second HTTP path
 or refetch is introduced. Acquisition failures are retained as evidence and
-produce \code{"not_validated"} document rows; a response exceeding \code{max_bytes} is
-explicitly reported as \code{acquisition_limit_exceeded}, and no truncated body
+produce \code{"not_validated"} document rows; a 2xx or 3xx response exceeding
+\code{max_bytes} is explicitly reported as \code{acquisition_limit_exceeded}, a 4xx or
+5xx keeps its status outcome whatever its body size, and no truncated body
 is parsed.
 }
 \details{

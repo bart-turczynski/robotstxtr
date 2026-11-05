@@ -83,8 +83,9 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' Uses [robots_fetch()] unchanged, then validates each distinct stored raw body
 #' exactly once. Shared origins therefore remain shared and no second HTTP path
 #' or refetch is introduced. Acquisition failures are retained as evidence and
-#' produce `"not_validated"` document rows; a response exceeding `max_bytes` is
-#' explicitly reported as `acquisition_limit_exceeded`, and no truncated body
+#' produce `"not_validated"` document rows; a 2xx or 3xx response exceeding
+#' `max_bytes` is explicitly reported as `acquisition_limit_exceeded`, a 4xx or
+#' 5xx keeps its status outcome whatever its body size, and no truncated body
 #' is parsed.
 #'
 #' This function validates the acquired robots.txt document. It does not answer

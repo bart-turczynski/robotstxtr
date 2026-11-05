@@ -164,9 +164,10 @@ fetch_error_meta <- function(outcome) {
 #
 # `body_truncated` is FALSE on every row (ROBO-jbralthm). ssrfr never returns
 # part of a body: a body over `max_bytes` is refused whole, so no truncated
-# body can exist. The overflow is recorded as `fetch_outcome =
-# "body_too_large"` with `termination_reason = "ceiling"`, and
-# robots_validate.R's documents say FALSE likewise.
+# body can exist. On a 2xx or 3xx the overflow is recorded as `fetch_outcome =
+# "body_too_large"` with `termination_reason = "ceiling"`; a 4xx or 5xx keeps
+# its status outcome (acquire_failure_result()). robots_validate.R's documents
+# say FALSE likewise.
 make_source_result <- function(outcome, http_status, effective_url,
                                redirect_count, body, error_message,
                                redirect_hops = list(),
