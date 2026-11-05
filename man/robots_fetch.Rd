@@ -46,7 +46,8 @@ components, \code{map} (one row per input URL, in input order) and \code{robots}
 row per fetched source, with the fetched body stored once as a raw vector
 in \code{robots$body}, and the final response's \code{Retry-After} as the character
 \code{retry_after} and the double \code{retry_after_seconds}, its \code{Content-Type} as
-the character \code{content_type}, and the character \code{content_flag}).
+the character \code{content_type}, the character \code{content_flag}, and the
+logical \code{body_truncated}).
 }
 \description{
 Performs the grouped robots.txt fetch stage for one or more target URLs and
@@ -111,6 +112,8 @@ the limit is cut at it: its first \code{max_bytes} decoded bytes are stored as a
 \code{fetched} result and matched, and anything after the cut is ignored, as
 RFC 9309 section 2.5 allows. The cut falls at a byte, so the stored body may
 end inside a multibyte character, and \code{body_size} then equals \code{max_bytes}.
+The source row's logical \code{body_truncated} is \code{TRUE} for such a cut body and
+\code{FALSE} otherwise.
 A 4xx or 5xx keeps its status outcome whatever its body size, with no
 stored body. A 3xx whose body is over the limit ends as \code{body_too_large} and
 is not followed, because \pkg{ssrfr} keeps no \code{Location} for it.

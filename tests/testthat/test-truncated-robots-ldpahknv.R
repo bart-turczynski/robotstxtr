@@ -193,3 +193,68 @@ test_that("ROBO-ldpahknv: a fetch cut inside a character is not binary", {
   expect_identical(row$body[[1L]][3:4], as.raw(c(0xe2, 0x82)))
   expect_identical(row$content_flag, NA_character_)
 })
+
+# --- body_truncated on every robots frame -------------------------------------
+
+test_that("ROBO-ldpahknv: every robots frame reports the cut", {
+  local_fake_ssrfr(function(req) {
+    if (startsWith(req$url, "http://a/")) {
+      fake_response(200L, body = tr_body())
+    } else {
+      fake_response(200L, body = "User-agent: *\n")
+    }
+  })
+  fetched <- robots_fetch(c("http://a/", "http://b/"), max_bytes = tr_limit)
+  expect_identical(fetched$robots$body_truncated, c(TRUE, FALSE))
+  url <- allowed_by_robots_url(
+    c("http://a/x", "http://b/x"), "bot", max_bytes = tr_limit
+  )
+  expect_identical(url$robots$body_truncated, c(TRUE, FALSE))
+  expect_identical(robots_fetch(character())$robots$body_truncated, logical())
+
+  # A supplied text is whole.
+  text <- allowed_by_robots_text(rawToChar(tr_body()), "http://a/x", "bot")
+  expect_false(text$robots$body_truncated)
+  both <- rbind(text$robots, url$robots)
+  expect_identical(both$body_truncated, c(FALSE, TRUE, FALSE))
+
+  # The legacy adapter carries the v1 evidence's flag.
+  engine <- robots_evaluate_url_v1(
+    c("http://a/x", "http://b/x"), "Googlebot", "google", "google",
+    max_bytes = tr_limit
+  )
+  legacy <- as_legacy_robots_decisions_v1(engine)
+  expect_identical(legacy$robots$body_truncated, c(TRUE, FALSE))
+  supplied <- as_legacy_robots_decisions_v1(robots_evaluate_text_v1(
+    "User-agent: *\n", "http://a/", "bot", "google", "google"
+  ))
+  expect_false(supplied$robots$body_truncated)
+})
+
+test_that("ROBO-ldpahknv: robots_validate_url() validates and reports a cut", {
+  local_fake_ssrfr(function(req) fake_response(200L, body = tr_body()))
+  x <- robots_validate_url("http://a/", max_bytes = tr_limit)
+  doc <- x$documents
+  expect_identical(doc$fetch_outcome, "fetched")
+  expect_identical(doc$byte_size, tr_limit)
+  expect_identical(doc$disallow_directives, 1L)
+  expect_true(doc$body_truncated)
+  expect_true(doc$limit_exceeded)
+  expect_false("acquisition_limit_exceeded" %in% x$diagnostics$code)
+})
+
+test_that("ROBO-ldpahknv: a 3xx over max_bytes is still refused whole", {
+  local_fake_ssrfr(function(req) {
+    fake_response(
+      302L, headers = list(Location = "http://a/moved"), body = tr_body()
+    )
+  })
+  x <- robots_validate_url("http://a/", max_bytes = tr_limit)
+  expect_identical(x$documents$fetch_outcome, "body_too_large")
+  expect_identical(x$documents$validation_status, "not_validated")
+  expect_identical(x$diagnostics$code, "acquisition_limit_exceeded")
+  expect_true(x$documents$limit_exceeded)
+  expect_false(x$documents$body_truncated)
+  row <- robots_fetch("http://a/", max_bytes = tr_limit)$robots
+  expect_false(row$body_truncated)
+})

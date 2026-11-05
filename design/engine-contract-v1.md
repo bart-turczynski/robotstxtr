@@ -209,6 +209,8 @@ split a character.
 |---|---|
 | `fetch_outcome` (legacy `robots` and `map` rows, v1 `legacy_fetch_outcome`) | `fetched`, with no error fields |
 | legacy `body`, `body_size` | the first `max_bytes` bytes; `body_size` equals `max_bytes` |
+| legacy `body_truncated` | `TRUE`; `FALSE` on every other row |
+| `robots_validate_url()` documents | the prefix is validated; `body_truncated` and `limit_exceeded` are `TRUE`, with no `acquisition_limit_exceeded` diagnostic |
 | legacy matching (`allowed_by_robots_url()`) | the prefix is matched like any body; a rule after the cut does not exist |
 | `content_flag` | read from the prefix; a split character at the end is at most three invalid bytes, under the eight `binary` needs |
 | v1 `body_present`, `stored_bytes` | `TRUE`, `max_bytes` |
@@ -229,16 +231,26 @@ Decisions:
   failure, so a new value would leave the prefix unmatched and its rows with
   no `decision_source`. The cut is carried by `body_truncated`,
   `observed_bytes` and `termination_reason`, which the v1 evidence already
-  publishes. No enum or column changes, so the engine schema revision does
-  not move.
+  publishes. No v1 enum or column changes, so the engine schema revision does
+  not move. The values of a v1 row over the ceiling do change: it now carries
+  `legacy_fetch_outcome = "fetched"`, `body_present = TRUE`, `stored_bytes =
+  max_bytes` and `body_truncated = TRUE`, while `evidence_status` is still
+  `incomplete`.
 - The v1 evidence of a cut body stays `incomplete`. `engine-profiles.md`
   §2 maps `termination_reason = ceiling` there, and a prefix cannot stand in
   for a whole file under every engine: Yandex's documented over-500 KB
   `allow_all` needs the file's real size, which a prefix under a smaller
   `max_bytes` hides.
-- The legacy `robots` frame has no `body_truncated` column. A caller tells a
-  cut body from a whole one by `body_size == max_bytes` (a whole file of
-  exactly `max_bytes` bytes reads the same) or through the v1 evidence.
+- Every legacy `robots` frame gains a logical `body_truncated` column,
+  between `content_flag` and `body`, under the one-schema rule of the
+  Retry-After and Content-Type columns above: `robots_fetch()` and
+  `allowed_by_robots_url()` fill it from the fetch, `allowed_by_robots_text()`
+  writes `FALSE` (the caller supplied the whole text), and
+  `as_legacy_robots_decisions_v1()` copies the v1 evidence's `body_truncated`.
+  `observed_bytes` stays in the v1 evidence only.
+- `robots_validate_url()` validates a cut prefix and reports the cut in its
+  documents frame. A body refused whole (a 3xx over `max_bytes`) is still
+  `not_validated` with `acquisition_limit_exceeded`.
 - `max_bytes` below RFC 9309's 500 KiB floor (`512000`) stays accepted, and
   is documented as below it. The default, `524288`, meets the floor.
 

@@ -49,10 +49,12 @@ per input URL), \code{documents} (one row per distinct fetch source), and
 Uses \code{\link[=robots_fetch]{robots_fetch()}} unchanged, then validates each distinct stored raw body
 exactly once. Shared origins therefore remain shared and no second HTTP path
 or refetch is introduced. Acquisition failures are retained as evidence and
-produce \code{"not_validated"} document rows; a 2xx or 3xx response exceeding
-\code{max_bytes} is explicitly reported as \code{acquisition_limit_exceeded}, a 4xx or
-5xx keeps its status outcome whatever its body size, and no truncated body
-is parsed.
+produce \code{"not_validated"} document rows. A 2xx body over \code{max_bytes} is cut
+at the limit: its first \code{max_bytes} bytes are validated, as RFC 9309
+section 2.5 allows a crawler to parse, and the document row reports the cut
+with \code{body_truncated} and \code{limit_exceeded} both \code{TRUE}. A 3xx body over
+\code{max_bytes} is refused whole and reported as \code{acquisition_limit_exceeded},
+and a 4xx or 5xx keeps its status outcome whatever its body size.
 }
 \details{
 This function validates the acquired robots.txt document. It does not answer

@@ -58,8 +58,9 @@ the switch to `ssrfr`) adds the refusals ssrfr makes that the old guard did not:
 read differently, a zoned IPv6 literal, an invalid `xn--` label), `multicast` and `reserved`. The
 mapping from ssrfr's reason codes is data in `R/acquire-map.R`; ssrfr's `host-denied` and
 `range-denied` are not admitted, since robotstxtr's policy states no deny rules. `body_truncated` is
-`FALSE` on every row: ssrfr never returns part of a body, so a 2xx or 3xx body over the ceiling is
-`fetch_outcome = body_too_large` with `termination_reason = ceiling`; a 4xx/5xx keeps its status outcome.
+`TRUE` only for a 2xx body over the ceiling, which ssrfr's `truncate_body` returns as its first
+`max_bytes` bytes (`termination_reason = ceiling`, so `evidence_status = incomplete`; ROBO-ldpahknv); a
+3xx over it is `body_too_large`; a 4xx/5xx keeps its status outcome.
 
 **`evidence_status` (exhaustive):**
 
@@ -166,10 +167,9 @@ These byte-level limits affect the current policy/matcher decision (not future-v
 - `yandex`: **500 KB** file; a file exceeding it fails the requirements → open fallback (allow_all)
   `[documented]`.
 - `bing`: no size limit found `[documentation_gap]`.
-- **Over-limit body**: Google parses the ≤-limit prefix. robotstxtr cannot: `ssrfr` returns none of a
-  body over `max_bytes`, so a 2xx over the limit is `body_too_large` → `evidence_status = incomplete`,
-  and a 4xx/5xx over it is classified by its status (§4). A retained prefix would need `ssrfr` to
-  return one (implementation delta, §9).
+- **Over-limit body**: Google parses the ≤-limit prefix. robotstxtr retains the ≤-limit prefix of a 2xx
+  (ROBO-ldpahknv); the legacy path matches it, the v1 evidence records it as incomplete. A 3xx over the
+  limit is `body_too_large`, and a 4xx/5xx over it is classified by its status (§4).
 
 ## 8. Future-validator reference (NOT executed this release)
 
@@ -187,7 +187,8 @@ prohibits Cyrillic, Punycode/%-encoding `[documented]`; Yandex UTF-8/BOM `[docum
 (`R/allowed_by_robots_url.R:176`) and only `missing`/`fetched` leave it, so every other outcome
 resolves to `NA`. Deltas vs this spec: (a) generic 4xx → `NA` diverges from documented
 `google`/`yandex` (allow_all); (b) 1xx → `http_error` conflates protocol with transport
-(`R/fetch-policy.R:88`); (c) oversized body discarded, not retained-prefix (`ssrfr` returns no part of it; §7). These are implementation slices, filed only after this
+(`R/fetch-policy.R:88`); (c) oversized body discarded, not retained-prefix: closed for the legacy path by ROBO-ldpahknv,
+which retains and matches a 2xx prefix; the v1 evidence keeps it `incomplete` (§7). These are implementation slices, filed only after this
 spec is accepted; ADR-009 §3 (safety precedence) and §6 (findings encoding) govern how they surface.
 
 ## 10. Sources (self-contained; per-section)

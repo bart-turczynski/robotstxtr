@@ -212,6 +212,8 @@ allowed_by_robots_text <- function(robots_txt, url, user_agent,
     retry_after_seconds = NA_real_,
     content_type = NA_character_,
     content_flag = NA_character_,
+    # The caller supplied the whole text (ROBO-ldpahknv).
+    body_truncated = FALSE,
     stringsAsFactors = FALSE
   )
   # `body` is a list-of-raw column: the supplied body stored exactly once.

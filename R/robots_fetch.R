@@ -61,6 +61,8 @@
 #' `fetched` result and matched, and anything after the cut is ignored, as
 #' RFC 9309 section 2.5 allows. The cut falls at a byte, so the stored body may
 #' end inside a multibyte character, and `body_size` then equals `max_bytes`.
+#' The source row's logical `body_truncated` is `TRUE` for such a cut body and
+#' `FALSE` otherwise.
 #' A 4xx or 5xx keeps its status outcome whatever its body size, with no
 #' stored body. A 3xx whose body is over the limit ends as `body_too_large` and
 #' is not followed, because \pkg{ssrfr} keeps no `Location` for it.
@@ -134,7 +136,8 @@
 #'   row per fetched source, with the fetched body stored once as a raw vector
 #'   in `robots$body`, and the final response's `Retry-After` as the character
 #'   `retry_after` and the double `retry_after_seconds`, its `Content-Type` as
-#'   the character `content_type`, and the character `content_flag`).
+#'   the character `content_type`, the character `content_flag`, and the
+#'   logical `body_truncated`).
 #'
 #' @examples
 #' # A refused origin is decided before any request, so this runs offline.
@@ -212,6 +215,9 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
     ),
     content_type = vapply(results, function(r) r$content_type, character(1L)),
     content_flag = vapply(results, function(r) r$content_flag, character(1L)),
+    body_truncated = vapply(
+      results, function(r) r$body_truncated, logical(1L)
+    ),
     stringsAsFactors = FALSE
   )
   # `body` is a list-of-raw column: each fetched body stored exactly once.

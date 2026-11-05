@@ -190,15 +190,21 @@ test_that("URL acquisition outcomes remain explicit validation evidence", {
   large_body <- charToRaw(strrep("x", 100L))
   local_fake_ssrfr(validation_mock_response(200L, large_body))
   limited <- robots_validate_url("https://example.com/x", max_bytes = 10L)
-  # ROBO-ldpahknv: a 2xx over max_bytes is now fetched as its first max_bytes
-  # bytes (RFC 9309 section 2.5), and robots_validate_url() validates them.
-  # The documents frame does not yet carry the cut: robots_fetch() rows have
-  # no body_truncated column, so body_truncated and limit_exceeded stay FALSE.
+  # ROBO-ldpahknv: a 2xx over max_bytes is fetched as its first max_bytes
+  # bytes (RFC 9309 section 2.5); robots_validate_url() validates them and
+  # reports the cut.
   expect_identical(limited$documents$fetch_outcome, "fetched")
   expect_identical(limited$documents$byte_size, 10L)
+  expect_false(limited$documents$validation_status == "not_validated")
   expect_false("acquisition_limit_exceeded" %in% limited$diagnostics$code)
-  expect_false(limited$documents$limit_exceeded)
-  expect_false(limited$documents$body_truncated)
+  expect_true(limited$documents$limit_exceeded)
+  expect_true(limited$documents$body_truncated)
+
+  # A whole body within max_bytes is neither.
+  whole <- robots_validate_url("https://example.com/x", max_bytes = 100L)
+  expect_identical(whole$documents$byte_size, 100L)
+  expect_false(whole$documents$limit_exceeded)
+  expect_false(whole$documents$body_truncated)
 })
 
 test_that("an empty document is validated, not skipped", {

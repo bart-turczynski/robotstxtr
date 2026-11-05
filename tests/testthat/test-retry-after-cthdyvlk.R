@@ -18,7 +18,8 @@ ra_robots_columns <- c(
   "source_id", "source_type", "robots_url", "effective_url", "http_status",
   "fetch_outcome", "redirect_count", "body_size", "timeout", "max_bytes",
   "error_stage", "error_class", "error_message", "retry_after",
-  "retry_after_seconds", "content_type", "content_flag", "body"
+  "retry_after_seconds", "content_type", "content_flag", "body_truncated",
+  "body"
 )
 
 # Fetch http://a/robots.txt answered by `res`; the source row.
