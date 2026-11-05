@@ -9,16 +9,20 @@
 #
 # The closed vocabulary, first match wins:
 #
-# - "binary": the window holds a NUL byte, or more than
-#   `content_invalid_utf8_share` of its bytes are not part of valid UTF-8.
-#   NULs are still dropped before matching (R/body-decode.R); the flag only
-#   makes them visible on the fetch row.
-# - "html": a line in the window starts, after optional spaces or tabs (and a
+# - "binary": the window holds a NUL byte, or at least
+#   `content_min_invalid_bytes` of its bytes, and more than
+#   `content_invalid_utf8_share` of them, are not part of valid UTF-8, so a
+#   short Latin-1 robots.txt is not binary. NULs are still dropped before
+#   matching (R/body-decode.R); the flag only makes them visible on the fetch
+#   row.
+# - "html": a line in the window starts, after optional whitespace (and a
 #   UTF-8 BOM), with `<!doctype html`, `<html`, `<head` or `<body`, in any
-#   letter case. A `<` inside a comment line never starts a line.
+#   letter case, possibly after XML declarations or processing instructions
+#   (`<?...?>`) and markup comments (`<!--...-->`) that each close on their
+#   own line. A `<` inside a robots.txt comment line never starts a line.
 # - "xml": the first non-whitespace byte is `<` (an XML declaration, an
-#   element such as an S3 `<Error>`, a markup comment). No robots.txt line
-#   starts with `<`.
+#   element such as an S3 `<Error>`, a markup comment, or HTML tag soup with
+#   none of the four markers above). No robots.txt line starts with `<`.
 # - "json": the first non-whitespace byte opens a JSON object (`{` then `"`
 #   or `}`) or array (`[` then a JSON value or `]`).
 # - NA: none of these, an empty body, or no body.
@@ -29,6 +33,7 @@
 
 content_check_bytes <- 4096L
 content_invalid_utf8_share <- 0.1
+content_min_invalid_bytes <- 8L
 
 content_flag_values <- c("binary", "html", "xml", "json")
 
@@ -57,22 +62,27 @@ robots_content_flag <- function(body) {
   NA_character_
 }
 
-# Any line (CR, LF or CRLF ended) opening with an HTML doctype or one of the
+# Any line (CR, LF or CRLF ended) opening, after whitespace and any
+# same-line `<?...?>` or `<!--...-->`, with an HTML doctype or one of the
 # three document tags, followed by whitespace, `>`, `/` or the line's end.
+# Whitespace is `\s`, as in the "xml" test.
 content_html_pattern <- paste0(
-  "(*ANYCRLF)(?im)^[ \\t]*",
-  "<(!doctype[ \\t\\r\\n]+html|html|head|body)(?=[\\s>/]|$)"
+  "(*ANYCRLF)(?im)^\\s*",
+  "(?:(?:<\\?[^\\r\\n]*?\\?>|<!--[^\\r\\n]*?-->)\\s*)*",
+  "<(!doctype\\s+html|html|head|body)(?=[\\s>/]|$)"
 )
 
 content_json_pattern <-
   "^\\s*(\\{\\s*[\"}]|\\[\\s*([\\[{\"\\]0-9-]|true|false|null))"
 
-# TRUE when more than `content_invalid_utf8_share` of `bytes` (NUL-free) are
-# not part of a valid UTF-8 sequence. iconv() writes each such byte as the
-# four bytes "<xx>", so the count is the length gained, divided by three.
+# TRUE when at least `content_min_invalid_bytes` of `bytes` (NUL-free), and
+# more than `content_invalid_utf8_share` of them, are not part of a valid
+# UTF-8 sequence. iconv() writes each such byte as the four bytes "<xx>", so
+# the count is the length gained, divided by three.
 content_mostly_invalid <- function(bytes) {
   text <- rawToChar(bytes)
   marked <- iconv(text, "UTF-8", "UTF-8", sub = "byte")
   invalid <- (nchar(marked, type = "bytes") - length(bytes)) / 3
-  invalid > content_invalid_utf8_share * length(bytes)
+  invalid >= content_min_invalid_bytes &&
+    invalid > content_invalid_utf8_share * length(bytes)
 }

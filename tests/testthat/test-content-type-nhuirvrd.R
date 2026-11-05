@@ -71,6 +71,29 @@ test_that("ROBO-nhuirvrd: a flagged body keeps the rules it spells out", {
   expect_identical(x$results$allowed, c(FALSE, TRUE))
 })
 
+test_that("ROBO-nhuirvrd: the text path and the legacy adapter write NA", {
+  text <- allowed_by_robots_text(ct_html, "http://a/", "bot")
+  expect_identical(text$robots$content_type, NA_character_)
+  expect_identical(text$robots$content_flag, NA_character_)
+
+  engine <- robots_evaluate_text_v1(
+    ct_html, "http://a/", "bot", "google", "google"
+  )
+  legacy <- as_legacy_robots_decisions_v1(engine)
+  expect_identical(legacy$robots$content_type, NA_character_)
+  expect_identical(legacy$robots$content_flag, NA_character_)
+
+  local_fake_ssrfr(ct_router(list(
+    "http://a/robots.txt" = fake_response(
+      200L, headers = list("Content-Type" = "text/html"), body = ct_html
+    )
+  )))
+  url <- allowed_by_robots_url("http://a/", "bot")
+  both <- rbind(text$robots, url$robots)
+  expect_identical(both$content_type, c(NA, "text/html"))
+  expect_identical(both$content_flag, c(NA, "html"))
+})
+
 # --- Content-Type -----------------------------------------------------------
 
 test_that("ROBO-nhuirvrd: Content-Type is kept as received", {
@@ -136,6 +159,16 @@ test_that("ROBO-nhuirvrd: HTML by doctype or by a leading tag", {
   expect_identical(
     ct_flag("<?xml version=\"1.0\"?>\n<!DOCTYPE html>\n<html></html>"), "html"
   )
+  # A declaration or comment before the marker on the same line.
+  expect_identical(
+    ct_flag("<!-- x --><!DOCTYPE html><html><body>x</body></html>"), "html"
+  )
+  expect_identical(
+    ct_flag("<?xml version=\"1.0\"?><html xmlns=\"x\"></html>"), "html"
+  )
+  expect_identical(
+    ct_flag("  <?xml version=\"1.0\"?> <!-- a --> <!-- b --> <head>"), "html"
+  )
   # A page that does not open with markup (a PHP warning first).
   expect_identical(ct_flag("Warning: oops in x.php\n<html>\n</html>"), "html")
   # A UTF-8 BOM before the markup.
@@ -152,6 +185,10 @@ test_that("ROBO-nhuirvrd: XML when the body opens with other markup", {
   expect_identical(ct_flag("\n  <!-- nothing -->\n"), "xml")
   # A tag name that only starts like an HTML one.
   expect_identical(ct_flag("<header>x</header>"), "xml")
+  # HTML tag soup without a doctype, html, head or body tag stays xml.
+  expect_identical(ct_flag("<div><p>Not found</p></div>"), "xml")
+  # A comment before a tag that is not one of the markers.
+  expect_identical(ct_flag("<!-- x --><div>"), "xml")
 })
 
 test_that("ROBO-nhuirvrd: JSON objects and arrays", {
@@ -184,6 +221,20 @@ test_that("ROBO-nhuirvrd: invalid UTF-8 is binary above 10% of the window", {
   # A Latin-1 robots.txt has a few invalid bytes, and is no flag.
   latin1 <- c(charToRaw("user-agent: *\ndisallow: /caf"), as.raw(0xe9))
   expect_identical(ct_flag(latin1), NA_character_)
+  # A short Latin-1 file: 1 invalid byte in 9 is over 10%, but under 8 bytes.
+  expect_identical(
+    ct_flag(c(charToRaw("# Caf"), as.raw(0xe9), charToRaw("\n"))),
+    NA_character_
+  )
+  # 20 bytes: 7 invalid is under the minimum count, 8 reaches it.
+  expect_identical(
+    ct_flag(c(rep(as.raw(0xff), 7L), charToRaw(strrep("a", 13L)))),
+    NA_character_
+  )
+  expect_identical(
+    ct_flag(c(rep(as.raw(0xff), 8L), charToRaw(strrep("a", 12L)))),
+    "binary"
+  )
   # Valid multibyte UTF-8 counts as valid.
   expect_identical(ct_flag(strrep("é", 50L)), NA_character_)
 })

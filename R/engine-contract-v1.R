@@ -1711,9 +1711,12 @@ as_legacy_robots_decisions_v1 <- function(x) {
     error_stage = evidence$error_stage,
     error_class = evidence$error_class,
     error_message = evidence$error_message,
-    # The evidence frame keeps no Retry-After (ROBO-cthdyvlk): not available.
+    # The evidence frame keeps no Retry-After (ROBO-cthdyvlk) and no
+    # Content-Type or content flag (ROBO-nhuirvrd): not available.
     retry_after = rep(NA_character_, nrow(evidence)),
     retry_after_seconds = rep(NA_real_, nrow(evidence)),
+    content_type = rep(NA_character_, nrow(evidence)),
+    content_flag = rep(NA_character_, nrow(evidence)),
     stringsAsFactors = FALSE
   )
   robots$body <- evidence$body

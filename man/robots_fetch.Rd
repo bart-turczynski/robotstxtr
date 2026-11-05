@@ -136,9 +136,10 @@ caller's choice.
 Each source row also keeps the final response's \code{Content-Type} field value
 as \code{content_type}, exactly as received (\code{NA} when absent or when there is
 no final response), and a heuristic \code{content_flag} read from the first
-4096 bytes of a stored body: \code{"binary"} (a NUL byte, or more than 10\% of
-the bytes not valid UTF-8), \code{"html"} (a line starting with
-\verb{<!doctype html}, \verb{<html}, \verb{<head} or \verb{<body}), \code{"xml"} (the body starts
+4096 bytes of a stored body: \code{"binary"} (a NUL byte, or at least 8 bytes,
+and more than 10\% of them, not valid UTF-8), \code{"html"} (a line starting
+with \verb{<!doctype html}, \verb{<html}, \verb{<head} or \verb{<body}, possibly after an
+\verb{<?xml ...?>} or \verb{<!-- ... -->} on that line), \code{"xml"} (the body starts
 with \code{<}), \code{"json"} (the body starts with a JSON object or array), or \code{NA}.
 The flag comes from the body alone, never from \code{content_type}, and changes
 nothing: the body is matched as it is either way.

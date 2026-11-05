@@ -149,24 +149,32 @@ follow-up ROBO-nhuirvrd.
 
 ### Content-Type and the content flag on legacy fetch rows (ROBO-nhuirvrd)
 
-The same `robots` frame gains two more columns, between `retry_after_seconds`
-and `body`, under the same "final response" rule and the same legacy-schema
-scope as Retry-After above:
+Every `robots_decisions$robots` and `robots_fetches$robots` frame gains two
+more columns, between `retry_after_seconds` and `body`, under the same "final
+response" rule and the same legacy-schema scope as Retry-After above:
 
 | column | type | value |
 |---|---|---|
 | `content_type` | character | The final response's `Content-Type` field value as received, several fields joined with `", "`; `NA` when absent or when there is no final response. Any status, not only 2xx. |
 | `content_flag` | character | A heuristic read of the first 4096 bytes of the stored body; `NA` when there is no stored body (only `fetched` stores one), the body is empty, or nothing matches. |
 
+`robots_fetch()` and `allowed_by_robots_url()` fill them.
+`allowed_by_robots_text()` (a supplied body, no response) and
+`as_legacy_robots_decisions_v1()` (the v1 evidence keeps neither) always
+write `NA` in both.
+
 `content_flag` has a closed vocabulary; the first match wins:
 
-1. `binary`: a NUL byte, or more than 10% of the window's bytes not part of
-   valid UTF-8. NULs are still dropped before matching (`R/body-decode.R`).
-2. `html`: a line starting, after spaces, tabs or a UTF-8 BOM, with
-   `<!doctype html`, `<html`, `<head` or `<body`, in any letter case. An
-   HTML error page lands here.
+1. `binary`: a NUL byte, or at least 8 of the window's bytes, and more than
+   10% of them, not part of valid UTF-8 (so a short Latin-1 file is not
+   binary). NULs are still dropped before matching (`R/body-decode.R`).
+2. `html`: a line starting, after whitespace or a UTF-8 BOM, with
+   `<!doctype html`, `<html`, `<head` or `<body`, in any letter case,
+   possibly after `<?...?>` declarations and `<!--...-->` comments that close
+   on that same line. An HTML error page lands here.
 3. `xml`: the first non-whitespace byte is `<`. No robots.txt line starts
-   with `<`; a `<` inside a comment or a value never flags.
+   with `<`; a `<` inside a comment or a value never flags. HTML tag soup
+   without any of the four markers above lands here, not in `html`.
 4. `json`: the body opens with a JSON object (`{` then `"` or `}`) or array
    (`[` then a value or `]`).
 

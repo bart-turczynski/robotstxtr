@@ -88,9 +88,10 @@
 #' Each source row also keeps the final response's `Content-Type` field value
 #' as `content_type`, exactly as received (`NA` when absent or when there is
 #' no final response), and a heuristic `content_flag` read from the first
-#' 4096 bytes of a stored body: `"binary"` (a NUL byte, or more than 10% of
-#' the bytes not valid UTF-8), `"html"` (a line starting with
-#' `<!doctype html`, `<html`, `<head` or `<body`), `"xml"` (the body starts
+#' 4096 bytes of a stored body: `"binary"` (a NUL byte, or at least 8 bytes,
+#' and more than 10% of them, not valid UTF-8), `"html"` (a line starting
+#' with `<!doctype html`, `<html`, `<head` or `<body`, possibly after an
+#' `<?xml ...?>` or `<!-- ... -->` on that line), `"xml"` (the body starts
 #' with `<`), `"json"` (the body starts with a JSON object or array), or `NA`.
 #' The flag comes from the body alone, never from `content_type`, and changes
 #' nothing: the body is matched as it is either way.
