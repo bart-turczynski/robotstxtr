@@ -17,7 +17,8 @@ robots_validate_url(
 result is returned). A wrong R type is a call-level error.}
 
 \item{timeout}{A single positive, finite numeric total timeout in seconds per
-origin, including redirects. Defaults to \code{10}.}
+origin, including redirects, rounded up to whole seconds. Defaults to
+\code{10}.}
 
 \item{max_bytes}{A single positive, finite, whole-number decoded-body byte
 limit no greater than \code{.Machine$integer.max}, coerced to integer and
@@ -26,15 +27,16 @@ is accepted; fractional, non-positive, out-of-range, or non-scalar values
 are call-level errors. Defaults to \code{524288L}.}
 
 \item{fetch_user_agent}{\code{NULL} (use the package fetch user agent) or a single
-non-empty character HTTP user agent to send instead.}
+non-empty character HTTP user agent to send instead. It must be a valid
+HTTP field value: no control character, and no leading or trailing
+whitespace.}
 
-\item{ssrf_guard}{A single logical. When \code{TRUE} (the default) a structural
-SSRF guard refuses, before any request, both the initial origin and every
-redirect target that resolves to a private, loopback, link-local, or
-cloud-metadata address (outcome \code{ssrf_blocked}, no socket opened). Set to
-\code{FALSE} to deliberately opt out — for example to fetch \code{robots.txt} from a
-trusted intranet host. Opting out removes that protection; only disable it
-for hosts you control and trust.}
+\item{ssrf_guard}{A single logical, \code{TRUE} by default. \code{FALSE} is
+deprecated and warns: the guard has no off switch any more. It now
+selects a permissive policy, which reopens private, loopback and other
+internal address ranges and the metadata host names, for example to fetch
+\code{robots.txt} from a trusted intranet host. Known cloud-metadata endpoints
+and the IPv6 transition forms that embed an address stay refused.}
 }
 \value{
 An S3 object of class \code{robots_validations}, containing \code{map} (one row
@@ -45,8 +47,9 @@ per input URL), \code{documents} (one row per distinct fetch source), and
 Uses \code{\link[=robots_fetch]{robots_fetch()}} unchanged, then validates each distinct stored raw body
 exactly once. Shared origins therefore remain shared and no second HTTP path
 or refetch is introduced. Acquisition failures are retained as evidence and
-produce \code{"not_validated"} document rows; a response exceeding \code{max_bytes} is
-explicitly reported as \code{acquisition_limit_exceeded}, and no truncated body
+produce \code{"not_validated"} document rows; a 2xx or 3xx response exceeding
+\code{max_bytes} is explicitly reported as \code{acquisition_limit_exceeded}, a 4xx or
+5xx keeps its status outcome whatever its body size, and no truncated body
 is parsed.
 }
 \details{
@@ -56,16 +59,16 @@ separate question. It also does not infer webmaster intent or check whether
 declared remote sitemaps exist.
 }
 \examples{
-fetched_validation <- httr2::with_mocked_responses(
-  function(req) {
-    httr2::response(
-      status_code = 200L, url = req$url,
-      body = charToRaw("user-agent: *\nDisallow: /private\n")
-    )
-  },
-  robots_validate_url("https://example.com/private")
-)
+# A refused origin is never fetched, so its document is not validated.
+# This runs offline.
+refused <- robots_validate_url("http://169.254.169.254/latest")
+refused$documents[c("source_id", "validation_status")]
+
+\dontrun{
+# A live fetch of https://example.com/robots.txt, then validation.
+fetched_validation <- robots_validate_url("https://example.com/private")
 fetched_validation$documents
+}
 
 }
 \seealso{

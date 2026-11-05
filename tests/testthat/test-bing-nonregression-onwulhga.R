@@ -59,7 +59,7 @@ test_that("NR-IDENTITY Google + Yandex revisions and v1 schema are unchanged", {
   expect_identical(
     registry$yandex$revision, robotstxtr:::yandex_matcher_revision_v1()
   )
-  expect_identical(engine_schema_revision_v1(), "2026-08-25.1")
+  expect_identical(engine_schema_revision_v1(), "2026-11-05.1")
 
   # The v1 accessor still reports the v1 contract id with the pre-Bing
   # Google/Yandex revisions. Its schema_revision is NOT frozen forever: §16.5
@@ -68,7 +68,7 @@ test_that("NR-IDENTITY Google + Yandex revisions and v1 schema are unchanged", {
   # (ROBO-qgxekgph), which touched no Google or Yandex matcher behavior.
   v1 <- robots_engine_contract_v1()
   expect_identical(v1$contract_id, "robotstxtr.engine-aware/v1")
-  expect_identical(v1$schema_revision, "2026-08-25.1")
+  expect_identical(v1$schema_revision, "2026-11-05.1")
   expect_match(v1$matcher_revisions[["google"]], "22b355ff")
   expect_identical(
     v1$matcher_revisions[["yandex"]],
@@ -79,14 +79,14 @@ test_that("NR-IDENTITY Google + Yandex revisions and v1 schema are unchanged", {
 test_that("NR-V2 only the new v2 accessor reports the v2 contract", {
   v2 <- robots_engine_contract_v2()
   expect_identical(v2$contract_id, "robotstxtr.engine-aware/v2")
-  expect_identical(v2$schema_revision, "2026-08-25.1")
+  expect_identical(v2$schema_revision, "2026-11-05.1")
   # Adding v2 did not mutate the v1 accessor's contract_id. Both accessors carry
   # the same schema_revision string today because the bounded-profile addition
   # landed in both on one date; a revision is only ever meaningful alongside its
   # contract_id, which is what actually separates the two surfaces.
   v1 <- robots_engine_contract_v1()
   expect_identical(v1$contract_id, "robotstxtr.engine-aware/v1")
-  expect_identical(v1$schema_revision, "2026-08-25.1")
+  expect_identical(v1$schema_revision, "2026-11-05.1")
   # Google/Yandex revisions match across both accessors.
   expect_identical(
     v1$matcher_revisions[["yandex"]], v2$matcher_revisions[["yandex"]]

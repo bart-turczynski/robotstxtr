@@ -83,8 +83,9 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' Uses [robots_fetch()] unchanged, then validates each distinct stored raw body
 #' exactly once. Shared origins therefore remain shared and no second HTTP path
 #' or refetch is introduced. Acquisition failures are retained as evidence and
-#' produce `"not_validated"` document rows; a response exceeding `max_bytes` is
-#' explicitly reported as `acquisition_limit_exceeded`, and no truncated body
+#' produce `"not_validated"` document rows; a 2xx or 3xx response exceeding
+#' `max_bytes` is explicitly reported as `acquisition_limit_exceeded`, a 4xx or
+#' 5xx keeps its status outcome whatever its body size, and no truncated body
 #' is parsed.
 #'
 #' This function validates the acquired robots.txt document. It does not answer
@@ -99,16 +100,16 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #'   `diagnostics` data frames.
 #'
 #' @examples
-#' fetched_validation <- httr2::with_mocked_responses(
-#'   function(req) {
-#'     httr2::response(
-#'       status_code = 200L, url = req$url,
-#'       body = charToRaw("user-agent: *\nDisallow: /private\n")
-#'     )
-#'   },
-#'   robots_validate_url("https://example.com/private")
-#' )
+#' # A refused origin is never fetched, so its document is not validated.
+#' # This runs offline.
+#' refused <- robots_validate_url("http://169.254.169.254/latest")
+#' refused$documents[c("source_id", "validation_status")]
+#'
+#' \dontrun{
+#' # A live fetch of https://example.com/robots.txt, then validation.
+#' fetched_validation <- robots_validate_url("https://example.com/private")
 #' fetched_validation$documents
+#' }
 #'
 #' @seealso [robots_validate_text()] for supplied bytes and [robots_fetch()] for
 #'   acquisition without document validation.
@@ -133,17 +134,8 @@ robots_validate_url <- function(url, timeout = 10, max_bytes = 524288L,
 #' @return `x`, invisibly.
 #' @examples
 #' # A robots_validations object comes from robots_validate_url() or
-#' # robots_validate_text(); the transport is mocked here so the example runs
-#' # offline.
-#' validations <- httr2::with_mocked_responses(
-#'   function(req) {
-#'     httr2::response(
-#'       status_code = 200L, url = req$url,
-#'       body = charToRaw("user-agent: *\nDisallow: /private\n")
-#'     )
-#'   },
-#'   robots_validate_url("https://example.com/private")
-#' )
+#' # robots_validate_text(); validating supplied text needs no network.
+#' validations <- robots_validate_text("user-agent: *\nDisallow: /private\n")
 #' print(validations)
 #' @export
 print.robots_validations <- function(x, ...) {

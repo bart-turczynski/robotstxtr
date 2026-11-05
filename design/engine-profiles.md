@@ -45,9 +45,21 @@ records a neutral fact record plus one `evidence_status`.
 auditable), `redirect_count`, `terminal_redirect_reason` (`none` | `over_budget` | `no_location` |
 `loop` | `non_http_target` | `downgrade`), `final_http_status`, `location_header` (on a terminal
 redirect), `body_present` (bool), `observed_bytes`, `stored_bytes`, `body_truncated`,
-`transport_error_kind` (`timeout` | `tls_error` | `network_error`), `safety_block_reason` (a **closed, stable enum** = the `R/ssrf.R` code set — which
-already includes `scheme`, to which `non_http_target` maps — PLUS `https_downgrade`; any future safety
+`transport_error_kind` (`timeout` | `tls_error` | `network_error`), `safety_block_reason` (a **closed, stable enum**; any future safety
 reason requires a versioned schema addition), `termination_reason` (`none` | `deadline` | `ceiling`).
+
+`safety_block_reason` values. Schema revision `2026-08-25.1` published the code set of robotstxtr's
+own guard (`R/ssrf.R`, removed): `loopback`, `private`, `link-local`, `cloud-metadata`, `shared`,
+`unspecified`, `this-network`, `ipv4-mapped`, `ipv4-translated`, `ipv4-compatible`, `nat64`, `6to4`,
+`teredo`, `isatap`, `malformed-address`, `numeric-literal`, `scheme` (to which `non_http_target`
+maps), PLUS `https_downgrade` (ssrfr's `downgrade`). Schema revision `2026-11-05.1` (ROBO-jbralthm,
+the switch to `ssrfr`) adds the refusals ssrfr makes that the old guard did not: `userinfo` (a redirect
+`Location` carrying credentials), `port` (port 0), `parse` (a URL the WHATWG and libcurl parsers
+read differently, a zoned IPv6 literal, an invalid `xn--` label), `multicast` and `reserved`. The
+mapping from ssrfr's reason codes is data in `R/acquire-map.R`; ssrfr's `host-denied` and
+`range-denied` are not admitted, since robotstxtr's policy states no deny rules. `body_truncated` is
+`FALSE` on every row: ssrfr never returns part of a body, so a 2xx or 3xx body over the ceiling is
+`fetch_outcome = body_too_large` with `termination_reason = ceiling`; a 4xx/5xx keeps its status outcome.
 
 **`evidence_status` (exhaustive):**
 
@@ -154,10 +166,10 @@ These byte-level limits affect the current policy/matcher decision (not future-v
 - `yandex`: **500 KB** file; a file exceeding it fails the requirements → open fallback (allow_all)
   `[documented]`.
 - `bing`: no size limit found `[documentation_gap]`.
-- **Retained-prefix behavior**: parse the ≤-limit prefix (Google semantics) is the target; current code
-  **discards** the whole over-limit body (`R/fetch-policy.R:202`, `accumulate_within_limit` returns
-  `body = NULL` on overflow) → `evidence_status = incomplete` today. Moving to retained-prefix is an `application_choice` in
-  the versioned fetch contract (implementation delta, §9).
+- **Over-limit body**: Google parses the ≤-limit prefix. robotstxtr cannot: `ssrfr` returns none of a
+  body over `max_bytes`, so a 2xx over the limit is `body_too_large` → `evidence_status = incomplete`,
+  and a 4xx/5xx over it is classified by its status (§4). A retained prefix would need `ssrfr` to
+  return one (implementation delta, §9).
 
 ## 8. Future-validator reference (NOT executed this release)
 
@@ -175,7 +187,7 @@ prohibits Cyrillic, Punycode/%-encoding `[documented]`; Yandex UTF-8/BOM `[docum
 (`R/allowed_by_robots_url.R:176`) and only `missing`/`fetched` leave it, so every other outcome
 resolves to `NA`. Deltas vs this spec: (a) generic 4xx → `NA` diverges from documented
 `google`/`yandex` (allow_all); (b) 1xx → `http_error` conflates protocol with transport
-(`R/fetch-policy.R:88`); (c) oversized body discarded, not retained-prefix (`R/fetch-policy.R:202`). These are implementation slices, filed only after this
+(`R/fetch-policy.R:88`); (c) oversized body discarded, not retained-prefix (`ssrfr` returns no part of it; §7). These are implementation slices, filed only after this
 spec is accepted; ADR-009 §3 (safety precedence) and §6 (findings encoding) govern how they surface.
 
 ## 10. Sources (self-contained; per-section)

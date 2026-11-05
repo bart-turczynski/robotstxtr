@@ -53,10 +53,10 @@ lf_answers <- function() {
     unsupported = validation$documents$unsupported_directives,
     decisions = decision$results$allowed,
     origin = robots_origin("HTTPS://WWW.WIKIPEDIA.ORG:8443/robots.txt"),
-    ssrf = ssrf_check(
-      "METADATA.GOOGLE.INTERNAL", "HTTP",
-      raw_host = "METADATA.GOOGLE.INTERNAL"
-    )$reason
+    # Refused by name before any resolution, so this stays offline.
+    ssrf = robots_fetch(
+      "HTTP://METADATA.GOOGLE.INTERNAL/x"
+    )$robots$error_message
   )
 }
 
@@ -111,7 +111,7 @@ for (locale in lf_locales) {
     expect_identical(
       expected$origin, "https://www.wikipedia.org:8443/robots.txt"
     )
-    expect_identical(expected$ssrf, "cloud-metadata")
+    expect_identical(expected$ssrf, "Blocked by SSRF guard (cloud-metadata).")
 
     lf_with_ctype(locale, expect_identical(lf_answers(), expected))
   })

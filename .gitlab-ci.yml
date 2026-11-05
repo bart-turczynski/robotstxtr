@@ -40,14 +40,22 @@ variables:
 # - Third-party packages come from one dated Posit Package Manager snapshot,
 #   FLOOR_SNAPSHOT, as source builds (the runner is arm64 and that URL serves
 #   source), with the libcurl and OpenSSL headers apt installs. 2025-07-15,
-#   the former floor-check's date: the first snapshot carrying httr2 1.2.0
-#   (`Imports: httr2 (>= 1.2.0)`), while its curl is still 6.4.0, which builds
-#   against focal's libcurl 7.68.
+#   the former floor-check's date.
 # - The fleet packages postdate that snapshot, so they come after it from
 #   current CRAN: punycoder, pslr, raddr and rurl (DESCRIPTION wants >=
 #   3.0.1), as the former floor-check took punycoder, pslr and rurl. raddr
 #   needs rlang >= 1.1.7 and vctrs >= 0.7.0, newer than the snapshot's, so
 #   those two come from CRAN in the same call. All declare R >= 4.1 or lower.
+# - curl and webfakes come from CRAN without dependencies, as in ssrfr's own
+#   x-floor: ssrfr needs curl >= 7.0.0 (the snapshot has 6.4.0), and every R
+#   curl since 7.0.0 wants libcurl >= 7.73 while focal has 7.68.0, so the
+#   curl binary is in the apt line: curl's configure then fetches a static
+#   libcurl with it. webfakes serves the loopback fetch tests.
+# - TEMPORARY ssrfr pin. ssrfr 1.0.0 is in CRAN's queue, so it comes from
+#   GitLab at SSRFR_SHA, the commit submitted to CRAN, as DESCRIPTION's
+#   Remotes says, without dependencies (they are installed above). Once CRAN
+#   serves ssrfr, move it into the CRAN list and drop SSRFR_SHA and this
+#   item (ROBO-eqmoyyho).
 # - Only what the check needs is installed: the hard dependencies, the test
 #   and vignette Suggests, and rcmdcheck. oysteR and rosv serve the audits,
 #   whose tests skip without them, so _R_CHECK_FORCE_SUGGESTS_=false lets
@@ -58,12 +66,15 @@ variables:
 #
 # BLOCKING, like every T2 leg: a scheduled detector that cannot go red is
 # worthless. A cold docker run of this job's script in rocker/r-ver:4.1.3
-# (arm64) passed on 2026-10-30 with rurl 3.1.0: 4 NOTEs, no WARNING.
+# (arm64) passed on 2026-11-05 with rurl 3.1.0, ssrfr at SSRFR_SHA and curl
+# on its static libcurl 8.14.1: 4 NOTEs, no WARNING (ROBO-jbralthm).
 x-floor:
   extends: .t2-job
   image: rocker/r-ver:4.1.3
   variables:
     FLOOR_SNAPSHOT: "https://packagemanager.posit.co/cran/2025-07-15"
+    # The ssrfr commit submitted to CRAN (comment above, ROBO-eqmoyyho).
+    SSRFR_SHA: "ddb33892d343c890bcca8345c8f15e9f82da9f63"
     R_CRAN_SRC: "https://cloud.r-project.org"
     R_CRAN_WEB: "https://cloud.r-project.org"
     _R_CHECK_FORCE_SUGGESTS_: "false"
@@ -73,15 +84,21 @@ x-floor:
     # runs the incoming checks, on R release.
     _R_CHECK_CRAN_INCOMING_: "false"
   script:
-    - apt-get update -qq && apt-get install -y --no-install-recommends libcurl4-openssl-dev libssl-dev zlib1g-dev pkg-config
+    - apt-get update -qq && apt-get install -y --no-install-recommends libcurl4-openssl-dev libssl-dev zlib1g-dev pkg-config curl
     - >
-      Rscript -e 'install.packages(c("cpp11", "httr2", "Rcpp", "stringi", "digest",
-      "testthat", "callr", "httpuv", "jsonlite", "knitr", "rmarkdown", "rcmdcheck"),
+      Rscript -e 'install.packages(c("cpp11", "Rcpp", "stringi", "digest",
+      "testthat", "webfakes", "jsonlite", "knitr", "rmarkdown", "rcmdcheck"),
       repos = Sys.getenv("FLOOR_SNAPSHOT"), Ncpus = 4L);
       install.packages(c("rlang", "vctrs", "punycoder", "pslr", "raddr", "rurl"),
       repos = "https://cloud.r-project.org", Ncpus = 4L);
-      stopifnot(all(vapply(c("cpp11", "httr2", "rurl", "testthat", "rcmdcheck"), requireNamespace, NA, quietly = TRUE)));
-      print(R.version.string)'
+      install.packages(c("curl", "webfakes"), repos = "https://cloud.r-project.org",
+      dependencies = FALSE, Ncpus = 4L);
+      sha <- Sys.getenv("SSRFR_SHA"); tgz <- file.path(tempdir(), "ssrfr.tar.gz");
+      download.file(paste0("https://gitlab.com/bart-turczynski/ssrfr/-/archive/", sha, "/ssrfr-", sha, ".tar.gz"), tgz, mode = "wb");
+      install.packages(tgz, repos = NULL, type = "source");
+      stopifnot(all(vapply(c("cpp11", "ssrfr", "rurl", "webfakes", "testthat", "rcmdcheck"), requireNamespace, NA, quietly = TRUE)));
+      stopifnot(packageVersion("curl") >= "7.0.0", packageVersion("ssrfr") >= "1.0.0");
+      print(R.version.string); print(curl::curl_version()$version)'
     # The template's guard: rcmdcheck reads a check that halted partway as
     # 0/0/0 and returns normally, so the check must have written a Status
     # line, exited 0 and reported no ERROR or WARNING (SEOR-maavnxdm).

@@ -3,20 +3,20 @@
 # same-origin HTTP->HTTPS upgrade, the HTTPS->HTTP downgrade rejection, invalid
 # targets, loops, and the five-redirect cap. This pins that a redirect to a
 # DIFFERENT host is followed and that the grouping key stays the originally
-# requested robots URL. Offline via httr2::local_mocked_responses().
+# requested robots URL. Offline via local_fake_ssrfr().
 
 test_that("a cross-origin redirect to another host is followed", {
   state <- new.env(parent = emptyenv())
   state$seen <- character(0)
-  httr2::local_mocked_responses(function(req) {
+  local_fake_ssrfr(function(req) {
     state$seen[[length(state$seen) + 1L]] <- req$url
     if (identical(req$url, "http://a/robots.txt")) {
-      httr2::response(
+      fake_response(
         status_code = 301L, url = req$url,
         headers = list(Location = "http://b/robots.txt")
       )
     } else if (identical(req$url, "http://b/robots.txt")) {
-      httr2::response(
+      fake_response(
         status_code = 200L, url = req$url,
         body = charToRaw("user-agent: *\ndisallow: /")
       )

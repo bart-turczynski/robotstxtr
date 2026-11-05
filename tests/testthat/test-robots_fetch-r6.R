@@ -1,6 +1,6 @@
 # Slice R6: robots_fetch() performs the grouped, deterministic robots.txt fetch
 # stage (PRD 6.3-6.6) with NO matching. Every case is mocked/offline via
-# httr2::local_mocked_responses(); no live network is used. Coverage: every
+# local_fake_ssrfr(); no live network is used. Coverage: every
 # reachable fetch_outcome, one-fetch-per-origin grouping, input order, invalid
 # input detachment, redirect policy (upgrade allowed / downgrade rejected,
 # loops, cap, invalid scheme), transport failures, zero-length input, and the
@@ -10,11 +10,11 @@
 
 # Record every requested URL and (optionally) the sent user agent, and route to
 # a per-URL response spec. `routes` maps a request URL to a function(req) that
-# returns an httr2 response or a signaled condition.
+# returns fake_response(), fake_failure() or fake_refusal().
 mock_router <- function(routes, recorder = NULL) {
   function(req) {
     if (!is.null(recorder)) {
-      ua <- req$options$useragent
+      ua <- req$user_agent
       if (is.null(ua)) {
         ua <- NA_character_
       }
@@ -40,7 +40,7 @@ new_recorder <- function() {
 
 ok_body <- function(body = "user-agent: *\ndisallow: /") {
   function(req) {
-    httr2::response(
+    fake_response(
       status_code = 200L, url = req$url, body = charToRaw(body)
     )
   }
@@ -51,38 +51,26 @@ status_resp <- function(code, headers = list(), body = NULL) {
   force(headers)
   force(body)
   function(req) {
-    httr2::response(
+    fake_response(
       status_code = code, url = req$url, headers = headers,
       body = if (is.null(body)) raw() else charToRaw(body)
     )
   }
 }
 
-# A signaled transport failure shaped like httr2's httr2_failure wrapping a
-# curl_error_* condition (curl >= 5 classes conditions after the CURLcode).
-transport_fail <- function(curl_class, msg) {
-  force(curl_class)
-  force(msg)
-  function(req) {
-    parent <- structure(
-      class = c(curl_class, "curl_error", "error", "condition"),
-      list(message = msg, call = NULL)
-    )
-    structure(
-      class = c("httr2_failure", "httr2_error", "error", "condition"),
-      list(
-        message = "Failed to perform HTTP request.", parent = parent,
-        call = NULL
-      )
-    )
-  }
+# A transport failure as ssrfr reports it: an operational failure carrying a
+# cause from ssrf_vocabulary("causes") (ROBO-jbralthm).
+transport_fail <- function(cause, ...) {
+  force(cause)
+  detail <- list(...)
+  function(req) do.call(fake_failure, c(list(cause), detail))
 }
 
 # --- Tracer bullet: one fetch per shared origin -----------------------------
 
 test_that("shared origin is fetched exactly once (tracer bullet)", {
   rec <- new_recorder()
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = ok_body("user-agent: *\ndisallow: /")),
     recorder = rec
   ))
@@ -104,7 +92,7 @@ test_that("shared origin is fetched exactly once (tracer bullet)", {
 # --- Object schema -----------------------------------------------------------
 
 test_that("map and robots carry the full contract schema and types", {
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = ok_body())
   ))
   x <- robots_fetch("http://a/x")
@@ -135,7 +123,7 @@ test_that("map and robots carry the full contract schema and types", {
 
 test_that("fetched stores the exact decoded bytes and body_size", {
   body <- "user-agent: *\ndisallow: /private"
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = ok_body(body))
   ))
   x <- robots_fetch("http://a/private")
@@ -150,7 +138,7 @@ test_that("fetched stores the exact decoded bytes and body_size", {
 })
 
 test_that("an empty 200 body is a valid fetched result (raw(0))", {
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = status_resp(200L))
   ))
   x <- robots_fetch("http://a/x")
@@ -164,7 +152,7 @@ test_that("an empty 200 body is a valid fetched result (raw(0))", {
 
 test_that("404 and 410 classify as missing with no body and NA metadata", {
   for (code in c(404L, 410L)) {
-    httr2::local_mocked_responses(mock_router(
+    local_fake_ssrfr(mock_router(
       list("http://a/robots.txt" = status_resp(code))
     ))
     x <- robots_fetch("http://a/x")
@@ -179,7 +167,7 @@ test_that("404 and 410 classify as missing with no body and NA metadata", {
 # --- partial_response (206) --------------------------------------------------
 
 test_that("206 classifies as partial_response with response-stage metadata", {
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = status_resp(206L, body = "partial"))
   ))
   x <- robots_fetch("http://a/x")
@@ -194,7 +182,7 @@ test_that("206 classifies as partial_response with response-stage metadata", {
 
 test_that("1xx, 4xx (incl 408/429), and 5xx classify as http_error", {
   for (code in c(199L, 403L, 408L, 429L, 503L)) {
-    httr2::local_mocked_responses(mock_router(
+    local_fake_ssrfr(mock_router(
       list("http://a/robots.txt" = status_resp(code))
     ))
     x <- robots_fetch("http://a/x")
@@ -210,7 +198,7 @@ test_that("1xx, 4xx (incl 408/429), and 5xx classify as http_error", {
 
 test_that("HTTP-to-HTTPS upgrade redirect is followed", {
   rec <- new_recorder()
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list(
       "http://a/robots.txt" = status_resp(
         301L, headers = list(Location = "https://a/robots.txt")
@@ -230,7 +218,7 @@ test_that("HTTP-to-HTTPS upgrade redirect is followed", {
 })
 
 test_that("HTTPS-to-HTTP downgrade redirect is rejected", {
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list(
       "https://a/robots.txt" = status_resp(
         301L, headers = list(Location = "http://a/robots.txt")
@@ -245,7 +233,7 @@ test_that("HTTPS-to-HTTP downgrade redirect is rejected", {
 })
 
 test_that("a redirect to a non-HTTP(S) scheme is a redirect_error", {
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list(
       "http://a/robots.txt" = status_resp(
         302L, headers = list(Location = "ftp://a/robots.txt")
@@ -257,7 +245,7 @@ test_that("a redirect to a non-HTTP(S) scheme is a redirect_error", {
 })
 
 test_that("a 3xx without a Location header is a redirect_error", {
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = status_resp(301L))
   ))
   x <- robots_fetch("http://a/x")
@@ -265,7 +253,7 @@ test_that("a 3xx without a Location header is a redirect_error", {
 })
 
 test_that("a redirect loop is detected as a redirect_error", {
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list(
       "http://a/robots.txt" = status_resp(
         302L, headers = list(Location = "http://a/robots.txt")
@@ -288,7 +276,7 @@ test_that("more than five redirects is a redirect_error at the cap", {
       302L, headers = list(Location = sprintf("http://a/%d", i + 1L))
     )
   }
-  httr2::local_mocked_responses(mock_router(routes))
+  local_fake_ssrfr(mock_router(routes))
   x <- robots_fetch("http://a/x")
   expect_identical(x$robots$fetch_outcome, "redirect_error")
   expect_identical(x$robots$redirect_count, 5L)
@@ -297,10 +285,8 @@ test_that("more than five redirects is a redirect_error at the cap", {
 # --- transport failures ------------------------------------------------------
 
 test_that("a DNS/connection failure classifies as network_error", {
-  httr2::local_mocked_responses(mock_router(
-    list("http://a/robots.txt" = transport_fail(
-      "curl_error_couldnt_connect", "Failed to connect"
-    ))
+  local_fake_ssrfr(mock_router(
+    list("http://a/robots.txt" = transport_fail("connect-failed"))
   ))
   x <- robots_fetch("http://a/x")
   expect_identical(x$robots$fetch_outcome, "network_error")
@@ -310,10 +296,8 @@ test_that("a DNS/connection failure classifies as network_error", {
 })
 
 test_that("a TLS failure classifies as tls_error", {
-  httr2::local_mocked_responses(mock_router(
-    list("https://a/robots.txt" = transport_fail(
-      "curl_error_peer_failed_verification", "SSL certificate problem"
-    ))
+  local_fake_ssrfr(mock_router(
+    list("https://a/robots.txt" = transport_fail("tls-failed"))
   ))
   x <- robots_fetch("https://a/x")
   expect_identical(x$robots$fetch_outcome, "tls_error")
@@ -322,10 +306,8 @@ test_that("a TLS failure classifies as tls_error", {
 })
 
 test_that("a timeout classifies as timeout", {
-  httr2::local_mocked_responses(mock_router(
-    list("http://a/robots.txt" = transport_fail(
-      "curl_error_operation_timedout", "Timeout was reached"
-    ))
+  local_fake_ssrfr(mock_router(
+    list("http://a/robots.txt" = transport_fail("timeout"))
   ))
   x <- robots_fetch("http://a/x")
   expect_identical(x$robots$fetch_outcome, "timeout")
@@ -337,7 +319,7 @@ test_that("a timeout classifies as timeout", {
 
 test_that("an invalid URL is detached and never fetched, order preserved", {
   rec <- new_recorder()
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = ok_body()),
     recorder = rec
   ))
@@ -362,7 +344,7 @@ test_that("an invalid URL is detached and never fetched, order preserved", {
 
 test_that("distinct origins get robots_1, robots_2 in first-occurrence order", {
   rec <- new_recorder()
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list(
       "http://a/robots.txt" = ok_body(),
       "http://b/robots.txt" = status_resp(404L)
@@ -397,7 +379,7 @@ test_that("zero-length url yields correctly typed empty frames", {
 
 test_that("the default package fetch user agent is sent", {
   rec <- new_recorder()
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = ok_body()),
     recorder = rec
   ))
@@ -407,7 +389,7 @@ test_that("the default package fetch user agent is sent", {
 
 test_that("a caller-supplied fetch user agent overrides the default", {
   rec <- new_recorder()
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = ok_body()),
     recorder = rec
   ))
@@ -417,20 +399,33 @@ test_that("a caller-supplied fetch user agent overrides the default", {
 
 test_that("userinfo is dropped and no auth/cookie headers are forwarded", {
   rec <- new_recorder()
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = ok_body()),
     recorder = rec
   ))
   robots_fetch("http://user:pass@a/secret")
   # The requested URL is the userinfo-free grouping key.
   expect_identical(rec$urls, "http://a/robots.txt")
+  # The request plan is a plain GET with no header fields of its own, so no
+  # Authorization or Cookie can be sent; ssrfr sets only Host and the policy's
+  # User-Agent, and owns the transport (no proxy, no .netrc).
   req <- rec$reqs[[1]]
-  expect_null(req$headers$Authorization)
-  expect_null(req$headers$authorization)
-  expect_null(req$headers$Cookie)
-  expect_null(req$options$cookie)
-  # .netrc stays off even under options(netrc =), which curl >= 8.1.0 honors.
-  expect_identical(req$options$netrc, 0L)
+  expect_identical(req$method, "GET")
+  expect_length(req$headers, 0L)
+})
+
+test_that("the first hop is prepared with an empty request plan", {
+  # ROBO-jbralthm: the plan acquire_robots() hands ssrfr is `list()`, a plain
+  # GET carrying no caller state.
+  seen <- new.env(parent = emptyenv())
+  local_mocked_bindings(
+    acquire_prepare_hop = function(url, policy, request = NULL, from = NULL) {
+      seen$request <- request
+      fake_refusal("private")
+    }
+  )
+  robots_fetch("http://user:pass@a/secret")
+  expect_identical(seen$request, list())
 })
 
 # --- Call-level validation ---------------------------------------------------
@@ -468,7 +463,7 @@ test_that("a bad fetch_user_agent is a call-level error", {
 # --- print method ------------------------------------------------------------
 
 test_that("print.robots_fetches summarizes and returns invisibly", {
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = ok_body())
   ))
   x <- robots_fetch(c("http://a/x", "http://a/y"))
@@ -477,7 +472,7 @@ test_that("print.robots_fetches summarizes and returns invisibly", {
 })
 
 test_that("print.robots_fetches previews ten rows and counts the rest", {
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = ok_body())
   ))
   x <- robots_fetch(sprintf("http://a/p%02d", 1:12))

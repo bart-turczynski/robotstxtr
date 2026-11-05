@@ -5,7 +5,7 @@
 #
 # Narrowing the audit to hard dependencies cleared five of the seven repos in
 # this fleet. It does NOT clear robotstxtr: `curl` is a genuine hard
-# dependency here, reached through httr2. The six advisories below name
+# dependency here, reached through ssrfr. The six advisories below name
 # libcurl version ranges that include CRAN's current `curl` 8.1.0: OSS Index
 # matches the R package's version against libcurl's, and the earliest fixed
 # libcurl in each range is 8.14.x or later, so no R package version clears
@@ -20,7 +20,7 @@
 # Three rules keep the list honest. test-security.R enforces them:
 #
 #   A  UNEXPECTED  an advisory reported and not allow-listed FAILS. This is
-#                  the gate still doing its job: a new vulnerability in httr2,
+#                  the gate still doing its job: a new vulnerability in ssrfr,
 #                  rurl or anything else stops the push.
 #   B  STALE       an allow-listed advisory NO LONGER reported FAILS. An
 #                  allow-list may not over-permit; a row that has outlived its
@@ -62,14 +62,14 @@ oss_index_allowlist <- list(
       ".netrc carries a machine/default entry (CVSS 6.9). Names a libcurl",
       "range covering CRAN's current curl 8.1.0, so no available version",
       "clears it. Not reachable through robotstxtr, which sends no",
-      "Authorization header at all: R/ calls no httr2::req_auth_* function",
-      "and exposes no credential argument, and build_fetch_request() sets",
-      "netrc = 0L, so the .netrc precondition is off even under",
-      "options(netrc =). Re-check with",
+      "Authorization header at all: acquire_robots() prepares every chain",
+      "with an empty request plan, R/ exposes no credential argument, and",
+      "ssrfr's transport sets netrc = 0L, so the .netrc precondition is off",
+      "even under options(netrc =) (ROBO-jbralthm). Re-check with",
       "`grep -rn",
       "'req_auth\\|httpauth\\|userpwd\\|username\\|password\\|req_headers'",
       "R/`",
-      "(no hits) and `grep -n 'netrc = 0L' R/fetch-policy.R` (one hit)",
+      "(no hits) and `grep -n 'request = list()' R/acquire.R` (one hit)",
       "before renewing this row. Allow-listed",
       "because it is unfixable, and recorded as unreachable because that is",
       "what the grep shows -- sitemapr, which does set bearer tokens, is",
@@ -89,9 +89,11 @@ oss_index_allowlist <- list(
       "command-line tool, and R links only libcurl. robotstxtr also requests",
       "http/https only. Re-check the three places that hold that before",
       "renewing this row: `grep -n 'https?://' R/robots_origin.R` (the",
-      "scheme guard), `grep -n 'followlocation = FALSE' R/fetch-policy.R`",
-      "and `grep -n 'target_scheme %in%' R/fetch-policy.R` (the redirect",
-      "loop's scheme check)."
+      "scheme guard), `grep -n 'allow_schemes' R/acquire.R` (no hits: the",
+      "policy keeps ssrfr's http/https default, which refuses any other",
+      "redirect target as \"scheme\") and",
+      "`grep -n 'ssrf_prepare_hop' R/acquire.R` (one hit: every hop,",
+      "redirects included, is checked by ssrfr)."
     )
   ),
   list(
@@ -106,11 +108,10 @@ oss_index_allowlist <- list(
       "curl 8.1.0, so no available version clears it. A proxy can come from",
       "the environment, but robotstxtr holds no origin credentials to leak:",
       "robots_origin() drops the caller's URL userinfo, R/ sets no auth",
-      "option, and build_fetch_request() sets netrc = 0L, which overrides",
-      "curl's options(netrc =) default. (A redirect Location can still carry",
-      "userinfo the server itself chose; that is the server's string, not a",
-      "caller secret.) Re-check with the two greps in the CVE-2026-3783 row",
-      "before renewing this row."
+      "option, and ssrfr's transport sets netrc = 0L and uses no proxy",
+      "whatever the environment says. A redirect Location carrying userinfo",
+      "is refused as \"userinfo\". Re-check with the two greps in the",
+      "CVE-2026-3783 row before renewing this row."
     )
   ),
   list(

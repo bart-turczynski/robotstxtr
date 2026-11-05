@@ -12,7 +12,8 @@
 #'
 #' The bundled matcher is a vendored, upstream-test-validated snapshot of
 #' Google's open-source C++ robots.txt matcher. Fetch origins are constructed
-#' with the \pkg{rurl} package and HTTP is performed by \pkg{httr2}.
+#' with the \pkg{rurl} package, and every request goes through the
+#' \pkg{ssrfr} guard.
 #'
 #' @examples
 #' # A short offline tour; no call below performs a network request.

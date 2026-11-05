@@ -1,7 +1,7 @@
 # Slice R8: allowed_by_robots_url() combines the grouped fetch stage
 # (robots_fetch(), reused) with matching and the full per-row result contract
 # (PRD all of 6). Every case is mocked/offline via
-# httr2::local_mocked_responses(); no live network is used. Coverage: the
+# local_fake_ssrfr(); no live network is used. Coverage: the
 # tracer (disallow + 404 missing_allow), fetch_unknown for failures, grouped
 # reuse of one source body across rows sharing an origin, exact-URL preservation
 # into the matcher, invalid-UA detachment with and without a valid sibling,
@@ -32,36 +32,29 @@ new_recorder <- function() {
 ok_body <- function(body) {
   force(body)
   function(req) {
-    httr2::response(status_code = 200L, url = req$url, body = charToRaw(body))
+    fake_response(status_code = 200L, url = req$url, body = charToRaw(body))
   }
 }
 
 status_resp <- function(code) {
   force(code)
   function(req) {
-    httr2::response(status_code = code, url = req$url, body = raw())
+    fake_response(status_code = code, url = req$url, body = raw())
   }
 }
 
-transport_fail <- function(curl_class, msg) {
-  force(curl_class)
-  force(msg)
-  function(req) {
-    parent <- structure(
-      class = c(curl_class, "curl_error", "error", "condition"),
-      list(message = msg, call = NULL)
-    )
-    structure(
-      class = c("httr2_failure", "httr2_error", "error", "condition"),
-      list(message = "Failed.", parent = parent, call = NULL)
-    )
-  }
+# A transport failure as ssrfr reports it: an operational failure carrying a
+# cause from ssrf_vocabulary("causes") (ROBO-jbralthm).
+transport_fail <- function(cause, ...) {
+  force(cause)
+  detail <- list(...)
+  function(req) do.call(fake_failure, c(list(cause), detail))
 }
 
 # --- Tracer bullet ----------------------------------------------------------
 
 test_that("tracer: a disallowed path is FALSE / rule_disallow", {
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = ok_body("user-agent: *\ndisallow: /private"))
   ))
   x <- allowed_by_robots_url("http://a/private", "bot")
@@ -77,7 +70,7 @@ test_that("tracer: a disallowed path is FALSE / rule_disallow", {
 })
 
 test_that("tracer: a 404 origin is TRUE / missing_allow", {
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = status_resp(404L))
   ))
   x <- allowed_by_robots_url("http://a/private", "bot")
@@ -94,7 +87,7 @@ test_that("tracer: a 404 origin is TRUE / missing_allow", {
 })
 
 test_that("410 is also missing_allow", {
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = status_resp(410L))
   ))
   x <- allowed_by_robots_url("http://a/x", "bot")
@@ -105,7 +98,7 @@ test_that("410 is also missing_allow", {
 # --- fetch_unknown for failures ---------------------------------------------
 
 test_that("a 500 response is fetch_unknown / NA", {
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = status_resp(500L))
   ))
   x <- allowed_by_robots_url("http://a/x", "bot")
@@ -118,10 +111,8 @@ test_that("a 500 response is fetch_unknown / NA", {
 })
 
 test_that("a timeout is fetch_unknown / NA", {
-  httr2::local_mocked_responses(mock_router(
-    list("http://a/robots.txt" = transport_fail(
-      "curl_error_operation_timedout", "Timeout was reached"
-    ))
+  local_fake_ssrfr(mock_router(
+    list("http://a/robots.txt" = transport_fail("timeout"))
   ))
   x <- allowed_by_robots_url("http://a/x", "bot")
 
@@ -134,7 +125,7 @@ test_that("a timeout is fetch_unknown / NA", {
 
 test_that("one fetch is reused across rows sharing an origin", {
   rec <- new_recorder()
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = ok_body("user-agent: *\ndisallow: /private")),
     recorder = rec
   ))
@@ -166,7 +157,7 @@ test_that("full path/query/case/escape reach the matcher, grouped by origin", {
     "disallow: /a%2Fb\n",     # percent-escape
     "disallow: /café"    # unicode (canonicalized to %C3%A9 by the matcher)
   )
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = ok_body(body)),
     recorder = rec
   ))
@@ -195,7 +186,7 @@ test_that("full path/query/case/escape reach the matcher, grouped by origin", {
 
 test_that("an invalid UA is detached with no sibling and never fetched", {
   rec <- new_recorder()
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = ok_body("user-agent: *\ndisallow: /")),
     recorder = rec
   ))
@@ -215,7 +206,7 @@ test_that("an invalid UA is detached with no sibling and never fetched", {
 
 test_that("an invalid-UA row detaches while a valid sibling still fetches", {
   rec <- new_recorder()
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = ok_body("user-agent: *\ndisallow: /private")),
     recorder = rec
   ))
@@ -245,7 +236,7 @@ test_that("an invalid-UA row detaches while a valid sibling still fetches", {
 
 test_that("a malformed / non-HTTP URL is input_unknown, never fetched", {
   rec <- new_recorder()
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = ok_body("user-agent: *\ndisallow: /")),
     recorder = rec
   ))
@@ -270,7 +261,7 @@ test_that("URL error takes precedence over UA error", {
 
 test_that("combined fetch+match preserves input order across origins", {
   rec <- new_recorder()
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list(
       "http://a/robots.txt" = ok_body("user-agent: *\ndisallow: /private"),
       "http://b/robots.txt" = status_resp(404L)
@@ -304,7 +295,7 @@ test_that("combined fetch+match preserves input order across origins", {
 # --- match metadata carried through a fetched body --------------------------
 
 test_that("matched line/type/value are correlated from a fetched body", {
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = ok_body(
       "user-agent: *\nallow: /public\ndisallow: /private"
     ))
@@ -324,7 +315,7 @@ test_that("matched line/type/value are correlated from a fetched body", {
 })
 
 test_that("an empty fetched body is default_allow", {
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = ok_body(""))
   ))
   x <- allowed_by_robots_url("http://a/x", "bot")
@@ -354,7 +345,7 @@ test_that("zero-length url yields an empty robots_decisions object", {
 # --- schema + call-level validation -----------------------------------------
 
 test_that("results carries the full contract schema and no body column", {
-  httr2::local_mocked_responses(mock_router(
+  local_fake_ssrfr(mock_router(
     list("http://a/robots.txt" = ok_body("user-agent: *\ndisallow: /"))
   ))
   x <- allowed_by_robots_url("http://a/x", "bot")

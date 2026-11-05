@@ -29,45 +29,69 @@
 #' invalid-URL error metadata.
 #'
 #' The request policy is deterministic and intentionally conservative: HTTP
-#' `GET`; TLS verified with platform defaults; a total timeout per origin
-#' including redirects; at most five redirects; redirects allowed only to
-#' `http`/`https`; HTTP-to-HTTPS upgrades allowed but every HTTPS-to-HTTP
-#' downgrade rejected as `redirect_error`; a structural SSRF guard that refuses,
-#' before any request, both the initial origin and every redirect target that
-#' resolves to a private, loopback, link-local, or cloud-metadata address
-#' (outcome `ssrf_blocked`, no socket opened); no URL userinfo, authorization,
-#' cookies, or caller session state forwarded; a package fetch user agent
-#' (`robotstxtr/<version>`) unless the caller supplies one; and no automatic
-#' retries. Each response is classified into a stable `fetch_outcome`. For a
-#' `fetched` outcome the exact decoded entity bytes are stored once as a raw
-#' vector in the source row's `body` (an empty body is valid); all other
-#' outcomes store no body.
+#' `GET` over a new HTTP/1.1 connection; TLS verified with platform defaults;
+#' no proxy; one total timeout per origin, redirects included; at most five
+#' redirects; redirects allowed only to `http`/`https`; HTTP-to-HTTPS upgrades
+#' allowed but every HTTPS-to-HTTP downgrade rejected as `redirect_error`; no
+#' URL userinfo, authorization, cookies, or caller session state forwarded; a
+#' package fetch user agent (`robotstxtr/<version>`) unless the caller supplies
+#' one; and no automatic retries.
+#'
+#' Every request goes through the \pkg{ssrfr} guard, for the initial origin and
+#' for every redirect target. A host name is resolved once, every address it
+#' resolves to is checked, and the connection is pinned to those addresses, so
+#' a name cannot be rebound between the check and the request. An origin or
+#' target that is, or resolves to, a loopback, private, link-local, shared,
+#' multicast, reserved, or cloud-metadata address, an IPv6 form that embeds
+#' one, or a known metadata host name is refused before any connection, as
+#' `ssrf_blocked`; so is a URL whose host the two URL parsers read differently,
+#' or one on port 0.
+#'
+#' Each response is classified into a stable `fetch_outcome`. For a `fetched`
+#' outcome the exact decoded entity bytes are stored once as a raw vector in
+#' the source row's `body` (an empty body is valid); all other outcomes store
+#' no body.
 #'
 #' `max_bytes` caps the decoded response body. The limit is enforced on decoded
-#' entity bytes (after any HTTP content decoding, such as gzip) by a streaming
-#' read that stops the moment the decoded byte count exceeds the limit; the
-#' compressed entity is never fully downloaded before the check. A body over the
-#' limit ends as `body_too_large` with no stored body (never a truncated body);
-#' a body at or under the limit is stored normally as a `fetched` result.
+#' entity bytes (after any HTTP content decoding, such as gzip) as they arrive,
+#' and the transfer stops the moment the decoded byte count exceeds the limit;
+#' the compressed entity is never fully downloaded before the check. A 2xx body
+#' over the limit ends as `body_too_large` with no stored body (never a
+#' truncated body); a body at or under the limit is stored normally as a
+#' `fetched` result. A 4xx or 5xx keeps its status outcome whatever its body
+#' size. A 3xx whose body is over the limit also ends as `body_too_large` and
+#' is not followed, because \pkg{ssrfr} keeps no `Location` for it.
+#'
+#' The response header may take up to 64 KiB and 256 fields per hop; a header
+#' over either limit is a `network_error`.
+#'
+#' `timeout` is one budget for the whole chain of one origin, redirects
+#' included, rounded up to whole seconds; each connection attempt also gets at
+#' most three seconds. Two things can make a fetch overrun it: the time spent
+#' between hops in robotstxtr's own code is not counted, and the system
+#' resolver cannot be interrupted, so a slow DNS answer is only noticed once
+#' it returns.
 #'
 #' @param url A character vector of target URLs. May have length zero (an empty
 #'   result is returned). A wrong R type is a call-level error.
 #' @param timeout A single positive, finite numeric total timeout in seconds per
-#'   origin, including redirects. Defaults to `10`.
+#'   origin, including redirects, rounded up to whole seconds. Defaults to
+#'   `10`.
 #' @param max_bytes A single positive, finite, whole-number decoded-body byte
 #'   limit no greater than `.Machine$integer.max`, coerced to integer and
 #'   recorded on each source row. A whole-number double (for example `524288`)
 #'   is accepted; fractional, non-positive, out-of-range, or non-scalar values
 #'   are call-level errors. Defaults to `524288L`.
 #' @param fetch_user_agent `NULL` (use the package fetch user agent) or a single
-#'   non-empty character HTTP user agent to send instead.
-#' @param ssrf_guard A single logical. When `TRUE` (the default) a structural
-#'   SSRF guard refuses, before any request, both the initial origin and every
-#'   redirect target that resolves to a private, loopback, link-local, or
-#'   cloud-metadata address (outcome `ssrf_blocked`, no socket opened). Set to
-#'   `FALSE` to deliberately opt out — for example to fetch `robots.txt` from a
-#'   trusted intranet host. Opting out removes that protection; only disable it
-#'   for hosts you control and trust.
+#'   non-empty character HTTP user agent to send instead. It must be a valid
+#'   HTTP field value: no control character, and no leading or trailing
+#'   whitespace.
+#' @param ssrf_guard A single logical, `TRUE` by default. `FALSE` is
+#'   deprecated and warns: the guard has no off switch any more. It now
+#'   selects a permissive policy, which reopens private, loopback and other
+#'   internal address ranges and the metadata host names, for example to fetch
+#'   `robots.txt` from a trusted intranet host. Known cloud-metadata endpoints
+#'   and the IPv6 transition forms that embed an address stay refused.
 #'
 #' @return An S3 object of class `robots_fetches`: a named list with two
 #'   components, `map` (one row per input URL, in input order) and `robots` (one
@@ -75,21 +99,16 @@
 #'   in `robots$body`).
 #'
 #' @examples
-#' # robots_fetch() performs live HTTP. To keep this example offline and
-#' # deterministic, the transport is mocked with httr2 so every request returns
-#' # the same robots.txt; a real call needs no such wrapper.
-#' httr2::with_mocked_responses(
-#'   function(req) {
-#'     httr2::response(
-#'       status_code = 200L, url = req$url,
-#'       body = charToRaw("user-agent: *\nDisallow: /private\n")
-#'     )
-#'   },
-#'   {
-#'     # Both URLs share one fetch-origin, so /robots.txt is fetched once.
-#'     robots_fetch(c("https://example.com/", "https://example.com/private"))
-#'   }
-#' )
+#' # A refused origin is decided before any request, so this runs offline.
+#' # Both URLs share one fetch-origin, which is refused once; the invalid URL
+#' # is never fetched.
+#' robots_fetch(c("http://127.0.0.1/", "http://127.0.0.1/private", "not-a-url"))
+#'
+#' \dontrun{
+#' # robots_fetch() performs live HTTP. Both URLs share one fetch-origin, so
+#' # https://example.com/robots.txt is fetched once.
+#' robots_fetch(c("https://example.com/", "https://example.com/private"))
+#' }
 #'
 #' @seealso [allowed_by_robots_url()] to fetch and match in one step.
 #' @export
@@ -101,6 +120,7 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
   validate_fetch_user_agent(fetch_user_agent)
   max_bytes_int <- validate_max_bytes(max_bytes)
   validate_ssrf_guard(ssrf_guard)
+  warn_ssrf_guard_deprecated(ssrf_guard)
   fetch_ua <- if (is.null(fetch_user_agent)) {
     package_fetch_user_agent()
   } else {
@@ -127,7 +147,7 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
   # Fetch each distinct origin sequentially in first-occurrence order.
   results <- vector("list", n_src)
   for (i in seq_len(n_src)) {
-    results[[i]] <- perform_fetch(
+    results[[i]] <- acquire_robots(
       distinct_origins[[i]], timeout, fetch_ua, max_bytes_int, ssrf_guard
     )
   }
@@ -228,17 +248,9 @@ new_robots_fetches <- function(map, robots) {
 #'
 #' @return `x`, invisibly.
 #' @examples
-#' # A robots_fetches object comes from robots_fetch(); the transport is mocked
-#' # here so the example runs offline.
-#' fetches <- httr2::with_mocked_responses(
-#'   function(req) {
-#'     httr2::response(
-#'       status_code = 200L, url = req$url,
-#'       body = charToRaw("user-agent: *\nDisallow: /private\n")
-#'     )
-#'   },
-#'   robots_fetch("https://example.com/page")
-#' )
+#' # A robots_fetches object comes from robots_fetch(). A refused origin needs
+#' # no network, so this runs offline.
+#' fetches <- robots_fetch("http://169.254.169.254/page")
 #' print(fetches)
 #' @export
 print.robots_fetches <- function(x, ...) {

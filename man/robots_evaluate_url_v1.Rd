@@ -37,7 +37,8 @@ unaccepted selector leaves its rows undecided rather than raising.}
 \code{length(url)}: \code{"google"}, \code{"yandex"}, \code{"rfc9309"}, or \code{"bing"}.}
 
 \item{timeout}{A single positive, finite numeric total timeout in seconds per
-origin, including redirects. Defaults to \code{10}.}
+origin, including redirects, rounded up to whole seconds. Defaults to
+\code{10}.}
 
 \item{max_bytes}{A single positive, finite, whole-number decoded-body byte
 limit no greater than \code{.Machine$integer.max}, coerced to integer and
@@ -46,15 +47,16 @@ is accepted; fractional, non-positive, out-of-range, or non-scalar values
 are call-level errors. Defaults to \code{524288L}.}
 
 \item{fetch_user_agent}{\code{NULL} (use the package fetch user agent) or a single
-non-empty character HTTP user agent to send instead.}
+non-empty character HTTP user agent to send instead. It must be a valid
+HTTP field value: no control character, and no leading or trailing
+whitespace.}
 
-\item{ssrf_guard}{A single logical. When \code{TRUE} (the default) a structural
-SSRF guard refuses, before any request, both the initial origin and every
-redirect target that resolves to a private, loopback, link-local, or
-cloud-metadata address (outcome \code{ssrf_blocked}, no socket opened). Set to
-\code{FALSE} to deliberately opt out — for example to fetch \code{robots.txt} from a
-trusted intranet host. Opting out removes that protection; only disable it
-for hosts you control and trust.}
+\item{ssrf_guard}{A single logical, \code{TRUE} by default. \code{FALSE} is
+deprecated and warns: the guard has no off switch any more. It now
+selects a permissive policy, which reopens private, loopback and other
+internal address ranges and the metadata host names, for example to fetch
+\code{robots.txt} from a trusted intranet host. Known cloud-metadata endpoints
+and the IPv6 transition forms that embed an address stay refused.}
 }
 \value{
 A \code{robots_engine_decisions_v1} object with \code{results}, neutral
@@ -77,25 +79,28 @@ only under the \code{rfc9309} backend. See
 \code{robots_engine_contract_v1()$matcher_capability}.
 }
 \examples{
-# This entry point fetches /robots.txt over HTTP. The transport is mocked
-# here so the example runs offline; a real call needs no such wrapper.
-decisions <- httr2::with_mocked_responses(
-  function(req) {
-    httr2::response(
-      status_code = 200L, url = req$url,
-      body = charToRaw("user-agent: *\nDisallow: /private\n")
-    )
-  },
-  robots_evaluate_url_v1(
-    c("https://example.com/page", "https://example.com/private"),
-    robots_product_token = "my-bot",
-    robots_policy_ruleset = "google",
-    matcher_backend = "google"
-  )
+# A refused origin is decided before any request, so this runs offline. The
+# evidence records why, apart from the (absent) decision.
+refused <- robots_evaluate_url_v1(
+  "http://[fd00:ec2::254]/latest",
+  robots_product_token = "my-bot",
+  robots_policy_ruleset = "google",
+  matcher_backend = "google"
+)
+refused$evidence[c("source_id", "safety_block_reason", "evidence_status")]
+
+\dontrun{
+# A live fetch of https://example.com/robots.txt.
+decisions <- robots_evaluate_url_v1(
+  c("https://example.com/page", "https://example.com/private"),
+  robots_product_token = "my-bot",
+  robots_policy_ruleset = "google",
+  matcher_backend = "google"
 )
 decisions$results[c("url", "policy_status", "url_decision", "reason")]
 
 # Acquisition evidence is recorded neutrally, apart from the decision, so
 # the policy applied to the response stays auditable.
 decisions$evidence[c("source_id", "final_http_status", "evidence_status")]
+}
 }

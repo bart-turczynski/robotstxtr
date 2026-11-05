@@ -71,21 +71,24 @@
 #'   raw vector in `robots$body`. Large body values never appear in `results`.
 #'
 #' @examples
-#' # allowed_by_robots_url() fetches /robots.txt over HTTP and matches in one
-#' # step. The transport is mocked here so the example runs offline; a real call
-#' # needs no such wrapper.
-#' httr2::with_mocked_responses(
-#'   function(req) {
-#'     httr2::response(
-#'       status_code = 200L, url = req$url,
-#'       body = charToRaw("user-agent: *\nDisallow: /private\n")
-#'     )
-#'   },
-#'   allowed_by_robots_url(
-#'     c("https://example.com/page", "https://example.com/private"),
-#'     "my-bot"
-#'   )
+#' # A refused origin is decided before any request, so this runs offline: a
+#' # loopback address is never fetched, and its decision is unknown (NA).
+#' allowed_by_robots_url("http://127.0.0.1/page", "my-bot")$results
+#'
+#' # Matching a body you already hold needs no HTTP at all.
+#' allowed_by_robots_text(
+#'   "user-agent: *\nDisallow: /private\n",
+#'   c("https://example.com/page", "https://example.com/private"),
+#'   "my-bot"
 #' )
+#'
+#' \dontrun{
+#' # A live fetch of https://example.com/robots.txt, then matching.
+#' allowed_by_robots_url(
+#'   c("https://example.com/page", "https://example.com/private"),
+#'   "my-bot"
+#' )
+#' }
 #'
 #' @seealso [allowed_by_robots_text()] to match a supplied body without HTTP,
 #'   and [robots_fetch()] for the fetch stage on its own.

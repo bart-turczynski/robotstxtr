@@ -136,10 +136,10 @@ robots_body(decision, n = 40)
 When you do not already have the `robots.txt` text, `allowed_by_robots_url()`
 does the whole job: it derives the `scheme://host[:port]/robots.txt` origin for
 each URL (handling IDN hosts, ports, IPv6 literals, and userinfo stripping via
-`rurl`), fetches each distinct origin exactly once under a conservative `httr2`
-policy (10-second timeout, at most five redirects, no HTTPS-to-HTTP downgrades,
-no cookies or credentials forwarded), and matches every URL against the body it
-retrieved.
+`rurl`), fetches each distinct origin exactly once under a conservative policy
+(a 10-second budget per origin, at most five redirects, no HTTPS-to-HTTP
+downgrades, no cookies or credentials forwarded) through the `ssrfr` guard, and
+matches every URL against the body it retrieved.
 
 ```{r, eval = FALSE}
 # Not evaluated here: this call performs a network request, which vignettes
@@ -153,9 +153,9 @@ The returned object has exactly the same `robots_decisions` shape as
 `timeout`), `http_status`, and `robots_url`. A `404`/`410` origin yields
 `missing_allow` (`TRUE`, because an absent file allows everything); any fetch
 failure yields `fetch_unknown` (`NA`), so a transport problem never silently
-looks like an allow. A URL that structurally resolves to a private, loopback,
-link-local, or cloud-metadata address is refused before any request as
-`ssrf_blocked`, which also yields `fetch_unknown` (`NA`).
+looks like an allow. An origin or redirect target that is, or resolves to, a
+private, loopback, link-local, or cloud-metadata address is refused before any
+connection as `ssrf_blocked`, which also yields `fetch_unknown` (`NA`).
 
 If you only want the fetch stage without matching, `robots_fetch()` returns the
 grouped fetch results on their own.
@@ -186,8 +186,9 @@ robots_validate_url("https://example.com/some/page")
 ```
 
 URL validation reuses `robots_fetch()` and never parses a truncated body. For
-example, a decoded body over `max_bytes` is reported as an acquisition limit
-failure with `validation_status = "not_validated"`.
+example, a 2xx or 3xx response whose decoded body is over `max_bytes` is
+reported as an acquisition limit failure with
+`validation_status = "not_validated"`; a 4xx or 5xx keeps its status outcome.
 
 The validation profile is explicitly `google-parser-compatible`: it reflects
 the package's pinned parser (including accepted typo and missing-colon forms)
