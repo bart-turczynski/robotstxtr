@@ -104,12 +104,41 @@ as Bing.
 ## Legacy compatibility
 
 The existing `allowed_by_robots_text()`, `allowed_by_robots_url()`,
-`robots_fetch()`, and `robots_body()` remain unchanged. For consumers migrating
+`robots_fetch()`, and `robots_body()` remain unchanged, apart from the additive
+Retry-After columns below. For consumers migrating
 incrementally, `as_legacy_robots_decisions_v1()` explicitly converts a v1 result
 whose policy and matcher are both Google into the original `robots_decisions`
 schema. The adapter deliberately keeps legacy generic HTTP/redirect failures
 unknown even where the new Google policy has a documented `allow_all` action;
 this prevents a silent semantic change in old consumers.
+
+### Retry-After on legacy fetch rows (ROBO-cthdyvlk)
+
+The `robots` frame of `robots_fetch()`, and so of `allowed_by_robots_url()`,
+which carries that frame unchanged, gains two columns between
+`error_message` and `body`:
+
+| column | type | value |
+|---|---|---|
+| `retry_after` | character | The final response's `Retry-After` field value as received, several fields joined with `", "`; `NA` when absent. |
+| `retry_after_seconds` | double | The delay it asks for (RFC 9110 §10.2.3): `delay-seconds` as is, or an HTTP-date (any of the three RFC 9110 §5.6.7 forms) less the response's `Date`, or less the fetch time when `Date` is absent or invalid; a past date is `0`; `NA` when absent or neither form. |
+
+"Final response" is the non-3xx response that ends the chain; a redirect's
+`Retry-After` never counts. An outcome with no such response (a refusal, a
+transport failure, a `redirect_error`, a body over `max_bytes`) has `NA` in
+both. robotstxtr never retries; the caller decides whether to wait.
+
+The addition is legacy-schema only. The v1/v2 `evidence` frame, the
+`robots_validate_url()` `documents` frame (which copies named fetch fields,
+not the row), the `allowed_by_robots_text()` supplied-source row and the
+`as_legacy_robots_decisions_v1()` adapter are unchanged, so the engine schema
+revision does not move.
+
+Decision: keep `Retry-After` only, not a generic list of the final response's
+headers. A header list would publish ssrfr's header representation as
+robotstxtr API and carry fields no caller acts on. Each header a caller needs
+gets its own typed column: `Content-Type` and its content flags are the
+follow-up ROBO-nhuirvrd.
 
 ## Sibling compatibility
 

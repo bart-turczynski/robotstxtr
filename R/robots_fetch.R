@@ -65,6 +65,19 @@
 #' The response header may take up to 64 KiB and 256 fields per hop; a header
 #' over either limit is a `network_error`.
 #'
+#' A 429 or 503 for robots.txt may say when to try again (RFC 9110 section
+#' 10.2.3). Each source row keeps the final response's `Retry-After` field
+#' value as `retry_after`, exactly as received (several fields joined with
+#' `", "`), and the delay it asks for as `retry_after_seconds`: the
+#' `delay-seconds` value, or an HTTP-date less the response's `Date` (the
+#' fetch time when `Date` is absent or invalid), with a date already past
+#' giving `0`. Both are `NA` when the final response has no `Retry-After`;
+#' `retry_after_seconds` alone is `NA` when the value is neither form. Only the
+#' final response counts, never a redirect before it; an outcome that ends
+#' without a final non-redirect response (a refusal, a transport failure, a
+#' redirect error, or an over-limit body) records none. `robots_fetch()` never
+#' retries: honoring the delay is the caller's choice.
+#'
 #' `timeout` is one budget for the whole chain of one origin, redirects
 #' included, rounded up to whole seconds; each connection attempt also gets at
 #' most three seconds. Two things can make a fetch overrun it: the time spent
@@ -96,7 +109,8 @@
 #' @return An S3 object of class `robots_fetches`: a named list with two
 #'   components, `map` (one row per input URL, in input order) and `robots` (one
 #'   row per fetched source, with the fetched body stored once as a raw vector
-#'   in `robots$body`).
+#'   in `robots$body`, and the final response's `Retry-After` as the character
+#'   `retry_after` and the double `retry_after_seconds`).
 #'
 #' @examples
 #' # A refused origin is decided before any request, so this runs offline.
@@ -168,6 +182,10 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
     error_stage = vapply(results, function(r) r$error_stage, character(1L)),
     error_class = vapply(results, function(r) r$error_class, character(1L)),
     error_message = vapply(results, function(r) r$error_message, character(1L)),
+    retry_after = vapply(results, function(r) r$retry_after, character(1L)),
+    retry_after_seconds = vapply(
+      results, function(r) r$retry_after_seconds, numeric(1L)
+    ),
     stringsAsFactors = FALSE
   )
   # `body` is a list-of-raw column: each fetched body stored exactly once.

@@ -42,7 +42,8 @@ and the IPv6 transition forms that embed an address stay refused.}
 An S3 object of class \code{robots_fetches}: a named list with two
 components, \code{map} (one row per input URL, in input order) and \code{robots} (one
 row per fetched source, with the fetched body stored once as a raw vector
-in \code{robots$body}).
+in \code{robots$body}, and the final response's \code{Retry-After} as the character
+\code{retry_after} and the double \code{retry_after_seconds}).
 }
 \description{
 Performs the grouped robots.txt fetch stage for one or more target URLs and
@@ -110,6 +111,19 @@ is not followed, because \pkg{ssrfr} keeps no \code{Location} for it.
 
 The response header may take up to 64 KiB and 256 fields per hop; a header
 over either limit is a \code{network_error}.
+
+A 429 or 503 for robots.txt may say when to try again (RFC 9110 section
+10.2.3). Each source row keeps the final response's \code{Retry-After} field
+value as \code{retry_after}, exactly as received (several fields joined with
+\code{", "}), and the delay it asks for as \code{retry_after_seconds}: the
+\code{delay-seconds} value, or an HTTP-date less the response's \code{Date} (the
+fetch time when \code{Date} is absent or invalid), with a date already past
+giving \code{0}. Both are \code{NA} when the final response has no \code{Retry-After};
+\code{retry_after_seconds} alone is \code{NA} when the value is neither form. Only the
+final response counts, never a redirect before it; an outcome that ends
+without a final non-redirect response (a refusal, a transport failure, a
+redirect error, or an over-limit body) records none. \code{robots_fetch()} never
+retries: honoring the delay is the caller's choice.
 
 \code{timeout} is one budget for the whole chain of one origin, redirects
 included, rounded up to whole seconds; each connection attempt also gets at

@@ -353,23 +353,47 @@ acquire_robots <- function(robots_url, timeout, fetch_ua, max_bytes,
   }
 }
 
+# The time a response arrived, in seconds since the epoch: the reference for
+# an HTTP-date Retry-After when the response has no valid Date. A seam the
+# tests replace.
+acquire_now <- function() {
+  as.double(Sys.time())
+}
+
+# One field of an ssrfr response, or NA. ssrfr names `headers` by lowercase
+# field name; several fields of one name are joined with ", " (RFC 9110
+# section 5.3), so a repeated Retry-After parses as invalid.
+acquire_header <- function(response, name) {
+  headers <- response$headers
+  values <- unname(headers[names(headers) %in% name])
+  if (length(values) == 0L) {
+    return(NA_character_)
+  }
+  toString(values)
+}
+
 # The result for a final (non-3xx) response. Only `fetched` stores a body: the
 # exact decoded bytes ssrfr read, within `max_bytes` (an empty body is raw(0)).
+# Retry-After comes from this response only, never from a redirect before it
+# (ROBO-cthdyvlk; RFC 9110 section 10.2.3).
 acquire_final_result <- function(response, status, url, redirect_count,
                                  redirect_hops) {
+  retry_after <- acquire_header(response, "retry-after")
+  retry_after_seconds <- retry_after_delay(
+    retry_after, acquire_header(response, "date"), acquire_now()
+  )
   outcome <- classify_status(status)
-  if (!identical(outcome, "fetched")) {
-    return(make_source_result(
-      outcome, status, url, redirect_count, NULL, NA_character_,
-      redirect_hops = redirect_hops
-    ))
-  }
-  body <- response$body
-  if (is.null(body)) {
-    body <- raw(0)
+  body <- NULL
+  if (identical(outcome, "fetched")) {
+    body <- response$body
+    if (is.null(body)) {
+      body <- raw(0)
+    }
   }
   make_source_result(
-    "fetched", status, url, redirect_count, body, NA_character_,
-    redirect_hops = redirect_hops
+    outcome, status, url, redirect_count, body, NA_character_,
+    redirect_hops = redirect_hops,
+    retry_after = retry_after,
+    retry_after_seconds = retry_after_seconds
   )
 }
