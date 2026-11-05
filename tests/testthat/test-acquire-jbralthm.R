@@ -133,16 +133,15 @@ test_that("the causes map to transport kinds", {
 
 # --- body_too_large -----------------------------------------------------------
 
-test_that("a body over max_bytes is body_too_large, never truncated", {
+test_that("a 2xx body over max_bytes is body_too_large, never truncated", {
   local_fake_ssrfr(function(req) {
-    fake_response(404L, body = strrep("x", 2000L))
+    fake_response(200L, body = strrep("x", 2000L))
   })
   e <- robots_evaluate_url_v1(
     "http://a/x", "Googlebot", "google", "google", max_bytes = 1000L
   )$evidence
   expect_identical(e$legacy_fetch_outcome, "body_too_large")
-  # The status of the oversized response is kept: a large 404 stays a 404.
-  expect_identical(e$legacy_http_status, 404L)
+  expect_identical(e$legacy_http_status, 200L)
   expect_identical(e$effective_url, "http://a/robots.txt")
   expect_identical(e$observed_bytes, 2000L)
   expect_identical(e$stored_bytes, 0L)

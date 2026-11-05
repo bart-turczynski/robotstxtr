@@ -12,9 +12,14 @@
 # - a relative Location is resolved against the previous hop (WHATWG), and
 #   the fragment dropped, as the binding's `url` is.
 # - the binding records the status, the Location and the Location count; a 3xx
-#   past the policy's `max_redirects` is the "redirect-limit" refusal, and a
-#   body over `max_response_size` the "response-too-large" failure with
-#   `check = "decoded-bytes"`, its status and the bytes observed.
+#   past the policy's `max_redirects` is the "redirect-limit" refusal, decided
+#   first. Then, in ssrfr's order: more header fields than
+#   `max_header_fields` is the "response-too-large" failure with
+#   `check = "header"`; a body over `max_response_size` the same failure with
+#   `check = "decoded-bytes"`, its status and the bytes observed, the binding
+#   recording the status but no Location; and, for any status, more than one
+#   Location field the "protocol-error" failure with `check = "location"`.
+#   The header byte limit is not modeled: the loopback tests cover it.
 #
 # The handler is `function(req)`: `req$url` is the URL the hop requests,
 # `req$user_agent` the User-Agent the policy sends, `req$method` "GET" and
@@ -96,15 +101,16 @@ fake_fetch <- function(binding, handler) {
     return(res)
   }
   binding$state$status <- res$status
-  if (res$status >= 300L && res$status <= 399L) {
-    if (binding$hop - 1L >= binding$policy$max_redirects) {
-      return(fake_refusal("redirect-limit", hop = binding$hop))
-    }
-    locations <- unname(res$headers[names(res$headers) == "location"])
-    binding$state$location_count <- length(locations)
-    if (length(locations) == 1L) {
-      binding$state$location <- locations[[1L]]
-    }
+  if (res$status >= 300L && res$status <= 399L &&
+        binding$hop - 1L >= binding$policy$max_redirects) {
+    return(fake_refusal("redirect-limit", hop = binding$hop))
+  }
+  if (length(res$headers) > binding$policy$max_header_fields) {
+    binding$state$status <- NULL
+    return(fake_failure(
+      "response-too-large",
+      check = "header", limit = "max_header_fields", hop = binding$hop
+    ))
   }
   if (length(res$body) > binding$policy$max_response_size) {
     return(fake_failure(
@@ -113,6 +119,14 @@ fake_fetch <- function(binding, handler) {
       status = res$status, observed_bytes = length(res$body),
       hop = binding$hop
     ))
+  }
+  locations <- unname(res$headers[names(res$headers) == "location"])
+  binding$state$location_count <- length(locations)
+  if (length(locations) == 1L) {
+    binding$state$location <- locations[[1L]]
+  }
+  if (length(locations) > 1L) {
+    return(fake_failure("protocol-error", check = "location", hop = binding$hop))
   }
   res
 }
@@ -148,6 +162,8 @@ local_loopback_policy <- function(port, env = parent.frame()) {
         connect_timeout = policy$connect_timeout,
         total_timeout = policy$total_timeout,
         max_response_size = policy$max_response_size,
+        max_header_bytes = policy$max_header_bytes,
+        max_header_fields = policy$max_header_fields,
         user_agent = policy$user_agent
       )
     },
