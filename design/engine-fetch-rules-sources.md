@@ -155,8 +155,9 @@ Findings:
     never reaches a 200 fails the requirement that the target return 200. Mapping
     `over_budget` to `allow_all` therefore applies a documented Yandex rule to an undocumented
     trigger. That makes the mapping an `application_choice`, not `documented`. Today the
-    `yandex` × `redirect_over_budget` cell is `documentation_gap`. The ADR leaves the change to
-    the maintainer.
+    `yandex` × `redirect_over_budget` cell is `documentation_gap`. Not adopted (maintainer,
+    2026-11-05; ADR 0001): the cell stays `documentation_gap` until measured with served test
+    files (ROBO-ogwchglq).
 - **`https` → `http`.** Not addressed in Y1 or Y2. `[inferred]`: followed, since cross-site
   redirects are supported with no scheme condition.
 - **Size.** Y1: "The file size doesn't exceed 500 KB." `[documented]` Y1 does not define KB.
@@ -205,6 +206,9 @@ Findings:
     `assumed_rfc9309`, which is never reported as Bing.
 - **Size and over-limit.** `[documentation_gap]`, unchanged. The fetch stops at the caller's
   `max_bytes` (default 524,288). A body over it is `incomplete`, never a Bing verdict.
+- **Next step (maintainer, 2026-11-05; ADR 0001).** No documentation search at each release.
+  Bing's redirect, size and downgrade rules are to be measured with served test files
+  (ROBO-ogwchglq, parked); until then the cells above stand.
 
 ## What this changes
 
