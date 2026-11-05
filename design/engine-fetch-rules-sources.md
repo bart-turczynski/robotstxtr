@@ -164,7 +164,12 @@ Findings:
   through the documented Yandex `allow_all` policy"). 500 × 1024 = 512,000 is the other
   reading. `[documentation_gap]` on the unit; robotstxtr's reading is an `application_choice`.
 - **Over the limit.** Y1: a file that does not meet the requirements leaves the site "open for
-  indexing" → `allow_all`. `[documented]` Y3 has an error "Robots.txt file size limit
+  indexing" → `allow_all`. `[documented]` robotstxtr already applies this to a *retained*
+  body. The Yandex branch of `resolve_policy_v1()` in `R/engine-contract-v1.R` turns
+  `stored_bytes > 500000L` into `allow_all` with reason `yandex_file_over_500000_bytes`. A body
+  over the acquisition ceiling (`body_too_large`) never reaches that branch today. The ADR's
+  slice 8 extends the same branch, using a 512,000-byte threshold that holds under either
+  reading of the unit. Y3 has an error "Robots.txt file size limit
   exceeded", but defines it by rules ("The number of rules in the file exceeds 2048"), not
   bytes. That is future-validator material (engine-profiles.md §8).
 

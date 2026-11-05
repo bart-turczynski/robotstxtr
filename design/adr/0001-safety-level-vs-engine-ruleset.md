@@ -27,14 +27,17 @@ So, for every ruleset:
   §2.3.1.2 places no scheme condition on redirects, Google follows "at least five redirect hops
   as defined by RFC 1945", and Yandex follows redirects to another site (research record,
   summary table). A site that redirects its `https` robots.txt to `http` gets an answer from
-  every modeled engine and none from robotstxtr.
+  every engine that documents redirect handling (`rfc9309`, `google`, `yandex`) and none from
+  robotstxtr. Bing's redirect handling is a `documentation_gap`.
 - **Private, loopback, link-local and cloud-metadata addresses are refused.** That is right
   for a server fetching URLs it does not trust, and the default stays. The only way to reopen
   them is the deprecated `ssrf_guard = FALSE`. ssrfr has no off switch, so that argument
   already maps onto a permissive policy (`allow_ranges = c("0.0.0.0/0", "::/0")` plus ssrfr's
   metadata host names) and warns (`warn_ssrf_guard_deprecated()` in `R/fetch-policy.R`).
-- The evidence frame records the policy with two fixed columns: `ssrf_guard` (the argument as
-  passed) and `https_downgrade_guard` (always `TRUE`, `source_results_to_evidence_v1()`).
+- The evidence frame records the policy in two columns. `ssrf_guard` is the argument as
+  passed. `https_downgrade_guard` is `TRUE` on every fetched row
+  (`source_results_to_evidence_v1()`) and `NA` on a supplied-body row and when no acquisition
+  was configured (timeout `NA`) (`R/engine-contract-v1.R`).
 
 ### Where "ADR-003" lives
 
@@ -48,8 +51,13 @@ in `28618d7`, which landed engine-profiles.md. Two related records:
 - sitemapr `ADR-009-per-engine-validation-profiles.md` §3, "Safety precedence: safety and
   resource limits are never crawler policy". This is the rule engine-profiles.md implements,
   and that document is "governed by sitemapr ADR-009" (its header). ADR-009 §3, not ADR-003,
-  puts the HTTPS → HTTP downgrade among the `safety_refused` causes. sitemapr ADR-003 itself
-  never mentions the downgrade.
+  puts the HTTPS → HTTP downgrade among the `safety_refused` causes. sitemapr ADR-003 does not
+  decide the downgrade refusal. It mentions the downgrade only in its §3 findings mapping (an
+  SSRF / scheme / downgrade refusal → `PAGE_SSRF_BLOCKED`, ADR-010 §3), which takes the
+  refusal as given. ADR-009 §3 also covers resource limits: "body ceiling reached" →
+  `incomplete`, and "Neither is ever `allow_all` / `disallow_all`". Its last sentence reads
+  "per-engine parse limits and excess-content behavior belong to the interpretation layer,
+  not the fetch layer".
 - ssrfr `design/adr/0001-network-safety-policy.md` §4, which makes `downgrade` a refusal cause
   "refused by default". Its spec (`design/specs/ssrfr-v1.md`, vocabulary table) adds that "the
   refusal protects response integrity, not credentials", since the hop is cross-origin and
@@ -107,17 +115,28 @@ trust. Under `strict`, sitemapr ADR-009 §3 holds unchanged.
   resolves to, an address-class refusal (`loopback`, `private`, `link-local`,
   `cloud-metadata`, `shared`, `unspecified`, `this-network`, `multicast`, `reserved`, and the
   IPv6 forms that embed one: `ipv4-mapped`, `ipv4-translated`, `ipv4-compatible`, `nat64`,
-  `6to4`, `teredo`, `isatap`) is never dialed. As before, no packet leaves the machine. The
-  result is recorded as `fetch_outcome = network_error`,
-  `transport_error_kind = network_error` and `evidence_status = transport_fail`, and
-  `safety_block_reason` still carries the code so the refusal can be audited.
+  `6to4`, `teredo`, `isatap`) is never dialed. As before, no packet leaves the machine. The L0
+  record is unchanged from `strict`: `fetch_outcome = ssrf_blocked` and `safety_block_reason`
+  set to the code. What changes is the `evidence_status` derived from it, which becomes
+  `transport_fail` instead of `safety_refused`.
+
+  **This changes a precedence rule and a published invariant.** Today
+  `source_evidence_status_v1()` tests `safety_block_reason` first and returns `safety_refused`
+  whenever it is set. As published, "`safety_block_reason` set ⇒ `evidence_status =
+  safety_refused`" holds for every row. Under `crawler`, that check becomes level-aware: an
+  address-class reason maps to `transport_fail`, and only a URL-shape reason maps to
+  `safety_refused`. The invariant then holds under `strict` only. Under `crawler`, a set
+  `safety_block_reason` means "refused locally". Whether that shows up as `safety_refused` or
+  `transport_fail` depends on the code's class (§3a of engine-profiles.md once amended). A
+  consumer that infers `safety_refused` from a non-`NA` reason must also read `safety_level`.
 
   This is what a public crawler sees: it cannot route to your RFC 1918 network or your
   metadata endpoint, and the connection fails. The engine ruleset then gives the outcome the
-  meaning that engine gives an unreachable file. That is `context_required` for `rfc9309` and
-  `google`, and `documentation_gap` for `yandex` and `bing` (engine-profiles.md §4 network
-  row). Under today's tables, then, no address refusal becomes an allow or a deny under
-  `crawler` either.
+  meaning that engine gives an unreachable file. That is `context_required` for `rfc9309`,
+  `google` and `assumed_rfc9309`, and `documentation_gap` for `yandex` and `bing`
+  (engine-profiles.md §4 network row; the `transport` rows of `engine_policy_table_v1()`).
+  Under today's tables, then, no address refusal becomes an allow or a deny under `crawler`
+  either.
 - **URL-shape refusals stay `safety_refused` at both levels.** These are `scheme` (and so
   `non_http_target`), `userinfo`, `port`, `parse`, `numeric-literal` and
   `malformed-address`. They are refusals of how the URL is spelled, not of where it points, and
@@ -138,10 +157,28 @@ five as a labeled `application_choice` fallback, never reported as documented.
 A body over `max_bytes` stays an L0 fact (`body_too_large`, `termination_reason = ceiling`).
 The ruleset decides what it means:
 
-- **`yandex`:** when the acquisition limit is at least 500,000 bytes, the body provably exceeds
-  Yandex's documented 500 KB. The site is then "considered open", so the result is
-  `allow_all` `[documented]`. Below that limit the overflow proves nothing, and the result
-  stays `incomplete`.
+- **`yandex`:** when the acquisition limit is at least **512,000 bytes**, the body exceeds
+  Yandex's documented "500 KB" under either reading of the unit (500,000 or 512,000 bytes;
+  the unit is a `documentation_gap`). Yandex treats a file that fails its requirements as
+  "considered open", so the result is `allow_all` `[documented]`. The default `max_bytes`,
+  524,288, is above that threshold. Below it, the overflow does not prove the file broke
+  Yandex's limit, and the result stays `incomplete`.
+
+  This extends the existing path rather than adding a second one. The Yandex branch of
+  `resolve_policy_v1()` in `R/engine-contract-v1.R` already turns a retained body with
+  `stored_bytes > 500000L` into `allow_all` / `yandex_file_over_500000_bytes` `[documented]`.
+  Slice 8 makes the same branch also accept `body_too_large` with
+  `acquisition_max_bytes ≥ 512000`. It reports the same reason, or a sibling reason recorded
+  in the schema entry, so that one code path carries the Yandex size rule.
+
+  **This conflicts with sitemapr ADR-009 §3 as written.** That section maps "body ceiling
+  reached" to `incomplete` and says "Neither is ever `allow_all` / `disallow_all`". Its last
+  sentence leaves "per-engine parse limits and excess-content behavior" to the interpretation
+  layer, and a per-ruleset reading of an L0 `body_too_large` is exactly that. But the
+  sentence before it rules the outcome out explicitly, so it cannot be argued away. The
+  sitemapr amendment (slice 6) therefore has to cover both points: the safety level, and a
+  ruleset's documented meaning for the acquisition ceiling. Until that amendment is accepted,
+  slice 8 does not ship.
 - **`google`:** Google parses the first 500 KiB. robotstxtr cannot, because ssrfr returns no
   part of an oversized body, so the result stays `incomplete` until ssrfr can keep a prefix
   (engine-profiles.md §7 and §9(c), unchanged).
@@ -160,6 +197,15 @@ levels. A target inside a listed range is fetched. One outside it is handled as 
   ssrfr's metadata host names. The warning now names `fetch_allow_ranges` as the replacement.
 - The argument is removed one minor release after `fetch_allow_ranges` ships, once sitemapr no
   longer passes it.
+- **How the three combine while `ssrf_guard` exists.**
+  - `ssrf_guard = FALSE` together with a non-empty `fetch_allow_ranges` is a call-level error
+    (`robotstxtr_invalid_ssrf_guard`): the call gives two answers to the same question.
+  - `ssrf_guard = FALSE` with `safety_level = "crawler"` is allowed. It wins over the
+    address-class rule: every range is reopened and dialed, exactly as under `strict` today.
+    It warns twice: the existing deprecation warning, and a second one saying that under
+    `crawler` it makes internal addresses reachable, which no public crawler can do.
+  - The downgrade rule follows `safety_level` alone. `ssrf_guard` has never touched the
+    downgrade, and it still does not.
 - `fetch_allow_ranges` never reopens the metadata host names. ssrfr's exact provider endpoints
   and the transition forms it refuses whatever the policy stay refused, as they are today.
 
@@ -193,11 +239,23 @@ as the plan of record because it moves chain bookkeeping that ssrfr owns (the ch
 
 - `robots_engine_contract_v1()` publishes the `safety_level` value set.
 - The evidence frame gains `safety_level` (character) and `fetch_allow_ranges` (list column).
-  `https_downgrade_guard` becomes `safety_level == "strict"`. `ssrf_guard` keeps recording the
-  deprecated argument until it is removed.
+  On a fetched row, `https_downgrade_guard` becomes `safety_level == "strict"`. On a row with
+  no acquisition (a supplied body, or timeout `NA`), it stays `NA`, as `safety_level` and
+  `fetch_allow_ranges` will. `ssrf_guard` keeps recording the deprecated argument until it is
+  removed.
+- `evidence_status` derivation changes as §3 states: `safety_block_reason` no longer implies
+  `safety_refused` under `crawler`. The contract doc states the narrowed invariant.
 - These need a new schema revision (engine-contract-v1.md, "Registering another matcher
   backend", step 5) and a contract-doc entry.
-- `as_legacy_robots_decisions_v1()` is unchanged. `crawler` rows convert like any other.
+- **Legacy surfaces keep `ssrf_blocked`.** `fetch_outcome` (L0) stays `ssrf_blocked` for an
+  address refusal under `crawler` (§3). So `robots_fetch()`, `allowed_by_robots_url()` and
+  `as_legacy_robots_decisions_v1()` (which reads `legacy_fetch_outcome`) report
+  `ssrf_blocked`, not `network_error`. This is the intended behavior. The legacy schema
+  predates the safety level and has no column that could say which level produced a
+  `network_error`. Its consumers branch on `ssrf_blocked` to recognize a local refusal.
+  Relabeling the row would make a refusal look like a real network failure to exactly the
+  callers who cannot see `safety_level`. The crawler reading lives only in `evidence_status`,
+  which a consumer reads alongside `safety_level`.
 
 ## Alternatives considered
 
@@ -230,11 +288,16 @@ as the plan of record because it moves chain bookkeeping that ssrfr owns (the ch
 - `crawler` can produce verdicts where `strict` produced none (a site behind a downgrade). Those
   verdicts are what the engines document. A consumer comparing the two levels sees the
   difference in `safety_level` and in the `redirect_hops` log.
-- The safety guarantee is unchanged at both levels: robotstxtr never connects to an internal
-  address unless the caller names its range.
+- The safety guarantee is unchanged at both levels. robotstxtr never connects to an internal
+  address unless the caller names its range in `fetch_allow_ranges`, or passes the deprecated
+  `ssrf_guard = FALSE` while that argument exists. The second reopens every range at either
+  level (§6) and warns.
+- The published invariant "`safety_block_reason` set ⇒ `safety_refused`" narrows to `strict`
+  (§3). Consumers relying on it must read `safety_level`.
 - **This ADR alone does not override sitemapr ADR-009 §3** for robotstxtr, since engine-profiles.md
-  is governed by it. Accepting this ADR needs a sitemapr ADR that scopes ADR-009 §3 to
-  `safety_level = "strict"` (slice 6).
+  is governed by it. Accepting this ADR needs a sitemapr ADR that amends ADR-009 §3 on two
+  points (slice 6): safety precedence applies under `safety_level = "strict"`, and a ruleset
+  may give the acquisition ceiling a documented meaning (§5, the Yandex `allow_all`).
 - Revisit if an engine documents a robots.txt hop count other than five, documents refusing a
   downgrade, or documents a behavior for a URL-shape refusal.
 
@@ -255,6 +318,11 @@ Applied by slice 2. Do not apply before then.
 
    (`non_http_target` leaves the `http_protocol_error` trigger: the code has always made it
    `safety_refused` through `safety_block_reason = scheme`.)
+
+   And in the `safety_block_reason` paragraph, append: "Under `safety_level = strict` a set
+   `safety_block_reason` always means `evidence_status = safety_refused`; under `crawler` an
+   address-class code means `transport_fail` (§3a). `fetch_outcome` stays `ssrf_blocked` at
+   both levels."
 
 3. **§3, first paragraph.** Replace "requires supporting **at least five** consecutive
    redirects" with "says crawlers SHOULD follow **at least five** consecutive redirects". Leave
@@ -303,8 +371,9 @@ Applied by slice 2. Do not apply before then.
 
 8. **§7.** Replace the "**Over-limit body**" bullet with:
    "**Over-limit body** (`body_too_large`, an L0 fact) — by ruleset: `yandex` with
-   `acquisition_max_bytes ≥ 500000` → `allow_all` `[documented]` (the file provably exceeds
-   500 KB); `yandex` below that, `google`, `rfc9309`, `assumed_rfc9309`, `bing` →
+   `acquisition_max_bytes ≥ 512000` → `allow_all` `[documented]` (the file exceeds 500 KB
+   under either reading of the unit; same rule as a retained body over 500,000 bytes,
+   `yandex_file_over_500000_bytes`; sitemapr ADR-009 §3 as amended); `yandex` below that, `google`, `rfc9309`, `assumed_rfc9309`, `bing` →
    `evidence_status = incomplete`. Google parses the ≤-limit prefix; robotstxtr cannot, because
    `ssrfr` returns no part of an over-limit body (implementation delta, §9). A 4xx/5xx over the
    limit is classified by its status (§4)."
@@ -328,34 +397,45 @@ acceptance test.
    ssrfr's corpus passes.
 2. **`safety_level` exists, `strict` is unchanged** (robotstxtr). Depends on nothing.
    Acceptance: the four entry points accept `safety_level = "strict"` (the default) and reject
-   any other value, except `"crawler"` once slice 3 lands, with a classed error. The full test
-   suite passes unmodified. The evidence carries `safety_level`. The contract publishes the
+   any other value, except `"crawler"` once slice 3 lands, with a classed error. The test suite
+   passes with no change other than the schema-revision pins (the tests that assert
+   `"2026-11-05.1"`). The evidence carries `safety_level` (`NA` on rows with no acquisition). The contract publishes the
    value set under a new schema revision. engine-profiles.md gets the changes above, and
    engine-contract-v1.md gets the schema entry.
 3. **`crawler` follows downgrades** (robotstxtr). Depends on 1 and 2. Acceptance: with the fake
    ssrfr, `https` → 301 → `http` → 200 under `crawler` yields `usable_body`,
    `redirect_count = 1`, the hop in `redirect_hops` and `https_downgrade_guard = FALSE`. The
    same chain under `strict` still yields `safety_refused` / `https_downgrade`.
-4. **`crawler` records internal addresses as unreachable** (robotstxtr). Depends on 2.
-   Acceptance: for every address-class code in ssrfr's vocabulary, a refused first hop and a
-   refused redirect target under `crawler` yield `transport_fail`, the code in
-   `safety_block_reason`, and no `acquire_fetch()` call. `google` and `rfc9309` resolve to
-   `context_required`, never `allow` or `deny`. URL-shape codes stay `safety_refused`. A test
-   walks the vocabulary, so a new code fails until it is classed.
-5. **`fetch_allow_ranges` replaces `ssrf_guard = FALSE`** (robotstxtr). Depends on 2.
-   Acceptance: a listed range is fetched at both levels, and an unlisted one is not. The
-   metadata names stay refused. `ssrf_guard = FALSE` still behaves as today and its warning
-   names the replacement. `ssrf_guard = TRUE` is silent.
-6. **sitemapr scopes ADR-009 §3 to `strict` and stops passing `ssrf_guard`** (in sitemapr).
-   Depends on 2. Acceptance: a sitemapr ADR records the amendment. `robots-facts.R` no longer
-   passes `ssrf_guard`, and its tests pass against a robotstxtr with and without the argument.
+4. **`crawler` records internal addresses as unreachable** (robotstxtr). Depends on 3, which
+   admits `"crawler"`. Acceptance: for every address-class code in ssrfr's vocabulary, a refused
+   first hop and a refused redirect target under `crawler` yield `transport_fail`,
+   `fetch_outcome = ssrf_blocked`, the code in `safety_block_reason`, and no `acquire_fetch()`
+   call. `source_evidence_status_v1()`'s precedence is level-aware, and the same rows under
+   `strict` still yield `safety_refused`. `google`, `rfc9309` and `assumed_rfc9309` resolve to
+   `context_required`; `yandex` and `bing` resolve to `documentation_gap`; none to `allow` or
+   `deny`. `as_legacy_robots_decisions_v1()` reports `ssrf_blocked`. URL-shape codes stay
+   `safety_refused`. A test walks the vocabulary, so a new code fails until it is classed.
+5. **`fetch_allow_ranges` replaces `ssrf_guard = FALSE`** (robotstxtr). Depends on 3 (its
+   acceptance covers `crawler`). Acceptance: a listed range is fetched at both levels, and an
+   unlisted one is not. The metadata names stay refused. `ssrf_guard = FALSE` still behaves as
+   today and its warning names the replacement. Under `crawler` it reopens every range and
+   adds the second warning. Combined with a non-empty `fetch_allow_ranges`, it is a classed
+   call-level error. `ssrf_guard = TRUE` is silent.
+6. **sitemapr amends ADR-009 §3 and stops passing `ssrf_guard`** (in sitemapr). Depends on 2.
+   Acceptance: a new sitemapr ADR amends ADR-009 §3 on two points. Safety precedence applies
+   under `safety_level = "strict"`; under `crawler`, an address-class refusal is
+   `transport_fail`. And a ruleset may give the acquisition ceiling (`body_too_large`) a
+   documented meaning, today only Yandex's `allow_all`. `robots-facts.R` no longer passes
+   `ssrf_guard`, and its tests pass against a robotstxtr with and without the argument.
 7. **`ssrf_guard` is removed** (robotstxtr). Depends on 5 and 6, plus one minor release.
    Acceptance: passing it is an unused-argument error. The evidence column `ssrf_guard` is
    dropped under a new schema revision.
-8. **The `yandex` ruleset reads an oversized file as open** (robotstxtr). Depends on 2.
-   Acceptance: `body_too_large` with `max_bytes ≥ 500000` under `yandex` resolves `allow_all`
-   (`[documented]`). With `max_bytes < 500000` it stays `incomplete`. Other rulesets are
-   unchanged. If the maintainer adopts it, the `yandex` × `redirect_over_budget` cell becomes
+8. **The `yandex` ruleset reads an oversized file as open** (robotstxtr). Depends on 2 and on
+   slice 6's ADR being accepted. Acceptance: the existing `yandex_file_over_500000_bytes`
+   branch in `resolve_policy_v1()` is extended, with no parallel branch added. With it,
+   `body_too_large` with `max_bytes ≥ 512000` under `yandex` resolves `allow_all`
+   (`[documented]`). With `max_bytes < 512000` it stays `incomplete`. Retained bodies over
+   500,000 bytes behave as today. Other rulesets are unchanged. If the maintainer adopts it, the `yandex` × `redirect_over_budget` cell becomes
    `allow_all` `[application_choice]` in the same slice.
 
 A Google prefix parse for oversized files stays outside this list. It needs ssrfr to keep a
@@ -372,10 +452,21 @@ the ssrfr work, if it is wanted.
 3. **Yandex `over_budget` → `allow_all` `[application_choice]`** (slice 8, change 5). It applies
    a documented open fallback to an undocumented trigger. It can be dropped without affecting
    the rest of the ADR. If dropped, the cell stays `documentation_gap`.
-4. **The Yandex "500 KB" unit.** 500,000 bytes (the current reading) or 512,000 bytes?
+4. **The Yandex "500 KB" unit.** 500,000 bytes (the current reading) or 512,000 bytes? §5 uses
+   512,000 as the ceiling threshold, which holds under both readings. The retained-body path
+   stays at 500,000.
 5. **If ssrfr declines the downgrade flag**, is the robotstxtr-side new-chain fallback (§7)
    acceptable, or does `crawler` wait?
 6. **The sitemapr ADR (slice 6)** is a change in another repository's accepted ADR set. Confirm
    it should be written as a new sitemapr ADR amending ADR-009 §3, not as an edit.
 7. **Bing.** Still no primary source for any fetch rule (research record). Keep searching each
    release, or treat Bing's fetch as permanently `assumed_rfc9309`-only?
+8. **sitemapr ADR-009 §3 and the acquisition ceiling.** §5 / slice 8 need ADR-009 §3's "Neither
+   is ever `allow_all`" relaxed for a ruleset's documented ceiling meaning. Its last sentence
+   ("excess-content behavior belongs to the interpretation layer") supports the change but
+   does not license it. Accept the widened amendment, or drop slice 8 and keep the Yandex
+   over-ceiling case `incomplete`?
+9. **The narrowed invariant** (§3): is "`safety_block_reason` set ⇒ `safety_refused` under
+   `strict` only" acceptable for sitemapr's findings mapping? The alternative is a new
+   `evidence_status` value (for example `unreachable_local`) under a schema revision, which
+   would keep the old invariant intact.
