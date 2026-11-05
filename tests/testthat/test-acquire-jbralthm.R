@@ -131,27 +131,29 @@ test_that("the causes map to transport kinds", {
   expect_identical(evidence_of()$legacy_fetch_outcome, "network_error")
 })
 
-# --- body_too_large -----------------------------------------------------------
+# --- A body over max_bytes ----------------------------------------------------
 
-test_that("a 2xx body over max_bytes is body_too_large, never truncated", {
+test_that("a 2xx body over max_bytes keeps its prefix, truncated", {
+  # ROBO-ldpahknv (RFC 9309 section 2.5): ssrfr's truncate_body keeps the
+  # first max_bytes bytes; the evidence stays incomplete.
   local_fake_ssrfr(function(req) {
     fake_response(200L, body = strrep("x", 2000L))
   })
   e <- robots_evaluate_url_v1(
     "http://a/x", "Googlebot", "google", "google", max_bytes = 1000L
   )$evidence
-  expect_identical(e$legacy_fetch_outcome, "body_too_large")
+  expect_identical(e$legacy_fetch_outcome, "fetched")
   expect_identical(e$legacy_http_status, 200L)
   expect_identical(e$effective_url, "http://a/robots.txt")
   expect_identical(e$observed_bytes, 2000L)
-  expect_identical(e$stored_bytes, 0L)
-  expect_false(e$body_truncated)
+  expect_identical(e$stored_bytes, 1000L)
+  expect_true(e$body_truncated)
   expect_identical(e$termination_reason, "ceiling")
   expect_identical(e$evidence_status, "incomplete")
   expect_true(is.na(e$transport_error_kind))
 })
 
-test_that("body_truncated is FALSE on every evidence row", {
+test_that("body_truncated is FALSE on every row within max_bytes", {
   local_fake_ssrfr(fake_router(list(
     "http://a/robots.txt" = ok_robots(),
     "http://b/robots.txt" = function(req) fake_failure("timeout"),

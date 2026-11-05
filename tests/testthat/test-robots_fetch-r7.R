@@ -33,10 +33,10 @@ local_body_server <- function(body_raw, headers = list(),
 
 # --- Tracer bullet: gzip body under the limit, decoded body over it ---------
 
-test_that("gzip body under limit but decoded over limit is body_too_large", {
+test_that("gzip body under limit but decoded over limit is cut at the limit", {
   # Highly compressible ~100 KB decoded body; its gzip encoding is a few hundred
   # bytes. With max_bytes between the two, a compressed Content-Length or
-  # compressed-byte check would wrongly pass; only decoded counting fails it.
+  # compressed-byte check would wrongly pass; only decoded counting cuts it.
   decoded <- charToRaw(strrep("user-agent: *\ndisallow: /private\n", 3000L))
   gz <- memCompress(decoded, type = "gzip")
   expect_lt(length(gz), 50000L)
@@ -45,19 +45,16 @@ test_that("gzip body under limit but decoded over limit is body_too_large", {
   url <- local_body_server(gz, list("Content-Encoding" = "gzip"))
   x <- robots_fetch(url, max_bytes = 50000L, timeout = 5)
 
-  expect_identical(x$robots$fetch_outcome, "body_too_large")
-  # No body is stored and none is matched: NULL body, NA size.
-  expect_null(x$robots$body[[1]])
-  expect_true(is.na(x$robots$body_size))
-  # Response-stage error metadata for body_too_large.
-  expect_identical(x$robots$error_stage, "response")
-  expect_identical(x$robots$error_class, "robots_body_too_large")
-  # The real final status and effective URL are still recorded.
+  # ROBO-ldpahknv (RFC 9309 section 2.5): the first max_bytes decoded bytes
+  # are stored as a fetched body.
+  expect_identical(x$robots$fetch_outcome, "fetched")
+  expect_identical(x$robots$body[[1]], decoded[seq_len(50000L)])
+  expect_identical(x$robots$body_size, 50000L)
+  expect_true(is.na(x$robots$error_class))
+  # The real final status and effective URL are recorded.
   expect_identical(x$robots$http_status, 200L)
   expect_identical(x$robots$effective_url, url)
-  # And the per-input map row reflects the same outcome/metadata.
-  expect_identical(x$map$fetch_outcome, "body_too_large")
-  expect_identical(x$map$error_class, "robots_body_too_large")
+  expect_identical(x$map$fetch_outcome, "fetched")
 })
 
 # --- Boundary: exactly at the limit vs one byte over ------------------------
@@ -74,7 +71,7 @@ test_that("a body exactly at the limit is fetched and stored", {
   expect_true(is.na(x$robots$error_class))
 })
 
-test_that("a body one byte over the limit is body_too_large", {
+test_that("a body one byte over the limit is cut, and incomplete evidence", {
   limit <- 4096L
   body <- charToRaw(strrep("a", limit + 1L)) # one byte over
   url <- local_body_server(body)
@@ -83,14 +80,13 @@ test_that("a body one byte over the limit is body_too_large", {
   )
   evidence <- x$evidence
 
-  expect_identical(evidence$legacy_fetch_outcome, "body_too_large")
+  expect_identical(evidence$legacy_fetch_outcome, "fetched")
   expect_identical(evidence$evidence_status, "incomplete")
   expect_identical(evidence$termination_reason, "ceiling")
-  # ROBO-jbralthm: ssrfr returns none of an oversized body, so nothing was
-  # truncated and nothing is stored.
-  expect_false(evidence$body_truncated)
-  expect_false(evidence$body_present)
-  expect_identical(evidence$stored_bytes, 0L)
+  # ROBO-ldpahknv: ssrfr keeps the first max_bytes bytes, marked truncated.
+  expect_true(evidence$body_truncated)
+  expect_true(evidence$body_present)
+  expect_identical(evidence$stored_bytes, limit)
   expect_gt(evidence$observed_bytes, limit)
   expect_identical(evidence$final_http_status, 200L)
 })

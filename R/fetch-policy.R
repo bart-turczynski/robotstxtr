@@ -58,6 +58,11 @@ validate_fetch_user_agent <- function(fetch_user_agent) {
 # accepted; fractional, non-positive, non-scalar, non-numeric, NA/Inf, or
 # out-of-range values are call-level errors (not a silent NA). Coerced to
 # integer exactly once, after validation.
+#
+# RFC 9309 section 2.5 sets a parsing limit of at least 500 KiB (512000
+# bytes). The default, 524288, meets it. A smaller value stays accepted (tests
+# and callers bound memory with one) and is documented as below the RFC 9309
+# floor rather than refused (ROBO-ldpahknv).
 validate_max_bytes <- function(max_bytes) {
   if (!is.numeric(max_bytes) || length(max_bytes) != 1L || is.na(max_bytes) ||
         !is.finite(max_bytes) || max_bytes <= 0 ||
@@ -162,18 +167,20 @@ fetch_error_meta <- function(outcome) {
 # Assemble one source-fetch result (the fields a `robots` row needs, minus the
 # grouping-assigned source_id). `body` is a raw vector for `fetched`, else NULL.
 #
-# `body_truncated` is FALSE on every row (ROBO-jbralthm). ssrfr never returns
-# part of a body: a body over `max_bytes` is refused whole, so no truncated
-# body can exist. On a 2xx or 3xx the overflow is recorded as `fetch_outcome =
-# "body_too_large"` with `termination_reason = "ceiling"`; a 4xx or 5xx keeps
-# its status outcome (acquire_failure_result()). robots_validate.R's documents
-# say FALSE likewise.
+# `body_truncated` is TRUE only on a `fetched` row whose 2xx body was over
+# `max_bytes`: ssrfr's `truncate_body` returns its first `max_bytes` decoded
+# bytes, which are stored and matched (RFC 9309 section 2.5, ROBO-ldpahknv),
+# with `termination_reason = "ceiling"` and ssrfr's `observed_bytes`
+# (acquire_final_result()). Every other body over `max_bytes` is refused whole:
+# on a 3xx it is `fetch_outcome = "body_too_large"` with `termination_reason =
+# "ceiling"`; a 4xx or 5xx keeps its status outcome (acquire_failure_result()).
 make_source_result <- function(outcome, http_status, effective_url,
                                redirect_count, body, error_message,
                                redirect_hops = list(),
                                terminal_redirect_reason = "none",
                                location_header = NA_character_,
                                observed_bytes = NULL,
+                               body_truncated = FALSE,
                                transport_error_kind = NA_character_,
                                safety_block_reason = NA_character_,
                                termination_reason = "none",
@@ -212,7 +219,7 @@ make_source_result <- function(outcome, http_status, effective_url,
     body_size = if (is.null(body)) NA_integer_ else length(body),
     observed_bytes = as.integer(observed_bytes),
     stored_bytes = as.integer(stored_bytes),
-    body_truncated = FALSE,
+    body_truncated = body_truncated,
     transport_error_kind = transport_error_kind,
     safety_block_reason = safety_block_reason,
     termination_reason = termination_reason,

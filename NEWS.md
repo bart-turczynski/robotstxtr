@@ -14,7 +14,7 @@
 
 * `ssrf_guard = FALSE` is deprecated and warns: it reopens private and loopback ranges, but cloud-metadata endpoints and IPv6 transition forms stay refused (ROBO-jbralthm).
 
-* `body_truncated` is now `FALSE` on every evidence row: a body over `max_bytes` is `body_too_large` and none of it is kept (ROBO-jbralthm).
+* A 2xx robots.txt over `max_bytes` is now `fetched` as its first `max_bytes` bytes and matched, with `body_truncated = TRUE` in the evidence (RFC 9309 §2.5); requires `ssrfr (>= 1.0.0.9000)` (ROBO-ldpahknv).
 
 * `safety_block_reason` gains `userinfo`, `port`, `parse`, `multicast` and `reserved`, at engine schema revision `2026-11-05.1` (ROBO-jbralthm).
 

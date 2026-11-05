@@ -190,11 +190,14 @@ test_that("URL acquisition outcomes remain explicit validation evidence", {
   large_body <- charToRaw(strrep("x", 100L))
   local_fake_ssrfr(validation_mock_response(200L, large_body))
   limited <- robots_validate_url("https://example.com/x", max_bytes = 10L)
-  expect_identical(limited$documents$fetch_outcome, "body_too_large")
-  expect_identical(limited$documents$validation_status, "not_validated")
-  expect_identical(limited$diagnostics$code,
-                   "acquisition_limit_exceeded")
-  expect_true(limited$documents$limit_exceeded)
+  # ROBO-ldpahknv: a 2xx over max_bytes is now fetched as its first max_bytes
+  # bytes (RFC 9309 section 2.5), and robots_validate_url() validates them.
+  # The documents frame does not yet carry the cut: robots_fetch() rows have
+  # no body_truncated column, so body_truncated and limit_exceeded stay FALSE.
+  expect_identical(limited$documents$fetch_outcome, "fetched")
+  expect_identical(limited$documents$byte_size, 10L)
+  expect_false("acquisition_limit_exceeded" %in% limited$diagnostics$code)
+  expect_false(limited$documents$limit_exceeded)
   expect_false(limited$documents$body_truncated)
 })
 

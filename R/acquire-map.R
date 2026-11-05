@@ -52,7 +52,8 @@ acquire_refusal_table <- function() {
 # Every ssrfr failure cause, to a robotstxtr transport outcome, which is also
 # its `transport_error_kind`. "response-too-large" splits on the limit
 # reached (`detail$check`): the decoded body over `max_bytes` is
-# `body_too_large`, any other limit (a header limit) a `network_error`. A row
+# `body_too_large` (a 2xx body the policy's `truncate_body` cut is a response,
+# never this failure), any other limit (a header limit) a `network_error`. A row
 # with `check = NA` matches any check. acquire_failure_result() reads the
 # status before this table for a body over `max_bytes` on a 4xx or 5xx, and
 # for several Location fields on a 3xx.

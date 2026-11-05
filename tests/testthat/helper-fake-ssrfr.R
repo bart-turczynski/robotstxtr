@@ -17,8 +17,11 @@
 #   `max_header_fields` is the "response-too-large" failure with
 #   `check = "header"`; a body over `max_response_size` the same failure with
 #   `check = "decoded-bytes"`, its status and the bytes observed, the binding
-#   recording the status but no Location; and, for any status, more than one
-#   Location field the "protocol-error" failure with `check = "location"`.
+#   recording the status but no Location, unless the policy's
+#   `truncate_body` keeps a 2xx body's first `max_response_size` bytes as a
+#   response marked `truncated` with `observed_bytes` (ROBO-ldpahknv); and,
+#   for any status, more than one Location field the "protocol-error" failure
+#   with `check = "location"`.
 #   The header byte limit is not modeled: the loopback tests cover it.
 #
 # The handler is `function(req)`: `req$url` is the URL the hop requests,
@@ -112,7 +115,15 @@ fake_fetch <- function(binding, handler) {
       check = "header", limit = "max_header_fields", hop = binding$hop
     ))
   }
-  if (length(res$body) > binding$policy$max_response_size) {
+  limit <- binding$policy$max_response_size
+  truncating <- isTRUE(binding$policy$truncate_body)
+  if (length(res$body) > limit && truncating &&
+        res$status >= 200L && res$status <= 299L) {
+    # truncate_body: a 2xx keeps its first max_response_size bytes.
+    res$observed_bytes <- as.numeric(length(res$body))
+    res$body <- res$body[seq_len(limit)]
+    res$truncated <- TRUE
+  } else if (length(res$body) > limit) {
     return(fake_failure(
       "response-too-large",
       check = "decoded-bytes", limit = "max_response_size",
@@ -129,6 +140,10 @@ fake_fetch <- function(binding, handler) {
     return(fake_failure(
       "protocol-error", check = "location", hop = binding$hop
     ))
+  }
+  if (truncating && is.null(res$truncated)) {
+    res$truncated <- FALSE
+    res$observed_bytes <- as.numeric(length(res$body))
   }
   res
 }
@@ -166,7 +181,8 @@ local_loopback_policy <- function(port, env = parent.frame()) {
         max_response_size = policy$max_response_size,
         max_header_bytes = policy$max_header_bytes,
         max_header_fields = policy$max_header_fields,
-        user_agent = policy$user_agent
+        user_agent = policy$user_agent,
+        truncate_body = isTRUE(policy$truncate_body)
       )
     },
     .package = "robotstxtr",

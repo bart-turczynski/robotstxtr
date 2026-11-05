@@ -46,15 +46,32 @@ test_that("ROBO-ldpahknv: the body is over the limit, its first rule under", {
 
 # --- A 2xx over max_bytes -----------------------------------------------------
 
-test_that("ROBO-ldpahknv: an oversized 200 is body_too_large (fake ssrfr)", {
+# The rows of a robots.txt cut at `limit`: fetched, its first `limit` bytes
+# stored, no error; the Disallow before the cut applies, the one after not.
+tr_expect_cut <- function(x, full = tr_body(), limit = tr_limit) {
+  expect_identical(x$robots$fetch_outcome, "fetched")
+  expect_identical(x$robots$http_status, 200L)
+  expect_identical(x$robots$body[[1L]], full[seq_len(limit)])
+  expect_identical(x$robots$body_size, limit)
+  expect_true(is.na(x$robots$error_class))
+  expect_identical(x$robots$content_flag, NA_character_)
+  expect_identical(x$results$allowed, c(FALSE, TRUE, TRUE))
+  expect_identical(
+    x$results$decision_source, c("rule_disallow", "default_allow",
+                                 "default_allow")
+  )
+}
+
+test_that("ROBO-ldpahknv: an oversized 200 keeps its prefix (fake ssrfr)", {
   local_fake_ssrfr(function(req) fake_response(200L, body = tr_body()))
   x <- allowed_by_robots_url(tr_urls("http://a/"), "bot", max_bytes = tr_limit)
-  expect_identical(x$robots$fetch_outcome, "body_too_large")
-  expect_null(x$robots$body[[1L]])
-  expect_identical(x$results$allowed, c(NA, NA, NA))
+  tr_expect_cut(x)
   src <- acquire_robots("http://a/robots.txt", 5, "bot", tr_limit)
-  expect_false(src$body_truncated)
+  expect_true(src$body_truncated)
+  expect_identical(src$fetch_outcome, "fetched")
+  expect_identical(src$termination_reason, "ceiling")
   expect_identical(src$observed_bytes, length(tr_body()))
+  expect_identical(src$stored_bytes, tr_limit)
 })
 
 test_that("ROBO-ldpahknv: an oversized 200 over the wire, identity", {
@@ -63,9 +80,10 @@ test_that("ROBO-ldpahknv: an oversized 200 over the wire, identity", {
     tr_urls(sub("robots\\.txt$", "", url)), "bot",
     max_bytes = tr_limit, timeout = 5
   )
-  expect_identical(x$robots$fetch_outcome, "body_too_large")
-  expect_null(x$robots$body[[1L]])
-  expect_identical(x$results$allowed, c(NA, NA, NA))
+  tr_expect_cut(x)
+  src <- acquire_robots(url, 5, "bot", tr_limit)
+  expect_true(src$body_truncated)
+  expect_gt(src$observed_bytes, tr_limit)
 })
 
 test_that("ROBO-ldpahknv: an oversized 200 over the wire, gzip", {
@@ -76,9 +94,10 @@ test_that("ROBO-ldpahknv: an oversized 200 over the wire, gzip", {
     tr_urls(sub("robots\\.txt$", "", url)), "bot",
     max_bytes = tr_limit, timeout = 5
   )
-  expect_identical(x$robots$fetch_outcome, "body_too_large")
-  expect_null(x$robots$body[[1L]])
-  expect_identical(x$results$allowed, c(NA, NA, NA))
+  tr_expect_cut(x)
+  src <- acquire_robots(url, 5, "bot", tr_limit)
+  expect_true(src$body_truncated)
+  expect_gt(src$observed_bytes, tr_limit)
 })
 
 test_that("ROBO-ldpahknv: over the default 512 KiB limit, over the wire", {
@@ -88,8 +107,7 @@ test_that("ROBO-ldpahknv: over the default 512 KiB limit, over the wire", {
   x <- allowed_by_robots_url(
     tr_urls(sub("robots\\.txt$", "", url)), "bot", timeout = 10
   )
-  expect_identical(x$robots$fetch_outcome, "body_too_large")
-  expect_identical(x$results$allowed, c(NA, NA, NA))
+  tr_expect_cut(x, full = body, limit = 524288L)
 })
 
 # --- Unchanged ----------------------------------------------------------------
@@ -135,6 +153,8 @@ test_that("ROBO-ldpahknv: an oversized 404 or 503 over the wire", {
 })
 
 test_that("ROBO-ldpahknv: the v1 evidence of an oversized 200 is incomplete", {
+  # The prefix is kept and flagged, but the v1 evidence status of a body over
+  # the ceiling stays `incomplete`: no v1 decision is made from a prefix.
   local_fake_ssrfr(function(req) fake_response(200L, body = tr_body()))
   x <- robots_evaluate_url_v1(
     "http://a/before", "Googlebot", "google", "google", max_bytes = tr_limit
@@ -144,6 +164,11 @@ test_that("ROBO-ldpahknv: the v1 evidence of an oversized 200 is incomplete", {
   expect_identical(e$termination_reason, "ceiling")
   expect_identical(e$observed_bytes, length(tr_body()))
   expect_identical(x$results$url_decision, NA_character_)
+  expect_identical(e$legacy_fetch_outcome, "fetched")
+  expect_true(e$body_truncated)
+  expect_true(e$body_present)
+  expect_identical(e$stored_bytes, tr_limit)
+  expect_identical(e$body[[1L]], tr_body()[seq_len(tr_limit)])
 })
 
 # --- The content flag on a cut body -------------------------------------------
@@ -155,4 +180,16 @@ test_that("ROBO-ldpahknv: a character cut at the body's end is not binary", {
   expect_identical(robots_content_flag(cut), NA_character_)
   short <- c(charToRaw("# "), as.raw(c(0xf0, 0x9f, 0x98)))
   expect_identical(robots_content_flag(short), NA_character_)
+})
+
+test_that("ROBO-ldpahknv: a fetch cut inside a character is not binary", {
+  # "# " then 3-byte characters: a 4-byte limit keeps two bytes of the first,
+  # half the body, but under the eight invalid bytes "binary" needs.
+  body <- paste0("# ", strrep("\u20ac", 10L), "\n")
+  local_fake_ssrfr(function(req) fake_response(200L, body = body))
+  row <- robots_fetch("http://a/", max_bytes = 4L)$robots
+  expect_identical(row$fetch_outcome, "fetched")
+  expect_identical(row$body[[1L]], charToRaw(body)[1:4])
+  expect_identical(row$body[[1L]][3:4], as.raw(c(0xe2, 0x82)))
+  expect_identical(row$content_flag, NA_character_)
 })
