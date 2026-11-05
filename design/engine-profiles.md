@@ -89,7 +89,7 @@ distinct from `transport_fail` (DNS/TLS/network). Current code lumps 1xx into `h
 
 ## 3. Redirect handling (per terminal reason, then per engine)
 
-RFC 9309 §2.3.1.2 requires supporting **at least five** consecutive redirects, incl. across
+RFC 9309 §2.3.1.2 says crawlers SHOULD follow **at least five** consecutive redirects, incl. across
 authorities, applying reached rules to the initial authority `[documented]`. Terminal reasons do NOT
 share one engine column — each has its own provenance/action:
 
@@ -216,3 +216,8 @@ spec is accepted; ADR-009 §3 (safety precedence) and §6 (findings encoding) go
 - **Local code** — `src/robots.h:19-25` (non-strict-RFC), `design/PRD.md:74-76,199-206` (matcher
   fidelity/non-goals) + §13 (Amendment A, version scope), `R/fetch-policy.R:88,91,202` (1xx, 206,
   oversized), `R/allowed_by_robots_url.R:176,193` (allowed default `NA`; `missing` → TRUE).
+- **Fetch rules (redirect count, size, downgrade, per engine)** —
+  `design/engine-fetch-rules-sources.md` (read 2026-11-05). **Safety level** —
+  `design/adr/0001-safety-level-vs-engine-ruleset.md`; sitemapr
+  `docs/decisions/ADR-003-network-safety-policy.md` (the guard) and `ADR-009` §3 as amended
+  (precedence).
