@@ -105,7 +105,7 @@ as Bing.
 
 The existing `allowed_by_robots_text()`, `allowed_by_robots_url()`,
 `robots_fetch()`, and `robots_body()` remain unchanged, apart from the additive
-Retry-After columns below. For consumers migrating
+Retry-After and Content-Type columns below. For consumers migrating
 incrementally, `as_legacy_robots_decisions_v1()` explicitly converts a v1 result
 whose policy and matcher are both Google into the original `robots_decisions`
 schema. The adapter deliberately keeps legacy generic HTTP/redirect failures
@@ -146,6 +146,43 @@ headers. A header list would publish ssrfr's header representation as
 robotstxtr API and carry fields no caller acts on. Each header a caller needs
 gets its own typed column: `Content-Type` and its content flags are the
 follow-up ROBO-nhuirvrd.
+
+### Content-Type and the content flag on legacy fetch rows (ROBO-nhuirvrd)
+
+The same `robots` frame gains two more columns, between `retry_after_seconds`
+and `body`, under the same "final response" rule and the same legacy-schema
+scope as Retry-After above:
+
+| column | type | value |
+|---|---|---|
+| `content_type` | character | The final response's `Content-Type` field value as received, several fields joined with `", "`; `NA` when absent or when there is no final response. Any status, not only 2xx. |
+| `content_flag` | character | A heuristic read of the first 4096 bytes of the stored body; `NA` when there is no stored body (only `fetched` stores one), the body is empty, or nothing matches. |
+
+`content_flag` has a closed vocabulary; the first match wins:
+
+1. `binary`: a NUL byte, or more than 10% of the window's bytes not part of
+   valid UTF-8. NULs are still dropped before matching (`R/body-decode.R`).
+2. `html`: a line starting, after spaces, tabs or a UTF-8 BOM, with
+   `<!doctype html`, `<html`, `<head` or `<body`, in any letter case. An
+   HTML error page lands here.
+3. `xml`: the first non-whitespace byte is `<`. No robots.txt line starts
+   with `<`; a `<` inside a comment or a value never flags.
+4. `json`: the body opens with a JSON object (`{` then `"` or `}`) or array
+   (`[` then a value or `]`).
+
+Decisions:
+
+- The flag only flags. The body is matched exactly as before, so no allow or
+  disallow decision, `fetch_outcome` or v1 `evidence` field depends on it.
+- The flag is read from the body only. `Content-Type` is reported, never
+  read: servers mislabel both ways (a robots.txt served as `text/html`, an
+  HTML page as `text/plain`), and two independent columns let a caller
+  compare them instead of receiving robotstxtr's blend.
+- One character column with a closed vocabulary, not one logical per kind:
+  the kinds are exclusive under the first-match order, a new kind is a new
+  value rather than a new column, and a caller filters on `!is.na()`.
+- Plain-text error pages ("404 Not Found" served with a 200) are not
+  detected: no cheap test separates them from a short robots.txt.
 
 ## Sibling compatibility
 

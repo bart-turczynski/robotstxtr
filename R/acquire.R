@@ -375,7 +375,8 @@ acquire_header <- function(response, name) {
 # The result for a final (non-3xx) response. Only `fetched` stores a body: the
 # exact decoded bytes ssrfr read, within `max_bytes` (an empty body is raw(0)).
 # Retry-After comes from this response only, never from a redirect before it
-# (ROBO-cthdyvlk; RFC 9110 section 10.2.3).
+# (ROBO-cthdyvlk; RFC 9110 section 10.2.3). So does Content-Type, as
+# received; the content flag reads the stored body only (ROBO-nhuirvrd).
 acquire_final_result <- function(response, status, url, redirect_count,
                                  redirect_hops) {
   retry_after <- acquire_header(response, "retry-after")
@@ -394,6 +395,8 @@ acquire_final_result <- function(response, status, url, redirect_count,
     outcome, status, url, redirect_count, body, NA_character_,
     redirect_hops = redirect_hops,
     retry_after = retry_after,
-    retry_after_seconds = retry_after_seconds
+    retry_after_seconds = retry_after_seconds,
+    content_type = acquire_header(response, "content-type"),
+    content_flag = robots_content_flag(body)
   )
 }

@@ -43,7 +43,8 @@ An S3 object of class \code{robots_fetches}: a named list with two
 components, \code{map} (one row per input URL, in input order) and \code{robots} (one
 row per fetched source, with the fetched body stored once as a raw vector
 in \code{robots$body}, and the final response's \code{Retry-After} as the character
-\code{retry_after} and the double \code{retry_after_seconds}).
+\code{retry_after} and the double \code{retry_after_seconds}, its \code{Content-Type} as
+the character \code{content_type}, and the character \code{content_flag}).
 }
 \description{
 Performs the grouped robots.txt fetch stage for one or more target URLs and
@@ -131,6 +132,16 @@ transport failure, a redirect error, or a body over \code{max_bytes}. A 4xx or
 headers are not available, so its \code{Retry-After} is \code{NA} even when the
 server sent one. \code{robots_fetch()} never retries: honoring the delay is the
 caller's choice.
+
+Each source row also keeps the final response's \code{Content-Type} field value
+as \code{content_type}, exactly as received (\code{NA} when absent or when there is
+no final response), and a heuristic \code{content_flag} read from the first
+4096 bytes of a stored body: \code{"binary"} (a NUL byte, or more than 10\% of
+the bytes not valid UTF-8), \code{"html"} (a line starting with
+\verb{<!doctype html}, \verb{<html}, \verb{<head} or \verb{<body}), \code{"xml"} (the body starts
+with \code{<}), \code{"json"} (the body starts with a JSON object or array), or \code{NA}.
+The flag comes from the body alone, never from \code{content_type}, and changes
+nothing: the body is matched as it is either way.
 
 \code{timeout} is one budget for the whole chain of one origin, redirects
 included, rounded up to whole seconds; each connection attempt also gets at

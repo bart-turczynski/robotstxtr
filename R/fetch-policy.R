@@ -179,7 +179,9 @@ make_source_result <- function(outcome, http_status, effective_url,
                                termination_reason = "none",
                                final_http_status = NULL,
                                retry_after = NA_character_,
-                               retry_after_seconds = NA_real_) {
+                               retry_after_seconds = NA_real_,
+                               content_type = NA_character_,
+                               content_flag = NA_character_) {
   meta <- fetch_error_meta(outcome)
   stored_bytes <- if (is.null(body)) 0L else length(body)
   if (is.null(observed_bytes)) {
@@ -222,7 +224,9 @@ make_source_result <- function(outcome, http_status, effective_url,
       error_message
     },
     retry_after = retry_after,
-    retry_after_seconds = as.double(retry_after_seconds)
+    retry_after_seconds = as.double(retry_after_seconds),
+    content_type = content_type,
+    content_flag = content_flag
   )
 }
 
