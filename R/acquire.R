@@ -330,15 +330,8 @@ acquire_robots <- function(robots_url, timeout, fetch_ua, max_bytes,
       ))
     }
 
-    # The loop check runs on the resolved target before the hop is prepared,
-    # so a loop resolves no name; the check after preparing, on the URL ssrfr
-    # will request, is the backstop.
-    seen <- c(visited, binding$url)
-    if (sub("#.*$", "", target) %in% seen) {
-      return(acquire_loop_result(
-        location, status, redirect_count, redirect_hops
-      ))
-    }
+    # The loop check runs after the hop is prepared, on the URL ssrfr will
+    # request, so a refusal of the target (a downgrade) wins over a loop.
     redirect <- list(status = status, location = location)
     following <- acquire_call(acquire_prepare_hop(
       location, policy, from = binding
@@ -349,7 +342,7 @@ acquire_robots <- function(robots_url, timeout, fetch_ua, max_bytes,
         redirect = redirect
       ))
     }
-    if (following$url %in% seen) {
+    if (following$url %in% c(visited, binding$url)) {
       return(acquire_loop_result(
         location, status, redirect_count, redirect_hops
       ))

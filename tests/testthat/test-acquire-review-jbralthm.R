@@ -198,25 +198,16 @@ test_that("150 header fields over the wire are fetched", {
   expect_identical(x$robots$fetch_outcome, "fetched")
 })
 
-# --- Minor: the loop check runs before the hop is prepared --------------------
+# --- The downgrade refusal wins over the loop check --------------------------
 
-test_that("a loop target is never prepared", {
+test_that("an http -> https -> http cycle is a downgrade, not a loop", {
   local_fake_ssrfr(fake_router(list(
-    "http://a/robots.txt" = redirect_to("http://b/robots.txt"),
-    "http://b/robots.txt" = redirect_to("http://a/robots.txt#top")
+    "http://a/robots.txt" = redirect_to("https://a/robots.txt"),
+    "https://a/robots.txt" = redirect_to("http://a/robots.txt")
   )))
-  seen <- new.env(parent = emptyenv())
-  seen$prepared <- character()
-  local_mocked_bindings(
-    acquire_prepare_hop = function(url, policy, request = NULL, from = NULL) {
-      seen$prepared <- c(seen$prepared, url)
-      fake_prepare_hop(url, policy, from)
-    }
-  )
   e <- evidence_of()
-  expect_identical(e$terminal_redirect_reason, "loop")
-  expect_identical(e$location_header, "http://a/robots.txt#top")
-  expect_identical(
-    seen$prepared, c("http://a/robots.txt", "http://b/robots.txt")
-  )
+  expect_identical(e$legacy_fetch_outcome, "redirect_error")
+  expect_identical(e$terminal_redirect_reason, "downgrade")
+  expect_identical(e$safety_block_reason, "https_downgrade")
+  expect_identical(e$evidence_status, "safety_refused")
 })
