@@ -55,10 +55,15 @@
 #' `max_bytes` caps the decoded response body. The limit is enforced on decoded
 #' entity bytes (after any HTTP content decoding, such as gzip) as they arrive,
 #' and the transfer stops the moment the decoded byte count exceeds the limit;
-#' the compressed entity is never fully downloaded before the check. A body over
-#' the limit ends as `body_too_large` with no stored body (never a truncated
-#' body); a body at or under the limit is stored normally as a `fetched`
-#' result.
+#' the compressed entity is never fully downloaded before the check. A 2xx body
+#' over the limit ends as `body_too_large` with no stored body (never a
+#' truncated body); a body at or under the limit is stored normally as a
+#' `fetched` result. A 4xx or 5xx keeps its status outcome whatever its body
+#' size. A 3xx whose body is over the limit also ends as `body_too_large` and
+#' is not followed, because \pkg{ssrfr} keeps no `Location` for it.
+#'
+#' The response header may take up to 64 KiB and 256 fields per hop; a header
+#' over either limit is a `network_error`.
 #'
 #' `timeout` is one budget for the whole chain of one origin, redirects
 #' included, rounded up to whole seconds; each connection attempt also gets at
