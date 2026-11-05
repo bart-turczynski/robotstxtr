@@ -36,7 +36,7 @@ fake_response <- function(status_code = 200L, url = NULL, headers = list(),
   if (is.null(headers)) {
     headers <- character()
   }
-  names(headers) <- tolower(names(headers))
+  names(headers) <- ascii_lower(names(headers))
   structure(
     list(status = as.integer(status_code), headers = headers, body = body),
     class = "ssrfr_response"

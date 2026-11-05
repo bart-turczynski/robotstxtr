@@ -8,7 +8,7 @@
 # test only (local_loopback_policy(), helper-fake-ssrfr.R). No external network
 # is used.
 
-# --- Loopback server harness ---------------------------------------------------
+# --- Loopback server harness --------------------------------------------------
 
 # Serve `body_raw` with `headers` at every path, and return the robots URL.
 local_body_server <- function(body_raw, headers = list(),

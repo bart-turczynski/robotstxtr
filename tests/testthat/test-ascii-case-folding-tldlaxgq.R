@@ -54,7 +54,9 @@ lf_answers <- function() {
     decisions = decision$results$allowed,
     origin = robots_origin("HTTPS://WWW.WIKIPEDIA.ORG:8443/robots.txt"),
     # Refused by name before any resolution, so this stays offline.
-    ssrf = robots_fetch("HTTP://METADATA.GOOGLE.INTERNAL/x")$robots$error_message
+    ssrf = robots_fetch(
+      "HTTP://METADATA.GOOGLE.INTERNAL/x"
+    )$robots$error_message
   )
 }
 

@@ -208,5 +208,5 @@ test_that("robots_evaluate_url_v1 warns once on ssrf_guard = FALSE", {
     ),
     class = "robotstxtr_deprecated_ssrf_guard"
   )
-  expect_identical(x$evidence$ssrf_guard, FALSE)
+  expect_false(x$evidence$ssrf_guard)
 })

@@ -1,10 +1,11 @@
 # robots.txt acquisition through ssrfr (ROBO-jbralthm; the architecture
 # review's candidate 4, ROBO-tlvrxtvb).
 #
-# This module is the only caller of ssrfr. robots_fetch(), robots_validate_url(),
-# allowed_by_robots_url() and robots_evaluate_url_v1() all reach it through
-# acquire_robots(), which returns the make_source_result() shape the rest of the
-# package reads. It owns four things:
+# This module is the only caller of ssrfr. robots_fetch(),
+# robots_validate_url(), allowed_by_robots_url() and robots_evaluate_url_v1()
+# all reach it through acquire_robots(), which returns the
+# make_source_result() shape the rest of the package reads. It owns four
+# things:
 #
 # 1. The policy: one ssrf_policy() per origin, built by acquire_policy().
 # 2. The hop loop: prepare, fetch, then robotstxtr's own redirect rules (a
@@ -22,7 +23,7 @@
 # robotstxtr keeps translating ssrfr's refusals into its own published reason
 # codes (design/engine-profiles.md section 2).
 
-# --- The ssrfr boundary --------------------------------------------------------
+# --- The ssrfr boundary -------------------------------------------------------
 
 # The two ssrfr primitives, called through these wrappers only. They are the
 # seam the tests replace with a fake (tests/testthat/helper-fake-ssrfr.R), so a
@@ -47,7 +48,7 @@ acquire_call <- function(expr) {
   })
 }
 
-# --- Policy --------------------------------------------------------------------
+# --- Policy -------------------------------------------------------------------
 
 # Redirects followed per origin. PRD 6.4 and RFC 9309 section 2.3.1.2: at least
 # five consecutive redirects.
@@ -84,7 +85,7 @@ acquire_policy <- function(timeout, fetch_ua, max_bytes, ssrf_guard = TRUE) {
   acquire_call(do.call(ssrfr::ssrf_policy, args))
 }
 
-# --- Results -----------------------------------------------------------------------
+# --- Results ------------------------------------------------------------------
 
 # The result for a refusal (`x` of class `ssrfr_refusal`). `redirect` is the
 # 3xx context when the refused hop is a redirect target: a list of the
@@ -204,7 +205,7 @@ acquire_followable <- function(status) {
   status %in% c(301L, 302L, 303L, 307L, 308L)
 }
 
-# --- The hop loop ---------------------------------------------------------------
+# --- The hop loop -------------------------------------------------------------
 
 # Fetch one robots URL and return a source result (make_source_result()).
 # Grouping is by the requested URL (PRD 6.5): the caller keys on `robots_url`,

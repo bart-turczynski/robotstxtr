@@ -91,8 +91,9 @@ oss_index_allowlist <- list(
       "renewing this row: `grep -n 'https?://' R/robots_origin.R` (the",
       "scheme guard), `grep -n 'allow_schemes' R/acquire.R` (no hits: the",
       "policy keeps ssrfr's http/https default, which refuses any other",
-      "redirect target as \"scheme\") and `grep -n 'ssrf_prepare_hop' R/acquire.R`",
-      "(one hit: every hop, redirects included, is checked by ssrfr)."
+      "redirect target as \"scheme\") and",
+      "`grep -n 'ssrf_prepare_hop' R/acquire.R` (one hit: every hop,",
+      "redirects included, is checked by ssrfr)."
     )
   ),
   list(

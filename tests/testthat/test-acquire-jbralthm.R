@@ -28,7 +28,7 @@ evidence_of <- function(url = "http://a/x") {
   robots_evaluate_url_v1(url, "Googlebot", "google", "google")$evidence
 }
 
-# --- The translation tables walk ssrfr's vocabularies in full ------------------
+# --- The translation tables walk ssrfr's vocabularies in full -----------------
 
 test_that("every ssrfr reason code has exactly one refusal-table row", {
   codes <- ssrfr::ssrf_vocabulary("reason_codes")$code
@@ -131,7 +131,7 @@ test_that("the causes map to transport kinds", {
   expect_identical(evidence_of()$legacy_fetch_outcome, "network_error")
 })
 
-# --- body_too_large -------------------------------------------------------------
+# --- body_too_large -----------------------------------------------------------
 
 test_that("a body over max_bytes is body_too_large, never truncated", {
   local_fake_ssrfr(function(req) {
@@ -165,7 +165,7 @@ test_that("body_truncated is FALSE on every evidence row", {
   expect_identical(e$body_truncated, rep(FALSE, 4L))
 })
 
-# --- Redirect rules the module keeps --------------------------------------------
+# --- Redirect rules the module keeps ------------------------------------------
 
 test_that("the sixth redirect is over_budget and keeps its Location", {
   routes <- list("http://a/robots.txt" = redirect_to("/1"))
@@ -252,7 +252,8 @@ test_that("a 3xx without one usable Location is no_location", {
       fake_response(302L, headers = list(Location = ""))
     },
     "two Locations" = function(req) {
-      fake_response(302L, headers = list(Location = "/a", Location = "/b"))
+      two <- stats::setNames(list("/a", "/b"), c("Location", "Location"))
+      fake_response(302L, headers = two)
     },
     "a 304" = function(req) {
       fake_response(304L, headers = list(Location = "/a"))
@@ -269,7 +270,7 @@ test_that("a 3xx without one usable Location is no_location", {
   }
 })
 
-# --- Refusals of a redirect target ----------------------------------------------
+# --- Refusals of a redirect target --------------------------------------------
 
 test_that("a redirect to a non-HTTP(S) scheme is non_http_target / scheme", {
   local_fake_ssrfr(fake_router(list(
@@ -317,7 +318,7 @@ test_that("a refused or failed redirect target counts the redirect", {
   expect_identical(x$robots$redirect_count, 1L)
 })
 
-# --- Policy ---------------------------------------------------------------------
+# --- Policy -------------------------------------------------------------------
 
 test_that("the policy carries the fetch controls", {
   policy <- acquire_policy(2.5, "bot/1", 4096L)
@@ -354,7 +355,7 @@ test_that("the first hop is fetched with the policy's user agent", {
   expect_identical(seen$ua, "my-crawler/9 (+https://x)")
 })
 
-# --- Errors ---------------------------------------------------------------------
+# --- Errors -------------------------------------------------------------------
 
 test_that("a user agent ssrfr would refuse is robotstxtr's call-level error", {
   for (ua in c("bot\r\nX-Injected: 1", "bot\n", " bot", "bot\t", "a\001b")) {
