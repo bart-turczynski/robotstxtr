@@ -258,3 +258,29 @@ test_that("ROBO-ldpahknv: a 3xx over max_bytes is still refused whole", {
   row <- robots_fetch("http://a/", max_bytes = tr_limit)$robots
   expect_false(row$body_truncated)
 })
+
+# --- The partial last line of a cut body --------------------------------------
+
+# "User-agent: *\n" is 14 bytes and "Disallow: /" 11, so a 25-byte cut turns
+# "Disallow: /private-drafts/" into "Disallow: /".
+tr_crossing <- "User-agent: *\nDisallow: /private-drafts/\n"
+# "Disallow: /caf" is 14 bytes; a 29-byte cut keeps the first byte of the
+# two-byte "é".
+tr_split_char <- "User-agent: *\nDisallow: /café\n"
+
+test_that("ROBO-ldpahknv: a Disallow line crossing the cut", {
+  local_fake_ssrfr(function(req) fake_response(200L, body = tr_crossing))
+  x <- allowed_by_robots_url(
+    c("http://a/public", "http://a/private-drafts/x"), "bot", max_bytes = 25L
+  )
+  expect_identical(x$robots$body_size, 25L)
+  expect_identical(x$results$allowed, c(FALSE, FALSE))
+})
+
+test_that("ROBO-ldpahknv: validating a body cut inside a character", {
+  local_fake_ssrfr(function(req) fake_response(200L, body = tr_split_char))
+  x <- robots_validate_url("http://a/", max_bytes = 29L)
+  expect_identical(x$documents$byte_size, 29L)
+  expect_true("invalid_utf8" %in% x$diagnostics$code)
+  expect_false(x$documents$final_newline)
+})
