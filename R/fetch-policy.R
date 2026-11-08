@@ -93,6 +93,34 @@ validate_ssrf_guard <- function(ssrf_guard) {
   invisible(ssrf_guard)
 }
 
+# `safety_level` must be one value of engine_safety_levels_v1() (ADR 0001
+# section 1). A published level that has not landed yet ("crawler") is refused
+# with a subclass of the invalid-value error, so a caller can tell "not yet"
+# from "never".
+validate_safety_level <- function(safety_level) {
+  levels <- engine_safety_levels_v1()
+  if (!is.character(safety_level) || length(safety_level) != 1L ||
+        is.na(safety_level) || !safety_level %in% levels) {
+    robots_abort(
+      sprintf(
+        "`safety_level` must be one of %s.",
+        paste0("\"", levels, "\"", collapse = ", ")
+      ),
+      "robotstxtr_invalid_safety_level"
+    )
+  }
+  if (!safety_level %in% engine_available_safety_levels_v1()) {
+    robots_abort(
+      sprintf(
+        "`safety_level = \"%s\"` is not available yet; use \"strict\".",
+        safety_level
+      ),
+      c("robotstxtr_unavailable_safety_level", "robotstxtr_invalid_safety_level")
+    )
+  }
+  invisible(safety_level)
+}
+
 # The deprecation warning for `ssrf_guard = FALSE`, raised once per call by the
 # public entry points that fetch: robots_fetch() (which allowed_by_robots_url()
 # and robots_validate_url() call) and robots_evaluate_url_v1().

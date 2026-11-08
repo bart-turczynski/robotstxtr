@@ -12,7 +12,8 @@ robots_evaluate_url_v1(
   timeout = 10,
   max_bytes = 524288L,
   fetch_user_agent = NULL,
-  ssrf_guard = TRUE
+  ssrf_guard = TRUE,
+  safety_level = "strict"
 )
 }
 \arguments{
@@ -59,6 +60,13 @@ selects a permissive policy, which reopens private, loopback and other
 internal address ranges and the metadata host names, for example to fetch
 \code{robots.txt} from a trusted intranet host. Known cloud-metadata endpoints
 and the IPv6 transition forms that embed an address stay refused.}
+
+\item{safety_level}{A single string: what the fetch may do on the network,
+whatever ruleset reads the outcome. \code{"strict"}, the default and the only
+level available yet, refuses an \code{https} to \code{http} redirect and every
+address the guard refuses. \code{"crawler"} is reserved for what a public
+crawler experiences and is a call-level error until it lands; any other
+value is a call-level error too.}
 }
 \value{
 A \code{robots_engine_decisions_v1} object with \code{results}, neutral

@@ -317,7 +317,7 @@ test_that("M1 matcher revisions and schema stay pinned", {
   expect_identical(
     registry$yandex$revision, robotstxtr:::yandex_matcher_revision_v1()
   )
-  expect_identical(engine_schema_revision_v1(), "2026-11-05.1")
+  expect_identical(engine_schema_revision_v1(), "2026-11-08.1")
 })
 
 test_that("M2 PROVENANCE and NOTICE pin the Google commits", {
@@ -362,7 +362,7 @@ test_that("DATA-ONLY Yandex active, schema bumped, Google live", {
     engine_matcher_availability_v1()[["yandex"]],
     "available"
   )
-  expect_identical(engine_schema_revision_v1(), "2026-11-05.1")
+  expect_identical(engine_schema_revision_v1(), "2026-11-08.1")
 
   registry <- engine_matcher_registry_v1()
   expect_identical(registry$google$availability, "available")
