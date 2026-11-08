@@ -1,7 +1,7 @@
 # Engine-aware robots evaluation contract v1
 
 - Contract ID: `robotstxtr.engine-aware/v1`
-- Schema revision: `2026-08-25.1`
+- Schema revision: `2026-11-08.1`
 - First package release: `robotstxtr 0.2.0`
 - Normative policy source: [`engine-profiles.md`](engine-profiles.md)
 
@@ -36,6 +36,29 @@ It then reports `evidence_status`, `policy_status`, `policy_action`, policy
 reason/provenance/source, `matcher_availability`, `matcher_status`, the optional
 `url_decision`, and a final reason. A missing `url_decision` is intentional and
 must not be coerced to allow or deny.
+
+## Safety level
+
+Schema revision `2026-11-08.1` (ADR 0001, ROBO-pezlychx) adds `safety_level` to
+`robots_evaluate_url_v1()` and to the three legacy functions that fetch
+(`robots_fetch()`, `allowed_by_robots_url()`, `robots_validate_url()`). It
+decides what the fetch may do on the network and is independent of
+`robots_policy_ruleset`; neither defaults from the other. The contract
+publishes the value set as `safety_levels`: `strict`, the default, and
+`crawler`. `strict` is the acquisition of every earlier revision, unchanged.
+`crawler` is published but not available yet: passing it is a call-level
+error of class `robotstxtr_unavailable_safety_level`, a subclass of
+`robotstxtr_invalid_safety_level`, which any other value raises. The levels
+are defined in [`engine-profiles.md`](engine-profiles.md) §3a.
+
+The evidence frame gains two columns. `safety_level` (character) is the level a
+source was fetched under. `fetch_allow_ranges` (a list column) holds the CIDR
+ranges the fetch reopened, `character()` on every fetched row until that
+argument lands. Both are `NA` (`NA_character_` in the list cell) on a row with
+no acquisition, a supplied body. `https_downgrade_guard` is
+`safety_level == "strict"` on a fetched row, so `TRUE` as before, and stays
+`NA` where no acquisition was configured. The result columns and the legacy
+frames are unchanged.
 
 ## Stable outcome sets
 

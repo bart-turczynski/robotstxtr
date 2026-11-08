@@ -6,7 +6,8 @@
   §13 (Amendment A) — ruleset-aware, versioned entry points added alongside the pinned
   v1 surface (PRD §3 keeps "not a validator"; this doc adds no validator scope).
 - Owns: the `robots_policy_ruleset` and `matcher_backend` value sets, the neutral fetch-outcome
-  contract, per-engine status→policy, user-agent group selection, and current policy/matcher limits.
+  contract, per-engine status→policy, user-agent group selection, current policy/matcher limits, and
+  the `safety_level` value set and what each level may do (§3a; ADR 0001).
   sitemapr owns the sitemap rules and the findings contract.
 
 Provenance tags (ADR-009 §0): executable = `documented` / `inherited_protocol` / `application_choice`;
@@ -60,7 +61,9 @@ mapping from ssrfr's reason codes is data in `R/acquire-map.R`; ssrfr's `host-de
 `range-denied` are not admitted, since robotstxtr's policy states no deny rules. `body_truncated` is
 `TRUE` only for a 2xx body over the ceiling, which ssrfr's `truncate_body` returns as its first
 `max_bytes` bytes (`termination_reason = ceiling`, so `evidence_status = incomplete`; ROBO-ldpahknv); a
-3xx over it is `body_too_large`; a 4xx/5xx keeps its status outcome.
+3xx over it is `body_too_large`; a 4xx/5xx keeps its status outcome. A set `safety_block_reason` means
+`evidence_status = safety_refused`, except an address-class code under `safety_level = crawler`, which
+means `unreachable_local` (§3a). `fetch_outcome` stays `ssrf_blocked` at both levels.
 
 **`evidence_status` (exhaustive):**
 
@@ -70,10 +73,11 @@ mapping from ssrfr's reason codes is data in `R/acquire-map.R`; ssrfr's `host-de
 | `partial` | 206 | policy resolves per §4, but body unusable → `matcher_status = not_evaluated` (ADR-009 §2 row) |
 | `incomplete` | body over ceiling or `termination_reason ∈ {deadline, ceiling}` | never a policy verdict; `policy_status = not_evaluated` |
 | `http_status` | final non-2xx status received (4xx/5xx) | §4 by `final_http_status` |
-| `http_protocol_error` | 1xx received, or malformed redirect (`no_location`/`loop`/`non_http_target`) | §3 terminal-reason handling |
+| `http_protocol_error` | 1xx received, or malformed redirect (`no_location`/`loop`) | §3 terminal-reason handling |
 | `redirect_over_budget` | `terminal_redirect_reason = over_budget` | §3 engine exhaustion rule |
-| `transport_fail` | DNS/connect/TLS/timeout/reset/chunk (`transport_error_kind` set) | §4 network row |
-| `safety_refused` | SSRF / non-http(s) scheme / HTTPS→HTTP downgrade guard | never allow/deny; ADR-003 |
+| `transport_fail` | DNS/connect/TLS/timeout/reset/chunk (`transport_error_kind` set); never with a `safety_block_reason` | §4 network row |
+| `unreachable_local` | under `safety_level = crawler` only: an address-class refusal (`safety_block_reason` kept; no connection made; §3a) | §4 `unreachable_local` row (same cells as the network row) |
+| `safety_refused` | under `safety_level = strict`: any ssrfr refusal incl. HTTPS→HTTP downgrade; under `crawler`: URL-shape refusals only (`scheme`, `userinfo`, `port`, `parse`, `numeric-literal`, `malformed-address`) | never allow/deny; §3a (ADR 0001); sitemapr ADR-003 governs the guard |
 | `not_applicable` | no robots evaluation applies (no body and no status to interpret) | `policy_status` / `matcher_status` = `not_evaluated`; `url_decision` absent |
 
 `evidence_status` is the ADR-009 §2 versioned set; `source_kind` (a separate fact) distinguishes where
@@ -93,13 +97,20 @@ RFC 9309 §2.3.1.2 says crawlers SHOULD follow **at least five** consecutive red
 authorities, applying reached rules to the initial authority `[documented]`. Terminal reasons do NOT
 share one engine column — each has its own provenance/action:
 
-- **`downgrade` / SSRF / non-http(s) target** → `evidence_status = safety_refused`, engine-independent
-  (ADR-003). Never an engine policy result. `[application_choice: local safety dominates]`.
+- **`downgrade` / SSRF / non-http(s) target** → decided by the `safety_level`, never by the ruleset
+  (§3a). No engine documents refusing a downgrade; refusing one is a safety choice
+  `[application_choice]`, made under `strict` only.
 - **`over_budget`** (documented hop exhaustion) → engine rule:
   - `rfc9309`: `allow_all` `[application_choice]` (basis: RFC §2.3.1.2's documented `MAY`-treat-unavailable).
   - `google`: treat as 404, then apply the 4xx path `[documented]`.
-  - `yandex`: hop cap `[documentation_gap]`.
-  - `bing`: `[documentation_gap]`.
+  - `yandex`: hop cap `[documentation_gap]`; robotstxtr follows 5 `[application_choice]`; exhaustion →
+    no verdict `[documentation_gap]`, to be measured (ROBO-ogwchglq).
+  - `bing`: `[documentation_gap]`; robotstxtr follows 5 `[application_choice]`; no verdict; to be
+    measured (ROBO-ogwchglq).
+
+  The hop budget is one L0 setting, 5, for every ruleset: every engine that documents a robots.txt
+  count documents five. Google's 10-hop figure is for general crawling
+  (`design/engine-fetch-rules-sources.md`).
 - **`no_location` / `loop`** (malformed redirect) → `evidence_status = http_protocol_error`. No engine
   documents a specific action → `[documentation_gap]`; a product may choose a deterministic result via
   an explicit `application_choice`, never labeled `documented`.
@@ -107,7 +118,27 @@ share one engine column — each has its own provenance/action:
 Within budget: `rfc9309` follows cross-authority, reached rules → initial authority `[documented]`;
 `google` follows at least five (cross-authority not separately restated → `[inferred]`); `yandex`
 follows incl. cross-host, target's directives apply and the target must return 200 `[documented]`;
-`bing` `[documentation_gap]`.
+`bing` `[documentation_gap]`. None of the engines conditions a redirect on its scheme: an HTTPS→HTTP
+hop is followed `[inferred]` for `rfc9309`, `google` and `yandex`, and is `[documentation_gap]` for
+`bing`.
+
+### 3a. Safety level (ADR 0001)
+
+`safety_level` is independent of `robots_policy_ruleset`. It decides what the fetch may do; the ruleset
+decides what an outcome means.
+
+| `safety_level` | HTTPS→HTTP redirect | address-class refusal | URL-shape refusal |
+|---|---|---|---|
+| `strict` (default) | refused → `safety_refused` / `https_downgrade` | `safety_refused` | `safety_refused` |
+| `crawler` | followed as an ordinary hop | not dialed → `unreachable_local`, `safety_block_reason` kept | `safety_refused` |
+
+Address-class codes: `loopback`, `private`, `link-local`, `cloud-metadata`, `shared`, `unspecified`,
+`this-network`, `multicast`, `reserved`, `ipv4-mapped`, `ipv4-translated`, `ipv4-compatible`, `nat64`,
+`6to4`, `teredo`, `isatap`. URL-shape codes: `scheme`, `userinfo`, `port`, `parse`, `numeric-literal`,
+`malformed-address`. `fetch_allow_ranges` reopens the listed ranges at either level.
+
+`crawler` is in the published value set but refused as a call-level error until it lands
+(ROBO-lwdxzdhw, ROBO-jqwukcog), and `fetch_allow_ranges` is recorded as empty until ROBO-bamcjvwn.
 
 ## 4. Status → policy (per `robots_policy_ruleset`, per-cell provenance)
 
@@ -124,6 +155,7 @@ documented possibilities), never a fabricated single verdict. `partial` (206) re
 | 429 | `allow_all` `[application_choice]` (429 lies within RFC §2.3.1.3's 400–499 example range; this ruleset elects to treat it as unavailable) | excluded from 4xx; robots destination not documented `[documentation_gap]` | non-200 → allow_all `[documented]` | `[documentation_gap]` |
 | 5xx | MUST complete disallow, subject to cache/duration (§2.3.1.4/2.4) → `context_required` `[documented]` | stateful lifecycle (12h / 30d last-good / post-30d availability) → `context_required` `[documented]` | non-200 → allow_all `[documented]` | `[documentation_gap]` |
 | network / DNS / timeout | = unreachable → MUST disallow, subject to cache/duration → `context_required` `[documented]` | = server error (same stateful lifecycle) → `context_required` `[documented]` | `[documentation_gap]` (accessibility is a file requirement; retry/cache not enumerated) | `[documentation_gap]` |
+| `unreachable_local` (`crawler` only; §3a) | = unreachable → MUST disallow, subject to cache/duration → `context_required` `[documented]` | = server error (same stateful lifecycle) → `context_required` `[documented]` | `[documentation_gap]` (accessibility is a file requirement; retry/cache not enumerated) | `[documentation_gap]` |
 
 **Non-robots advisory (`advisory`, never a verdict):** Yandex ignores `Retry-After` on 429 and
 sustained 429 lowers host crawl-rate; Yandex recommends 503 to protect ordinary *pages* during
