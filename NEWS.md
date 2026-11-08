@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* The v1 `google` matcher now reads only a body's first 512,000 bytes, Google's documented 500 KiB, not 524,288; `matcher_input_bytes` and `policy_body_limit_bytes` follow (ROBO-phfbpfiy).
+
 * `robots_validate_text()` and `robots_validate_url()` report, as info, an exact duplicate Allow or Disallow for the same crawlers, which has no effect (ROBO-xexjgecr).
 
 * `robots_validate_text()` and `robots_validate_url()` warn when a Disallow has an identical Allow, which wins the tie, so `Allow: /` plus `Disallow: /` blocks nothing (RFC 9309 §2.2.2) (ROBO-fdhmlvwm).

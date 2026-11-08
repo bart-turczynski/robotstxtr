@@ -3,6 +3,7 @@ status: accepted
 date: 2026-11-05
 accepted: 2026-11-05
 tracking: ROBO-xdlzicrq
+amended: 2026-11-09 (ROBO-phfbpfiy, Google's window is 512,000 bytes, not 524,288)
 ---
 
 # ADR 0001: The safety level and the engine ruleset are separate settings
@@ -192,9 +193,9 @@ The cut 2xx stays an L0 fact. The ruleset decides what it means:
   A cut 2xx never reaches it today, because its `incomplete` evidence returns first. Slice 8
   lets the `yandex` ruleset take a cut 2xx with `stored_bytes ≥ 512000` past that return and
   into the same branch, with the same reason or a sibling recorded in the schema entry.
-- **`google`:** Google parses the first 500 KiB (524,288 bytes) and ignores the rest
-  `[documented]`. A cut 2xx with `stored_bytes ≥ 524288` holds Google's whole parse window, and
-  `match_google_v1()` already reads at most 524,288 bytes. So the `google` ruleset can resolve it
+- **`google`:** Google parses the first 500 KiB (512,000 bytes) and ignores the rest
+  `[documented]`. A cut 2xx with `stored_bytes ≥ 512000` holds Google's whole parse window, and
+  `match_google_v1()` reads at most 512,000 bytes. So the `google` ruleset can resolve it
   `use_rules` on the prefix `[documented]`, matched as Google would. With a smaller prefix the
   window is not all there, and the result stays `incomplete`. This was out of reach when this
   ADR was first drafted (ssrfr kept no prefix). It is slice 9, separable from the rest.
@@ -416,7 +417,7 @@ before then.
    v1 path the ruleset decides what it means: `yandex` with `stored_bytes ≥ 512000` →
    `allow_all` `[documented]` (the file exceeds 500 KB under either reading of the unit; same
    rule as a retained body over 500,000 bytes, `yandex_file_over_500000_bytes`); `google` with
-   `stored_bytes ≥ 524288` → `use_rules` on the prefix `[documented]` (Google parses the first
+   `stored_bytes ≥ 512000` → `use_rules` on the prefix `[documented]` (Google parses the first
    500 KiB); both under sitemapr ADR-009 §3 as amended. `yandex` and `google` below those sizes,
    `rfc9309`, `assumed_rfc9309`, `bing` → `evidence_status = incomplete`. A 3xx, an unknown
    status or a status mismatch over the limit is `body_too_large`, nothing stored, `incomplete`
@@ -490,8 +491,8 @@ acceptance test.
    as today. Other rulesets are unchanged. The `yandex` × `redirect_over_budget` cell stays
    `documentation_gap` (ROBO-ogwchglq).
 9. **The `google` ruleset reads a cut file's prefix** (robotstxtr). Depends on 2 and on slice
-   6's ADR being accepted. Acceptance: a cut 2xx with `stored_bytes ≥ 524288` under `google`
-   resolves `use_rules` (`[documented]`) and is matched on its first 524,288 bytes, as
+   6's ADR being accepted. Acceptance: a cut 2xx with `stored_bytes ≥ 512000` under `google`
+   resolves `use_rules` (`[documented]`) and is matched on its first 512,000 bytes, as
    `match_google_v1()` already reads; with a smaller prefix it stays `incomplete`. Other
    rulesets are unchanged.
 

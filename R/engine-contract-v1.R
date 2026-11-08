@@ -99,7 +99,7 @@ validate_matcher_status_v2 <- function(matcher_status) {
 
 engine_policy_revisions_v1 <- function() {
   c(
-    google = "google-robots-policy-2026-07-17",
+    google = "google-robots-policy-2026-11-09",
     yandex = "yandex-robots-policy-2026-07-17",
     rfc9309 = "rfc9309-policy-2022",
     bing = "bing-documentation-gap-2026-07-17",
@@ -935,7 +935,7 @@ resolve_policy_v1 <- function(evidence, ruleset, policy_table) {
 }
 
 match_google_v1 <- function(body, url, product_token) {
-  limit <- 524288L
+  limit <- 512000L
   truncated <- length(body) > limit
   matcher_body <- if (truncated) body[seq_len(limit)] else body
   body_string <- matcher_string_v1(matcher_body)
@@ -1209,7 +1209,7 @@ match_backend_v1 <- function(backend, body, url, product_token,
 
 policy_limit_v1 <- function(ruleset) {
   out <- rep(NA_integer_, length(ruleset))
-  out[ruleset == "google"] <- 524288L
+  out[ruleset == "google"] <- 512000L
   out[ruleset == "yandex"] <- 500000L
   out
 }

@@ -426,14 +426,14 @@ test_that("HTTPS downgrade redirect is an engine-independent safety refusal", {
 test_that("Google applies its 500 KiB matcher prefix independently", {
   prefix <- paste0("user-agent: *\ndisallow: /private\n", strrep("#", 524250L))
   body <- paste0(prefix, "\nallow: /private")
-  expect_gt(nchar(body, type = "bytes"), 524288L)
+  expect_gt(nchar(body, type = "bytes"), 512000L)
   x <- robots_evaluate_text_v1(
     body, "https://example.com/private", "bot", "google", "google"
   )
 
   expect_identical(x$results$url_decision, "disallow")
   expect_true(x$results$matcher_body_truncated)
-  expect_identical(x$results$matcher_input_bytes, 524288L)
+  expect_identical(x$results$matcher_input_bytes, 512000L)
   expect_false(x$evidence$body_truncated)
   expect_identical(x$evidence$stored_bytes, nchar(body, type = "bytes"))
 })
@@ -457,19 +457,20 @@ google_eval <- function(body, ruleset = "google") {
   )
 }
 
-test_that("Google matches a rule past byte 512,000 under 524,288", {
+test_that("Google ignores a rule past byte 512,000 under 524,288", {
   body <- google_band_body()
   expect_gt(nchar(body, type = "bytes"), 512000L)
   expect_lte(nchar(body, type = "bytes"), 524288L)
   x <- google_eval(body)
 
-  expect_identical(x$results$url_decision, "disallow")
-  expect_false(x$results$matcher_body_truncated)
+  expect_identical(x$results$url_decision, "allow")
+  expect_true(x$results$matcher_body_truncated)
+  expect_identical(x$results$matcher_input_bytes, 512000L)
+  expect_identical(x$results$policy_body_limit_bytes, 512000L)
+  expect_identical(policy_limit_v1("google"), 512000L)
   expect_identical(
-    x$results$matcher_input_bytes, nchar(body, type = "bytes")
+    x$results$policy_ruleset_revision, "google-robots-policy-2026-11-09"
   )
-  expect_identical(x$results$policy_body_limit_bytes, 524288L)
-  expect_identical(policy_limit_v1("google"), 524288L)
   expect_identical(policy_limit_v1("yandex"), 500000L)
 })
 
@@ -484,15 +485,16 @@ test_that("Google's window boundary is exact to the byte", {
   over_limit <- google_edge_body("x")
   expect_identical(nchar(over_limit, type = "bytes"), 512001L)
   y <- google_eval(over_limit)
-  expect_identical(y$results$url_decision, "allow")
-  expect_false(y$results$matcher_body_truncated)
-  expect_identical(y$results$matcher_input_bytes, 512001L)
+  expect_identical(y$results$url_decision, "disallow")
+  expect_true(y$results$matcher_body_truncated)
+  expect_identical(y$results$matcher_input_bytes, 512000L)
 })
 
 test_that("Google's window applies to the backend under any ruleset", {
   x <- google_eval(google_band_body(), "rfc9309")
-  expect_identical(x$results$url_decision, "disallow")
-  expect_false(x$results$matcher_body_truncated)
+  expect_identical(x$results$url_decision, "allow")
+  expect_true(x$results$matcher_body_truncated)
+  expect_identical(x$results$matcher_input_bytes, 512000L)
   expect_true(is.na(x$results$policy_body_limit_bytes))
 })
 
@@ -505,18 +507,18 @@ test_that("Google's window cuts raw bytes: UTF-8, NUL and empty bodies", {
   expect_identical(nchar(straddle, type = "bytes"), 512012L)
   x <- expect_no_error(google_eval(straddle))
   expect_identical(x$results$url_decision, "disallow")
-  expect_false(x$results$matcher_body_truncated)
-  expect_identical(x$results$matcher_input_bytes, 512012L)
+  expect_true(x$results$matcher_body_truncated)
+  expect_identical(x$results$matcher_input_bytes, 512000L)
 
   nul_body <- c(
     charToRaw(head), as.raw(0L),
     charToRaw(strrep("#", 512009L - nchar(head, type = "bytes")))
   )
-  expect_identical(length(nul_body), 512010L)
+  expect_length(nul_body, 512010L)
   m <- match_google_v1(nul_body, "https://example.com/private", "bot")
   expect_identical(m$url_decision, "disallow")
-  expect_false(m$matcher_body_truncated)
-  expect_identical(m$matcher_input_bytes, 512010L)
+  expect_true(m$matcher_body_truncated)
+  expect_identical(m$matcher_input_bytes, 512000L)
 
   empty <- google_eval("")
   expect_identical(empty$results$url_decision, "allow")

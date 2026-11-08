@@ -128,7 +128,7 @@ test_that("A3 a supplied >500000-byte body keeps use_rules, never downgrades", {
 
 test_that("A4 the policy body-limit constants are pinned per ruleset", {
   expect_identical(policy_limit_v1("yandex"), 500000L)
-  expect_identical(policy_limit_v1("google"), 524288L)
+  expect_identical(policy_limit_v1("google"), 512000L)
 })
 
 test_that("A5 an over-limit yandex fetch allows all without any matcher", {
