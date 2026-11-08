@@ -115,7 +115,10 @@ validate_safety_level <- function(safety_level) {
         "`safety_level = \"%s\"` is not available yet; use \"strict\".",
         safety_level
       ),
-      c("robotstxtr_unavailable_safety_level", "robotstxtr_invalid_safety_level")
+      c(
+        "robotstxtr_unavailable_safety_level",
+        "robotstxtr_invalid_safety_level"
+      )
     )
   }
   invisible(unname(safety_level))

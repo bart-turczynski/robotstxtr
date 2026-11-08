@@ -71,8 +71,8 @@ test_that("a fetched evidence row records the level it was fetched under", {
   x <- robots_evaluate_url_v1("http://a/x", "Googlebot", "google", "google")
   expect_identical(x$evidence$safety_level, "strict")
   expect_identical(x$evidence$fetch_allow_ranges, list(character()))
-  expect_identical(x$evidence$https_downgrade_guard, TRUE)
-  expect_identical(x$results$https_downgrade_guard, TRUE)
+  expect_true(x$evidence$https_downgrade_guard)
+  expect_true(x$results$https_downgrade_guard)
 })
 
 test_that("a refused origin's evidence row records the level too", {
