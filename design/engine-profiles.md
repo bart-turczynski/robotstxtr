@@ -27,8 +27,9 @@ permission itself is documented.** Every cell carries exactly one tag and a sour
 body for the selected product token.
 
 **Non-goals (this release):**
-- **Content / grammar validation** (unsupported/typo/unknown directives, the parsing-error catalog).
-  robotstxtr stays a matcher/policy package (PRD §3; ADR-009 §8). §8 rule-count/line-length/typo items
+- **Per-engine content / grammar validation** (unsupported/typo/unknown directives, the
+  parsing-error catalog). robotstxtr validates syntax and structure for the Google-compatible profile
+  only; this doc's per-engine policy work adds no validator scope (PRD §3; ADR-009 §8). §8 rule-count/line-length/typo items
   are future-validator reference only; nothing there executes.
 - **Bing robots policy** — no current Bing primary source publishes a robots.txt status/redirect/
   network table or an RFC-9309 conformance claim. Every Bing status/redirect cell is

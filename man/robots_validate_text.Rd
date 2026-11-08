@@ -43,11 +43,12 @@ document statuses are \code{"valid"}, \code{"warning"}, \code{"error"}, and
 \section{Diagnostic codes}{
 
 Every \code{code} the validator emits, by the order a document is read. The
-checks describe the Google-compatible parser; Bing and Yandex agree on both
-pattern effects (a pattern not led by \code{/} or \code{*} never matches, and \code{$}
-anchors only as the last character). The sitemap checks are syntax-only:
-no sitemap is fetched, which is the \code{sitemapr} package's job. The codes
-starting \code{acquisition_} come only from \code{\link[=robots_validate_url]{robots_validate_url()}}.
+checks describe the Google-compatible parser; the package's Bing and Yandex
+matchers agree on both pattern effects (a pattern not led by \code{/} or \code{*}
+never matches, and \code{$} anchors only as the last character). The sitemap
+checks are syntax-only: no sitemap is fetched, which is the \code{sitemapr}
+package's job. \code{body_truncated} and the codes starting \code{acquisition_} come
+only from \code{\link[=robots_validate_url]{robots_validate_url()}}.
 
 \tabular{lll}{
 \strong{Code} \tab \strong{Severity} \tab \strong{Meaning} \cr
@@ -73,7 +74,8 @@ A directive this profile does not recognize. \cr
 \code{empty_user_agent} \tab error \tab
 A User-agent line with an empty value. \cr
 \code{rule_without_user_agent} \tab error \tab
-An Allow or Disallow before any non-empty User-agent. \cr
+An Allow or Disallow in no group a non-empty User-agent opened: before
+any, or after an empty User-agent that follows a rule. \cr
 \code{empty_rule_value} \tab warning \tab
 An empty Allow or Disallow value, which the matcher ignores. \cr
 \code{rule_missing_leading_slash} \tab warning \tab
@@ -83,7 +85,7 @@ A \code{$} before a pattern's end; it matches a literal \code{$}. \cr
 \code{empty_sitemap_value} \tab warning \tab
 A Sitemap line with an empty value. \cr
 \code{invalid_sitemap_url} \tab warning \tab
-A Sitemap value that is not an absolute URL with a scheme and a host. \cr
+A Sitemap value that is not a valid absolute URL. \cr
 \code{unsupported_sitemap_scheme} \tab warning \tab
 A Sitemap scheme other than \code{http}, \code{https} or \code{ftp}. \cr
 \code{missing_user_agent} \tab error \tab

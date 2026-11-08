@@ -34,11 +34,12 @@ validation_unsupported <- c(
 #'
 #' @section Diagnostic codes:
 #' Every `code` the validator emits, by the order a document is read. The
-#' checks describe the Google-compatible parser; Bing and Yandex agree on both
-#' pattern effects (a pattern not led by `/` or `*` never matches, and `$`
-#' anchors only as the last character). The sitemap checks are syntax-only:
-#' no sitemap is fetched, which is the `sitemapr` package's job. The codes
-#' starting `acquisition_` come only from [robots_validate_url()].
+#' checks describe the Google-compatible parser; the package's Bing and Yandex
+#' matchers agree on both pattern effects (a pattern not led by `/` or `*`
+#' never matches, and `$` anchors only as the last character). The sitemap
+#' checks are syntax-only: no sitemap is fetched, which is the `sitemapr`
+#' package's job. `body_truncated` and the codes starting `acquisition_` come
+#' only from [robots_validate_url()].
 #'
 #' \tabular{lll}{
 #'   \strong{Code} \tab \strong{Severity} \tab \strong{Meaning} \cr
@@ -64,7 +65,8 @@ validation_unsupported <- c(
 #'   \code{empty_user_agent} \tab error \tab
 #'     A User-agent line with an empty value. \cr
 #'   \code{rule_without_user_agent} \tab error \tab
-#'     An Allow or Disallow before any non-empty User-agent. \cr
+#'     An Allow or Disallow in no group a non-empty User-agent opened: before
+#'     any, or after an empty User-agent that follows a rule. \cr
 #'   \code{empty_rule_value} \tab warning \tab
 #'     An empty Allow or Disallow value, which the matcher ignores. \cr
 #'   \code{rule_missing_leading_slash} \tab warning \tab
@@ -74,7 +76,7 @@ validation_unsupported <- c(
 #'   \code{empty_sitemap_value} \tab warning \tab
 #'     A Sitemap line with an empty value. \cr
 #'   \code{invalid_sitemap_url} \tab warning \tab
-#'     A Sitemap value that is not an absolute URL with a scheme and a host. \cr
+#'     A Sitemap value that is not a valid absolute URL. \cr
 #'   \code{unsupported_sitemap_scheme} \tab warning \tab
 #'     A Sitemap scheme other than \code{http}, \code{https} or \code{ftp}. \cr
 #'   \code{missing_user_agent} \tab error \tab
@@ -551,7 +553,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
 
 # Warnings about a non-empty Sitemap, Allow or Disallow value (ROBO-xblfzkid),
 # as a list of list(code, message). An empty value is diagnosed by the caller.
-# `value` may be bytes-encoded (malformed UTF-8), so the checks work on raw
+# Allow and Disallow values arrive already %-escaped (ASCII); only a Sitemap
+# value may be bytes-encoded (malformed UTF-8), so the checks work on raw
 # bytes or with useBytes.
 directive_value_diagnostics <- function(type, value) {
   if (!nzchar(value)) {
@@ -615,14 +618,23 @@ rule_value_diagnostics <- function(value) {
 sitemap_value_diagnostic <- function(value) {
   invalid <- list(
     code = "invalid_sitemap_url",
-    message = "Sitemap value is not an absolute URL with a scheme and a host."
+    message = "Sitemap value is not a valid absolute URL."
   )
   if (!grepl("^[A-Za-z][A-Za-z0-9+.-]*:", value, useBytes = TRUE)) {
     return(invalid)
   }
   bytes <- charToRaw(value)
   colon <- match(charToRaw(":"), bytes)
-  scheme <- ascii_lower(rawToChar(bytes[seq_len(colon - 1L)]))
+  token <- bytes[seq_len(colon - 1L)]
+  # A host and port without a scheme ("x.com:8080/s.xml",
+  # "localhost:8080/s.xml"): the token before ':' holds a '.' or a digit
+  # follows the ':'. No scheme the check allows has either.
+  port_follows <- length(bytes) > colon &&
+    bytes[[colon + 1L]] %in% charToRaw("0123456789")
+  if (charToRaw(".") %in% token || port_follows) {
+    return(invalid)
+  }
+  scheme <- ascii_lower(rawToChar(token))
   if (!scheme %in% c("http", "https", "ftp")) {
     return(list(
       code = "unsupported_sitemap_scheme",
@@ -631,8 +643,9 @@ sitemap_value_diagnostic <- function(value) {
       )
     ))
   }
-  # The scheme must be followed by "//" and an authority: rurl alone would
-  # read "http:example.com" leniently.
+  # The scheme must be followed by "//" and an authority. This check does not
+  # rely on rurl rejecting a scheme without "//" ("http:example.com"): a
+  # more lenient rurl must not let one pass.
   if (length(bytes) < colon + 2L ||
         !identical(bytes[colon + 1:2], charToRaw("//"))) {
     return(invalid)

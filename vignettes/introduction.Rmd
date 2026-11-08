@@ -179,9 +179,9 @@ BOM/NUL and final-newline evidence, and a validation status. The `diagnostics`
 table has stable line, severity, code, directive, raw-text, and message columns.
 Raw vectors are accepted so malformed UTF-8 and NUL bytes can be reported
 without first converting or losing the acquisition bytes. The validator also
-warns on values the matcher or a sitemap reader cannot use: an Allow or
-Disallow pattern not led by `/` or `*`, a `$` before a pattern's end, and a
-Sitemap value that is not an absolute `http`, `https` or `ftp` URL; the
+warns on Allow or Disallow patterns that never match (not led by `/` or `*`)
+or hold a literal `$` (one before the pattern's end), and on a Sitemap value
+that is not an absolute `http`, `https` or `ftp` URL; the
 "Diagnostic codes" section of `?robots_validate_text` lists every code.
 
 ```{r, eval = FALSE}

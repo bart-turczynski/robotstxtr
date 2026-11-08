@@ -25,11 +25,27 @@ expect_value_codes <- function(line, codes, directive) {
 test_that("a sitemap value without a scheme is invalid_sitemap_url", {
   for (line in c(
     "Sitemap: not a url", "Sitemap: /sitemap.xml", "Sitemap: sitemap.xml",
-    "Sitemap: //x.com/s.xml", "Sitemap: https://", "Sitemap: http:x.com"
+    "Sitemap: //x.com/s.xml", "Sitemap: https://", "Sitemap: http:x.com",
+    "Sitemap: x.com:8080/s.xml", "Sitemap: localhost:8080/s.xml"
   )) {
     x <- expect_value_codes(line, "invalid_sitemap_url", "sitemap")
     expect_identical(x$documents$validation_status, "warning", label = line)
   }
+})
+
+test_that("a scheme without '//' is invalid whatever rurl accepts", {
+  # A lenient rurl that parses "http:x.com" must not let it pass.
+  local_mocked_bindings(
+    safe_parse_url = function(...) list(scheme = "http", host = "x.com"),
+    .package = "rurl"
+  )
+  expect_value_codes("Sitemap: http:x.com", "invalid_sitemap_url", "sitemap")
+  x <- vc_validate("Sitemap: http:x.com")
+  expect_identical(
+    x$diagnostics$message, "Sitemap value is not a valid absolute URL."
+  )
+  # The mock passes a well-formed URL, so the guard is what rejects the above.
+  expect_identical(nrow(vc_validate("Sitemap: http://x.com")$diagnostics), 0L)
 })
 
 test_that("a non-http sitemap scheme is one unsupported_sitemap_scheme", {
