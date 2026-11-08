@@ -1,10 +1,12 @@
 # ROBO-ajcacryw: a redirect whose Location is an IPv6 literal without a zone
 # ID. The zoned forms are pinned in test-ssrf-atvfjuuw.R; these pin the unzoned
 # literals (loopback, the documentation range, relative and uppercase-scheme
-# forms) and the malformed brackets, through robots_fetch() and
-# robots_evaluate_url_v1(). The "no error" pins hold because ssrfr's dep_call()
-# turns a parse failure into a refusal; robotstxtr's own guard is the tryCatch
-# in acquire_location_target().
+# forms) and the malformed brackets, through robots_fetch(). Only the loopback
+# cases also go through robots_evaluate_url_v1().
+#
+# For a malformed Location, rurl::resolve_url() returns NA rather than failing,
+# so acquire_location_target() falls back to the raw Location. ssrfr then
+# refuses it as "parse" without an error, which is why these pins expect none.
 #
 # The fake cases check each hop with ssrf_inspect_url() at the ssrfr boundary
 # (helper-fake-ssrfr.R). The loopback case drives the real ssrf_prepare_hop()
@@ -63,6 +65,7 @@ test_that("malformed IPv6 brackets in a Location are refused as parse", {
     local_redirect_to(location)
     x <- expect_no_error(robots_fetch("http://a/x"))
     expect_identical(x$robots$fetch_outcome, "ssrf_blocked", info = location)
+    expect_identical(x$robots$redirect_count, 1L, info = location)
     expect_identical(
       x$robots$error_message, "Blocked by SSRF guard (parse).",
       info = location
@@ -74,6 +77,7 @@ test_that("a non-ASCII byte inside the brackets is refused as parse", {
   local_redirect_to("http://[::1é]/")
   x <- expect_no_error(robots_fetch("http://a/x"))
   expect_identical(x$robots$fetch_outcome, "ssrf_blocked")
+  expect_identical(x$robots$redirect_count, 1L)
   expect_identical(
     x$robots$error_message, "Blocked by SSRF guard (parse)."
   )
@@ -121,5 +125,6 @@ test_that("a 301 to the IPv6 loopback literal on the server port is refused", {
   e <- x$evidence
   expect_identical(e$legacy_fetch_outcome, "ssrf_blocked")
   expect_identical(e$safety_block_reason, "loopback")
+  expect_identical(e$redirect_count, 1L)
   expect_identical(fetched$urls, server$url("/robots.txt"))
 })
