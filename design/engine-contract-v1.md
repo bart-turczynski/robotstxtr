@@ -86,7 +86,11 @@ Google matching uses the vendored matcher pinned to upstream commit
 `22b355ff855419e6a3ff8ff09c0ad7fdb17116f9`. The backend revision embeds that
 SHA. The Google 500 KiB limit is applied at the matcher stage: the neutral
 evidence retains a complete caller-supplied or within-acquisition-limit body,
-and Google parses only its first 512,000 bytes. A fetched 2xx body over the
+and Google parses only its first 512,000 bytes, up to the last complete line
+within them: a line the window cuts is dropped, as for a body cut at
+`max_bytes` (ROBO-ldpahknv below), and a window with no line break feeds no
+rules. `matcher_input_bytes` is the bytes fed to the matcher, after that drop;
+`matcher_body_truncated` is `TRUE` whenever the body exceeded the window. A fetched 2xx body over the
 acquisition limit is retained as its first `max_bytes` bytes, marked
 `body_truncated` and `incomplete`, and not matched by the v1 engines; the
 legacy path matches it, up to its last complete line (see "A robots.txt over

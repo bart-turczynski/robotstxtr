@@ -196,7 +196,8 @@ The cut 2xx stays an L0 fact. The ruleset decides what it means:
 - **`google`:** Google parses the first 500 KiB (512,000 bytes) and ignores the rest
   `[documented]`. A cut 2xx with `stored_bytes ≥ 512000` holds Google's whole parse window, and
   `match_google_v1()` reads at most 512,000 bytes. So the `google` ruleset can resolve it
-  `use_rules` on the prefix `[documented]`, matched as Google would. With a smaller prefix the
+  `use_rules` on the prefix `[documented]`, matched as Google would up to its last complete
+  line (a line the window cuts is dropped, as for any cut body). With a smaller prefix the
   window is not all there, and the result stays `incomplete`. This was out of reach when this
   ADR was first drafted (ssrfr kept no prefix). It is slice 9, separable from the rest.
 - **`rfc9309`, `assumed_rfc9309`, `bing`:** RFC 9309 §2.5 sets a parse floor of 500 KiB, not a
