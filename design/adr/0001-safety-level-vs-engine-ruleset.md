@@ -493,8 +493,10 @@ acceptance test.
    `documentation_gap` (ROBO-ogwchglq).
 9. **The `google` ruleset reads a cut file's prefix** (robotstxtr). Depends on 2 and on slice
    6's ADR being accepted. Acceptance: a cut 2xx with `stored_bytes ≥ 512000` under `google`
-   resolves `use_rules` (`[documented]`) and is matched on its first 512,000 bytes, as
-   `match_google_v1()` already reads; with a smaller prefix it stays `incomplete`. Other
+   resolves `use_rules` (`[documented]`) and is matched up to its last complete line within
+   the first 512,000 bytes, as `match_google_v1()` reads, a cut prefix of exactly 512,000
+   bytes also passing through the same complete-lines rule so its partial last line is
+   dropped; with a smaller prefix it stays `incomplete`. Other
    rulesets are unchanged.
 
 ## Maintainer answers (2026-11-05)

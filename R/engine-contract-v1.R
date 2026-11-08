@@ -943,7 +943,9 @@ match_google_v1 <- function(body, url, product_token) {
   limit <- 512000L
   truncated <- length(body) > limit
   matcher_body <- if (truncated) {
-    complete_lines_prefix(body[seq_len(limit)])
+    # One byte past the window says whether the line at its edge is complete.
+    lines <- complete_lines_prefix(body[seq_len(limit + 1L)])
+    lines[seq_len(min(length(lines), limit))]
   } else {
     body
   }

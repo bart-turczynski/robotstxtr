@@ -513,6 +513,19 @@ test_that("Google's window drops a line it cuts, never widening a rule", {
   expect_true(is.na(x$results$matched_line))
 })
 
+test_that("Google keeps a rule ending at byte 512,000, its break past it", {
+  for (eol in c("\n", "\r", "\r\n")) {
+    body <- google_edge_body(eol)
+    expect_identical(
+      nchar(body, type = "bytes"), 512000L + nchar(eol, type = "bytes")
+    )
+    x <- google_eval(body)
+    expect_identical(x$results$url_decision, "disallow")
+    expect_true(x$results$matcher_body_truncated)
+    expect_identical(x$results$matcher_input_bytes, 512000L)
+  }
+})
+
 test_that("Google's window with no line break feeds no rules", {
   body <- paste0("disallow: /x", strrep("x", 511999L))
   x <- google_eval(body, url = "https://example.com/xx")
