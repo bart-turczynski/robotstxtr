@@ -71,7 +71,8 @@ outside this matcher, and the R fetch policy is intentionally conservative.
 ## 3. Non-Goals for V1
 
 - Not a web crawler.
-- Not a robots.txt authoring or validation tool.
+- Not a robots.txt authoring tool. robotstxtr validates robots.txt syntax and
+  structure for the Google-compatible profile only.
 - Not an RFC-corrected matcher fork. Preserve pinned Google matcher behavior
   even where disputed.
 - Not a cache manager.
@@ -1066,9 +1067,9 @@ rewrite of the v1 contracts above.
   compatibility adapter, and any change of default ruleset rides an explicit,
   documented **major-version** migration.
 - Every §3 non-goal. In particular, robotstxtr remains **not a robots.txt
-  authoring or validation tool** (§3): content/grammar validation is out of scope
-  this release (ADR-009 §8). If ever needed it is a separate project or an
-  explicit robotstxtr v2, not smuggled in here.
+  authoring tool or a crawler** (§3): it validates robots.txt syntax and
+  structure for the Google-compatible profile only, and per-engine validation
+  stays out of scope this release (ADR-009 §8).
 - Matcher fidelity (§6.1): the Google matcher stays **not RFC-corrected**. A
   ruleset name is not a matcher; selecting `rfc9309`/`yandex` policy does not
   imply a matcher exists, and a ruleset request MUST NOT fall through to another

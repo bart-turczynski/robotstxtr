@@ -4,7 +4,9 @@
 - Date: 2026-07-16 (accepted 2026-07-17)
 - PRD scope: the version-scope amendment this requires is recorded in `design/PRD.md`
   §13 (Amendment A) — ruleset-aware, versioned entry points added alongside the pinned
-  v1 surface (PRD §3 keeps "not a validator"; this doc adds no validator scope).
+  v1 surface (PRD §3: robotstxtr validates robots.txt syntax and structure for the
+  Google-compatible profile, and is still not an authoring tool or a crawler; this doc adds
+  no per-engine validator scope).
 - Owns: the `robots_policy_ruleset` and `matcher_backend` value sets, the neutral fetch-outcome
   contract, per-engine status→policy, user-agent group selection, current policy/matcher limits, and
   the `safety_level` value set and what each level may do (§3a; ADR 0001).
@@ -25,8 +27,9 @@ permission itself is documented.** Every cell carries exactly one tag and a sour
 body for the selected product token.
 
 **Non-goals (this release):**
-- **Content / grammar validation** (unsupported/typo/unknown directives, the parsing-error catalog).
-  robotstxtr stays a matcher/policy package (PRD §3; ADR-009 §8). §8 rule-count/line-length/typo items
+- **Per-engine content / grammar validation** (unsupported/typo/unknown directives, the
+  parsing-error catalog). robotstxtr validates syntax and structure for the Google-compatible profile
+  only; this doc's per-engine policy work adds no validator scope (PRD §3; ADR-009 §8). §8 rule-count/line-length/typo items
   are future-validator reference only; nothing there executes.
 - **Bing robots policy** — no current Bing primary source publishes a robots.txt status/redirect/
   network table or an RFC-9309 conformance claim. Every Bing status/redirect cell is

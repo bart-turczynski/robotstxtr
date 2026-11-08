@@ -32,6 +32,70 @@ validation_unsupported <- c(
 #' document statuses are `"valid"`, `"warning"`, `"error"`, and
 #' `"not_validated"`.
 #'
+#' @section Diagnostic codes:
+#' Every `code` the validator emits, by the order a document is read. The
+#' checks describe the Google-compatible parser; the package's Bing and Yandex
+#' matchers agree on both pattern effects (a pattern not led by `/` or `*`
+#' never matches, and `$` anchors only as the last character). The sitemap
+#' checks are syntax-only: no sitemap is fetched, which is the `sitemapr`
+#' package's job. `body_truncated` and the codes starting `acquisition_` come
+#' only from [robots_validate_url()].
+#'
+#' \tabular{lll}{
+#'   \strong{Code} \tab \strong{Severity} \tab \strong{Meaning} \cr
+#'   \code{byte_order_mark} \tab warning \tab
+#'     The document starts with a UTF-8 byte-order mark; the parser skips it.
+#'     \cr
+#'   \code{nul_byte} \tab error \tab
+#'     A line holds NUL bytes, which can truncate parsing. \cr
+#'   \code{invalid_utf8} \tab error \tab
+#'     The document bytes are not well-formed UTF-8. \cr
+#'   \code{malformed_line} \tab error \tab
+#'     An active line is not a key-value directive. \cr
+#'   \code{line_too_long} \tab error \tab
+#'     A line exceeds the parser's 16,663-byte buffer and is truncated. \cr
+#'   \code{accepted_missing_colon} \tab warning \tab
+#'     A directive without a colon, which the parser accepts. \cr
+#'   \code{accepted_directive_typo} \tab warning \tab
+#'     A directive name in an accepted typo spelling. \cr
+#'   \code{unsupported_directive} \tab warning \tab
+#'     A known directive this profile ignores, such as \code{crawl-delay}. \cr
+#'   \code{unknown_directive} \tab warning \tab
+#'     A directive this profile does not recognize. \cr
+#'   \code{empty_user_agent} \tab error \tab
+#'     A User-agent line with an empty value. \cr
+#'   \code{rule_without_user_agent} \tab error \tab
+#'     An Allow or Disallow in no group a non-empty User-agent opened: before
+#'     any, or after an empty User-agent that follows a rule. \cr
+#'   \code{empty_rule_value} \tab warning \tab
+#'     An empty Allow or Disallow value, which the matcher ignores. \cr
+#'   \code{rule_missing_leading_slash} \tab warning \tab
+#'     A pattern not led by \code{/} or \code{*}; it never matches. \cr
+#'   \code{rule_inner_dollar} \tab warning \tab
+#'     A \code{$} before a pattern's end; it matches a literal \code{$}. \cr
+#'   \code{empty_sitemap_value} \tab warning \tab
+#'     A Sitemap line with an empty value. \cr
+#'   \code{invalid_sitemap_url} \tab warning \tab
+#'     A Sitemap value that is not a valid absolute URL. \cr
+#'   \code{unsupported_sitemap_scheme} \tab warning \tab
+#'     A Sitemap scheme other than \code{http}, \code{https} or \code{ftp}. \cr
+#'   \code{missing_user_agent} \tab error \tab
+#'     The document has no non-empty User-agent line. \cr
+#'   \code{body_truncated} \tab warning \tab
+#'     The body exceeded \code{max_bytes}; only lines before the cut were read.
+#'     \cr
+#'   \code{acquisition_input_invalid} \tab error \tab
+#'     An input URL could not be turned into a robots.txt origin. \cr
+#'   \code{acquisition_missing} \tab info \tab
+#'     The robots.txt resource is absent; nothing was validated. \cr
+#'   \code{acquisition_limit_exceeded} \tab error \tab
+#'     A 3xx body exceeded \code{max_bytes} and was refused whole. \cr
+#'   \code{acquisition_partial_response} \tab error \tab
+#'     A partial HTTP response was rejected. \cr
+#'   \code{acquisition_failed} \tab error \tab
+#'     Acquisition supplied no body, for the reason in \code{message}.
+#' }
+#'
 #' @param robots_txt A single non-missing character string or a raw vector.
 #' @param source_id A single non-empty character string identifying the supplied
 #'   document. Defaults to `"supplied"`.
@@ -414,6 +478,9 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         "Sitemap directive has an empty value."
       )
     }
+    for (found in directive_value_diagnostics(type, value)) {
+      add_diagnostic(line, "warning", found$code, type, found$message)
+    }
   }
 
   if (nonempty_user_agents == 0L) {
@@ -482,6 +549,118 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     stringsAsFactors = FALSE
   )
   list(document = document, diagnostics = diagnostic_frame)
+}
+
+# Warnings about a non-empty Sitemap, Allow or Disallow value (ROBO-xblfzkid),
+# as a list of list(code, message). An empty value is diagnosed by the caller.
+# Allow and Disallow values arrive already %-escaped (ASCII); only a Sitemap
+# value may be bytes-encoded (malformed UTF-8), so the checks work on raw
+# bytes or with useBytes.
+directive_value_diagnostics <- function(type, value) {
+  if (!nzchar(value)) {
+    return(list())
+  }
+  if (type %in% c("allow", "disallow")) {
+    return(rule_value_diagnostics(value))
+  }
+  if (identical(type, "sitemap")) {
+    found <- sitemap_value_diagnostic(value)
+    return(if (is.null(found)) list() else list(found))
+  }
+  list()
+}
+
+# The parser's value is canonical: non-ASCII bytes are already %XX escapes,
+# so an invisible leading character shows as its escaped UTF-8 bytes.
+validation_invisible_prefixes <- c(
+  "U+200B" = "%E2%80%8B",
+  "U+FEFF" = "%EF%BB%BF"
+)
+
+rule_value_diagnostics <- function(value) {
+  bytes <- charToRaw(value)
+  found <- list()
+  if (!bytes[[1L]] %in% charToRaw("/*")) {
+    message <- paste0(
+      "Pattern does not start with '/' or '*'; URL paths always start ",
+      "with '/', so this rule never matches."
+    )
+    for (code_point in names(validation_invisible_prefixes)) {
+      prefix <- charToRaw(validation_invisible_prefixes[[code_point]])
+      if (length(bytes) >= length(prefix) &&
+            identical(bytes[seq_along(prefix)], prefix)) {
+        message <- paste0(
+          message, " It starts with an invisible character (", code_point,
+          ")."
+        )
+      }
+    }
+    found[[length(found) + 1L]] <- list(
+      code = "rule_missing_leading_slash", message = message
+    )
+  }
+  dollars <- which(bytes == charToRaw("$"))
+  if (any(dollars < length(bytes))) {
+    found[[length(found) + 1L]] <- list(
+      code = "rule_inner_dollar",
+      message = paste0(
+        "'$' marks the end of the URL only as the last character; here it ",
+        "matches a literal '$'."
+      )
+    )
+  }
+  found
+}
+
+# A syntax-only check of a Sitemap value: an absolute http, https or ftp URL
+# with a host. Whether the sitemap exists is not checked (that is sitemapr's
+# job). Returns at most one finding, or NULL.
+sitemap_value_diagnostic <- function(value) {
+  invalid <- list(
+    code = "invalid_sitemap_url",
+    message = "Sitemap value is not a valid absolute URL."
+  )
+  if (!grepl("^[A-Za-z][A-Za-z0-9+.-]*:", value, useBytes = TRUE)) {
+    return(invalid)
+  }
+  bytes <- charToRaw(value)
+  colon <- match(charToRaw(":"), bytes)
+  token <- bytes[seq_len(colon - 1L)]
+  # A host and port without a scheme ("x.com:8080/s.xml",
+  # "localhost:8080/s.xml"): the token before ':' holds a '.' or a digit
+  # follows the ':'. No scheme the check allows has either.
+  port_follows <- length(bytes) > colon &&
+    bytes[[colon + 1L]] %in% charToRaw("0123456789")
+  if (charToRaw(".") %in% token || port_follows) {
+    return(invalid)
+  }
+  scheme <- ascii_lower(rawToChar(token))
+  if (!scheme %in% c("http", "https", "ftp")) {
+    return(list(
+      code = "unsupported_sitemap_scheme",
+      message = sprintf(
+        "Sitemap URL scheme '%s' is not http, https or ftp.", scheme
+      )
+    ))
+  }
+  # The scheme must be followed by "//" and an authority. This check does not
+  # rely on rurl rejecting a scheme without "//" ("http:example.com"): a
+  # more lenient rurl must not let one pass.
+  if (length(bytes) < colon + 2L ||
+        !identical(bytes[colon + 1:2], charToRaw("//"))) {
+    return(invalid)
+  }
+  parsed <- tryCatch(
+    rurl::safe_parse_url(value, host_encoding = "idna"),
+    error = function(e) NULL
+  )
+  host <- parsed$host
+  has_host <- is.character(host) && length(host) == 1L && !is.na(host) &&
+    nzchar(host)
+  if (!identical(parsed$scheme, scheme) || !has_host) {
+    return(invalid)
+  }
+  NULL
 }
 
 validation_ascii_action <- function(action, type) {

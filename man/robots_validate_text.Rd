@@ -40,6 +40,72 @@ findings). Diagnostic severities are \code{"info"}, \code{"warning"}, and \code{
 document statuses are \code{"valid"}, \code{"warning"}, \code{"error"}, and
 \code{"not_validated"}.
 }
+\section{Diagnostic codes}{
+
+Every \code{code} the validator emits, by the order a document is read. The
+checks describe the Google-compatible parser; the package's Bing and Yandex
+matchers agree on both pattern effects (a pattern not led by \code{/} or \code{*}
+never matches, and \code{$} anchors only as the last character). The sitemap
+checks are syntax-only: no sitemap is fetched, which is the \code{sitemapr}
+package's job. \code{body_truncated} and the codes starting \code{acquisition_} come
+only from \code{\link[=robots_validate_url]{robots_validate_url()}}.
+
+\tabular{lll}{
+\strong{Code} \tab \strong{Severity} \tab \strong{Meaning} \cr
+\code{byte_order_mark} \tab warning \tab
+The document starts with a UTF-8 byte-order mark; the parser skips it.
+\cr
+\code{nul_byte} \tab error \tab
+A line holds NUL bytes, which can truncate parsing. \cr
+\code{invalid_utf8} \tab error \tab
+The document bytes are not well-formed UTF-8. \cr
+\code{malformed_line} \tab error \tab
+An active line is not a key-value directive. \cr
+\code{line_too_long} \tab error \tab
+A line exceeds the parser's 16,663-byte buffer and is truncated. \cr
+\code{accepted_missing_colon} \tab warning \tab
+A directive without a colon, which the parser accepts. \cr
+\code{accepted_directive_typo} \tab warning \tab
+A directive name in an accepted typo spelling. \cr
+\code{unsupported_directive} \tab warning \tab
+A known directive this profile ignores, such as \code{crawl-delay}. \cr
+\code{unknown_directive} \tab warning \tab
+A directive this profile does not recognize. \cr
+\code{empty_user_agent} \tab error \tab
+A User-agent line with an empty value. \cr
+\code{rule_without_user_agent} \tab error \tab
+An Allow or Disallow in no group a non-empty User-agent opened: before
+any, or after an empty User-agent that follows a rule. \cr
+\code{empty_rule_value} \tab warning \tab
+An empty Allow or Disallow value, which the matcher ignores. \cr
+\code{rule_missing_leading_slash} \tab warning \tab
+A pattern not led by \code{/} or \code{*}; it never matches. \cr
+\code{rule_inner_dollar} \tab warning \tab
+A \code{$} before a pattern's end; it matches a literal \code{$}. \cr
+\code{empty_sitemap_value} \tab warning \tab
+A Sitemap line with an empty value. \cr
+\code{invalid_sitemap_url} \tab warning \tab
+A Sitemap value that is not a valid absolute URL. \cr
+\code{unsupported_sitemap_scheme} \tab warning \tab
+A Sitemap scheme other than \code{http}, \code{https} or \code{ftp}. \cr
+\code{missing_user_agent} \tab error \tab
+The document has no non-empty User-agent line. \cr
+\code{body_truncated} \tab warning \tab
+The body exceeded \code{max_bytes}; only lines before the cut were read.
+\cr
+\code{acquisition_input_invalid} \tab error \tab
+An input URL could not be turned into a robots.txt origin. \cr
+\code{acquisition_missing} \tab info \tab
+The robots.txt resource is absent; nothing was validated. \cr
+\code{acquisition_limit_exceeded} \tab error \tab
+A 3xx body exceeded \code{max_bytes} and was refused whole. \cr
+\code{acquisition_partial_response} \tab error \tab
+A partial HTTP response was rejected. \cr
+\code{acquisition_failed} \tab error \tab
+Acquisition supplied no body, for the reason in \code{message}.
+}
+}
+
 \examples{
 report <- robots_validate_text(
   "user-agent: *\ndisallow: /private\n"
