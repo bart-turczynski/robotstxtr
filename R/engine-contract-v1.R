@@ -10,12 +10,17 @@ engine_contract_id_v1 <- function() {
   "robotstxtr.engine-aware/v1"
 }
 
+# 2026-11-08.1: every fetching entry point takes `safety_level`; the contract
+# publishes its value set (`safety_levels`) and the evidence gains
+# `safety_level` and `fetch_allow_ranges` (ADR 0001 sections 1 and 8,
+# ROBO-pezlychx). Both facades share the evidence schema, so both moved.
+#
 # 2026-11-05.1: the evidence `safety_block_reason` set gains "userinfo",
 # "port", "parse", "multicast" and "reserved", the refusals ssrfr adds
 # (ROBO-jbralthm; design/engine-profiles.md section 2). Both facades share the
 # evidence schema, so both revisions moved.
 engine_schema_revision_v1 <- function() {
-  "2026-11-05.1"
+  "2026-11-08.1"
 }
 
 # The engine-aware/v2 facade identity (BI-V2-SCHEMA, spec SS15). Introduced by
@@ -30,7 +35,7 @@ engine_contract_id_v2 <- function() {
 }
 
 engine_schema_revision_v2 <- function() {
-  "2026-11-05.1"
+  "2026-11-08.1"
 }
 
 engine_rulesets_v1 <- function() {
@@ -39,6 +44,19 @@ engine_rulesets_v1 <- function() {
 
 engine_matchers_v1 <- function() {
   c("google", "yandex", "rfc9309", "bing")
+}
+
+# The `safety_level` value set (ADR 0001 section 1). It decides what the fetch
+# may do, never what an outcome means, and is independent of the ruleset.
+# "strict", the default, is today's acquisition. "crawler" is published but not
+# available yet: validate_safety_level() refuses it until it lands
+# (ROBO-lwdxzdhw).
+engine_safety_levels_v1 <- function() {
+  c("strict", "crawler")
+}
+
+engine_available_safety_levels_v1 <- function() {
+  "strict"
 }
 
 # Authoritative enumeration of the robotstxtr.engine-aware/v2 matcher-status set
@@ -498,6 +516,7 @@ robots_engine_contract_v1 <- function() {
       ),
       robots_policy_rulesets = engine_rulesets_v1(),
       matcher_backends = engine_matchers_v1(),
+      safety_levels = engine_safety_levels_v1(),
       policy_table = engine_policy_table_v1(),
       sibling_versions = c(
         sitemapr = ">= 0.0.0.9000, < 0.1.0",
@@ -563,6 +582,7 @@ robots_engine_contract_v2 <- function() {
       ),
       robots_policy_rulesets = engine_rulesets_v1(),
       matcher_backends = engine_matchers_v1(),
+      safety_levels = engine_safety_levels_v1(),
       policy_table = engine_policy_table_v1(),
       sibling_versions = c(
         sitemapr = ">= 0.0.0.9000, < 0.1.0",
@@ -698,6 +718,7 @@ empty_evidence_v1 <- function() {
     acquisition_max_bytes = integer(),
     redirect_limit = integer(),
     ssrf_guard = logical(),
+    safety_level = character(),
     https_downgrade_guard = logical(),
     legacy_fetch_outcome = character(),
     legacy_http_status = integer(),
@@ -706,6 +727,7 @@ empty_evidence_v1 <- function() {
     error_message = character(),
     stringsAsFactors = FALSE
   )
+  out$fetch_allow_ranges <- list()
   out$redirect_hops <- list()
   out$body <- list()
   out
@@ -713,7 +735,7 @@ empty_evidence_v1 <- function() {
 
 source_results_to_evidence_v1 <- function(results, source_ids, requested_url,
                                           fetch_ua, timeout, max_bytes,
-                                          ssrf_guard) {
+                                          ssrf_guard, safety_level) {
   if (length(results) == 0L) {
     return(empty_evidence_v1())
   }
@@ -751,7 +773,8 @@ source_results_to_evidence_v1 <- function(results, source_ids, requested_url,
     acquisition_max_bytes = rep(max_bytes, length(results)),
     redirect_limit = rep(5L, length(results)),
     ssrf_guard = rep(ssrf_guard, length(results)),
-    https_downgrade_guard = rep(TRUE, length(results)),
+    safety_level = rep(safety_level, length(results)),
+    https_downgrade_guard = rep(safety_level == "strict", length(results)),
     legacy_fetch_outcome = vapply(
       results, `[[`, character(1L), "fetch_outcome"
     ),
@@ -761,12 +784,15 @@ source_results_to_evidence_v1 <- function(results, source_ids, requested_url,
     error_message = vapply(results, `[[`, character(1L), "error_message"),
     stringsAsFactors = FALSE
   )
+  # No range is reopened yet: `fetch_allow_ranges` lands with ROBO-bamcjvwn.
+  out$fetch_allow_ranges <- rep(list(character()), length(results))
   out$redirect_hops <- lapply(results, `[[`, "redirect_hops")
   out$body <- lapply(results, `[[`, "body")
   out
 }
 
-fetch_evidence_v1 <- function(url, timeout, max_bytes, fetch_ua, ssrf_guard) {
+fetch_evidence_v1 <- function(url, timeout, max_bytes, fetch_ua, ssrf_guard,
+                              safety_level) {
   origin <- vapply(url, robots_origin, character(1L), USE.NAMES = FALSE)
   eligible <- !is.na(origin)
   distinct_origins <- unique(origin[eligible])
@@ -779,7 +805,7 @@ fetch_evidence_v1 <- function(url, timeout, max_bytes, fetch_ua, ssrf_guard) {
   }
   evidence <- source_results_to_evidence_v1(
     fetched, source_ids, distinct_origins, fetch_ua, timeout, max_bytes,
-    ssrf_guard
+    ssrf_guard, safety_level
   )
   source_index <- match(origin, distinct_origins)
   mapped_source <- rep(NA_character_, length(url))
@@ -812,6 +838,7 @@ supplied_evidence_v1 <- function(raw_body, source_id) {
     acquisition_max_bytes = NA_integer_,
     redirect_limit = NA_integer_,
     ssrf_guard = NA,
+    safety_level = NA_character_,
     https_downgrade_guard = NA,
     legacy_fetch_outcome = "supplied",
     legacy_http_status = NA_integer_,
@@ -820,6 +847,7 @@ supplied_evidence_v1 <- function(raw_body, source_id) {
     error_message = NA_character_,
     stringsAsFactors = FALSE
   )
+  out$fetch_allow_ranges <- list(NA_character_)
   out$redirect_hops <- list(list())
   out$body <- list(raw_body)
   out
@@ -1202,7 +1230,8 @@ new_engine_decisions_v1 <- function(results, evidence) {
 
 evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
                              source_id, evidence, url_valid, token_valid,
-                             fetch_ua, timeout, max_bytes, ssrf_guard) {
+                             fetch_ua, timeout, max_bytes, ssrf_guard,
+                             safety_level) {
   n <- length(url)
   policy_revisions <- engine_policy_revisions_v1()
   matcher_registry <- validated_matcher_registry_v1()
@@ -1380,8 +1409,10 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
     redirect_limit = rep(if (is.na(timeout)) NA_integer_ else 5L,
                          length.out = n),
     ssrf_guard = rep(ssrf_guard, length.out = n),
-    https_downgrade_guard = rep(if (is.na(timeout)) NA else TRUE,
-                                length.out = n),
+    https_downgrade_guard = rep(
+      if (is.na(timeout)) NA else safety_level == "strict",
+      length.out = n
+    ),
     policy_body_limit_bytes = policy_limit_v1(ruleset),
     source_id = source_id,
     evidence_status = evidence_status,
@@ -1509,7 +1540,7 @@ robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
   mapped_source <- ifelse(url_valid & token_valid, source_id, NA_character_)
   results <- evaluate_rows_v1(
     url, token, ruleset, backend, mapped_source, evidence, url_valid,
-    token_valid, NA_character_, NA_real_, NA_integer_, NA
+    token_valid, NA_character_, NA_real_, NA_integer_, NA, NA_character_
   )
   new_engine_decisions_v1(results, evidence)
 }
@@ -1568,12 +1599,14 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
 # nolint end
                                    timeout = 10, max_bytes = 524288L,
                                    fetch_user_agent = NULL,
-                                   ssrf_guard = TRUE) {
+                                   ssrf_guard = TRUE,
+                                   safety_level = "strict") {
   validate_url_type(url)
   timeout <- validate_timeout(timeout)
   max_bytes <- validate_max_bytes(max_bytes)
   validate_fetch_user_agent(fetch_user_agent)
   validate_ssrf_guard(ssrf_guard)
+  safety_level <- validate_safety_level(safety_level)
   warn_ssrf_guard_deprecated(ssrf_guard)
   n <- length(url)
   token <- expand_product_token_v1(robots_product_token, n)
@@ -1594,11 +1627,12 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
   fetch_input <- url
   fetch_input[!token_valid] <- NA_character_
   fetched <- fetch_evidence_v1(
-    fetch_input, timeout, max_bytes, fetch_ua, ssrf_guard
+    fetch_input, timeout, max_bytes, fetch_ua, ssrf_guard, safety_level
   )
   results <- evaluate_rows_v1(
     url, token, ruleset, backend, fetched$source_id, fetched$evidence,
-    url_valid, token_valid, fetch_ua, timeout, max_bytes, ssrf_guard
+    url_valid, token_valid, fetch_ua, timeout, max_bytes, ssrf_guard,
+    safety_level
   )
   new_engine_decisions_v1(results, fetched$evidence)
 }

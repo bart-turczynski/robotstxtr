@@ -134,6 +134,12 @@
 #'   internal address ranges and the metadata host names, for example to fetch
 #'   `robots.txt` from a trusted intranet host. Known cloud-metadata endpoints
 #'   and the IPv6 transition forms that embed an address stay refused.
+#' @param safety_level A single string: what the fetch may do on the network,
+#'   whatever ruleset reads the outcome. `"strict"`, the default and the only
+#'   level available yet, refuses an `https` to `http` redirect and every
+#'   address the guard refuses. `"crawler"` is reserved for what a public
+#'   crawler experiences and is a call-level error until it lands; any other
+#'   value is a call-level error too.
 #'
 #' @return An S3 object of class `robots_fetches`: a named list with two
 #'   components, `map` (one row per input URL, in input order) and `robots` (one
@@ -158,13 +164,15 @@
 #' @seealso [allowed_by_robots_url()] to fetch and match in one step.
 #' @export
 robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
-                         fetch_user_agent = NULL, ssrf_guard = TRUE) {
+                         fetch_user_agent = NULL, ssrf_guard = TRUE,
+                         safety_level = "strict") {
   # --- Call-level input validation / shared fetch controls (PRD 6.6). --------
   validate_url_type(url)
   timeout <- validate_timeout(timeout)
   validate_fetch_user_agent(fetch_user_agent)
   max_bytes_int <- validate_max_bytes(max_bytes)
   validate_ssrf_guard(ssrf_guard)
+  safety_level <- validate_safety_level(safety_level)
   warn_ssrf_guard_deprecated(ssrf_guard)
   fetch_ua <- if (is.null(fetch_user_agent)) {
     package_fetch_user_agent()

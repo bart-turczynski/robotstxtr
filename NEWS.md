@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* The fetching functions and `robots_evaluate_url_v1()` gain `safety_level`; `"strict"`, the default, fetches as before. The v1 evidence gains `safety_level` and `fetch_allow_ranges` (schema `2026-11-08.1`) (ROBO-pezlychx).
+
 * The `robots` frame of `robots_fetch()` and `allowed_by_robots_*()` gains `retry_after` and `retry_after_seconds`: the final response's `Retry-After` and its delay, so a caller can honor a 429 or 503 (RFC 9110 §10.2.3) (ROBO-cthdyvlk).
 
 * The `robots` frame of `robots_fetch()` and `allowed_by_robots_*()` gains `content_type`, as received, and `content_flag`, which marks a body that looks like HTML, XML, JSON or binary; matching is unchanged (ROBO-nhuirvrd).
