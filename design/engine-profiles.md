@@ -4,7 +4,9 @@
 - Date: 2026-07-16 (accepted 2026-07-17)
 - PRD scope: the version-scope amendment this requires is recorded in `design/PRD.md`
   §13 (Amendment A) — ruleset-aware, versioned entry points added alongside the pinned
-  v1 surface (PRD §3 keeps "not a validator"; this doc adds no validator scope).
+  v1 surface (PRD §3: robotstxtr validates robots.txt syntax and structure for the
+  Google-compatible profile, and is still not an authoring tool or a crawler; this doc adds
+  no per-engine validator scope).
 - Owns: the `robots_policy_ruleset` and `matcher_backend` value sets, the neutral fetch-outcome
   contract, per-engine status→policy, user-agent group selection, current policy/matcher limits, and
   the `safety_level` value set and what each level may do (§3a; ADR 0001).
