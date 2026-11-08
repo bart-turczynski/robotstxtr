@@ -38,7 +38,8 @@ The result contains three typed data frames: \code{map} (the validation target),
 \code{documents} (one summary row per document), and \code{diagnostics} (zero or more
 findings). Diagnostic severities are \code{"info"}, \code{"warning"}, and \code{"error"};
 document statuses are \code{"valid"}, \code{"warning"}, \code{"error"}, and
-\code{"not_validated"}.
+\code{"not_validated"}. An info never changes the status, so a document whose
+only finding is \code{no_rules} is \code{"valid"}.
 }
 \section{Diagnostic codes}{
 
@@ -89,7 +90,11 @@ A Sitemap value that is not a valid absolute URL. \cr
 \code{unsupported_sitemap_scheme} \tab warning \tab
 A Sitemap scheme other than \code{http}, \code{https} or \code{ftp}. \cr
 \code{missing_user_agent} \tab error \tab
-The document has no non-empty User-agent line. \cr
+Allow or Disallow rules exist but no line names a non-empty
+User-agent. \cr
+\code{no_rules} \tab info \tab
+The document has no Allow or Disallow line, so it restricts nothing.
+Not reported for a body cut at \code{max_bytes}. \cr
 \code{body_truncated} \tab warning \tab
 The body exceeded \code{max_bytes}; only lines before the cut were read.
 \cr

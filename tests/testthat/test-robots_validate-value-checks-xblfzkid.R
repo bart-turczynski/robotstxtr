@@ -6,7 +6,7 @@ vc_codes <- c(
 )
 
 vc_validate <- function(line) {
-  robots_validate_text(paste0("user-agent: *\n", line, "\n"))
+  robots_validate_text(paste0("user-agent: *\n", line, "\nallow: /\n"))
 }
 
 # The value-check findings of one line: exactly `codes`, each a line-2
