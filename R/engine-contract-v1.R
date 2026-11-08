@@ -1606,7 +1606,7 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
   max_bytes <- validate_max_bytes(max_bytes)
   validate_fetch_user_agent(fetch_user_agent)
   validate_ssrf_guard(ssrf_guard)
-  validate_safety_level(safety_level)
+  safety_level <- validate_safety_level(safety_level)
   warn_ssrf_guard_deprecated(ssrf_guard)
   n <- length(url)
   token <- expand_product_token_v1(robots_product_token, n)

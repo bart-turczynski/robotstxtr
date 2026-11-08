@@ -100,3 +100,16 @@ test_that("an evidence frame with no rows still has both columns", {
   expect_type(x$evidence$safety_level, "character")
   expect_type(x$evidence$fetch_allow_ranges, "list")
 })
+
+test_that("a named strict reads as the default", {
+  local_fake_ssrfr(function(req) {
+    fake_response(200L, body = "user-agent: *\ndisallow: /x\n")
+  })
+  for (name in names(sl_entry_points)) {
+    expect_identical(
+      sl_entry_points[[name]](safety_level = c(nm = "strict")),
+      sl_entry_points[[name]](),
+      info = name
+    )
+  }
+})

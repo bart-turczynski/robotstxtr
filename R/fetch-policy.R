@@ -118,7 +118,7 @@ validate_safety_level <- function(safety_level) {
       c("robotstxtr_unavailable_safety_level", "robotstxtr_invalid_safety_level")
     )
   }
-  invisible(safety_level)
+  invisible(unname(safety_level))
 }
 
 # The deprecation warning for `ssrf_guard = FALSE`, raised once per call by the

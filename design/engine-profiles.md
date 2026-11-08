@@ -76,7 +76,7 @@ means `unreachable_local` (§3a). `fetch_outcome` stays `ssrf_blocked` at both l
 | `http_protocol_error` | 1xx received, or malformed redirect (`no_location`/`loop`) | §3 terminal-reason handling |
 | `redirect_over_budget` | `terminal_redirect_reason = over_budget` | §3 engine exhaustion rule |
 | `transport_fail` | DNS/connect/TLS/timeout/reset/chunk (`transport_error_kind` set); never with a `safety_block_reason` | §4 network row |
-| `unreachable_local` | under `safety_level = crawler` only: an address-class refusal (`safety_block_reason` kept; no connection made; §3a) | §4 `unreachable_local` row (same cells as the network row) |
+| `unreachable_local` | not emitted yet (ROBO-jqwukcog). Under `safety_level = crawler` only: an address-class refusal (`safety_block_reason` kept; no connection made; §3a) | §4 `unreachable_local` row (same cells as the network row) |
 | `safety_refused` | under `safety_level = strict`: any ssrfr refusal incl. HTTPS→HTTP downgrade; under `crawler`: URL-shape refusals only (`scheme`, `userinfo`, `port`, `parse`, `numeric-literal`, `malformed-address`) | never allow/deny; §3a (ADR 0001); sitemapr ADR-003 governs the guard |
 | `not_applicable` | no robots evaluation applies (no body and no status to interpret) | `policy_status` / `matcher_status` = `not_evaluated`; `url_decision` absent |
 
@@ -155,7 +155,7 @@ documented possibilities), never a fabricated single verdict. `partial` (206) re
 | 429 | `allow_all` `[application_choice]` (429 lies within RFC §2.3.1.3's 400–499 example range; this ruleset elects to treat it as unavailable) | excluded from 4xx; robots destination not documented `[documentation_gap]` | non-200 → allow_all `[documented]` | `[documentation_gap]` |
 | 5xx | MUST complete disallow, subject to cache/duration (§2.3.1.4/2.4) → `context_required` `[documented]` | stateful lifecycle (12h / 30d last-good / post-30d availability) → `context_required` `[documented]` | non-200 → allow_all `[documented]` | `[documentation_gap]` |
 | network / DNS / timeout | = unreachable → MUST disallow, subject to cache/duration → `context_required` `[documented]` | = server error (same stateful lifecycle) → `context_required` `[documented]` | `[documentation_gap]` (accessibility is a file requirement; retry/cache not enumerated) | `[documentation_gap]` |
-| `unreachable_local` (`crawler` only; §3a) | = unreachable → MUST disallow, subject to cache/duration → `context_required` `[documented]` | = server error (same stateful lifecycle) → `context_required` `[documented]` | `[documentation_gap]` (accessibility is a file requirement; retry/cache not enumerated) | `[documentation_gap]` |
+| `unreachable_local` (`crawler` only, not emitted yet; §3a) | = unreachable → MUST disallow, subject to cache/duration → `context_required` `[documented]` | = server error (same stateful lifecycle) → `context_required` `[documented]` | `[documentation_gap]` (accessibility is a file requirement; retry/cache not enumerated) | `[documentation_gap]` |
 
 **Non-robots advisory (`advisory`, never a verdict):** Yandex ignores `Retry-After` on 429 and
 sustained 429 lowers host crawl-rate; Yandex recommends 503 to protect ordinary *pages* during

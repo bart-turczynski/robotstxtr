@@ -26,7 +26,8 @@ The return class is `robots_engine_decisions_v1`, a list with:
 
 - `results`: one row per requested URL, in input order;
 - `evidence`: one row per acquired or supplied robots source, with list columns
-  for ordered redirect hops and exact stored body bytes;
+  for the reopened address ranges, ordered redirect hops and exact stored body
+  bytes;
 - `contract`: the value returned by `robots_engine_contract_v1()`.
 
 Each result expands and persists the ruleset, ruleset revision, matcher backend,
@@ -53,9 +54,11 @@ are defined in [`engine-profiles.md`](engine-profiles.md) §3a.
 
 The evidence frame gains two columns. `safety_level` (character) is the level a
 source was fetched under. `fetch_allow_ranges` (a list column) holds the CIDR
-ranges the fetch reopened, `character()` on every fetched row until that
-argument lands. Both are `NA` (`NA_character_` in the list cell) on a row with
-no acquisition, a supplied body. `https_downgrade_guard` is
+ranges the caller passed in that argument, `character()` on every fetched row
+until it lands; a deprecated `ssrf_guard = FALSE`, which reopens every range,
+is recorded in `ssrf_guard`, not here. Both are `NA` on a row with no
+acquisition, a supplied body: there the list cell is `NA_character_`, length
+one, so tell a supplied row by `source_kind`, not by `lengths()`. `https_downgrade_guard` is
 `safety_level == "strict"` on a fetched row, so `TRUE` as before, and stays
 `NA` where no acquisition was configured. The result columns and the legacy
 frames are unchanged.

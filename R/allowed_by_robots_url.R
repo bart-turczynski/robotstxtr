@@ -112,7 +112,7 @@ allowed_by_robots_url <- function(url, user_agent, timeout = 10,
   validate_fetch_user_agent(fetch_user_agent)
   max_bytes_int <- validate_max_bytes(max_bytes)
   validate_ssrf_guard(ssrf_guard)
-  validate_safety_level(safety_level)
+  safety_level <- validate_safety_level(safety_level)
 
   # --- Per-row eligibility (PRD 6.6). A URL is invalid when missing, empty,
   # malformed, or non-HTTP(S): robots_origin() returns NA for exactly those (it
