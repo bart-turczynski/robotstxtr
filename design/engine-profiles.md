@@ -176,6 +176,54 @@ Selected **before** path matching; a capability + ruleset revision, not a contex
 - `yandex` — specific Yandex robot entry > `Yandex` > `*`. (Yandex, User-agent)
 - `bing` — `bingbot` > `msnbot` > `*`, discarding others. (Bing, "To crawl or not to crawl", 2012)
 
+### 5a. Google crawler-token fallback (ROBO-mxsphtoo; pages read 2026-11-09)
+
+Question: does a Google crawler token with no group of its own (`Googlebot-Image`) fall back to a
+parent token's group (`Googlebot`) before `*`, and should the `google` matcher model it?
+
+**What the vendored matcher does.** `src/matcher_binding.cpp` calls
+`RobotsMatcher::OneAgentAllowedByRobots`, which wraps the token in a one-element vector and calls
+`AllowedByRobots`. `HandleUserAgent` sets `ever_seen_specific_agent_` only for a `User-agent` value
+equal (ASCII case-insensitive, after `ExtractUserAgent` keeps `[a-zA-Z_-]`) to a caller token, and
+`disallow()` reads the `*` rules only when no such group was seen. So `Googlebot-Image` obeys a
+`Googlebot-Image` group, else `*`, never `Googlebot` `[application_choice]` (the binding; pinned by
+`tests/testthat/test-token-fallback-mxsphtoo.R`). The multi-agent `AllowedByRobots(body,
+&user_agents, url)` is not an ordered fallback: every listed token's groups count as one specific
+group, their rules compete by longest match, and `*` is dropped if any token was named (`robots.h`:
+"allowed to be fetched by any member"). Passing `{Googlebot-Image, Googlebot}` would merge the two
+groups, not prefer the first.
+
+**What Google documents.**
+
+| Token(s) | Group followed when the token has no group of its own | Tag | Source |
+|---|---|---|---|
+| any Google crawler not named by a group (spec example: `Storebot-Google`) | `*` ("Other Google crawlers follow group 2", group 2 being `*`) | `[documented]` | robots.txt spec, order of precedence |
+| `Googlebot-Image`, `Googlebot-Video`, `Googlebot-News`, `Storebot-Google`, `Google-InspectionTool`, `GoogleOther`, `GoogleOther-Image`, `GoogleOther-Video`, `Google-CloudVertexBot`, `Google-Extended` | each row lists one token only; no fallback to `Googlebot` or `GoogleOther` is stated | `[documentation_gap]` | common crawlers |
+| crawlers with several tokens | "you need to match only one crawler token for a rule to apply"; precedence among a crawler's own tokens is not stated | `[documentation_gap]` | common crawlers |
+| Google Favicon (retired): `Googlebot-Image`, `Googlebot` | listed with both tokens, so a `Googlebot` group reached it | `[documented]` (historical) | special-case crawlers, retired |
+| AdsBot-Google-Mobile-Apps (retired) | "obeyed AdsBot-Google robots rules", ignored `*` | `[documented]` (historical) | special-case crawlers, retired |
+| `AdsBot-Google`, `AdsBot-Google-Mobile`, `Mediapartners-Google`, `APIs-Google` | own group only; "The global user agent (`*`) is ignored" | `[documented]` | special-case crawlers |
+| user-triggered fetchers | no robots token; they "generally ignore robots.txt rules" | `[documented]` | user-triggered fetchers |
+
+The crawler overview page states no fallback rule. The premise that current Google documentation
+sends active crawlers such as `Googlebot-Image` to `Googlebot` rules is **not confirmed** by the
+pages as read: the only parent-token cases are retired crawlers, and the spec's own example sends an
+unnamed Google crawler to `*`. Current guidance supersedes historical (ADR-009 §0). The `*`-ignoring
+special-case crawlers are a related gap the single-agent binding also does not model: given a
+token with no group, it falls back to `*`.
+
+**Recommendation (for the maintainer; not a decision): document only.** Keep the single-agent
+binding and state in the matcher docs that a token obeys its own group, else `*`, with no
+parent-token fallback. Reasons: (1) no current Google page documents a fallback order, so a token
+map would be an `inferred` cell presented as executable; (2) the multi-agent entry point merges
+groups instead of preferring one, so feeding it a map would itself diverge from any precedence
+reading; a faithful fallback would need a second call keyed on `ever_seen_specific_agent()`, which
+is new binding code; (3) `token_policy = arbitrary_valid` (§6) already says the result is Google's
+matching for the token, never a prediction of the named crawler; (4) a caller who wants the old
+Favicon-style behavior can query `Googlebot` itself. Modeling a fallback, or the `*`-ignoring
+AdsBot family, would change matcher behavior and the published contract, and needs a decision
+issue first.
+
 ## 6. Matcher capability availability
 
 `robots_policy_ruleset` (§4) is pure data and always available. `matcher_backend` is separate:
@@ -249,7 +297,18 @@ spec is accepted; ADR-009 §3 (safety precedence) and §6 (findings encoding) go
   + caching), §2.5 (≥500 KiB min capacity).
 - **Google** — https://developers.google.com/crawling/docs/robots-txt/robots-txt-spec : status
   handling (2xx/3xx/4xx-except-429/5xx), file format (500 KiB prefix; BOM), URL matching & precedence,
-  order of precedence for user agents.
+  order of precedence for user agents (read again 2026-11-09 for §5a).
+- **Google crawlers (§5a, all read 2026-11-09)** —
+  https://developers.google.com/crawling/docs/crawlers-fetchers/overview-google-crawlers (no fallback
+  rule stated);
+  https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers (one token per
+  row; "match only one crawler token");
+  https://developers.google.com/crawling/docs/crawlers-fetchers/google-special-case-crawlers (`*`
+  ignored by AdsBot family; retired Favicon and Mobile-Apps rows);
+  https://developers.google.com/crawling/docs/crawlers-fetchers/google-user-triggered-fetchers
+  (fetchers ignore robots.txt). Vendored code: `src/robots.h` / `src/robots.cc`
+  (`AllowedByRobots`, `OneAgentAllowedByRobots`, `HandleUserAgent`, `disallow`),
+  `src/matcher_binding.cpp`.
 - **Yandex** —
   https://yandex.com/support/webmaster/en/controlling-robot/robots-txt (200 required, cross-site
   redirect, open fallback, 500 KB, Cyrillic, case);
