@@ -69,7 +69,8 @@ test_that("malformed, unknown, and unsupported active lines are distinct", {
   expect_identical(x$documents$unsupported_directives, 1L)
   expect_setequal(
     x$diagnostics$code,
-    c("malformed_line", "unknown_directive", "unsupported_directive")
+    c("malformed_line", "unknown_directive", "unsupported_directive",
+      "no_rules")
   )
   expect_identical(
     x$diagnostics$raw_text[x$diagnostics$code == "malformed_line"],
@@ -215,8 +216,17 @@ test_that("an empty document is validated, not skipped", {
   expect_identical(x$documents$nul_byte_count, 0L)
   expect_identical(x$documents$encoding, "utf-8")
   expect_false(x$documents$final_newline)
-  expect_identical(x$documents$validation_status, "error")
-  expect_identical(x$diagnostics$code, "missing_user_agent")
+  # No rules restrict nothing: an info, not an error (ROBO-vxrzcqpe).
+  expect_identical(x$documents$validation_status, "valid")
+  expect_identical(x$diagnostics$code, "no_rules")
+  expect_identical(x$diagnostics$severity, "info")
+  expect_identical(
+    x$diagnostics$message,
+    paste0("Document has no Allow or Disallow rules, so it places no ",
+           "restrictions on crawling.")
+  )
+  expect_identical(x$documents$error_count, 0L)
+  expect_identical(x$documents$diagnostic_count, 1L)
   expect_identical(split_validation_lines(raw()), list())
 })
 

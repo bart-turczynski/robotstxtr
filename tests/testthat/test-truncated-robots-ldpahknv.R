@@ -320,9 +320,8 @@ test_that("ROBO-ldpahknv: a cut body with no line break has no rules", {
   v <- robots_validate_url("http://a/", max_bytes = 20L)
   expect_identical(v$documents$line_count, 0L)
   expect_identical(v$documents$byte_size, 20L)
-  expect_setequal(
-    v$diagnostics$code, c("missing_user_agent", "body_truncated")
-  )
+  # No rule was read, but the cut hides whether any exist (ROBO-vxrzcqpe).
+  expect_setequal(v$diagnostics$code, "body_truncated")
 })
 
 test_that("ROBO-ldpahknv: complete_lines_prefix() keeps up to the last break", {

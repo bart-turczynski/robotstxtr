@@ -30,7 +30,8 @@ validation_unsupported <- c(
 #' `documents` (one summary row per document), and `diagnostics` (zero or more
 #' findings). Diagnostic severities are `"info"`, `"warning"`, and `"error"`;
 #' document statuses are `"valid"`, `"warning"`, `"error"`, and
-#' `"not_validated"`.
+#' `"not_validated"`. An info never changes the status, so a document whose
+#' only finding is `no_rules` is `"valid"`.
 #'
 #' @section Diagnostic codes:
 #' Every `code` the validator emits, by the order a document is read. The
@@ -80,7 +81,12 @@ validation_unsupported <- c(
 #'   \code{unsupported_sitemap_scheme} \tab warning \tab
 #'     A Sitemap scheme other than \code{http}, \code{https} or \code{ftp}. \cr
 #'   \code{missing_user_agent} \tab error \tab
-#'     The document has no non-empty User-agent line. \cr
+#'     Allow or Disallow rules exist but no line names a non-empty
+#'     User-agent. \cr
+#'   \code{no_rules} \tab info \tab
+#'     The parser read no Allow or Disallow rule, so the document restricts
+#'     nothing.
+#'     Not reported for a body cut at \code{max_bytes}. \cr
 #'   \code{body_truncated} \tab warning \tab
 #'     The body exceeded \code{max_bytes}; only lines before the cut were read.
 #'     \cr
@@ -483,10 +489,22 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     }
   }
 
-  if (nonempty_user_agents == 0L) {
+  # A file with no Allow or Disallow line restricts nothing (RFC 9309
+  # section 2.2.1), so a missing User-agent is an error only when rules need
+  # one (ROBO-vxrzcqpe). An empty or typo'd rule line still counts. A cut
+  # body is not called rule-free: its rules may lie past the cut.
+  rule_count <- sum(parsed$type %in% c("allow", "disallow"))
+  if (nonempty_user_agents == 0L && rule_count > 0L) {
     add_diagnostic(
       NA_integer_, "error", "missing_user_agent", "user-agent",
       "Document has no non-empty User-agent directive."
+    )
+  }
+  if (rule_count == 0L && !body_truncated) {
+    add_diagnostic(
+      NA_integer_, "info", "no_rules", NA_character_,
+      paste0("Document has no Allow or Disallow rules, so it places no ",
+             "restrictions on crawling.")
     )
   }
   if (body_truncated) {
