@@ -84,10 +84,16 @@ Exit status: 0 for a valid run, 2 for a refusal, 3 for an invalid run.
   differently), and when a chunk both runs hold names different host
   directories or file ids in each (a different listing behind a `--subset`
   run, or a `--max-hosts` cut mid-chunk: compare a `--max-hosts` run with a
-  fuller one only when N is a multiple of `--chunk-size`). It then diffs the
-  result tables at `identical()` level, prints
+  fuller one only when N is a multiple of `--chunk-size`). It also refuses a
+  run that is not `finished`, and two runs that differ in a parameter, in the
+  evaluation grid (`combos.rds`), in the random or fixed path sets (their
+  sha256), in the token list or in the size targets. The harness and package
+  trees of each run are recorded in the compare record, not checked. It then
+  diffs the result tables at `identical()` level, prints
   the count of differing rows per table and writes the detail to its own run
-  directory (`compare-summary.rds`, `compare-detail.rds`).
+  directory (`compare-summary.rds`, `compare-detail.rds`). The verdict is
+  `DIFFERENT` when any row differs, and when a full run lacks a shard the
+  other run holds; a `--subset` or `--max-hosts` run may lack shards.
 
 ## The run directory
 

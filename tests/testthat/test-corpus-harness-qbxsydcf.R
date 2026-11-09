@@ -294,6 +294,43 @@ local_corpus <- function(env = parent.frame(), hosts = c("a.test", "b.test"),
   root
 }
 
+fake_manifest <- function() {
+  data.frame(
+    file_id = 1:2, host = c("a.test", "b.test"), chunk = c(1L, 1L),
+    has_rds = TRUE, rds_sha256 = c("1", "2"), rds_bytes = c(1L, 1L),
+    stringsAsFactors = FALSE
+  )
+}
+
+# A finished run directory under `out` with one identical files shard per
+# chunk; `params` overrides the defaults.
+fake_run <- function(out, id, status = "finished", params = list(),
+                     chunks = 1L, manifest = fake_manifest(), combos = NULL) {
+  dir.create(file.path(out, id, "shards"), recursive = TRUE)
+  p <- list(
+    mode = "validate", seed = 1L, chunk_size = 1L, max_rule_paths = 1L,
+    random_paths = 1L, subset = NA_character_, max_hosts = NA_integer_
+  )
+  p[names(params)] <- params
+  saveRDS(list(run_id = id, status = status, params = p),
+          file.path(out, id, "record.rds"))
+  for (ch in chunks) {
+    saveRDS(data.frame(x = 1L),
+            file.path(out, id, "shards", sprintf("files-%05d.rds", ch)))
+  }
+  saveRDS(manifest, file.path(out, id, "manifest.rds"))
+  if (!is.null(combos)) {
+    saveRDS(combos, file.path(out, id, "combos.rds"))
+  }
+  invisible(file.path(out, id))
+}
+
+compare_ctx <- function(out, a = "ra", b = "rb") {
+  run_dir <- tempfile("cmp-", tmpdir = out)
+  dir.create(run_dir)
+  list(out = out, run_dir = run_dir, opts = list(a = a, b = b))
+}
+
 plan_opts <- function(chunk_size = 2L, subset = NA_character_,
                       max_hosts = NA_integer_) {
   list(chunk_size = chunk_size, subset = subset, max_hosts = max_hosts)
@@ -463,11 +500,7 @@ test_that("a corrupt compressed robots.rds is recorded unreadable", {
 
 test_that("comparing runs with different input sets fails before diffing", {
   h <- load_harness()
-  m <- data.frame(
-    file_id = 1:2, host = c("a.test", "b.test"), chunk = c(1L, 1L),
-    has_rds = TRUE, rds_sha256 = c("1", "2"), rds_bytes = c(1L, 1L),
-    stringsAsFactors = FALSE
-  )
+  m <- fake_manifest()
   expect_true(h$check_input_sets(m, m, FALSE, FALSE))
   m2 <- m
   m2$rds_sha256[[2L]] <- "3"
@@ -483,25 +516,84 @@ test_that("comparing runs with different input sets fails before diffing", {
 
   # Through the compare mode: identical result shards, different manifests.
   out <- local_test_dir()
-  for (id in c("ra", "rb")) {
-    dir.create(file.path(out, id, "shards"), recursive = TRUE)
-    saveRDS(
-      list(run_id = id, status = "finished", params = list(
-        mode = "validate", seed = 1L, chunk_size = 1L, max_rule_paths = 1L,
-        random_paths = 1L, subset = NA_character_, max_hosts = NA_integer_
-      )),
-      file.path(out, id, "record.rds")
-    )
-    saveRDS(data.frame(x = 1L), file.path(out, id, "shards", "files-00001.rds"))
-  }
-  saveRDS(m, file.path(out, "ra", "manifest.rds"))
-  saveRDS(m2, file.path(out, "rb", "manifest.rds"))
-  ctx <- list(out = out, run_dir = file.path(out, "cmp"),
-              opts = list(a = "ra", b = "rb"))
-  dir.create(ctx$run_dir)
+  fake_run(out, "ra", manifest = m)
+  fake_run(out, "rb", manifest = m2)
+  ctx <- compare_ctx(out)
   expect_refusal(h$mode_compare(ctx), "different input")
   expect_false(file.exists(file.path(ctx$run_dir, "compare-summary.rds")))
   saveRDS(m, file.path(out, "rb", "manifest.rds"))
   res <- h$mode_compare(ctx)
   expect_true(res$identical)
+})
+
+test_that("compare refuses runs that are unfinished, invalid or unlike", {
+  h <- load_harness()
+  out <- local_test_dir()
+  fake_run(out, "ok")
+  fake_run(out, "running", status = "running")
+  fake_run(out, "invalid", status = "invalid")
+  for (bad in c("running", "invalid")) {
+    expect_refusal(
+      h$mode_compare(compare_ctx(out, "ok", bad)), "not a valid finished",
+      info = bad
+    )
+  }
+  fake_run(out, "seed", params = list(seed = 2L))
+  expect_refusal(h$mode_compare(compare_ctx(out, "ok", "seed")), "seed")
+  fake_run(out, "cmp-run", params = list(mode = "compare"))
+  expect_refusal(
+    h$mode_compare(compare_ctx(out, "cmp-run", "cmp-run")), "compare run"
+  )
+
+  # The grid and the path sets: what a combo id or a path id means.
+  grid <- list(params = list(
+    mode = "evaluate", combos = 2L, random_paths_sha256 = "r",
+    fixed_paths_sha256 = "f", tokens = c("*", "x"), size_targets = 1:3
+  ))
+  combos <- list(combos = data.frame(
+    combo_id = 1:2, ruleset = "r", backend = "b", token = c("*", "x"),
+    stringsAsFactors = FALSE
+  ))
+  fake_run(out, "e1", params = grid$params, combos = combos)
+  fake_run(out, "e2", params = grid$params, combos = combos)
+  expect_true(h$mode_compare(compare_ctx(out, "e1", "e2"))$identical)
+  for (fact in c("random_paths_sha256", "fixed_paths_sha256", "tokens",
+                 "size_targets")) {
+    p <- grid$params
+    p[[fact]] <- c(p[[fact]], p[[fact]][[1L]])
+    fake_run(out, fact, params = p, combos = combos)
+    expect_refusal(
+      h$mode_compare(compare_ctx(out, "e1", fact)), fact, info = fact
+    )
+  }
+  swapped <- combos
+  swapped$combos$token <- c("x", "*")
+  fake_run(out, "swapped", params = grid$params, combos = swapped)
+  expect_refusal(
+    h$mode_compare(compare_ctx(out, "e1", "swapped")), "evaluation grid"
+  )
+  fake_run(out, "no-grid", params = grid$params)
+  expect_refusal(
+    h$mode_compare(compare_ctx(out, "e1", "no-grid")), "evaluation grid"
+  )
+})
+
+test_that("a shard only one full run holds makes the runs different", {
+  h <- load_harness()
+  out <- local_test_dir()
+  fake_run(out, "full", chunks = 1:2)
+  fake_run(out, "short", chunks = 1L)
+  res <- h$mode_compare(compare_ctx(out, "full", "short"))
+  expect_false(res$identical)
+  expect_true(res$unmatched_shards)
+  expect_identical(res$summary$shards_only_a, 1L)
+  expect_false(h$mode_compare(compare_ctx(out, "short", "full"))$identical)
+  # A partial run is expected to lack shards the full run holds ...
+  fake_run(out, "part", chunks = 1L, params = list(subset = "1/2"))
+  expect_true(h$mode_compare(compare_ctx(out, "full", "part"))$identical)
+  # ... but not to hold one the full run lacks.
+  fake_run(out, "part-extra", chunks = 1:2, params = list(subset = "1/2"))
+  expect_false(
+    h$mode_compare(compare_ctx(out, "short", "part-extra"))$identical
+  )
 })

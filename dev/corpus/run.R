@@ -164,6 +164,12 @@ harness_main <- function(args) {
     shown <- c("table", "shards_compared", "shards_only_a", "shards_only_b",
                "rows_differing")
     print(record$compare$summary[, shown], row.names = FALSE)
+    if (record$compare$unmatched_shards) {
+      message("A full run lacks shards the other run holds.")
+    }
+    if (!record$compare$harness_same) {
+      message("NOTE: the two runs came from different harness trees.")
+    }
     message(if (record$compare$identical) "IDENTICAL" else "DIFFERENT")
   } else if (invalid) {
     message(

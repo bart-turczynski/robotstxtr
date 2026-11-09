@@ -380,6 +380,59 @@ comparable_params <- function() {
     "size_rule_paths", "large_bytes")
 }
 
+# What the evaluate and size modes record about their grid and path sets:
+# two runs that differ here give results whose combo ids or path ids mean
+# different things.
+comparable_facts <- function() {
+  c("combos", "random_paths_sha256", "fixed_paths_sha256", "tokens",
+    "size_targets")
+}
+
+# The evaluation grid of a run (combos.rds), or NULL for a mode without one.
+read_combos <- function(run_dir) {
+  path <- file.path(run_dir, "combos.rds")
+  if (!file.exists(path)) {
+    return(NULL)
+  }
+  x <- readRDS(path)
+  list(combos = x$combos, size_combos = x$size_combos)
+}
+
+# Refuse two runs that cannot be compared: either one unfinished or invalid,
+# a compare run, or a difference in the parameters, the grid or the path
+# sets.
+check_comparable_runs <- function(ra, rb, dir_a, dir_b) {
+  for (r in list(ra, rb)) {
+    if (!identical(r$status, "finished")) {
+      harness_refuse(paste0("Run ", r$run_id, " is not a valid finished run."))
+    }
+  }
+  if (identical(ra$params$mode, "compare") ||
+        identical(rb$params$mode, "compare")) {
+    harness_refuse("A compare run holds no results to compare.")
+  }
+  for (p in comparable_params()) {
+    if (!identical(ra$params[[p]], rb$params[[p]])) {
+      harness_refuse(paste0("The runs differ in parameter ", p, "."))
+    }
+  }
+  for (p in comparable_facts()) {
+    if (!identical(ra$params[[p]], rb$params[[p]])) {
+      harness_refuse(paste0(
+        "The runs differ in ", p, ": their evaluation grids or path sets ",
+        "are not the same."
+      ))
+    }
+  }
+  if (!identical(read_combos(dir_a), read_combos(dir_b))) {
+    harness_refuse(paste0(
+      "The runs differ in their evaluation grid (combos.rds): a combo id ",
+      "names different combinations in each."
+    ))
+  }
+  invisible(TRUE)
+}
+
 mode_compare <- function(ctx, detail_cap = 1000L) {
   dir_a <- file.path(ctx$out, ctx$opts$a)
   dir_b <- file.path(ctx$out, ctx$opts$b)
@@ -389,16 +442,7 @@ mode_compare <- function(ctx, detail_cap = 1000L) {
   }
   ra <- readRDS(rec_path(dir_a))
   rb <- readRDS(rec_path(dir_b))
-  for (p in comparable_params()) {
-    if (!identical(ra$params[[p]], rb$params[[p]])) {
-      harness_refuse(paste0("The runs differ in parameter ", p, "."))
-    }
-  }
-  for (r in list(ra, rb)) {
-    if (!identical(r$status, "finished")) {
-      harness_refuse(paste0("Run ", r$run_id, " is not a valid finished run."))
-    }
-  }
+  check_comparable_runs(ra, rb, dir_a, dir_b)
   partial_a <- is_partial_run(ra$params)
   partial_b <- is_partial_run(rb$params)
   # Inputs first: no result is diffed across two different input sets, nor
@@ -448,11 +492,22 @@ mode_compare <- function(ctx, detail_cap = 1000L) {
   saveRDS(summary, file.path(ctx$run_dir, "compare-summary.rds"))
   saveRDS(detail, file.path(ctx$run_dir, "compare-detail.rds"),
           compress = "xz")
+  # A full run holds every shard of the corpus, so a shard the other run has
+  # and it lacks is a difference; a partial run is expected to lack some.
+  unmatched <- (!partial_b && sum(summary$shards_only_a) > 0) ||
+    (!partial_a && sum(summary$shards_only_b) > 0)
   list(
     a = ctx$opts$a, b = ctx$opts$b,
     manifest_a = ra$manifest$start_hash,
     manifest_b = rb$manifest$start_hash,
-    identical = sum(summary$rows_differing) == 0,
+    # Recorded, not checked: the trees that produced each run.
+    harness_a = ra$harness, harness_b = rb$harness,
+    package_a = ra$package, package_b = rb$package,
+    harness_same = identical(
+      ra$harness$harness_tree, rb$harness$harness_tree
+    ),
+    unmatched_shards = unmatched,
+    identical = sum(summary$rows_differing) == 0 && !unmatched,
     summary = summary
   )
 }
