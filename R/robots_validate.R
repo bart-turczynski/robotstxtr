@@ -144,7 +144,9 @@ validation_unsupported <- c(
 #' `*` and named crawlers are kept apart, and a rule is reported only when
 #' every crawler its group names already has it from an earlier line. Empty
 #' values and patterns that never match are skipped, and a body cut at
-#' `max_bytes` is checked too.
+#' `max_bytes` is checked too. A group's only Allow or Disallow line is not
+#' reported when a User-agent line follows it: that line keeps the next
+#' User-agent line from joining its group.
 #'
 #' A document holding a NUL byte gets none of `wildcard_rules_not_inherited`,
 #' `disallow_tied_by_allow` or `duplicate_rule`, because the parser stops a
@@ -923,12 +925,20 @@ validation_token_expander <- function(groups) {
 # group names, an earlier line in a group naming that token holds a rule of
 # the same type and byte-identical canonical value (no `*` or `$` stripping:
 # `rules$key` is not used, so `/x` and `/x*` differ). Empty values, patterns
-# not led by `/` or `*` and groups naming no token are skipped. Returns a
-# data frame of `line`, `type`, `first_line` and `message`, in line order;
-# `first_line` is the smallest line among each token's first identical rule.
+# not led by `/` or `*`, groups naming no token, and a group's only rule
+# line when a User-agent line follows it are skipped. Returns a data frame
+# of `line`, `type` and `message`, in line order; the message names the
+# smallest line among each token's first identical rule.
 duplicate_rule_diagnostics <- function(groups) {
   expand <- validation_token_expander(groups)
   rules <- groups$rules
+  # Any rule line, empty or not, ends its group. A group's only rule line
+  # keeps the next User-agent line from joining it, so it is not reported
+  # when a User-agent line follows it: deleting it would merge the groups.
+  rule_lines <- tabulate(match(rules$group, groups$groups$group),
+                         nrow(groups$groups))
+  rules$sole <- rule_lines[match(rules$group, groups$groups$group)] == 1L &
+    rules$line < max(groups$agents$line, -Inf)
   rules <- rules[substr(rules$value, 1L, 1L) %in% c("/", "*"), , drop = FALSE]
   by_rule <- expand(rules$group)
   owner <- by_rule$owner
@@ -936,7 +946,7 @@ duplicate_rule_diagnostics <- function(groups) {
                sep = "\n")
   # Rows are in file order, so a key's first row has its smallest line.
   first <- rules$line[owner[match(key, key)]]
-  uncovered <- unique(owner[first == rules$line[owner]])
+  uncovered <- unique(owner[first == rules$line[owner] | rules$sole[owner]])
   covered <- !owner %in% uncovered
   owner <- owner[covered]
   first <- first[covered]
@@ -949,15 +959,12 @@ duplicate_rule_diagnostics <- function(groups) {
 
   type <- rules$type[owner]
   message <- sprintf(
-    paste0(
-      "Rule has no effect: line %d already has the same %s for the same ",
-      "crawlers."
-    ),
+    "Rule has no effect: line %d already has the same %s.",
     first, ifelse(type == "allow", "Allow", "Disallow")
   )
   data.frame(
-    line = rules$line[owner], type = type, first_line = first,
-    message = message, stringsAsFactors = FALSE
+    line = rules$line[owner], type = type, message = message,
+    stringsAsFactors = FALSE
   )
 }
 

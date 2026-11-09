@@ -153,7 +153,9 @@ value are byte-identical, as for \code{disallow_tied_by_allow}, so \verb{/x} and
 \code{*} and named crawlers are kept apart, and a rule is reported only when
 every crawler its group names already has it from an earlier line. Empty
 values and patterns that never match are skipped, and a body cut at
-\code{max_bytes} is checked too.
+\code{max_bytes} is checked too. A group's only Allow or Disallow line is not
+reported when a User-agent line follows it: that line keeps the next
+User-agent line from joining its group.
 
 A document holding a NUL byte gets none of \code{wildcard_rules_not_inherited},
 \code{disallow_tied_by_allow} or \code{duplicate_rule}, because the parser stops a

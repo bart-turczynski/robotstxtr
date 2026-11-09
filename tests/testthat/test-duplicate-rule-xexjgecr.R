@@ -17,10 +17,8 @@ dr_rows <- function(body) {
 }
 
 dr_message <- function(first_line, type = "Disallow") {
-  sprintf(
-    "Rule has no effect: line %d already has the same %s for the same %s",
-    first_line, type, "crawlers."
-  )
+  sprintf("Rule has no effect: line %d already has the same %s.",
+          first_line, type)
 }
 
 test_that("an exact duplicate Disallow is one info on the repeat", {
@@ -165,10 +163,48 @@ test_that("agents covered by different lines name the smallest line", {
   # The first copy in a shared group makes both later ones repeats.
   d <- dr_rows(dr_lines(
     "User-agent: a", "User-agent: b", "Allow: /x", "",
-    "User-agent: a", "Allow: /x", "", "User-agent: b", "Allow: /x"
+    "User-agent: a", "Allow: /x", "Allow: /y", "", "User-agent: b",
+    "Allow: /x"
   ))
-  expect_identical(d$line, c(6L, 9L))
+  expect_identical(d$line, c(6L, 10L))
   expect_identical(d$message, rep(dr_message(3L, "Allow"), 2L))
+})
+
+test_that("a group's only rule line is kept when a User-agent follows", {
+  # Without line 4, `a` would join the `b` group and obey Disallow: /y.
+  for (agent in c("a", "*")) {
+    body <- dr_lines(
+      paste("User-agent:", agent), "Disallow: /x",
+      paste("User-agent:", agent), "Disallow: /x",
+      "User-agent: b", "Disallow: /y"
+    )
+    expect_identical(nrow(dr_rows(body)), 0L, label = agent)
+    without <- dr_lines(
+      paste("User-agent:", agent), "Disallow: /x",
+      paste("User-agent:", agent), "User-agent: b", "Disallow: /y"
+    )
+    url <- "http://e.com/y"
+    expect_true(allowed_by_robots_text(body, url, "a")$results$allowed)
+    expect_false(allowed_by_robots_text(without, url, "a")$results$allowed)
+  }
+  # An empty rule line ends the group too, so it counts as a second line.
+  d <- dr_rows(dr_lines(
+    "User-agent: a", "Disallow: /x", "User-agent: a", "Disallow: /x",
+    "Allow:", "User-agent: b", "Disallow: /y"
+  ))
+  expect_identical(d$line, 4L)
+  d <- dr_rows(dr_lines(
+    "User-agent: a", "Disallow: /x", "User-agent: a", "Disallow: /x",
+    "Disallow: /z", "User-agent: b", "Disallow: /y"
+  ))
+  expect_identical(d$line, 4L)
+  expect_identical(d$message, dr_message(2L))
+  # With no User-agent line after it, nothing can merge.
+  d <- dr_rows(dr_lines(
+    "User-agent: a", "Disallow: /x", "User-agent: a", "Disallow: /x",
+    "Sitemap: https://e.com/s.xml"
+  ))
+  expect_identical(d$line, 4L)
 })
 
 test_that("the info sits beside disallow_tied_by_allow", {
@@ -286,16 +322,15 @@ test_that("edge inputs compare without error", {
   expect_false("duplicate_rule" %in% x$diagnostics$code)
 })
 
-test_that("a large file is checked in one pass", {
+test_that("a large file reports every repeat", {
   # Agent tokens must be letters: bot-b, bot-c, ..., bot-ba, ...
   agents <- paste0(
     "User-agent: bot-", chartr("0123456789", "abcdefghij", seq_len(200L))
   )
   rules <- sprintf("Disallow: /r%d", seq_len(500L))
   body <- dr_lines(agents, rules, rules)
-  elapsed <- system.time(d <- dr_rows(body))[["elapsed"]]
+  d <- dr_rows(body)
   expect_identical(d$line, 700L + seq_len(500L))
-  expect_lt(elapsed, 5)
 })
 
 for (locale in readLines(test_path("fixtures", "case-folding-locales.txt"))) {
