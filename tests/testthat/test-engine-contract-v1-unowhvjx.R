@@ -336,7 +336,7 @@ test_that("safety refusal never becomes an allow or deny", {
   expect_true(is.na(x$results$url_decision))
 })
 
-test_that("over-ceiling evidence is incomplete and never matched", {
+test_that("a small over-ceiling cut is incomplete and not matched", {
   local_fake_ssrfr(engine_mock_router(list(
     "http://example.test/robots.txt" = engine_response(
       200L, "user-agent: *\ndisallow: /"
@@ -351,7 +351,8 @@ test_that("over-ceiling evidence is incomplete and never matched", {
   expect_identical(x$evidence$termination_reason, "ceiling")
   expect_gt(x$evidence$observed_bytes, 8L)
   # ROBO-ldpahknv: the first max_bytes bytes are kept and marked truncated,
-  # but a cut body is still incomplete evidence and never matched.
+  # but a cut body is still incomplete evidence; google matches a cut only
+  # once it stored 512,000 bytes (ROBO-ptibdnvy), so this one is unmatched.
   expect_identical(x$evidence$stored_bytes, 8L)
   expect_true(x$evidence$body_present)
   expect_true(x$evidence$body_truncated)

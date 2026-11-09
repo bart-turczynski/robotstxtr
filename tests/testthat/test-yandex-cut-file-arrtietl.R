@@ -162,11 +162,12 @@ test_that("ROBO-arrtietl: a yandex 203 cut under 512,000 stays incomplete", {
 test_that("ROBO-arrtietl: other rulesets keep a cut body incomplete", {
   ac_serve()
   calls <- ac_forbid_matchers()
-  # google: ROBO-ptibdnvy gives it its own reading of the cut.
+  # google has its own reading of the cut (ROBO-ptibdnvy,
+  # test-google-cut-prefix-ptibdnvy.R).
   x <- robots_evaluate_url_v1(
-    rep(ac_url, 4L), "bot",
-    c("google", "rfc9309", "assumed_rfc9309", "bing"),
-    c("google", "rfc9309", "bing", "bing")
+    rep(ac_url, 3L), "bot",
+    c("rfc9309", "assumed_rfc9309", "bing"),
+    c("rfc9309", "bing", "bing")
   )
   expect_identical(x$evidence$evidence_status, "incomplete")
   expect_true(x$evidence$body_truncated)
@@ -256,7 +257,7 @@ test_that("ROBO-arrtietl: resolve_policy_v1() needs the cut flag", {
 })
 
 test_that("ROBO-arrtietl: resolve_policy_v1() under other rulesets", {
-  for (ruleset in c("google", "rfc9309", "assumed_rfc9309", "bing")) {
+  for (ruleset in c("rfc9309", "assumed_rfc9309", "bing")) {
     policy <- ac_resolve(ac_cut_ev(524288L), ruleset)
     expect_identical(policy$policy_status, "not_evaluated")
     expect_identical(policy$policy_reason, "incomplete_evidence")

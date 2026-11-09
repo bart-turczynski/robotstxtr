@@ -196,7 +196,10 @@ This token/semantics boundary is published as data on
 ## 7. Current policy/matcher limits (executable this release)
 
 These byte-level limits affect the current policy/matcher decision (not future-validator material):
-- `google`: **500 KiB**; content after the max is ignored and the **prefix is parsed** `[documented]`.
+- `google`: **500 KiB**; content after the max is ignored and the **prefix is parsed** `[documented]`:
+  the window is the first 512,000 bytes `[documented]`. Google does not document how it parses a line
+  the window or a cut at `max_bytes` splits; robotstxtr drops it and matches up to the last complete
+  line inside the window `[application_choice]` (the cautious reading, ROBO-ldpahknv, ROBO-phfbpfiy).
 - `rfc9309`: **≥500 KiB minimum parse capacity** — a floor, NOT a maximum or truncation mandate
   `[documented]`.
 - `yandex`: **500 KB** file (read as 500,000 bytes; the unit is not stated `[documentation_gap]`); a
@@ -208,8 +211,14 @@ These byte-level limits affect the current policy/matcher decision (not future-v
   `stored_bytes ≥ 512000` → `allow_all` `[documented]` (the file exceeds 500 KB under either reading of
   the unit; ROBO-arrtietl): a cut 200 takes the same rule and reason as a retained body over 500,000
   bytes, `yandex_file_over_500000_bytes`, and a cut non-200 2xx takes `non_200_allow_all` from §4, as
-  its uncut form does; under sitemapr ADR-009 §3 as amended. `yandex` below that size, `google`, `rfc9309`,
-  `assumed_rfc9309`, `bing` → `policy_status = not_evaluated` (`incomplete_evidence`). A 3xx, an unknown
+  its uncut form does; under sitemapr ADR-009 §3 as amended. `google` with the `google` matcher backend
+  and `stored_bytes ≥ 512000` →
+  the §4 cell of its uncut form, `use_rules` (`http_200_use_rules`, or `http_2xx_use_rules` for a non-200
+  2xx) `[documented]` (the cut holds the whole window; ROBO-ptibdnvy), matched on the complete lines of
+  its first 512,000 bytes with `matcher_body_truncated = TRUE`; under sitemapr ADR-011 §2. `yandex` and
+  `google` below that size, `google` with any other matcher backend (the reading is the google
+  matcher's), `rfc9309`, `assumed_rfc9309`, `bing` → `policy_status = not_evaluated`
+  (`incomplete_evidence`). A 3xx, an unknown
   status or a status mismatch over the limit is `body_too_large`, nothing stored, `incomplete` under
   every ruleset. A 4xx/5xx over the limit is classified by its status (§4).
 
@@ -230,7 +239,7 @@ prohibits Cyrillic, Punycode/%-encoding `[documented]`; Yandex UTF-8/BOM `[docum
 resolves to `NA`. Deltas vs this spec: (a) generic 4xx → `NA` diverges from documented
 `google`/`yandex` (allow_all); (b) 1xx → `http_error` conflates protocol with transport
 (`R/fetch-policy.R:88`); (c) oversized body discarded, not retained-prefix: closed for the legacy path by ROBO-ldpahknv,
-which retains and matches a 2xx prefix; the v1 ruleset reading is §7's (ADR 0001 slice 8). These are implementation slices, filed only after this
+which retains and matches a 2xx prefix; the v1 ruleset reading is §7's (ADR 0001 slices 8 and 9). These are implementation slices, filed only after this
 spec is accepted; ADR-009 §3 (safety precedence) and §6 (findings encoding) govern how they surface.
 
 ## 10. Sources (self-contained; per-section)

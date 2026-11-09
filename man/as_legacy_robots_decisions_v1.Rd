@@ -21,12 +21,16 @@ unknown exactly as in the original API.
 }
 \details{
 A source whose 2xx body was cut at \code{max_bytes} has
-\code{fetch_outcome = "fetched"} and \code{body_truncated = TRUE}, yet its rows are
-\code{allowed = NA} / \code{decision_source = "fetch_unknown"} with \code{NA} error
-fields: the v1 evidence of a cut body is \code{incomplete} and never matched,
-and the legacy \code{error_class} set has no class for a cut body (the v1
-result's \code{reason} is \code{"incomplete_evidence"}). \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}}
-matches the same prefix instead.
+\code{fetch_outcome = "fetched"} and \code{body_truncated = TRUE}. When it stored
+fewer than 512,000 bytes, its rows are \code{allowed = NA} /
+\code{decision_source = "fetch_unknown"} with \code{NA} error fields: the v1 evidence
+of a cut body is \code{incomplete}, the Google ruleset does not match a cut
+that misses part of its 512,000-byte window, and the legacy \code{error_class}
+set has no class for a cut body (the v1 result's \code{reason} is
+\code{"incomplete_evidence"}). When it stored 512,000 bytes or more, its rows
+are matched on the complete lines of the first 512,000 bytes and carry the
+match as \code{allowed} and \code{decision_source}, unlike \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}},
+which matches the complete lines of the whole stored prefix.
 }
 \examples{
 # Build a v1 engine result offline, then adapt it for a legacy consumer.
