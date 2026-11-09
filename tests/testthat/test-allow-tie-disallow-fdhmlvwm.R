@@ -215,22 +215,65 @@ test_that("a tie on an inner-dollar pattern keeps both warnings", {
   )
 })
 
-test_that("edge inputs compare without error", {
-  body <- c(charToRaw("User-agent: *\nAllow: /a\nDisallow: /a"), as.raw(0),
-            charToRaw("b\n"))
-  # The parser reads the value up to the NUL, as `/a`.
-  x <- robots_validate_text(body)
-  expect_identical(x$diagnostics$code, c("nul_byte", "disallow_tied_by_allow"))
-  expect_identical(x$diagnostics$line, c(3L, 3L))
+# The parser stops a value at a NUL; the matchers drop the NUL and read on,
+# so the group checks are skipped on any NUL.
+at_nul <- function(...) {
+  parts <- list(...)
+  out <- charToRaw(parts[[1L]])
+  for (part in parts[-1L]) {
+    out <- c(out, as.raw(0), charToRaw(part))
+  }
+  out
+}
 
+test_that("a NUL anywhere skips the tie check", {
+  for (body in list(
+    at_nul("User-agent: *\nAllow: /\nDisallow: /", "x\n"),
+    at_nul("User-agent: *\nAllow: /", "x\nDisallow: /\n"),
+    at_nul("User-agent: bot\nAllow: /x\n\nUser-agent: bot", "x\n",
+           "Disallow: /x\n"),
+    at_nul("User-agent: *\nAllow: /a\nDisallow: /a", "b\n")
+  )) {
+    x <- robots_validate_text(body)
+    expect_true("nul_byte" %in% x$diagnostics$code)
+    expect_false("disallow_tied_by_allow" %in% x$diagnostics$code)
+    expect_false("wildcard_rules_not_inherited" %in% x$diagnostics$code)
+  }
+})
+
+test_that("a NUL in a User-agent skips wildcard_rules_not_inherited", {
+  # Without the NUL the second group is `botx`, which drops the * rule.
+  plain <- robots_validate_text(
+    "User-agent: *\nDisallow: /a\n\nUser-agent: botx\nAllow: /b\n"
+  )
+  expect_identical(plain$diagnostics$code, "wildcard_rules_not_inherited")
+  x <- robots_validate_text(at_nul(
+    "User-agent: *\nDisallow: /a\n\nUser-agent: bot", "x\nAllow: /b\n"
+  ))
+  expect_identical(x$diagnostics$code, "nul_byte")
+})
+
+test_that("edge inputs compare without error", {
   x <- robots_validate_text("")
   expect_identical(x$diagnostics$code, "no_rules")
 
+  # Both lines are cut at the same byte, so the read values tie.
+  long <- paste0("/", strrep("a", 16652L))
+  x <- robots_validate_text(at_lines(
+    "User-agent: *", paste0("Allow:    ", long, "tail"),
+    paste("Disallow:", long)
+  ))
+  expect_identical(x$diagnostics$code[x$diagnostics$code != "line_too_long"],
+                   "disallow_tied_by_allow")
+  expect_identical(x$diagnostics$line[x$diagnostics$code != "line_too_long"],
+                   3L)
+  # Cut at different lengths, they do not.
   long <- paste0("/", strrep("a", 17000L))
   x <- robots_validate_text(at_lines(
     "User-agent: *", paste("Allow:", long), paste("Disallow:", long)
   ))
   expect_true("line_too_long" %in% x$diagnostics$code)
+  expect_false("disallow_tied_by_allow" %in% x$diagnostics$code)
 
   body <- c(charToRaw("User-agent: *\nAllow: /\nDisallow: /\n# "),
             as.raw(0xff), charToRaw("\n"))

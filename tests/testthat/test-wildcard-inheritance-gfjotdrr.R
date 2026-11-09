@@ -365,14 +365,12 @@ test_that("the check sits beside no_rules without overlapping it", {
   }
 })
 
-test_that("a NUL inside a * rule still compares", {
+test_that("a NUL inside a * rule skips the group checks", {
+  # The parser reads `/a`, the matchers `/ab` (ROBO-fdhmlvwm).
   body <- c(charToRaw("User-agent: *\nDisallow: /a"), as.raw(0),
             charToRaw("b\nUser-agent: Bingbot\nDisallow: /x\n"))
   x <- robots_validate_text(body)
-  expect_true("nul_byte" %in% x$diagnostics$code)
-  rows <- x$diagnostics[x$diagnostics$code == "wildcard_rules_not_inherited",
-                        , drop = FALSE]
-  expect_match(rows$message, "Disallow: /a (line 2).", fixed = TRUE)
+  expect_identical(x$diagnostics$code, "nul_byte")
 })
 
 test_that("a large document keeps every message capped", {

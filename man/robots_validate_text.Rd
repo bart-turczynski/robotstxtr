@@ -141,7 +141,9 @@ never cancels a named crawler's Disallow, and a Disallow is reported only
 when every crawler its group names has the identical Allow. Bing and
 Yandex also let Allow win an identical-pattern tie. The check also runs
 on a body cut at \code{max_bytes}: lines past the cut cannot revive the
-Disallow.
+Disallow. A document holding a NUL byte gets neither this check nor
+\code{wildcard_rules_not_inherited}, because the parser stops a value at the
+NUL while the matchers drop it and read on.
 }
 
 \examples{
