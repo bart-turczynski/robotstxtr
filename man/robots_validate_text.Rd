@@ -93,7 +93,8 @@ A Sitemap scheme other than \code{http}, \code{https} or \code{ftp}. \cr
 Allow or Disallow rules exist but no line names a non-empty
 User-agent. \cr
 \code{no_rules} \tab info \tab
-The document has no Allow or Disallow line, so it restricts nothing.
+The parser read no Allow or Disallow rule, so the document restricts
+nothing.
 Not reported for a body cut at \code{max_bytes}. \cr
 \code{body_truncated} \tab warning \tab
 The body exceeded \code{max_bytes}; only lines before the cut were read.

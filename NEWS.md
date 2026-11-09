@@ -1,6 +1,6 @@
 # robotstxtr (development version)
 
-* An empty, comment-only or Sitemap-only robots.txt now validates with the `no_rules` info, not the `missing_user_agent` error; that error now needs rules without a User-agent (RFC 9309 §2.2) (ROBO-vxrzcqpe).
+* An empty, comment-only or Sitemap-only robots.txt now validates with the `no_rules` info, not the `missing_user_agent` error; that error now needs rules without a User-agent (RFC 9309 §2.2.1) (ROBO-vxrzcqpe).
 
 * `robots_validate_text()` and `robots_validate_url()` now warn on a sitemap value that is not an absolute `http`, `https` or `ftp` URL, and on Allow/Disallow patterns that never match or hold a literal `$` (ROBO-xblfzkid).
 

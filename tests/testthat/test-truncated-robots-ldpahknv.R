@@ -322,7 +322,6 @@ test_that("ROBO-ldpahknv: a cut body with no line break has no rules", {
   expect_identical(v$documents$byte_size, 20L)
   # No rule was read, but the cut hides whether any exist (ROBO-vxrzcqpe).
   expect_setequal(v$diagnostics$code, "body_truncated")
-  expect_false("no_rules" %in% v$diagnostics$code)
 })
 
 test_that("ROBO-ldpahknv: complete_lines_prefix() keeps up to the last break", {

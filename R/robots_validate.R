@@ -84,7 +84,8 @@ validation_unsupported <- c(
 #'     Allow or Disallow rules exist but no line names a non-empty
 #'     User-agent. \cr
 #'   \code{no_rules} \tab info \tab
-#'     The document has no Allow or Disallow line, so it restricts nothing.
+#'     The parser read no Allow or Disallow rule, so the document restricts
+#'     nothing.
 #'     Not reported for a body cut at \code{max_bytes}. \cr
 #'   \code{body_truncated} \tab warning \tab
 #'     The body exceeded \code{max_bytes}; only lines before the cut were read.
@@ -489,7 +490,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   }
 
   # A file with no Allow or Disallow line restricts nothing (RFC 9309
-  # section 2.2), so a missing User-agent is an error only when rules need
+  # section 2.2.1), so a missing User-agent is an error only when rules need
   # one (ROBO-vxrzcqpe). An empty or typo'd rule line still counts. A cut
   # body is not called rule-free: its rules may lie past the cut.
   rule_count <- sum(parsed$type %in% c("allow", "disallow"))
