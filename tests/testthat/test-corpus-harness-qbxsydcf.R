@@ -29,6 +29,29 @@ expect_refusal <- function(expr, pattern, info = NULL) {
 
 body_of <- function(text) charToRaw(text)
 
+# Base-R stand-ins for withr, which is not a declared dependency: a temporary
+# directory removed when `env` exits.
+defer_in <- function(expr, env) {
+  do.call(base::on.exit, list(expr, TRUE, FALSE), envir = env)
+}
+
+local_test_dir <- function(env = parent.frame()) {
+  dir <- tempfile("corpus-harness-")
+  dir.create(dir)
+  defer_in(bquote(unlink(.(dir), recursive = TRUE)), env)
+  dir
+}
+
+# corpus_env_config() takes its getenv: a fake one stands in for the process
+# environment, so no test sets an environment variable.
+fake_getenv <- function(...) {
+  vals <- c(...)
+  function(name) {
+    v <- if (name %in% names(vals)) vals[[name]] else NA_character_
+    if (is.na(v)) "" else v
+  }
+}
+
 # ---------------------------------------------------------------------------
 # Path generator
 
@@ -151,7 +174,7 @@ test_that("the narrow path set is rule paths then the boundary probes", {
 # Refusal rules
 
 local_dirs <- function(env = parent.frame()) {
-  root <- withr::local_tempdir(.local_envir = env)
+  root <- local_test_dir(env)
   corpus <- file.path(root, "corpus")
   out <- file.path(root, "out")
   dir.create(corpus)
@@ -161,21 +184,18 @@ local_dirs <- function(env = parent.frame()) {
 test_that("the harness refuses without both environment variables", {
   h <- load_harness()
   d <- local_dirs()
-  withr::local_envvar(
-    ROBOTSTXTR_CORPUS = NA, ROBOTSTXTR_CORPUS_OUT = d$out
-  )
-  expect_refusal(h$corpus_env_config(), "ROBOTSTXTR_CORPUS is unset")
-  withr::local_envvar(
-    ROBOTSTXTR_CORPUS = d$corpus, ROBOTSTXTR_CORPUS_OUT = ""
-  )
-  expect_refusal(h$corpus_env_config(), "ROBOTSTXTR_CORPUS_OUT is unset")
+  env <- fake_getenv(ROBOTSTXTR_CORPUS_OUT = d$out)
+  expect_refusal(h$corpus_env_config(env), "ROBOTSTXTR_CORPUS is unset")
+  env <- fake_getenv(ROBOTSTXTR_CORPUS = d$corpus, ROBOTSTXTR_CORPUS_OUT = "")
+  expect_refusal(h$corpus_env_config(env), "ROBOTSTXTR_CORPUS_OUT is unset")
   expect_refusal(
-    h$corpus_env_config(need_corpus = FALSE), "ROBOTSTXTR_CORPUS_OUT is unset"
+    h$corpus_env_config(env, need_corpus = FALSE),
+    "ROBOTSTXTR_CORPUS_OUT is unset"
   )
-  withr::local_envvar(
+  env <- fake_getenv(
     ROBOTSTXTR_CORPUS = d$corpus, ROBOTSTXTR_CORPUS_OUT = d$out
   )
-  cfg <- h$corpus_env_config()
+  cfg <- h$corpus_env_config(env)
   expect_identical(basename(cfg$out), "out")
   expect_identical(basename(cfg$corpus), "corpus")
 })
@@ -183,11 +203,11 @@ test_that("the harness refuses without both environment variables", {
 test_that("the harness refuses a corpus directory that does not exist", {
   h <- load_harness()
   d <- local_dirs()
-  withr::local_envvar(
+  env <- fake_getenv(
     ROBOTSTXTR_CORPUS = file.path(d$root, "missing"),
     ROBOTSTXTR_CORPUS_OUT = d$out
   )
-  expect_refusal(h$corpus_env_config(), "existing directory")
+  expect_refusal(h$corpus_env_config(env), "existing directory")
 })
 
 test_that("the harness refuses an output directory inside a git work tree", {
@@ -195,30 +215,32 @@ test_that("the harness refuses an output directory inside a git work tree", {
   d <- local_dirs()
   repo <- file.path(d$root, "repo")
   dir.create(file.path(repo, ".git"), recursive = TRUE)
-  withr::local_envvar(
+  env <- fake_getenv(
     ROBOTSTXTR_CORPUS = d$corpus,
     ROBOTSTXTR_CORPUS_OUT = file.path(repo, "not", "yet", "there")
   )
-  expect_refusal(h$corpus_env_config(), "inside a git work tree")
+  expect_refusal(h$corpus_env_config(env), "inside a git work tree")
   # A worktree's .git is a file, and still marks a work tree.
   wt <- file.path(d$root, "wt")
   dir.create(wt)
   writeLines("gitdir: elsewhere", file.path(wt, ".git"))
-  withr::local_envvar(ROBOTSTXTR_CORPUS_OUT = file.path(wt, "runs"))
-  expect_refusal(h$corpus_env_config(), "inside a git work tree")
+  env <- fake_getenv(
+    ROBOTSTXTR_CORPUS = d$corpus, ROBOTSTXTR_CORPUS_OUT = file.path(wt, "runs")
+  )
+  expect_refusal(h$corpus_env_config(env), "inside a git work tree")
   expect_refusal(
-    h$corpus_env_config(need_corpus = FALSE), "inside a git work tree"
+    h$corpus_env_config(env, need_corpus = FALSE), "inside a git work tree"
   )
 })
 
 test_that("the harness refuses an output directory inside the corpus", {
   h <- load_harness()
   d <- local_dirs()
-  withr::local_envvar(
+  env <- fake_getenv(
     ROBOTSTXTR_CORPUS = d$corpus,
     ROBOTSTXTR_CORPUS_OUT = file.path(d$corpus, "runs")
   )
-  expect_refusal(h$corpus_env_config(), "inside ROBOTSTXTR_CORPUS")
+  expect_refusal(h$corpus_env_config(env), "inside ROBOTSTXTR_CORPUS")
 })
 
 test_that("run ids are plain names and a run is never overwritten", {
@@ -257,7 +279,7 @@ test_that("arguments are checked before any work", {
 # Input-set checks
 
 local_corpus <- function(env = parent.frame()) {
-  root <- withr::local_tempdir(.local_envir = env)
+  root <- local_test_dir(env)
   for (host in c("a.test", "b.test")) {
     dir.create(file.path(root, host))
     saveRDS(
@@ -321,7 +343,7 @@ test_that("comparing runs with different input sets fails before diffing", {
   )
 
   # Through the compare mode: identical result shards, different manifests.
-  out <- withr::local_tempdir()
+  out <- local_test_dir()
   for (id in c("ra", "rb")) {
     dir.create(file.path(out, id, "shards"), recursive = TRUE)
     saveRDS(
