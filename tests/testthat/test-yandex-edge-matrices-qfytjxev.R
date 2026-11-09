@@ -143,8 +143,8 @@ test_that("A5 an over-limit yandex fetch allows all without any matcher", {
       matcher_body_truncated = FALSE
     )
   }
-  testthat::local_mocked_bindings(
-    match_google_v1 = fake_google, .package = "robotstxtr"
+  local_matcher_registry(
+    fake_matcher_registry(google = fake_row_adapter(fake_google))
   )
   big_body <- strrep("a", 500001L)
   local_fake_ssrfr(yc_mock_router(list(

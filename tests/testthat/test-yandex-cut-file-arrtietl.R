@@ -21,28 +21,11 @@ ac_serve <- function(status = 200L, body = ac_body(), env = parent.frame()) {
 }
 
 # Fail any matcher call: an allow_all or incomplete row must not reach one.
-# The registry (engine_matcher_registry_v1()) looks these up at call time.
+# Every adapter in the registry is a forbidden fake
+# (helper-matcher-registry-bukqpjli.R).
 ac_forbid_matchers <- function(env = parent.frame()) {
   calls <- new.env(parent = emptyenv())
-  calls$google <- 0L
-  calls$yandex <- 0L
-  calls$bing <- 0L
-  testthat::local_mocked_bindings(
-    match_google_v1 = function(body, url, product_token) {
-      calls$google <- calls$google + 1L
-      stop("match_google_v1 must not be called")
-    },
-    match_yandex_v1 = function(bodies, urls, product_tokens) {
-      calls$yandex <- calls$yandex + 1L
-      stop("match_yandex_v1 must not be called")
-    },
-    match_bing_v1 = function(bodies, urls, product_tokens) {
-      calls$bing <- calls$bing + 1L
-      stop("match_bing_v1 must not be called")
-    },
-    .package = "robotstxtr",
-    .env = env
-  )
+  local_matcher_registry(forbidden_matcher_registry(calls), env = env)
   calls
 }
 

@@ -159,9 +159,8 @@ test_that("matcher dispatch uses only the explicitly selected backend", {
       matcher_body_truncated = FALSE
     )
   }
-  testthat::local_mocked_bindings(
-    match_google_v1 = fake_google,
-    .package = "robotstxtr"
+  local_matcher_registry(
+    fake_matcher_registry(google = fake_row_adapter(fake_google))
   )
   has_batch <- is.function(
     tryCatch(robotstxtr_checked_batch_, error = function(e) NULL)
@@ -195,20 +194,14 @@ test_that("matcher dispatch uses only the explicitly selected backend", {
 
 test_that("unknown or unavailable matcher dispatch never falls through", {
   registry <- robotstxtr:::engine_matcher_registry_v1()
-  expect_error(
-    robotstxtr:::match_backend_v1(
-      "unknown", raw(0), "https://example.com/", "bot", registry
-    ),
-    class = "robotstxtr_matcher_backend_unavailable"
-  )
-  # Yandex is now available but batch-shaped: the per-row dispatcher must refuse
-  # it with the explicit not-row-dispatchable guard rather than run it per row.
-  expect_error(
-    robotstxtr:::match_backend_v1(
-      "yandex", raw(0), "https://example.com/", "bot", registry
-    ),
-    class = "robotstxtr_matcher_backend_not_row_dispatchable"
-  )
+  for (backend in c("unknown", "rfc9309")) {
+    expect_error(
+      robotstxtr:::dispatch_matcher_v1(
+        registry, backend, list(raw(0)), "https://example.com/", "bot"
+      ),
+      class = "robotstxtr_matcher_backend_unavailable"
+    )
+  }
 })
 
 test_that("matcher registry metadata and registration fail closed on drift", {

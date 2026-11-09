@@ -1038,6 +1038,41 @@ match_google_v1 <- function(body, url, product_token) {
   )
 }
 
+# A decision frame from a row matcher: `row_match(body, url, product_token)`
+# returns one row's fields as a list, called on each row in order. Every row
+# is `evaluated` with no error; `matched_rule_value_raw` is NULL on every row.
+row_matcher_frame_v1 <- function(row_match, bodies, urls, product_tokens) {
+  n <- length(bodies)
+  rows <- lapply(seq_len(n), function(k) {
+    row_match(bodies[[k]], urls[[k]], product_tokens[[k]])
+  })
+  field <- function(name, type) vapply(rows, `[[`, type, name)
+  out <- data.frame(
+    matcher_status = rep("evaluated", n),
+    url_decision = field("url_decision", character(1L)),
+    reason = field("reason", character(1L)),
+    matched_line = field("matched_line", integer(1L)),
+    matched_rule_type = field("matched_rule_type", character(1L)),
+    matched_rule_value = field("matched_rule_value", character(1L)),
+    matcher_input_bytes = field("matcher_input_bytes", integer(1L)),
+    matcher_body_truncated = field("matcher_body_truncated", logical(1L)),
+    error_stage = rep(NA_character_, n),
+    error_class = rep(NA_character_, n),
+    error_message = rep(NA_character_, n),
+    stringsAsFactors = FALSE
+  )
+  out$matched_rule_value_raw <- vector("list", n)
+  out
+}
+
+# The Google matcher adapter. It still matches row by row: each row's body
+# is cut to Google's 512,000-byte window by match_google_v1() itself, before
+# any grouping, and each row keeps its own `matcher_body_truncated`. Google
+# rows carry no raw rule value yet (`matched_rule_value_raw` NULL).
+match_google_batch_v1 <- function(bodies, urls, product_tokens) {
+  row_matcher_frame_v1(match_google_v1, bodies, urls, product_tokens)
+}
+
 # The frozen identity of the vendored robotstxtyandex payload. These six fields
 # single-source the Yandex matcher revision and the separately inspectable
 # library/payload/profile/corpus/evidence/profile-source metadata published on
@@ -1117,6 +1152,11 @@ bing_matcher_revision_v1 <- function() {
   )
 }
 
+# The matcher registry: one entry per backend, its exact revision, its
+# availability and, when available, its matcher adapter. Every adapter has
+# the one batch interface `callable(bodies, urls, product_tokens)` and
+# returns a decision frame (matcher_decision_columns_v1()); evaluate_rows_v1()
+# dispatches on the entry alone, never on a backend's name.
 engine_matcher_registry_v1 <- function() {
   list(
     google = list(
@@ -1125,7 +1165,7 @@ engine_matcher_registry_v1 <- function() {
         "22b355ff855419e6a3ff8ff09c0ad7fdb17116f9"
       ),
       availability = "available",
-      callable = match_google_v1
+      callable = match_google_batch_v1
     ),
     yandex = list(
       revision = yandex_matcher_revision_v1(),
@@ -1224,38 +1264,71 @@ matcher_registry_field_v1 <- function(registry, field) {
   vapply(registry, `[[`, character(1L), field)
 }
 
-match_backend_v1 <- function(backend, body, url, product_token,
-                             registry = engine_matcher_registry_v1()) {
-  registry <- validate_matcher_registry_v1(registry)
-  if (!is.character(backend) || length(backend) != 1L ||
-        is.na(backend) || !nzchar(backend) || !backend %in% names(registry)) {
-    robots_abort(
-      "Matcher backend is unavailable or unregistered.",
-      "robotstxtr_matcher_backend_unavailable"
+# The decision frame: the columns every matcher adapter returns, one row per
+# input row, in input order. `matched_rule_value_raw` is a list column (raw
+# bytes, raw(0) or NULL per row). An adapter may add columns (`native_*`) or
+# attributes (`n_parse_calls`); the evaluator ignores them.
+matcher_decision_columns_v1 <- function() {
+  c(
+    "matcher_status", "url_decision", "reason", "matched_line",
+    "matched_rule_type", "matched_rule_value", "matcher_input_bytes",
+    "matcher_body_truncated", "error_stage", "error_class", "error_message",
+    "matched_rule_value_raw"
+  )
+}
+
+matcher_output_abort_v1 <- function(backend, detail) {
+  robots_abort(
+    sprintf("Matcher adapter `%s` broke its output contract: %s", backend,
+            detail),
+    "robotstxtr_matcher_output_invariant"
+  )
+}
+
+# Fail-closed guard on an adapter's decision frame, like
+# validate_matcher_status_v2(): a frame with the wrong row count or without
+# a required column is an internal invariant violation, never a row outcome.
+# Returns the frame unchanged on success.
+check_matcher_output_v1 <- function(output, n, backend) {
+  if (!is.data.frame(output)) {
+    matcher_output_abort_v1(backend, "it returned no data frame.")
+  }
+  if (nrow(output) != n) {
+    matcher_output_abort_v1(backend, sprintf(
+      "%d row(s) for %d input row(s).", nrow(output), n
+    ))
+  }
+  missing <- setdiff(matcher_decision_columns_v1(), names(output))
+  if (length(missing) > 0L) {
+    matcher_output_abort_v1(backend, sprintf(
+      "missing column(s): %s.", toString(missing)
+    ))
+  }
+  if (!is.list(output$matched_rule_value_raw)) {
+    matcher_output_abort_v1(
+      backend, "`matched_rule_value_raw` is not a list column."
     )
   }
+  output
+}
+
+# Run one backend's adapter over its rows and check what comes back. An
+# adapter reports every per-row outcome as a row; it aborts only on an
+# internal invariant violation, and that abort is not caught here.
+dispatch_matcher_v1 <- function(registry, backend, bodies, urls,
+                                product_tokens) {
   entry <- registry[[backend]]
-  if (!identical(entry$availability, "available") ||
+  if (!is.list(entry) || !identical(entry$availability, "available") ||
         !is.function(entry$callable)) {
     robots_abort(
       sprintf("Matcher backend `%s` is unavailable or unregistered.", backend),
       "robotstxtr_matcher_backend_unavailable"
     )
   }
-  # Batch-shaped backends (yandex, bing -- parse-once) are never row-dispatched:
-  # evaluate_rows_v1() collects their rows and invokes the registered callable
-  # once in batch form. Reaching this per-row path with such a backend is an
-  # internal invariant violation, not a caller error.
-  if (identical(backend, "yandex") || identical(backend, "bing")) {
-    robots_abort(
-      sprintf(
-        "Matcher backend `%s` is batch-shaped and must not be row-dispatched.",
-        backend
-      ),
-      "robotstxtr_matcher_backend_not_row_dispatchable"
-    )
-  }
-  entry$callable(body, url, product_token)
+  output <- entry$callable(
+    bodies = bodies, urls = urls, product_tokens = product_tokens
+  )
+  check_matcher_output_v1(output, length(bodies), backend)
 }
 
 policy_limit_v1 <- function(ruleset) {
@@ -1279,13 +1352,17 @@ new_engine_decisions_v1 <- function(results, evidence) {
   )
 }
 
+# `matcher_registry` is internal: the public entry points never pass it, so
+# it is the production registry, validated once per call. Tests pass a fake
+# registry to swap matcher adapters.
 evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
                              source_id, evidence, url_valid, token_valid,
                              fetch_ua, timeout, max_bytes, ssrf_guard,
-                             safety_level) {
+                             safety_level,
+                             matcher_registry = engine_matcher_registry_v1()) {
   n <- length(url)
   policy_revisions <- engine_policy_revisions_v1()
-  matcher_registry <- validated_matcher_registry_v1()
+  matcher_registry <- validate_matcher_registry_v1(matcher_registry)
   matcher_revisions <- matcher_registry_field_v1(
     matcher_registry, "revision"
   )
@@ -1319,13 +1396,12 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
   )
 
   valid <- url_valid & token_valid
-  # Batch-shaped backends (yandex, bing) are collected here and dispatched once
-  # after the loop so each distinct body is parsed a single time. Google and
-  # other row-shaped backends keep the byte-identical per-row path below.
-  yandex_rows <- integer(0)
-  yandex_bodies <- list()
-  bing_rows <- integer(0)
-  bing_bodies <- list()
+  # Rows that need a matcher are collected here, with the evidence row whose
+  # body they match and whether that body was cut at `max_bytes`, and
+  # dispatched after the loop: one adapter call per backend.
+  matcher_rows <- integer(0)
+  matcher_sources <- integer(0)
+  body_cut <- rep(FALSE, n)
   readable_bodies <- vector("list", length(evidence$source_id))
   for (i in which(valid)) {
     evidence_index <- match(source_id[[i]], evidence$source_id)
@@ -1364,19 +1440,6 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
       reason[[i]] <- "matcher_capability_unavailable"
       next
     }
-    if (identical(matcher_backend[[i]], "yandex")) {
-      # Defer: collect the row and its raw body for a single batch call after
-      # the loop. Result fields stay at their init defaults until scattered.
-      yandex_rows <- c(yandex_rows, i)
-      yandex_bodies[[length(yandex_bodies) + 1L]] <- ev$body
-      next
-    }
-    if (identical(matcher_backend[[i]], "bing")) {
-      # Defer: same parse-once batch treatment as yandex, on its own backend.
-      bing_rows <- c(bing_rows, i)
-      bing_bodies[[length(bing_bodies) + 1L]] <- ev$body
-      next
-    }
     # A cut body reaches here only under the google ruleset with the google
     # backend (ceiling_cut_readable_v1()). Its partial last line is dropped
     # before the window, so a cut of exactly 512,000 bytes is read like a
@@ -1387,74 +1450,40 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
         readable_body(ev$body, ev$body_truncated)
       )
     }
-    matched <- match_backend_v1(
-      matcher_backend[[i]], readable_bodies[[evidence_index]],
-      url[[i]], product_token[[i]], matcher_registry
+    matcher_rows <- c(matcher_rows, i)
+    matcher_sources <- c(matcher_sources, evidence_index)
+    body_cut[[i]] <- isTRUE(ev$body_truncated)
+  }
+
+  # One adapter call per backend over all of its rows, in row order; the
+  # decision frame's row k scatters back to the backend's k-th row. Adapters
+  # that parse once per distinct body (yandex, bing) dedupe inside.
+  matched_rule_value_raw <- vector("list", n)
+  row_backends <- matcher_backend[matcher_rows]
+  for (backend in unique(row_backends)) {
+    picked <- row_backends == backend
+    rows <- matcher_rows[picked]
+    decided <- dispatch_matcher_v1(
+      matcher_registry, backend,
+      bodies = readable_bodies[matcher_sources[picked]],
+      urls = url[rows], product_tokens = product_token[rows]
     )
-    matcher_status[[i]] <- "evaluated"
-    url_decision[[i]] <- matched$url_decision
-    reason[[i]] <- matched$reason
-    matched_line[[i]] <- matched$matched_line
-    matched_rule_type[[i]] <- matched$matched_rule_type
-    matched_rule_value[[i]] <- matched$matched_rule_value
-    matcher_input_bytes[[i]] <- matched$matcher_input_bytes
+    matcher_status[rows] <- decided$matcher_status
+    url_decision[rows] <- decided$url_decision
+    reason[rows] <- decided$reason
+    matched_line[rows] <- decided$matched_line
+    matched_rule_type[rows] <- decided$matched_rule_type
+    matched_rule_value[rows] <- decided$matched_rule_value
+    matcher_input_bytes[rows] <- decided$matcher_input_bytes
     # A cut of at least 512,000 bytes proves the file exceeded the window,
-    # even when its complete lines fit inside it.
-    matcher_body_truncated[[i]] <- matched$matcher_body_truncated ||
-      isTRUE(ev$body_truncated)
-  }
-
-  # Batch Yandex dispatch: one parse-once call over every collected row. `res`
-  # rows align with `yandex_rows` in order, so res[k, ] scatters back to row
-  # yandex_rows[k]. matched_rule_value_raw is scattered separately below (it is
-  # a list column the plain-vector constructor cannot hold).
-  yandex_raw_values <- NULL
-  if (length(yandex_rows) > 0L) {
-    entry <- matcher_registry$yandex
-    res <- entry$callable(
-      bodies = yandex_bodies,
-      urls = url[yandex_rows],
-      product_tokens = product_token[yandex_rows]
-    )
-    matcher_status[yandex_rows] <- res$matcher_status
-    url_decision[yandex_rows] <- res$url_decision
-    reason[yandex_rows] <- res$reason
-    matched_line[yandex_rows] <- res$matched_line
-    matched_rule_type[yandex_rows] <- res$matched_rule_type
-    matched_rule_value[yandex_rows] <- res$matched_rule_value
-    matcher_input_bytes[yandex_rows] <- res$matcher_input_bytes
-    matcher_body_truncated[yandex_rows] <- res$matcher_body_truncated
-    error_stage[yandex_rows] <- res$error_stage
-    error_class[yandex_rows] <- res$error_class
-    error_message[yandex_rows] <- res$error_message
-    yandex_raw_values <- res$matched_rule_value_raw
-  }
-
-  # Batch Bing dispatch: one parse-once call over every collected row, scattered
-  # back the same way as Yandex. The Bing adapter emits the v2 non-evaluated
-  # statuses (unsupported_profile, invalid_request_target,
-  # matcher_input_limit_exceeded, matcher_work_limit_exceeded), all validated
-  # against the published set below.
-  bing_raw_values <- NULL
-  if (length(bing_rows) > 0L) {
-    entry <- matcher_registry$bing
-    res <- entry$callable(
-      bodies = bing_bodies,
-      urls = url[bing_rows],
-      product_tokens = product_token[bing_rows]
-    )
-    matcher_status[bing_rows] <- res$matcher_status
-    url_decision[bing_rows] <- res$url_decision
-    reason[bing_rows] <- res$reason
-    matched_line[bing_rows] <- res$matched_line
-    matched_rule_type[bing_rows] <- res$matched_rule_type
-    matched_rule_value[bing_rows] <- res$matched_rule_value
-    matcher_input_bytes[bing_rows] <- res$matcher_input_bytes
-    matcher_body_truncated[bing_rows] <- res$matcher_body_truncated
-    error_stage[bing_rows] <- res$error_stage
-    error_class[bing_rows] <- res$error_class
-    error_message[bing_rows] <- res$error_message
-    bing_raw_values <- res$matched_rule_value_raw
+    # even when its complete lines fit inside it: each row's own cut joins
+    # the adapter's flag.
+    matcher_body_truncated[rows] <- decided$matcher_body_truncated |
+      body_cut[rows]
+    error_stage[rows] <- decided$error_stage
+    error_class[rows] <- decided$error_class
+    error_message[rows] <- decided$error_message
+    matched_rule_value_raw[rows] <- decided$matched_rule_value_raw
   }
 
   # Fail closed: no row may carry a matcher_status outside the published
@@ -1502,17 +1531,11 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
     stringsAsFactors = FALSE
   )
   # Public list column, unchanged since schema 2026-07-18.2: exactly one
-  # element per row. All
-  # rows start absent (NULL); only Yandex-evaluated rows carry raw bytes /
-  # raw(0) / NULL, scattered so the present-empty raw(0) vs absent NULL
-  # distinction survives verbatim. Google and other rows stay NULL.
-  results$matched_rule_value_raw <- vector("list", n)
-  if (length(yandex_rows) > 0L) {
-    results$matched_rule_value_raw[yandex_rows] <- yandex_raw_values
-  }
-  if (length(bing_rows) > 0L) {
-    results$matched_rule_value_raw[bing_rows] <- bing_raw_values
-  }
+  # element per row. Rows no adapter decided stay absent (NULL); adapter rows
+  # carry what the adapter returned (raw bytes / raw(0) / NULL; NULL on every
+  # Google row), so the present-empty raw(0) vs absent NULL distinction
+  # survives verbatim.
+  results$matched_rule_value_raw <- matched_rule_value_raw
   results
 }
 
