@@ -183,7 +183,9 @@ warns on Allow or Disallow patterns that never match (not led by `/` or `*`)
 or hold a literal `$` (one before the pattern's end), and on a Sitemap value
 that is not an absolute `http`, `https` or `ftp` URL. An info,
 `wildcard_rules_not_inherited`, notes a named User-agent group that lacks some
-`User-agent: *` rules: its crawler obeys only the groups that name it. The
+`User-agent: *` rules: its crawler obeys only the groups that name it. A
+warning, `disallow_tied_by_allow`, flags a Disallow that an Allow with the
+identical pattern cancels, since Allow wins the tie. The
 "Diagnostic codes" section of `?robots_validate_text` lists every code.
 
 ```{r, eval = FALSE}

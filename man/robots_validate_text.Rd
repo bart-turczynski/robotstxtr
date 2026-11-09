@@ -93,6 +93,10 @@ A Sitemap scheme other than \code{http}, \code{https} or \code{ftp}. \cr
 A named User-agent group lacks some \code{User-agent: *} rules, which
 its crawlers therefore do not obey. Anchored on the group's first
 User-agent line. Not reported for a body cut at \code{max_bytes}. \cr
+\code{disallow_tied_by_allow} \tab warning \tab
+A Disallow never takes effect: an Allow with the identical pattern
+applies to the same crawlers and wins the tie. Anchored on the
+Disallow line; the message names the Allow line. \cr
 \code{missing_user_agent} \tab error \tab
 Allow or Disallow rules exist but no line names a non-empty
 User-agent. \cr
@@ -125,6 +129,19 @@ most. A crawler whose rules are all explicit allow-all (an empty
 \verb{Disallow:}, \verb{Allow: /}, \verb{Allow: /*} or \verb{Allow: *}) is not reported; an
 empty \verb{Allow:} is ignored, and a crawler whose groups have no other rule
 is reported.
+
+For \code{disallow_tied_by_allow}, an Allow and a Disallow with the same
+pattern match the same paths with the same priority, and Allow wins the
+tie (RFC 9309 section 2.2.2), so the Disallow never applies; with
+\verb{Allow: /}, a \verb{Disallow: /} blocks nothing. The comparison runs on the
+Google parser's canonical form of each value (\verb{\%aa} equals \verb{\%AA}, and a
+raw non-ASCII byte equals its \verb{\%XX} escape), with no \code{*} or \code{$} stripping.
+Groups that name the same crawler are combined, a \verb{User-agent: *} Allow
+never cancels a named crawler's Disallow, and a Disallow is reported only
+when every crawler its group names has the identical Allow. Bing and
+Yandex also let Allow win an identical-pattern tie. The check also runs
+on a body cut at \code{max_bytes}: lines past the cut cannot revive the
+Disallow.
 }
 
 \examples{

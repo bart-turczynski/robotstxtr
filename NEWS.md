@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* `robots_validate_text()` and `robots_validate_url()` warn when a Disallow has an identical Allow, which wins the tie, so `Allow: /` plus `Disallow: /` blocks nothing (RFC 9309 §2.2.2) (ROBO-fdhmlvwm).
+
 * `robots_validate_text()` and `robots_validate_url()` report the `wildcard_rules_not_inherited` info for a named User-agent group lacking `User-agent: *` rules, which its crawler then ignores (RFC 9309 §2.2.1) (ROBO-gfjotdrr).
 
 * An empty, comment-only or Sitemap-only robots.txt now validates with the `no_rules` info, not the `missing_user_agent` error; that error now needs rules without a User-agent (RFC 9309 §2.2.1) (ROBO-vxrzcqpe).
