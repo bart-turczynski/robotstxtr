@@ -85,7 +85,10 @@ bsl_cases <- list(
 )
 
 bsl_see <- " See robots_engine_contract_v1()."
-bsl_gaps <- "Google: not documented; Yandex: not documented; Bing: not documented."
+bsl_gaps <- paste(
+  "Google: not documented; Yandex: not documented;",
+  "Bing: not documented."
+)
 bsl_refusal <- "robotstxtr's safety refusal"
 
 # The code and the full message robots_validate_url() gives each case.
@@ -251,7 +254,7 @@ test_that("ROBO-bsloeclp: each outcome class has its own code and message", {
   }
 })
 
-test_that("ROBO-bsloeclp: an outcome no class covers keeps acquisition_failed", {
+test_that("ROBO-bsloeclp: an uncovered outcome keeps acquisition_failed", {
   source <- data.frame(
     source_id = 1L, source_type = "url", robots_url = "https://a/robots.txt",
     effective_url = NA_character_, http_status = NA_integer_,
