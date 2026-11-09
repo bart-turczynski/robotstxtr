@@ -1,0 +1,2999 @@
+User-agent: botaaa
+Disallow: /p1/
+
+User-agent: botaab
+Disallow: /p2/
+
+User-agent: botaac
+Disallow: /p3/
+
+User-agent: botaad
+Disallow: /p4/
+
+User-agent: botaae
+Disallow: /p5/
+
+User-agent: botaaf
+Disallow: /p6/
+
+User-agent: botaag
+Disallow: /p7/
+
+User-agent: botaah
+Disallow: /p8/
+
+User-agent: botaai
+Disallow: /p9/
+
+User-agent: botaaj
+Disallow: /p10/
+
+User-agent: botaak
+Disallow: /p11/
+
+User-agent: botaal
+Disallow: /p12/
+
+User-agent: botaam
+Disallow: /p13/
+
+User-agent: botaan
+Disallow: /p14/
+
+User-agent: botaao
+Disallow: /p15/
+
+User-agent: botaap
+Disallow: /p16/
+
+User-agent: botaaq
+Disallow: /p17/
+
+User-agent: botaar
+Disallow: /p18/
+
+User-agent: botaas
+Disallow: /p19/
+
+User-agent: botaat
+Disallow: /p20/
+
+User-agent: botaau
+Disallow: /p21/
+
+User-agent: botaav
+Disallow: /p22/
+
+User-agent: botaaw
+Disallow: /p23/
+
+User-agent: botaax
+Disallow: /p24/
+
+User-agent: botaay
+Disallow: /p25/
+
+User-agent: botaaz
+Disallow: /p26/
+
+User-agent: botaba
+Disallow: /p27/
+
+User-agent: botabb
+Disallow: /p28/
+
+User-agent: botabc
+Disallow: /p29/
+
+User-agent: botabd
+Disallow: /p30/
+
+User-agent: botabe
+Disallow: /p31/
+
+User-agent: botabf
+Disallow: /p32/
+
+User-agent: botabg
+Disallow: /p33/
+
+User-agent: botabh
+Disallow: /p34/
+
+User-agent: botabi
+Disallow: /p35/
+
+User-agent: botabj
+Disallow: /p36/
+
+User-agent: botabk
+Disallow: /p37/
+
+User-agent: botabl
+Disallow: /p38/
+
+User-agent: botabm
+Disallow: /p39/
+
+User-agent: botabn
+Disallow: /p40/
+
+User-agent: botabo
+Disallow: /p41/
+
+User-agent: botabp
+Disallow: /p42/
+
+User-agent: botabq
+Disallow: /p43/
+
+User-agent: botabr
+Disallow: /p44/
+
+User-agent: botabs
+Disallow: /p45/
+
+User-agent: botabt
+Disallow: /p46/
+
+User-agent: botabu
+Disallow: /p47/
+
+User-agent: botabv
+Disallow: /p48/
+
+User-agent: botabw
+Disallow: /p49/
+
+User-agent: botabx
+Disallow: /p50/
+
+User-agent: botaby
+Disallow: /p51/
+
+User-agent: botabz
+Disallow: /p52/
+
+User-agent: botaca
+Disallow: /p53/
+
+User-agent: botacb
+Disallow: /p54/
+
+User-agent: botacc
+Disallow: /p55/
+
+User-agent: botacd
+Disallow: /p56/
+
+User-agent: botace
+Disallow: /p57/
+
+User-agent: botacf
+Disallow: /p58/
+
+User-agent: botacg
+Disallow: /p59/
+
+User-agent: botach
+Disallow: /p60/
+
+User-agent: botaci
+Disallow: /p61/
+
+User-agent: botacj
+Disallow: /p62/
+
+User-agent: botack
+Disallow: /p63/
+
+User-agent: botacl
+Disallow: /p64/
+
+User-agent: botacm
+Disallow: /p65/
+
+User-agent: botacn
+Disallow: /p66/
+
+User-agent: botaco
+Disallow: /p67/
+
+User-agent: botacp
+Disallow: /p68/
+
+User-agent: botacq
+Disallow: /p69/
+
+User-agent: botacr
+Disallow: /p70/
+
+User-agent: botacs
+Disallow: /p71/
+
+User-agent: botact
+Disallow: /p72/
+
+User-agent: botacu
+Disallow: /p73/
+
+User-agent: botacv
+Disallow: /p74/
+
+User-agent: botacw
+Disallow: /p75/
+
+User-agent: botacx
+Disallow: /p76/
+
+User-agent: botacy
+Disallow: /p77/
+
+User-agent: botacz
+Disallow: /p78/
+
+User-agent: botada
+Disallow: /p79/
+
+User-agent: botadb
+Disallow: /p80/
+
+User-agent: botadc
+Disallow: /p81/
+
+User-agent: botadd
+Disallow: /p82/
+
+User-agent: botade
+Disallow: /p83/
+
+User-agent: botadf
+Disallow: /p84/
+
+User-agent: botadg
+Disallow: /p85/
+
+User-agent: botadh
+Disallow: /p86/
+
+User-agent: botadi
+Disallow: /p87/
+
+User-agent: botadj
+Disallow: /p88/
+
+User-agent: botadk
+Disallow: /p89/
+
+User-agent: botadl
+Disallow: /p90/
+
+User-agent: botadm
+Disallow: /p91/
+
+User-agent: botadn
+Disallow: /p92/
+
+User-agent: botado
+Disallow: /p93/
+
+User-agent: botadp
+Disallow: /p94/
+
+User-agent: botadq
+Disallow: /p95/
+
+User-agent: botadr
+Disallow: /p96/
+
+User-agent: botads
+Disallow: /p97/
+
+User-agent: botadt
+Disallow: /p98/
+
+User-agent: botadu
+Disallow: /p99/
+
+User-agent: botadv
+Disallow: /p100/
+
+User-agent: botadw
+Disallow: /p101/
+
+User-agent: botadx
+Disallow: /p102/
+
+User-agent: botady
+Disallow: /p103/
+
+User-agent: botadz
+Disallow: /p104/
+
+User-agent: botaea
+Disallow: /p105/
+
+User-agent: botaeb
+Disallow: /p106/
+
+User-agent: botaec
+Disallow: /p107/
+
+User-agent: botaed
+Disallow: /p108/
+
+User-agent: botaee
+Disallow: /p109/
+
+User-agent: botaef
+Disallow: /p110/
+
+User-agent: botaeg
+Disallow: /p111/
+
+User-agent: botaeh
+Disallow: /p112/
+
+User-agent: botaei
+Disallow: /p113/
+
+User-agent: botaej
+Disallow: /p114/
+
+User-agent: botaek
+Disallow: /p115/
+
+User-agent: botael
+Disallow: /p116/
+
+User-agent: botaem
+Disallow: /p117/
+
+User-agent: botaen
+Disallow: /p118/
+
+User-agent: botaeo
+Disallow: /p119/
+
+User-agent: botaep
+Disallow: /p120/
+
+User-agent: botaeq
+Disallow: /p121/
+
+User-agent: botaer
+Disallow: /p122/
+
+User-agent: botaes
+Disallow: /p123/
+
+User-agent: botaet
+Disallow: /p124/
+
+User-agent: botaeu
+Disallow: /p125/
+
+User-agent: botaev
+Disallow: /p126/
+
+User-agent: botaew
+Disallow: /p127/
+
+User-agent: botaex
+Disallow: /p128/
+
+User-agent: botaey
+Disallow: /p129/
+
+User-agent: botaez
+Disallow: /p130/
+
+User-agent: botafa
+Disallow: /p131/
+
+User-agent: botafb
+Disallow: /p132/
+
+User-agent: botafc
+Disallow: /p133/
+
+User-agent: botafd
+Disallow: /p134/
+
+User-agent: botafe
+Disallow: /p135/
+
+User-agent: botaff
+Disallow: /p136/
+
+User-agent: botafg
+Disallow: /p137/
+
+User-agent: botafh
+Disallow: /p138/
+
+User-agent: botafi
+Disallow: /p139/
+
+User-agent: botafj
+Disallow: /p140/
+
+User-agent: botafk
+Disallow: /p141/
+
+User-agent: botafl
+Disallow: /p142/
+
+User-agent: botafm
+Disallow: /p143/
+
+User-agent: botafn
+Disallow: /p144/
+
+User-agent: botafo
+Disallow: /p145/
+
+User-agent: botafp
+Disallow: /p146/
+
+User-agent: botafq
+Disallow: /p147/
+
+User-agent: botafr
+Disallow: /p148/
+
+User-agent: botafs
+Disallow: /p149/
+
+User-agent: botaft
+Disallow: /p150/
+
+User-agent: botafu
+Disallow: /p151/
+
+User-agent: botafv
+Disallow: /p152/
+
+User-agent: botafw
+Disallow: /p153/
+
+User-agent: botafx
+Disallow: /p154/
+
+User-agent: botafy
+Disallow: /p155/
+
+User-agent: botafz
+Disallow: /p156/
+
+User-agent: botaga
+Disallow: /p157/
+
+User-agent: botagb
+Disallow: /p158/
+
+User-agent: botagc
+Disallow: /p159/
+
+User-agent: botagd
+Disallow: /p160/
+
+User-agent: botage
+Disallow: /p161/
+
+User-agent: botagf
+Disallow: /p162/
+
+User-agent: botagg
+Disallow: /p163/
+
+User-agent: botagh
+Disallow: /p164/
+
+User-agent: botagi
+Disallow: /p165/
+
+User-agent: botagj
+Disallow: /p166/
+
+User-agent: botagk
+Disallow: /p167/
+
+User-agent: botagl
+Disallow: /p168/
+
+User-agent: botagm
+Disallow: /p169/
+
+User-agent: botagn
+Disallow: /p170/
+
+User-agent: botago
+Disallow: /p171/
+
+User-agent: botagp
+Disallow: /p172/
+
+User-agent: botagq
+Disallow: /p173/
+
+User-agent: botagr
+Disallow: /p174/
+
+User-agent: botags
+Disallow: /p175/
+
+User-agent: botagt
+Disallow: /p176/
+
+User-agent: botagu
+Disallow: /p177/
+
+User-agent: botagv
+Disallow: /p178/
+
+User-agent: botagw
+Disallow: /p179/
+
+User-agent: botagx
+Disallow: /p180/
+
+User-agent: botagy
+Disallow: /p181/
+
+User-agent: botagz
+Disallow: /p182/
+
+User-agent: botaha
+Disallow: /p183/
+
+User-agent: botahb
+Disallow: /p184/
+
+User-agent: botahc
+Disallow: /p185/
+
+User-agent: botahd
+Disallow: /p186/
+
+User-agent: botahe
+Disallow: /p187/
+
+User-agent: botahf
+Disallow: /p188/
+
+User-agent: botahg
+Disallow: /p189/
+
+User-agent: botahh
+Disallow: /p190/
+
+User-agent: botahi
+Disallow: /p191/
+
+User-agent: botahj
+Disallow: /p192/
+
+User-agent: botahk
+Disallow: /p193/
+
+User-agent: botahl
+Disallow: /p194/
+
+User-agent: botahm
+Disallow: /p195/
+
+User-agent: botahn
+Disallow: /p196/
+
+User-agent: botaho
+Disallow: /p197/
+
+User-agent: botahp
+Disallow: /p198/
+
+User-agent: botahq
+Disallow: /p199/
+
+User-agent: botahr
+Disallow: /p200/
+
+User-agent: botahs
+Disallow: /p201/
+
+User-agent: botaht
+Disallow: /p202/
+
+User-agent: botahu
+Disallow: /p203/
+
+User-agent: botahv
+Disallow: /p204/
+
+User-agent: botahw
+Disallow: /p205/
+
+User-agent: botahx
+Disallow: /p206/
+
+User-agent: botahy
+Disallow: /p207/
+
+User-agent: botahz
+Disallow: /p208/
+
+User-agent: botaia
+Disallow: /p209/
+
+User-agent: botaib
+Disallow: /p210/
+
+User-agent: botaic
+Disallow: /p211/
+
+User-agent: botaid
+Disallow: /p212/
+
+User-agent: botaie
+Disallow: /p213/
+
+User-agent: botaif
+Disallow: /p214/
+
+User-agent: botaig
+Disallow: /p215/
+
+User-agent: botaih
+Disallow: /p216/
+
+User-agent: botaii
+Disallow: /p217/
+
+User-agent: botaij
+Disallow: /p218/
+
+User-agent: botaik
+Disallow: /p219/
+
+User-agent: botail
+Disallow: /p220/
+
+User-agent: botaim
+Disallow: /p221/
+
+User-agent: botain
+Disallow: /p222/
+
+User-agent: botaio
+Disallow: /p223/
+
+User-agent: botaip
+Disallow: /p224/
+
+User-agent: botaiq
+Disallow: /p225/
+
+User-agent: botair
+Disallow: /p226/
+
+User-agent: botais
+Disallow: /p227/
+
+User-agent: botait
+Disallow: /p228/
+
+User-agent: botaiu
+Disallow: /p229/
+
+User-agent: botaiv
+Disallow: /p230/
+
+User-agent: botaiw
+Disallow: /p231/
+
+User-agent: botaix
+Disallow: /p232/
+
+User-agent: botaiy
+Disallow: /p233/
+
+User-agent: botaiz
+Disallow: /p234/
+
+User-agent: botaja
+Disallow: /p235/
+
+User-agent: botajb
+Disallow: /p236/
+
+User-agent: botajc
+Disallow: /p237/
+
+User-agent: botajd
+Disallow: /p238/
+
+User-agent: botaje
+Disallow: /p239/
+
+User-agent: botajf
+Disallow: /p240/
+
+User-agent: botajg
+Disallow: /p241/
+
+User-agent: botajh
+Disallow: /p242/
+
+User-agent: botaji
+Disallow: /p243/
+
+User-agent: botajj
+Disallow: /p244/
+
+User-agent: botajk
+Disallow: /p245/
+
+User-agent: botajl
+Disallow: /p246/
+
+User-agent: botajm
+Disallow: /p247/
+
+User-agent: botajn
+Disallow: /p248/
+
+User-agent: botajo
+Disallow: /p249/
+
+User-agent: botajp
+Disallow: /p250/
+
+User-agent: botajq
+Disallow: /p251/
+
+User-agent: botajr
+Disallow: /p252/
+
+User-agent: botajs
+Disallow: /p253/
+
+User-agent: botajt
+Disallow: /p254/
+
+User-agent: botaju
+Disallow: /p255/
+
+User-agent: botajv
+Disallow: /p256/
+
+User-agent: botajw
+Disallow: /p257/
+
+User-agent: botajx
+Disallow: /p258/
+
+User-agent: botajy
+Disallow: /p259/
+
+User-agent: botajz
+Disallow: /p260/
+
+User-agent: botaka
+Disallow: /p261/
+
+User-agent: botakb
+Disallow: /p262/
+
+User-agent: botakc
+Disallow: /p263/
+
+User-agent: botakd
+Disallow: /p264/
+
+User-agent: botake
+Disallow: /p265/
+
+User-agent: botakf
+Disallow: /p266/
+
+User-agent: botakg
+Disallow: /p267/
+
+User-agent: botakh
+Disallow: /p268/
+
+User-agent: botaki
+Disallow: /p269/
+
+User-agent: botakj
+Disallow: /p270/
+
+User-agent: botakk
+Disallow: /p271/
+
+User-agent: botakl
+Disallow: /p272/
+
+User-agent: botakm
+Disallow: /p273/
+
+User-agent: botakn
+Disallow: /p274/
+
+User-agent: botako
+Disallow: /p275/
+
+User-agent: botakp
+Disallow: /p276/
+
+User-agent: botakq
+Disallow: /p277/
+
+User-agent: botakr
+Disallow: /p278/
+
+User-agent: botaks
+Disallow: /p279/
+
+User-agent: botakt
+Disallow: /p280/
+
+User-agent: botaku
+Disallow: /p281/
+
+User-agent: botakv
+Disallow: /p282/
+
+User-agent: botakw
+Disallow: /p283/
+
+User-agent: botakx
+Disallow: /p284/
+
+User-agent: botaky
+Disallow: /p285/
+
+User-agent: botakz
+Disallow: /p286/
+
+User-agent: botala
+Disallow: /p287/
+
+User-agent: botalb
+Disallow: /p288/
+
+User-agent: botalc
+Disallow: /p289/
+
+User-agent: botald
+Disallow: /p290/
+
+User-agent: botale
+Disallow: /p291/
+
+User-agent: botalf
+Disallow: /p292/
+
+User-agent: botalg
+Disallow: /p293/
+
+User-agent: botalh
+Disallow: /p294/
+
+User-agent: botali
+Disallow: /p295/
+
+User-agent: botalj
+Disallow: /p296/
+
+User-agent: botalk
+Disallow: /p297/
+
+User-agent: botall
+Disallow: /p298/
+
+User-agent: botalm
+Disallow: /p299/
+
+User-agent: botaln
+Disallow: /p300/
+
+User-agent: botalo
+Disallow: /p301/
+
+User-agent: botalp
+Disallow: /p302/
+
+User-agent: botalq
+Disallow: /p303/
+
+User-agent: botalr
+Disallow: /p304/
+
+User-agent: botals
+Disallow: /p305/
+
+User-agent: botalt
+Disallow: /p306/
+
+User-agent: botalu
+Disallow: /p307/
+
+User-agent: botalv
+Disallow: /p308/
+
+User-agent: botalw
+Disallow: /p309/
+
+User-agent: botalx
+Disallow: /p310/
+
+User-agent: botaly
+Disallow: /p311/
+
+User-agent: botalz
+Disallow: /p312/
+
+User-agent: botama
+Disallow: /p313/
+
+User-agent: botamb
+Disallow: /p314/
+
+User-agent: botamc
+Disallow: /p315/
+
+User-agent: botamd
+Disallow: /p316/
+
+User-agent: botame
+Disallow: /p317/
+
+User-agent: botamf
+Disallow: /p318/
+
+User-agent: botamg
+Disallow: /p319/
+
+User-agent: botamh
+Disallow: /p320/
+
+User-agent: botami
+Disallow: /p321/
+
+User-agent: botamj
+Disallow: /p322/
+
+User-agent: botamk
+Disallow: /p323/
+
+User-agent: botaml
+Disallow: /p324/
+
+User-agent: botamm
+Disallow: /p325/
+
+User-agent: botamn
+Disallow: /p326/
+
+User-agent: botamo
+Disallow: /p327/
+
+User-agent: botamp
+Disallow: /p328/
+
+User-agent: botamq
+Disallow: /p329/
+
+User-agent: botamr
+Disallow: /p330/
+
+User-agent: botams
+Disallow: /p331/
+
+User-agent: botamt
+Disallow: /p332/
+
+User-agent: botamu
+Disallow: /p333/
+
+User-agent: botamv
+Disallow: /p334/
+
+User-agent: botamw
+Disallow: /p335/
+
+User-agent: botamx
+Disallow: /p336/
+
+User-agent: botamy
+Disallow: /p337/
+
+User-agent: botamz
+Disallow: /p338/
+
+User-agent: botana
+Disallow: /p339/
+
+User-agent: botanb
+Disallow: /p340/
+
+User-agent: botanc
+Disallow: /p341/
+
+User-agent: botand
+Disallow: /p342/
+
+User-agent: botane
+Disallow: /p343/
+
+User-agent: botanf
+Disallow: /p344/
+
+User-agent: botang
+Disallow: /p345/
+
+User-agent: botanh
+Disallow: /p346/
+
+User-agent: botani
+Disallow: /p347/
+
+User-agent: botanj
+Disallow: /p348/
+
+User-agent: botank
+Disallow: /p349/
+
+User-agent: botanl
+Disallow: /p350/
+
+User-agent: botanm
+Disallow: /p351/
+
+User-agent: botann
+Disallow: /p352/
+
+User-agent: botano
+Disallow: /p353/
+
+User-agent: botanp
+Disallow: /p354/
+
+User-agent: botanq
+Disallow: /p355/
+
+User-agent: botanr
+Disallow: /p356/
+
+User-agent: botans
+Disallow: /p357/
+
+User-agent: botant
+Disallow: /p358/
+
+User-agent: botanu
+Disallow: /p359/
+
+User-agent: botanv
+Disallow: /p360/
+
+User-agent: botanw
+Disallow: /p361/
+
+User-agent: botanx
+Disallow: /p362/
+
+User-agent: botany
+Disallow: /p363/
+
+User-agent: botanz
+Disallow: /p364/
+
+User-agent: botaoa
+Disallow: /p365/
+
+User-agent: botaob
+Disallow: /p366/
+
+User-agent: botaoc
+Disallow: /p367/
+
+User-agent: botaod
+Disallow: /p368/
+
+User-agent: botaoe
+Disallow: /p369/
+
+User-agent: botaof
+Disallow: /p370/
+
+User-agent: botaog
+Disallow: /p371/
+
+User-agent: botaoh
+Disallow: /p372/
+
+User-agent: botaoi
+Disallow: /p373/
+
+User-agent: botaoj
+Disallow: /p374/
+
+User-agent: botaok
+Disallow: /p375/
+
+User-agent: botaol
+Disallow: /p376/
+
+User-agent: botaom
+Disallow: /p377/
+
+User-agent: botaon
+Disallow: /p378/
+
+User-agent: botaoo
+Disallow: /p379/
+
+User-agent: botaop
+Disallow: /p380/
+
+User-agent: botaoq
+Disallow: /p381/
+
+User-agent: botaor
+Disallow: /p382/
+
+User-agent: botaos
+Disallow: /p383/
+
+User-agent: botaot
+Disallow: /p384/
+
+User-agent: botaou
+Disallow: /p385/
+
+User-agent: botaov
+Disallow: /p386/
+
+User-agent: botaow
+Disallow: /p387/
+
+User-agent: botaox
+Disallow: /p388/
+
+User-agent: botaoy
+Disallow: /p389/
+
+User-agent: botaoz
+Disallow: /p390/
+
+User-agent: botapa
+Disallow: /p391/
+
+User-agent: botapb
+Disallow: /p392/
+
+User-agent: botapc
+Disallow: /p393/
+
+User-agent: botapd
+Disallow: /p394/
+
+User-agent: botape
+Disallow: /p395/
+
+User-agent: botapf
+Disallow: /p396/
+
+User-agent: botapg
+Disallow: /p397/
+
+User-agent: botaph
+Disallow: /p398/
+
+User-agent: botapi
+Disallow: /p399/
+
+User-agent: botapj
+Disallow: /p400/
+
+User-agent: botapk
+Disallow: /p401/
+
+User-agent: botapl
+Disallow: /p402/
+
+User-agent: botapm
+Disallow: /p403/
+
+User-agent: botapn
+Disallow: /p404/
+
+User-agent: botapo
+Disallow: /p405/
+
+User-agent: botapp
+Disallow: /p406/
+
+User-agent: botapq
+Disallow: /p407/
+
+User-agent: botapr
+Disallow: /p408/
+
+User-agent: botaps
+Disallow: /p409/
+
+User-agent: botapt
+Disallow: /p410/
+
+User-agent: botapu
+Disallow: /p411/
+
+User-agent: botapv
+Disallow: /p412/
+
+User-agent: botapw
+Disallow: /p413/
+
+User-agent: botapx
+Disallow: /p414/
+
+User-agent: botapy
+Disallow: /p415/
+
+User-agent: botapz
+Disallow: /p416/
+
+User-agent: botaqa
+Disallow: /p417/
+
+User-agent: botaqb
+Disallow: /p418/
+
+User-agent: botaqc
+Disallow: /p419/
+
+User-agent: botaqd
+Disallow: /p420/
+
+User-agent: botaqe
+Disallow: /p421/
+
+User-agent: botaqf
+Disallow: /p422/
+
+User-agent: botaqg
+Disallow: /p423/
+
+User-agent: botaqh
+Disallow: /p424/
+
+User-agent: botaqi
+Disallow: /p425/
+
+User-agent: botaqj
+Disallow: /p426/
+
+User-agent: botaqk
+Disallow: /p427/
+
+User-agent: botaql
+Disallow: /p428/
+
+User-agent: botaqm
+Disallow: /p429/
+
+User-agent: botaqn
+Disallow: /p430/
+
+User-agent: botaqo
+Disallow: /p431/
+
+User-agent: botaqp
+Disallow: /p432/
+
+User-agent: botaqq
+Disallow: /p433/
+
+User-agent: botaqr
+Disallow: /p434/
+
+User-agent: botaqs
+Disallow: /p435/
+
+User-agent: botaqt
+Disallow: /p436/
+
+User-agent: botaqu
+Disallow: /p437/
+
+User-agent: botaqv
+Disallow: /p438/
+
+User-agent: botaqw
+Disallow: /p439/
+
+User-agent: botaqx
+Disallow: /p440/
+
+User-agent: botaqy
+Disallow: /p441/
+
+User-agent: botaqz
+Disallow: /p442/
+
+User-agent: botara
+Disallow: /p443/
+
+User-agent: botarb
+Disallow: /p444/
+
+User-agent: botarc
+Disallow: /p445/
+
+User-agent: botard
+Disallow: /p446/
+
+User-agent: botare
+Disallow: /p447/
+
+User-agent: botarf
+Disallow: /p448/
+
+User-agent: botarg
+Disallow: /p449/
+
+User-agent: botarh
+Disallow: /p450/
+
+User-agent: botari
+Disallow: /p451/
+
+User-agent: botarj
+Disallow: /p452/
+
+User-agent: botark
+Disallow: /p453/
+
+User-agent: botarl
+Disallow: /p454/
+
+User-agent: botarm
+Disallow: /p455/
+
+User-agent: botarn
+Disallow: /p456/
+
+User-agent: botaro
+Disallow: /p457/
+
+User-agent: botarp
+Disallow: /p458/
+
+User-agent: botarq
+Disallow: /p459/
+
+User-agent: botarr
+Disallow: /p460/
+
+User-agent: botars
+Disallow: /p461/
+
+User-agent: botart
+Disallow: /p462/
+
+User-agent: botaru
+Disallow: /p463/
+
+User-agent: botarv
+Disallow: /p464/
+
+User-agent: botarw
+Disallow: /p465/
+
+User-agent: botarx
+Disallow: /p466/
+
+User-agent: botary
+Disallow: /p467/
+
+User-agent: botarz
+Disallow: /p468/
+
+User-agent: botasa
+Disallow: /p469/
+
+User-agent: botasb
+Disallow: /p470/
+
+User-agent: botasc
+Disallow: /p471/
+
+User-agent: botasd
+Disallow: /p472/
+
+User-agent: botase
+Disallow: /p473/
+
+User-agent: botasf
+Disallow: /p474/
+
+User-agent: botasg
+Disallow: /p475/
+
+User-agent: botash
+Disallow: /p476/
+
+User-agent: botasi
+Disallow: /p477/
+
+User-agent: botasj
+Disallow: /p478/
+
+User-agent: botask
+Disallow: /p479/
+
+User-agent: botasl
+Disallow: /p480/
+
+User-agent: botasm
+Disallow: /p481/
+
+User-agent: botasn
+Disallow: /p482/
+
+User-agent: botaso
+Disallow: /p483/
+
+User-agent: botasp
+Disallow: /p484/
+
+User-agent: botasq
+Disallow: /p485/
+
+User-agent: botasr
+Disallow: /p486/
+
+User-agent: botass
+Disallow: /p487/
+
+User-agent: botast
+Disallow: /p488/
+
+User-agent: botasu
+Disallow: /p489/
+
+User-agent: botasv
+Disallow: /p490/
+
+User-agent: botasw
+Disallow: /p491/
+
+User-agent: botasx
+Disallow: /p492/
+
+User-agent: botasy
+Disallow: /p493/
+
+User-agent: botasz
+Disallow: /p494/
+
+User-agent: botata
+Disallow: /p495/
+
+User-agent: botatb
+Disallow: /p496/
+
+User-agent: botatc
+Disallow: /p497/
+
+User-agent: botatd
+Disallow: /p498/
+
+User-agent: botate
+Disallow: /p499/
+
+User-agent: botatf
+Disallow: /p500/
+
+User-agent: botatg
+Disallow: /p501/
+
+User-agent: botath
+Disallow: /p502/
+
+User-agent: botati
+Disallow: /p503/
+
+User-agent: botatj
+Disallow: /p504/
+
+User-agent: botatk
+Disallow: /p505/
+
+User-agent: botatl
+Disallow: /p506/
+
+User-agent: botatm
+Disallow: /p507/
+
+User-agent: botatn
+Disallow: /p508/
+
+User-agent: botato
+Disallow: /p509/
+
+User-agent: botatp
+Disallow: /p510/
+
+User-agent: botatq
+Disallow: /p511/
+
+User-agent: botatr
+Disallow: /p512/
+
+User-agent: botats
+Disallow: /p513/
+
+User-agent: botatt
+Disallow: /p514/
+
+User-agent: botatu
+Disallow: /p515/
+
+User-agent: botatv
+Disallow: /p516/
+
+User-agent: botatw
+Disallow: /p517/
+
+User-agent: botatx
+Disallow: /p518/
+
+User-agent: botaty
+Disallow: /p519/
+
+User-agent: botatz
+Disallow: /p520/
+
+User-agent: botaua
+Disallow: /p521/
+
+User-agent: botaub
+Disallow: /p522/
+
+User-agent: botauc
+Disallow: /p523/
+
+User-agent: botaud
+Disallow: /p524/
+
+User-agent: botaue
+Disallow: /p525/
+
+User-agent: botauf
+Disallow: /p526/
+
+User-agent: botaug
+Disallow: /p527/
+
+User-agent: botauh
+Disallow: /p528/
+
+User-agent: botaui
+Disallow: /p529/
+
+User-agent: botauj
+Disallow: /p530/
+
+User-agent: botauk
+Disallow: /p531/
+
+User-agent: botaul
+Disallow: /p532/
+
+User-agent: botaum
+Disallow: /p533/
+
+User-agent: botaun
+Disallow: /p534/
+
+User-agent: botauo
+Disallow: /p535/
+
+User-agent: botaup
+Disallow: /p536/
+
+User-agent: botauq
+Disallow: /p537/
+
+User-agent: botaur
+Disallow: /p538/
+
+User-agent: botaus
+Disallow: /p539/
+
+User-agent: botaut
+Disallow: /p540/
+
+User-agent: botauu
+Disallow: /p541/
+
+User-agent: botauv
+Disallow: /p542/
+
+User-agent: botauw
+Disallow: /p543/
+
+User-agent: botaux
+Disallow: /p544/
+
+User-agent: botauy
+Disallow: /p545/
+
+User-agent: botauz
+Disallow: /p546/
+
+User-agent: botava
+Disallow: /p547/
+
+User-agent: botavb
+Disallow: /p548/
+
+User-agent: botavc
+Disallow: /p549/
+
+User-agent: botavd
+Disallow: /p550/
+
+User-agent: botave
+Disallow: /p551/
+
+User-agent: botavf
+Disallow: /p552/
+
+User-agent: botavg
+Disallow: /p553/
+
+User-agent: botavh
+Disallow: /p554/
+
+User-agent: botavi
+Disallow: /p555/
+
+User-agent: botavj
+Disallow: /p556/
+
+User-agent: botavk
+Disallow: /p557/
+
+User-agent: botavl
+Disallow: /p558/
+
+User-agent: botavm
+Disallow: /p559/
+
+User-agent: botavn
+Disallow: /p560/
+
+User-agent: botavo
+Disallow: /p561/
+
+User-agent: botavp
+Disallow: /p562/
+
+User-agent: botavq
+Disallow: /p563/
+
+User-agent: botavr
+Disallow: /p564/
+
+User-agent: botavs
+Disallow: /p565/
+
+User-agent: botavt
+Disallow: /p566/
+
+User-agent: botavu
+Disallow: /p567/
+
+User-agent: botavv
+Disallow: /p568/
+
+User-agent: botavw
+Disallow: /p569/
+
+User-agent: botavx
+Disallow: /p570/
+
+User-agent: botavy
+Disallow: /p571/
+
+User-agent: botavz
+Disallow: /p572/
+
+User-agent: botawa
+Disallow: /p573/
+
+User-agent: botawb
+Disallow: /p574/
+
+User-agent: botawc
+Disallow: /p575/
+
+User-agent: botawd
+Disallow: /p576/
+
+User-agent: botawe
+Disallow: /p577/
+
+User-agent: botawf
+Disallow: /p578/
+
+User-agent: botawg
+Disallow: /p579/
+
+User-agent: botawh
+Disallow: /p580/
+
+User-agent: botawi
+Disallow: /p581/
+
+User-agent: botawj
+Disallow: /p582/
+
+User-agent: botawk
+Disallow: /p583/
+
+User-agent: botawl
+Disallow: /p584/
+
+User-agent: botawm
+Disallow: /p585/
+
+User-agent: botawn
+Disallow: /p586/
+
+User-agent: botawo
+Disallow: /p587/
+
+User-agent: botawp
+Disallow: /p588/
+
+User-agent: botawq
+Disallow: /p589/
+
+User-agent: botawr
+Disallow: /p590/
+
+User-agent: botaws
+Disallow: /p591/
+
+User-agent: botawt
+Disallow: /p592/
+
+User-agent: botawu
+Disallow: /p593/
+
+User-agent: botawv
+Disallow: /p594/
+
+User-agent: botaww
+Disallow: /p595/
+
+User-agent: botawx
+Disallow: /p596/
+
+User-agent: botawy
+Disallow: /p597/
+
+User-agent: botawz
+Disallow: /p598/
+
+User-agent: botaxa
+Disallow: /p599/
+
+User-agent: botaxb
+Disallow: /p600/
+
+User-agent: botaxc
+Disallow: /p601/
+
+User-agent: botaxd
+Disallow: /p602/
+
+User-agent: botaxe
+Disallow: /p603/
+
+User-agent: botaxf
+Disallow: /p604/
+
+User-agent: botaxg
+Disallow: /p605/
+
+User-agent: botaxh
+Disallow: /p606/
+
+User-agent: botaxi
+Disallow: /p607/
+
+User-agent: botaxj
+Disallow: /p608/
+
+User-agent: botaxk
+Disallow: /p609/
+
+User-agent: botaxl
+Disallow: /p610/
+
+User-agent: botaxm
+Disallow: /p611/
+
+User-agent: botaxn
+Disallow: /p612/
+
+User-agent: botaxo
+Disallow: /p613/
+
+User-agent: botaxp
+Disallow: /p614/
+
+User-agent: botaxq
+Disallow: /p615/
+
+User-agent: botaxr
+Disallow: /p616/
+
+User-agent: botaxs
+Disallow: /p617/
+
+User-agent: botaxt
+Disallow: /p618/
+
+User-agent: botaxu
+Disallow: /p619/
+
+User-agent: botaxv
+Disallow: /p620/
+
+User-agent: botaxw
+Disallow: /p621/
+
+User-agent: botaxx
+Disallow: /p622/
+
+User-agent: botaxy
+Disallow: /p623/
+
+User-agent: botaxz
+Disallow: /p624/
+
+User-agent: botaya
+Disallow: /p625/
+
+User-agent: botayb
+Disallow: /p626/
+
+User-agent: botayc
+Disallow: /p627/
+
+User-agent: botayd
+Disallow: /p628/
+
+User-agent: botaye
+Disallow: /p629/
+
+User-agent: botayf
+Disallow: /p630/
+
+User-agent: botayg
+Disallow: /p631/
+
+User-agent: botayh
+Disallow: /p632/
+
+User-agent: botayi
+Disallow: /p633/
+
+User-agent: botayj
+Disallow: /p634/
+
+User-agent: botayk
+Disallow: /p635/
+
+User-agent: botayl
+Disallow: /p636/
+
+User-agent: botaym
+Disallow: /p637/
+
+User-agent: botayn
+Disallow: /p638/
+
+User-agent: botayo
+Disallow: /p639/
+
+User-agent: botayp
+Disallow: /p640/
+
+User-agent: botayq
+Disallow: /p641/
+
+User-agent: botayr
+Disallow: /p642/
+
+User-agent: botays
+Disallow: /p643/
+
+User-agent: botayt
+Disallow: /p644/
+
+User-agent: botayu
+Disallow: /p645/
+
+User-agent: botayv
+Disallow: /p646/
+
+User-agent: botayw
+Disallow: /p647/
+
+User-agent: botayx
+Disallow: /p648/
+
+User-agent: botayy
+Disallow: /p649/
+
+User-agent: botayz
+Disallow: /p650/
+
+User-agent: botaza
+Disallow: /p651/
+
+User-agent: botazb
+Disallow: /p652/
+
+User-agent: botazc
+Disallow: /p653/
+
+User-agent: botazd
+Disallow: /p654/
+
+User-agent: botaze
+Disallow: /p655/
+
+User-agent: botazf
+Disallow: /p656/
+
+User-agent: botazg
+Disallow: /p657/
+
+User-agent: botazh
+Disallow: /p658/
+
+User-agent: botazi
+Disallow: /p659/
+
+User-agent: botazj
+Disallow: /p660/
+
+User-agent: botazk
+Disallow: /p661/
+
+User-agent: botazl
+Disallow: /p662/
+
+User-agent: botazm
+Disallow: /p663/
+
+User-agent: botazn
+Disallow: /p664/
+
+User-agent: botazo
+Disallow: /p665/
+
+User-agent: botazp
+Disallow: /p666/
+
+User-agent: botazq
+Disallow: /p667/
+
+User-agent: botazr
+Disallow: /p668/
+
+User-agent: botazs
+Disallow: /p669/
+
+User-agent: botazt
+Disallow: /p670/
+
+User-agent: botazu
+Disallow: /p671/
+
+User-agent: botazv
+Disallow: /p672/
+
+User-agent: botazw
+Disallow: /p673/
+
+User-agent: botazx
+Disallow: /p674/
+
+User-agent: botazy
+Disallow: /p675/
+
+User-agent: botazz
+Disallow: /p676/
+
+User-agent: botbaa
+Disallow: /p677/
+
+User-agent: botbab
+Disallow: /p678/
+
+User-agent: botbac
+Disallow: /p679/
+
+User-agent: botbad
+Disallow: /p680/
+
+User-agent: botbae
+Disallow: /p681/
+
+User-agent: botbaf
+Disallow: /p682/
+
+User-agent: botbag
+Disallow: /p683/
+
+User-agent: botbah
+Disallow: /p684/
+
+User-agent: botbai
+Disallow: /p685/
+
+User-agent: botbaj
+Disallow: /p686/
+
+User-agent: botbak
+Disallow: /p687/
+
+User-agent: botbal
+Disallow: /p688/
+
+User-agent: botbam
+Disallow: /p689/
+
+User-agent: botban
+Disallow: /p690/
+
+User-agent: botbao
+Disallow: /p691/
+
+User-agent: botbap
+Disallow: /p692/
+
+User-agent: botbaq
+Disallow: /p693/
+
+User-agent: botbar
+Disallow: /p694/
+
+User-agent: botbas
+Disallow: /p695/
+
+User-agent: botbat
+Disallow: /p696/
+
+User-agent: botbau
+Disallow: /p697/
+
+User-agent: botbav
+Disallow: /p698/
+
+User-agent: botbaw
+Disallow: /p699/
+
+User-agent: botbax
+Disallow: /p700/
+
+User-agent: botbay
+Disallow: /p701/
+
+User-agent: botbaz
+Disallow: /p702/
+
+User-agent: botbba
+Disallow: /p703/
+
+User-agent: botbbb
+Disallow: /p704/
+
+User-agent: botbbc
+Disallow: /p705/
+
+User-agent: botbbd
+Disallow: /p706/
+
+User-agent: botbbe
+Disallow: /p707/
+
+User-agent: botbbf
+Disallow: /p708/
+
+User-agent: botbbg
+Disallow: /p709/
+
+User-agent: botbbh
+Disallow: /p710/
+
+User-agent: botbbi
+Disallow: /p711/
+
+User-agent: botbbj
+Disallow: /p712/
+
+User-agent: botbbk
+Disallow: /p713/
+
+User-agent: botbbl
+Disallow: /p714/
+
+User-agent: botbbm
+Disallow: /p715/
+
+User-agent: botbbn
+Disallow: /p716/
+
+User-agent: botbbo
+Disallow: /p717/
+
+User-agent: botbbp
+Disallow: /p718/
+
+User-agent: botbbq
+Disallow: /p719/
+
+User-agent: botbbr
+Disallow: /p720/
+
+User-agent: botbbs
+Disallow: /p721/
+
+User-agent: botbbt
+Disallow: /p722/
+
+User-agent: botbbu
+Disallow: /p723/
+
+User-agent: botbbv
+Disallow: /p724/
+
+User-agent: botbbw
+Disallow: /p725/
+
+User-agent: botbbx
+Disallow: /p726/
+
+User-agent: botbby
+Disallow: /p727/
+
+User-agent: botbbz
+Disallow: /p728/
+
+User-agent: botbca
+Disallow: /p729/
+
+User-agent: botbcb
+Disallow: /p730/
+
+User-agent: botbcc
+Disallow: /p731/
+
+User-agent: botbcd
+Disallow: /p732/
+
+User-agent: botbce
+Disallow: /p733/
+
+User-agent: botbcf
+Disallow: /p734/
+
+User-agent: botbcg
+Disallow: /p735/
+
+User-agent: botbch
+Disallow: /p736/
+
+User-agent: botbci
+Disallow: /p737/
+
+User-agent: botbcj
+Disallow: /p738/
+
+User-agent: botbck
+Disallow: /p739/
+
+User-agent: botbcl
+Disallow: /p740/
+
+User-agent: botbcm
+Disallow: /p741/
+
+User-agent: botbcn
+Disallow: /p742/
+
+User-agent: botbco
+Disallow: /p743/
+
+User-agent: botbcp
+Disallow: /p744/
+
+User-agent: botbcq
+Disallow: /p745/
+
+User-agent: botbcr
+Disallow: /p746/
+
+User-agent: botbcs
+Disallow: /p747/
+
+User-agent: botbct
+Disallow: /p748/
+
+User-agent: botbcu
+Disallow: /p749/
+
+User-agent: botbcv
+Disallow: /p750/
+
+User-agent: botbcw
+Disallow: /p751/
+
+User-agent: botbcx
+Disallow: /p752/
+
+User-agent: botbcy
+Disallow: /p753/
+
+User-agent: botbcz
+Disallow: /p754/
+
+User-agent: botbda
+Disallow: /p755/
+
+User-agent: botbdb
+Disallow: /p756/
+
+User-agent: botbdc
+Disallow: /p757/
+
+User-agent: botbdd
+Disallow: /p758/
+
+User-agent: botbde
+Disallow: /p759/
+
+User-agent: botbdf
+Disallow: /p760/
+
+User-agent: botbdg
+Disallow: /p761/
+
+User-agent: botbdh
+Disallow: /p762/
+
+User-agent: botbdi
+Disallow: /p763/
+
+User-agent: botbdj
+Disallow: /p764/
+
+User-agent: botbdk
+Disallow: /p765/
+
+User-agent: botbdl
+Disallow: /p766/
+
+User-agent: botbdm
+Disallow: /p767/
+
+User-agent: botbdn
+Disallow: /p768/
+
+User-agent: botbdo
+Disallow: /p769/
+
+User-agent: botbdp
+Disallow: /p770/
+
+User-agent: botbdq
+Disallow: /p771/
+
+User-agent: botbdr
+Disallow: /p772/
+
+User-agent: botbds
+Disallow: /p773/
+
+User-agent: botbdt
+Disallow: /p774/
+
+User-agent: botbdu
+Disallow: /p775/
+
+User-agent: botbdv
+Disallow: /p776/
+
+User-agent: botbdw
+Disallow: /p777/
+
+User-agent: botbdx
+Disallow: /p778/
+
+User-agent: botbdy
+Disallow: /p779/
+
+User-agent: botbdz
+Disallow: /p780/
+
+User-agent: botbea
+Disallow: /p781/
+
+User-agent: botbeb
+Disallow: /p782/
+
+User-agent: botbec
+Disallow: /p783/
+
+User-agent: botbed
+Disallow: /p784/
+
+User-agent: botbee
+Disallow: /p785/
+
+User-agent: botbef
+Disallow: /p786/
+
+User-agent: botbeg
+Disallow: /p787/
+
+User-agent: botbeh
+Disallow: /p788/
+
+User-agent: botbei
+Disallow: /p789/
+
+User-agent: botbej
+Disallow: /p790/
+
+User-agent: botbek
+Disallow: /p791/
+
+User-agent: botbel
+Disallow: /p792/
+
+User-agent: botbem
+Disallow: /p793/
+
+User-agent: botben
+Disallow: /p794/
+
+User-agent: botbeo
+Disallow: /p795/
+
+User-agent: botbep
+Disallow: /p796/
+
+User-agent: botbeq
+Disallow: /p797/
+
+User-agent: botber
+Disallow: /p798/
+
+User-agent: botbes
+Disallow: /p799/
+
+User-agent: botbet
+Disallow: /p800/
+
+User-agent: botbeu
+Disallow: /p801/
+
+User-agent: botbev
+Disallow: /p802/
+
+User-agent: botbew
+Disallow: /p803/
+
+User-agent: botbex
+Disallow: /p804/
+
+User-agent: botbey
+Disallow: /p805/
+
+User-agent: botbez
+Disallow: /p806/
+
+User-agent: botbfa
+Disallow: /p807/
+
+User-agent: botbfb
+Disallow: /p808/
+
+User-agent: botbfc
+Disallow: /p809/
+
+User-agent: botbfd
+Disallow: /p810/
+
+User-agent: botbfe
+Disallow: /p811/
+
+User-agent: botbff
+Disallow: /p812/
+
+User-agent: botbfg
+Disallow: /p813/
+
+User-agent: botbfh
+Disallow: /p814/
+
+User-agent: botbfi
+Disallow: /p815/
+
+User-agent: botbfj
+Disallow: /p816/
+
+User-agent: botbfk
+Disallow: /p817/
+
+User-agent: botbfl
+Disallow: /p818/
+
+User-agent: botbfm
+Disallow: /p819/
+
+User-agent: botbfn
+Disallow: /p820/
+
+User-agent: botbfo
+Disallow: /p821/
+
+User-agent: botbfp
+Disallow: /p822/
+
+User-agent: botbfq
+Disallow: /p823/
+
+User-agent: botbfr
+Disallow: /p824/
+
+User-agent: botbfs
+Disallow: /p825/
+
+User-agent: botbft
+Disallow: /p826/
+
+User-agent: botbfu
+Disallow: /p827/
+
+User-agent: botbfv
+Disallow: /p828/
+
+User-agent: botbfw
+Disallow: /p829/
+
+User-agent: botbfx
+Disallow: /p830/
+
+User-agent: botbfy
+Disallow: /p831/
+
+User-agent: botbfz
+Disallow: /p832/
+
+User-agent: botbga
+Disallow: /p833/
+
+User-agent: botbgb
+Disallow: /p834/
+
+User-agent: botbgc
+Disallow: /p835/
+
+User-agent: botbgd
+Disallow: /p836/
+
+User-agent: botbge
+Disallow: /p837/
+
+User-agent: botbgf
+Disallow: /p838/
+
+User-agent: botbgg
+Disallow: /p839/
+
+User-agent: botbgh
+Disallow: /p840/
+
+User-agent: botbgi
+Disallow: /p841/
+
+User-agent: botbgj
+Disallow: /p842/
+
+User-agent: botbgk
+Disallow: /p843/
+
+User-agent: botbgl
+Disallow: /p844/
+
+User-agent: botbgm
+Disallow: /p845/
+
+User-agent: botbgn
+Disallow: /p846/
+
+User-agent: botbgo
+Disallow: /p847/
+
+User-agent: botbgp
+Disallow: /p848/
+
+User-agent: botbgq
+Disallow: /p849/
+
+User-agent: botbgr
+Disallow: /p850/
+
+User-agent: botbgs
+Disallow: /p851/
+
+User-agent: botbgt
+Disallow: /p852/
+
+User-agent: botbgu
+Disallow: /p853/
+
+User-agent: botbgv
+Disallow: /p854/
+
+User-agent: botbgw
+Disallow: /p855/
+
+User-agent: botbgx
+Disallow: /p856/
+
+User-agent: botbgy
+Disallow: /p857/
+
+User-agent: botbgz
+Disallow: /p858/
+
+User-agent: botbha
+Disallow: /p859/
+
+User-agent: botbhb
+Disallow: /p860/
+
+User-agent: botbhc
+Disallow: /p861/
+
+User-agent: botbhd
+Disallow: /p862/
+
+User-agent: botbhe
+Disallow: /p863/
+
+User-agent: botbhf
+Disallow: /p864/
+
+User-agent: botbhg
+Disallow: /p865/
+
+User-agent: botbhh
+Disallow: /p866/
+
+User-agent: botbhi
+Disallow: /p867/
+
+User-agent: botbhj
+Disallow: /p868/
+
+User-agent: botbhk
+Disallow: /p869/
+
+User-agent: botbhl
+Disallow: /p870/
+
+User-agent: botbhm
+Disallow: /p871/
+
+User-agent: botbhn
+Disallow: /p872/
+
+User-agent: botbho
+Disallow: /p873/
+
+User-agent: botbhp
+Disallow: /p874/
+
+User-agent: botbhq
+Disallow: /p875/
+
+User-agent: botbhr
+Disallow: /p876/
+
+User-agent: botbhs
+Disallow: /p877/
+
+User-agent: botbht
+Disallow: /p878/
+
+User-agent: botbhu
+Disallow: /p879/
+
+User-agent: botbhv
+Disallow: /p880/
+
+User-agent: botbhw
+Disallow: /p881/
+
+User-agent: botbhx
+Disallow: /p882/
+
+User-agent: botbhy
+Disallow: /p883/
+
+User-agent: botbhz
+Disallow: /p884/
+
+User-agent: botbia
+Disallow: /p885/
+
+User-agent: botbib
+Disallow: /p886/
+
+User-agent: botbic
+Disallow: /p887/
+
+User-agent: botbid
+Disallow: /p888/
+
+User-agent: botbie
+Disallow: /p889/
+
+User-agent: botbif
+Disallow: /p890/
+
+User-agent: botbig
+Disallow: /p891/
+
+User-agent: botbih
+Disallow: /p892/
+
+User-agent: botbii
+Disallow: /p893/
+
+User-agent: botbij
+Disallow: /p894/
+
+User-agent: botbik
+Disallow: /p895/
+
+User-agent: botbil
+Disallow: /p896/
+
+User-agent: botbim
+Disallow: /p897/
+
+User-agent: botbin
+Disallow: /p898/
+
+User-agent: botbio
+Disallow: /p899/
+
+User-agent: botbip
+Disallow: /p900/
+
+User-agent: botbiq
+Disallow: /p901/
+
+User-agent: botbir
+Disallow: /p902/
+
+User-agent: botbis
+Disallow: /p903/
+
+User-agent: botbit
+Disallow: /p904/
+
+User-agent: botbiu
+Disallow: /p905/
+
+User-agent: botbiv
+Disallow: /p906/
+
+User-agent: botbiw
+Disallow: /p907/
+
+User-agent: botbix
+Disallow: /p908/
+
+User-agent: botbiy
+Disallow: /p909/
+
+User-agent: botbiz
+Disallow: /p910/
+
+User-agent: botbja
+Disallow: /p911/
+
+User-agent: botbjb
+Disallow: /p912/
+
+User-agent: botbjc
+Disallow: /p913/
+
+User-agent: botbjd
+Disallow: /p914/
+
+User-agent: botbje
+Disallow: /p915/
+
+User-agent: botbjf
+Disallow: /p916/
+
+User-agent: botbjg
+Disallow: /p917/
+
+User-agent: botbjh
+Disallow: /p918/
+
+User-agent: botbji
+Disallow: /p919/
+
+User-agent: botbjj
+Disallow: /p920/
+
+User-agent: botbjk
+Disallow: /p921/
+
+User-agent: botbjl
+Disallow: /p922/
+
+User-agent: botbjm
+Disallow: /p923/
+
+User-agent: botbjn
+Disallow: /p924/
+
+User-agent: botbjo
+Disallow: /p925/
+
+User-agent: botbjp
+Disallow: /p926/
+
+User-agent: botbjq
+Disallow: /p927/
+
+User-agent: botbjr
+Disallow: /p928/
+
+User-agent: botbjs
+Disallow: /p929/
+
+User-agent: botbjt
+Disallow: /p930/
+
+User-agent: botbju
+Disallow: /p931/
+
+User-agent: botbjv
+Disallow: /p932/
+
+User-agent: botbjw
+Disallow: /p933/
+
+User-agent: botbjx
+Disallow: /p934/
+
+User-agent: botbjy
+Disallow: /p935/
+
+User-agent: botbjz
+Disallow: /p936/
+
+User-agent: botbka
+Disallow: /p937/
+
+User-agent: botbkb
+Disallow: /p938/
+
+User-agent: botbkc
+Disallow: /p939/
+
+User-agent: botbkd
+Disallow: /p940/
+
+User-agent: botbke
+Disallow: /p941/
+
+User-agent: botbkf
+Disallow: /p942/
+
+User-agent: botbkg
+Disallow: /p943/
+
+User-agent: botbkh
+Disallow: /p944/
+
+User-agent: botbki
+Disallow: /p945/
+
+User-agent: botbkj
+Disallow: /p946/
+
+User-agent: botbkk
+Disallow: /p947/
+
+User-agent: botbkl
+Disallow: /p948/
+
+User-agent: botbkm
+Disallow: /p949/
+
+User-agent: botbkn
+Disallow: /p950/
+
+User-agent: botbko
+Disallow: /p951/
+
+User-agent: botbkp
+Disallow: /p952/
+
+User-agent: botbkq
+Disallow: /p953/
+
+User-agent: botbkr
+Disallow: /p954/
+
+User-agent: botbks
+Disallow: /p955/
+
+User-agent: botbkt
+Disallow: /p956/
+
+User-agent: botbku
+Disallow: /p957/
+
+User-agent: botbkv
+Disallow: /p958/
+
+User-agent: botbkw
+Disallow: /p959/
+
+User-agent: botbkx
+Disallow: /p960/
+
+User-agent: botbky
+Disallow: /p961/
+
+User-agent: botbkz
+Disallow: /p962/
+
+User-agent: botbla
+Disallow: /p963/
+
+User-agent: botblb
+Disallow: /p964/
+
+User-agent: botblc
+Disallow: /p965/
+
+User-agent: botbld
+Disallow: /p966/
+
+User-agent: botble
+Disallow: /p967/
+
+User-agent: botblf
+Disallow: /p968/
+
+User-agent: botblg
+Disallow: /p969/
+
+User-agent: botblh
+Disallow: /p970/
+
+User-agent: botbli
+Disallow: /p971/
+
+User-agent: botblj
+Disallow: /p972/
+
+User-agent: botblk
+Disallow: /p973/
+
+User-agent: botbll
+Disallow: /p974/
+
+User-agent: botblm
+Disallow: /p975/
+
+User-agent: botbln
+Disallow: /p976/
+
+User-agent: botblo
+Disallow: /p977/
+
+User-agent: botblp
+Disallow: /p978/
+
+User-agent: botblq
+Disallow: /p979/
+
+User-agent: botblr
+Disallow: /p980/
+
+User-agent: botbls
+Disallow: /p981/
+
+User-agent: botblt
+Disallow: /p982/
+
+User-agent: botblu
+Disallow: /p983/
+
+User-agent: botblv
+Disallow: /p984/
+
+User-agent: botblw
+Disallow: /p985/
+
+User-agent: botblx
+Disallow: /p986/
+
+User-agent: botbly
+Disallow: /p987/
+
+User-agent: botblz
+Disallow: /p988/
+
+User-agent: botbma
+Disallow: /p989/
+
+User-agent: botbmb
+Disallow: /p990/
+
+User-agent: botbmc
+Disallow: /p991/
+
+User-agent: botbmd
+Disallow: /p992/
+
+User-agent: botbme
+Disallow: /p993/
+
+User-agent: botbmf
+Disallow: /p994/
+
+User-agent: botbmg
+Disallow: /p995/
+
+User-agent: botbmh
+Disallow: /p996/
+
+User-agent: botbmi
+Disallow: /p997/
+
+User-agent: botbmj
+Disallow: /p998/
+
+User-agent: botbmk
+Disallow: /p999/
+
+User-agent: botbml
+Disallow: /p1000/
