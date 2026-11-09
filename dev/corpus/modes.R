@@ -1,0 +1,426 @@
+# Mode runners for the corpus harness (ROBO-qbxsydcf). Sourced by run.R after
+# harness.R. Each mode walks the host directories in chunks, one shard of each
+# table per chunk, so no run holds more than one chunk of results at a time.
+
+# ---------------------------------------------------------------------------
+# Chunk driver
+
+plan_chunks <- function(hosts, opts) {
+  ids <- seq_along(hosts)
+  if (!is.na(opts$max_hosts)) {
+    ids <- utils::head(ids, opts$max_hosts)
+  }
+  chunk_of <- (ids - 1L) %/% opts$chunk_size + 1L
+  chunks <- split(ids, chunk_of)
+  index <- as.integer(names(chunks))
+  if (!is.na(opts$subset)) {
+    kn <- as.integer(strsplit(opts$subset, "/", fixed = TRUE)[[1L]])
+    keep <- (index %% kn[[2L]]) == kn[[1L]]
+    chunks <- chunks[keep]
+    index <- index[keep]
+  }
+  Map(function(i, ids) list(chunk = i, ids = ids), index, chunks)
+}
+
+# Run `work(chunk)` over the chunks on at most two forked workers. Each call
+# returns a small list; the shards are written by the worker itself.
+run_chunks <- function(chunks, work, workers) {
+  task <- function(ch) {
+    gc(reset = TRUE)
+    t0 <- proc.time()[["elapsed"]]
+    out <- work(ch)
+    out$chunk <- ch$chunk
+    out$seconds <- proc.time()[["elapsed"]] - t0
+    out$gc_peak_mb <- gc_peak_mb()
+    out$rss_mb <- rss_mb()
+    out
+  }
+  results <- if (workers > 1L) {
+    parallel::mclapply(
+      chunks, task, mc.cores = workers, mc.preschedule = FALSE
+    )
+  } else {
+    lapply(chunks, task)
+  }
+  failed <- vapply(results, function(r) inherits(r, "try-error"), logical(1))
+  if (any(failed)) {
+    stop("A worker failed: ", as.character(results[failed][[1L]]))
+  }
+  results
+}
+
+# Read each host of a chunk; `on_body(file_id, host, row, record)` returns a
+# named list of frames to append, for records with a raw body.
+walk_chunk <- function(corpus, hosts, ch, on_body = NULL) {
+  files <- vector("list", length(ch$ids))
+  timing <- vector("list", length(ch$ids))
+  extra <- list()
+  for (k in seq_along(ch$ids)) {
+    id <- ch$ids[[k]]
+    host <- hosts[[id]]
+    path <- file.path(corpus, host, "robots.rds")
+    if (!file.exists(path)) {
+      files[[k]] <- skipped_file_row(id, host)
+      next
+    }
+    read <- read_corpus_record(path)
+    row <- file_row(id, host, read)
+    if (!is.null(on_body) && isTRUE(row$body_present)) {
+      t0 <- proc.time()[["elapsed"]]
+      got <- tryCatch(
+        on_body(id, host, row, read$record),
+        error = function(e) e
+      )
+      timing[[k]] <- data.frame(
+        file_id = id, seconds = proc.time()[["elapsed"]] - t0
+      )
+      if (inherits(got, "error")) {
+        row$error <- conditionMessage(got)
+      } else {
+        for (nm in names(got)) {
+          extra[[nm]] <- c(extra[[nm]], list(got[[nm]]))
+        }
+      }
+    }
+    files[[k]] <- row
+  }
+  c(
+    list(files = bind_frames(files), timing = bind_frames(timing)),
+    lapply(extra, bind_frames)
+  )
+}
+
+# Tables whose values are measurements, not results: never compared.
+nondeterministic_tables <- function() {
+  "timing"
+}
+
+chunk_summary <- function(tables) {
+  f <- tables$files
+  list(
+    n_dirs = nrow(f),
+    n_skipped_no_rds = sum(!f$has_rds),
+    n_unreadable = sum(f$has_rds & !f$readable, na.rm = TRUE),
+    n_bodies = sum(f$body_present),
+    n_errors = sum(!is.na(f$error))
+  )
+}
+
+write_tables <- function(run_dir, chunk, tables, names) {
+  for (nm in names) {
+    write_shard(run_dir, nm, chunk, tables[[nm]])
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Modes
+
+mode_manifest <- function(ctx) {
+  work <- function(ch) {
+    tables <- walk_chunk(ctx$corpus, ctx$hosts, ch)
+    write_tables(ctx$run_dir, ch$chunk, tables, "files")
+    chunk_summary(tables)
+  }
+  run_chunks(ctx$chunks, work, ctx$opts$workers)
+}
+
+mode_validate <- function(ctx) {
+  fns <- ctx$fns
+  work <- function(ch) {
+    tables <- walk_chunk(ctx$corpus, ctx$hosts, ch, function(id, host, row,
+                                                             record) {
+      v <- validate_body(record$body, fns)
+      list(
+        documents = with_ids(v$documents, file_id = id),
+        diagnostics = with_ids(v$diagnostics, file_id = id)
+      )
+    })
+    write_tables(
+      ctx$run_dir, ch$chunk, tables,
+      c("files", "timing", "documents", "diagnostics")
+    )
+    chunk_summary(tables)
+  }
+  run_chunks(ctx$chunks, work, ctx$opts$workers)
+}
+
+mode_evaluate <- function(ctx) {
+  fns <- ctx$fns
+  combos <- ctx$combos
+  narrow <- size_combos(combos)
+  work <- function(ch) {
+    tables <- walk_chunk(ctx$corpus, ctx$hosts, ch, function(id, host, row,
+                                                             record) {
+      # A body over --large-bytes gets the narrow grid and path set: its rows
+      # each cost a parse of the whole body.
+      large <- length(record$body) > ctx$opts$large_bytes
+      paths <- if (large) {
+        size_path_set(record$body, ctx$opts$size_rule_paths)
+      } else {
+        path_set(record$body, ctx$opts$max_rule_paths, ctx$random)
+      }
+      paths$tier <- if (large) "large" else "full"
+      res <- evaluate_body(
+        record$body, paths, if (large) narrow else combos, fns
+      )
+      list(
+        paths = with_ids(paths, file_id = id),
+        results = with_ids(res, file_id = id)
+      )
+    })
+    write_tables(
+      ctx$run_dir, ch$chunk, tables, c("files", "timing", "paths", "results")
+    )
+    out <- chunk_summary(tables)
+    out$n_result_rows <- if (is.null(tables$results)) 0L else {
+      nrow(tables$results)
+    }
+    out
+  }
+  run_chunks(ctx$chunks, work, ctx$opts$workers)
+}
+
+# Size variants of one body: validated, then evaluated over the paths of the
+# whole body under every combination.
+size_tables <- function(body, origin, file_id, ctx) {
+  paths <- size_path_set(body, ctx$opts$size_rule_paths)
+  variants <- size_variants(body)
+  out <- list(variants = NULL, paths = NULL, results = NULL,
+              documents = NULL, diagnostics = NULL)
+  vrows <- list()
+  docs <- list()
+  diags <- list()
+  results <- list()
+  for (name in names(variants)) {
+    b <- variants[[name]]
+    vrows[[name]] <- data.frame(
+      origin = origin, file_id = file_id, variant = name,
+      bytes = length(b), body_sha256 = tools::sha256sum(bytes = b),
+      stringsAsFactors = FALSE
+    )
+    v <- validate_body(b, ctx$fns)
+    docs[[name]] <- with_ids(
+      v$documents, origin = origin, file_id = file_id, variant = name
+    )
+    diags[[name]] <- with_ids(
+      v$diagnostics, origin = origin, file_id = file_id, variant = name
+    )
+    results[[name]] <- with_ids(
+      evaluate_body(b, paths, ctx$combos, ctx$fns),
+      origin = origin, file_id = file_id, variant = name
+    )
+  }
+  out$variants <- bind_frames(vrows)
+  out$paths <- with_ids(paths, origin = origin, file_id = file_id)
+  out$results <- bind_frames(results)
+  out$documents <- bind_frames(docs)
+  out$diagnostics <- bind_frames(diags)
+  out
+}
+
+mode_size <- function(ctx) {
+  size_names <- c("variants", "paths", "results", "documents", "diagnostics")
+  floor_bytes <- min(size_targets())
+  # Chunk 0 holds the synthetic bodies, which exist in every run.
+  synthetic <- synthetic_size_bodies()
+  syn <- lapply(names(synthetic), function(nm) {
+    size_tables(synthetic[[nm]], paste0("synthetic:", nm), NA_integer_, ctx)
+  })
+  syn_tables <- lapply(size_names, function(nm) {
+    bind_frames(lapply(syn, `[[`, nm))
+  })
+  names(syn_tables) <- size_names
+  write_tables(ctx$run_dir, 0L, syn_tables, size_names)
+
+  work <- function(ch) {
+    tables <- walk_chunk(ctx$corpus, ctx$hosts, ch, function(id, host, row,
+                                                             record) {
+      if (length(record$body) < floor_bytes) {
+        return(list())
+      }
+      size_tables(record$body, "corpus", id, ctx)
+    })
+    for (nm in size_names) {
+      if (is.null(tables[[nm]])) {
+        tables[nm] <- list(NULL)
+      }
+    }
+    write_tables(
+      ctx$run_dir, ch$chunk, tables, c("files", "timing", size_names)
+    )
+    out <- chunk_summary(tables)
+    out$n_size_bodies <- if (is.null(tables$variants)) 0L else {
+      length(unique(tables$variants$file_id))
+    }
+    out
+  }
+  run_chunks(ctx$chunks, work, ctx$opts$workers)
+}
+
+# ---------------------------------------------------------------------------
+# Manifest of a finished run, from its files shards.
+
+# The manifest as the run read it: the hash of each file taken from the very
+# bytes the run processed, collected from the files shards.
+read_manifest <- function(run_dir) {
+  idx <- shard_index(run_dir)
+  idx <- idx[idx$table == "files", , drop = FALSE]
+  files <- bind_frames(lapply(file.path(run_dir, "shards", idx$file),
+                              function(p) decode_frame(readRDS(p))))
+  present <- files[files$has_rds, c("host", "rds_sha256", "rds_bytes")]
+  present <- present[order(present$host, method = "radix"), , drop = FALSE]
+  rownames(present) <- NULL
+  list(
+    manifest = present,
+    n_dirs = nrow(files),
+    n_files = nrow(present),
+    n_skipped_no_rds = sum(!files$has_rds),
+    n_unreadable = sum(files$has_rds & !files$readable, na.rm = TRUE),
+    n_bodies = sum(files$body_present),
+    n_errors = sum(!is.na(files$error))
+  )
+}
+
+# ---------------------------------------------------------------------------
+# Comparison of two runs
+
+# Rows of `a` and `b` (same shape) that differ in any column, identical()-level
+# per cell: NA equals NA, and nothing else equals NA.
+differing_rows <- function(a, b) {
+  any_diff <- logical(nrow(a))
+  cols <- character()
+  for (col in names(a)) {
+    x <- a[[col]]
+    y <- b[[col]]
+    same <- (is.na(x) & is.na(y)) | (!is.na(x) & !is.na(y) & x == y)
+    same[is.na(same)] <- FALSE
+    if (!all(same)) {
+      cols <- c(cols, col)
+    }
+    any_diff <- any_diff | !same
+  }
+  list(rows = which(any_diff), cols = cols)
+}
+
+compare_shard <- function(a, b, table, chunk, detail_cap) {
+  a <- decode_frame(a)
+  b <- decode_frame(b)
+  na <- if (is.null(a)) 0L else nrow(a)
+  nb <- if (is.null(b)) 0L else nrow(b)
+  if (identical(a, b)) {
+    return(list(rows = max(na, nb), differing = 0L, detail = NULL))
+  }
+  if (na != nb || !identical(names(a), names(b))) {
+    note <- data.frame(
+      table = table, chunk = chunk, row = NA_integer_,
+      column = "<shape>", a = sprintf("%d rows: %s", na,
+                                      paste(names(a), collapse = ",")),
+      b = sprintf("%d rows: %s", nb, paste(names(b), collapse = ",")),
+      stringsAsFactors = FALSE
+    )
+    return(list(rows = max(na, nb), differing = max(na, nb), detail = note))
+  }
+  d <- differing_rows(a, b)
+  rows <- utils::head(d$rows, detail_cap)
+  detail <- if (length(rows)) {
+    bind_frames(lapply(d$cols, function(col) {
+      data.frame(
+        table = table, chunk = chunk, row = rows, column = col,
+        a = as.character(a[[col]][rows]), b = as.character(b[[col]][rows]),
+        stringsAsFactors = FALSE
+      )
+    }))
+  }
+  if (!length(d$rows)) {
+    # Equal cell by cell but not identical(): attributes or types differ.
+    detail <- data.frame(
+      table = table, chunk = chunk, row = NA_integer_, column = "<attributes>",
+      a = paste(class(a), collapse = ","), b = paste(class(b), collapse = ","),
+      stringsAsFactors = FALSE
+    )
+    return(list(rows = na, differing = na, detail = detail))
+  }
+  list(rows = na, differing = length(d$rows), detail = detail)
+}
+
+# Parameters two comparable runs must share.
+comparable_params <- function() {
+  c("mode", "seed", "chunk_size", "max_rule_paths", "random_paths",
+    "size_rule_paths", "large_bytes")
+}
+
+mode_compare <- function(ctx, detail_cap = 1000L) {
+  dir_a <- file.path(ctx$out, ctx$opts$a)
+  dir_b <- file.path(ctx$out, ctx$opts$b)
+  rec_path <- function(d) file.path(d, "record.rds")
+  if (!file.exists(rec_path(dir_a)) || !file.exists(rec_path(dir_b))) {
+    harness_refuse("Both --a and --b must name finished runs with a record.")
+  }
+  ra <- readRDS(rec_path(dir_a))
+  rb <- readRDS(rec_path(dir_b))
+  for (p in comparable_params()) {
+    if (!identical(ra$params[[p]], rb$params[[p]])) {
+      harness_refuse(paste0("The runs differ in parameter ", p, "."))
+    }
+  }
+  for (r in list(ra, rb)) {
+    if (!identical(r$status, "finished")) {
+      harness_refuse(paste0("Run ", r$run_id, " is not a valid finished run."))
+    }
+  }
+  partial <- function(r) !is.na(r$params$subset) || !is.na(r$params$max_hosts)
+  # Inputs first: no result is diffed across two different input sets.
+  check_input_sets(
+    readRDS(file.path(dir_a, "manifest.rds")),
+    readRDS(file.path(dir_b, "manifest.rds")),
+    partial(ra), partial(rb)
+  )
+  ia <- shard_index(dir_a)
+  ib <- shard_index(dir_b)
+  key_a <- paste(ia$table, ia$chunk)
+  key_b <- paste(ib$table, ib$chunk)
+  both <- intersect(key_a, key_b)
+  summary <- list()
+  details <- list()
+  tables <- setdiff(unique(c(ia$table, ib$table)), nondeterministic_tables())
+  for (table in sort(tables, method = "radix")) {
+    keys <- both[startsWith(both, paste0(table, " "))]
+    rows <- 0
+    differing <- 0
+    for (key in keys) {
+      fa <- ia$file[match(key, key_a)]
+      chunk <- ia$chunk[match(key, key_a)]
+      cmp <- compare_shard(
+        readRDS(file.path(dir_a, "shards", fa)),
+        readRDS(file.path(dir_b, "shards", fa)),
+        table, chunk, detail_cap
+      )
+      rows <- rows + cmp$rows
+      differing <- differing + cmp$differing
+      if (!is.null(cmp$detail)) {
+        details[[length(details) + 1L]] <- cmp$detail
+      }
+    }
+    summary[[table]] <- data.frame(
+      table = table,
+      shards_compared = length(keys),
+      shards_only_a = sum(ia$table == table & !(key_a %in% both)),
+      shards_only_b = sum(ib$table == table & !(key_b %in% both)),
+      rows_compared = rows,
+      rows_differing = differing,
+      stringsAsFactors = FALSE
+    )
+  }
+  summary <- bind_frames(summary)
+  detail <- bind_frames(details)
+  saveRDS(summary, file.path(ctx$run_dir, "compare-summary.rds"))
+  saveRDS(detail, file.path(ctx$run_dir, "compare-detail.rds"),
+          compress = "xz")
+  list(
+    a = ctx$opts$a, b = ctx$opts$b,
+    manifest_a = ra$manifest$start_hash,
+    manifest_b = rb$manifest$start_hash,
+    identical = sum(summary$rows_differing) == 0,
+    summary = summary
+  )
+}
