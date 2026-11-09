@@ -863,6 +863,25 @@ policy_result_v1 <- function(status, action, reason, provenance, source) {
   )
 }
 
+# The policy-table category of a final HTTP status. 206 is not reached here:
+# its evidence status is `partial`. A 1xx or a status outside 100-599 is a
+# protocol error. robots_validate_url() uses it too (ROBO-ybzbxfml).
+http_status_category_v1 <- function(status) {
+  if (identical(status, 200L)) {
+    "status_200"
+  } else if (!is.na(status) && status >= 200L && status <= 299L) {
+    "status_other_2xx"
+  } else if (identical(status, 429L)) {
+    "status_429"
+  } else if (!is.na(status) && status >= 400L && status <= 499L) {
+    "status_4xx"
+  } else if (!is.na(status) && status >= 500L && status <= 599L) {
+    "status_5xx"
+  } else {
+    "protocol_error"
+  }
+}
+
 resolve_policy_v1 <- function(evidence, ruleset, policy_table) {
   evidence_status <- evidence$evidence_status
   if (identical(evidence_status, "safety_refused")) {
@@ -899,20 +918,7 @@ resolve_policy_v1 <- function(evidence, ruleset, policy_table) {
   } else if (identical(evidence_status, "partial")) {
     "status_206"
   } else {
-    status <- evidence$final_http_status
-    if (identical(status, 200L)) {
-      "status_200"
-    } else if (!is.na(status) && status >= 200L && status <= 299L) {
-      "status_other_2xx"
-    } else if (identical(status, 429L)) {
-      "status_429"
-    } else if (!is.na(status) && status >= 400L && status <= 499L) {
-      "status_4xx"
-    } else if (!is.na(status) && status >= 500L && status <= 599L) {
-      "status_5xx"
-    } else {
-      "protocol_error"
-    }
+    http_status_category_v1(evidence$final_http_status)
   }
   row <- policy_table[
     policy_table$category == category & policy_table$ruleset == ruleset,

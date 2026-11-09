@@ -114,13 +114,25 @@ The body exceeded \code{max_bytes}; only lines before the cut were read.
 \code{acquisition_input_invalid} \tab error \tab
 An input URL could not be turned into a robots.txt origin. \cr
 \code{acquisition_missing} \tab info \tab
-The robots.txt resource is absent; nothing was validated. \cr
+A 404 or 410: no robots.txt; what that means for crawling is in
+\code{message}. \cr
+\code{acquisition_http_4xx} \tab warning \tab
+Another 4xx; \code{message} names the status and what Google, Yandex
+and Bing may do. \cr
+\code{acquisition_http_429} \tab error \tab
+A 429 Too Many Requests, with each engine's reading in
+\code{message}. \cr
+\code{acquisition_http_5xx} \tab error \tab
+A 5xx, with each engine's reading in \code{message}. \cr
+\code{acquisition_http_protocol} \tab error \tab
+A 1xx or a status outside 100 to 599. \cr
 \code{acquisition_limit_exceeded} \tab error \tab
 A 3xx body exceeded \code{max_bytes} and was refused whole. \cr
 \code{acquisition_partial_response} \tab error \tab
 A partial HTTP response was rejected. \cr
 \code{acquisition_failed} \tab error \tab
-Acquisition supplied no body, for the reason in \code{message}.
+A refusal, transport failure or redirect error; the reason is in
+\code{message}.
 }
 
 For \code{wildcard_rules_not_inherited}, a crawler obeys only the groups that

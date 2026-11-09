@@ -105,13 +105,25 @@ validation_unsupported <- c(
 #'   \code{acquisition_input_invalid} \tab error \tab
 #'     An input URL could not be turned into a robots.txt origin. \cr
 #'   \code{acquisition_missing} \tab info \tab
-#'     The robots.txt resource is absent; nothing was validated. \cr
+#'     A 404 or 410: no robots.txt; what that means for crawling is in
+#'     \code{message}. \cr
+#'   \code{acquisition_http_4xx} \tab warning \tab
+#'     Another 4xx; \code{message} names the status and what Google, Yandex
+#'     and Bing may do. \cr
+#'   \code{acquisition_http_429} \tab error \tab
+#'     A 429 Too Many Requests, with each engine's reading in
+#'     \code{message}. \cr
+#'   \code{acquisition_http_5xx} \tab error \tab
+#'     A 5xx, with each engine's reading in \code{message}. \cr
+#'   \code{acquisition_http_protocol} \tab error \tab
+#'     A 1xx or a status outside 100 to 599. \cr
 #'   \code{acquisition_limit_exceeded} \tab error \tab
 #'     A 3xx body exceeded \code{max_bytes} and was refused whole. \cr
 #'   \code{acquisition_partial_response} \tab error \tab
 #'     A partial HTTP response was rejected. \cr
 #'   \code{acquisition_failed} \tab error \tab
-#'     Acquisition supplied no body, for the reason in \code{message}.
+#'     A refusal, transport failure or redirect error; the reason is in
+#'     \code{message}.
 #' }
 #'
 #' For `wildcard_rules_not_inherited`, a crawler obeys only the groups that
@@ -213,6 +225,14 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' of the file may not have been validated. A 3xx body over
 #' `max_bytes` is refused whole and reported as `acquisition_limit_exceeded`,
 #' and a 4xx or 5xx keeps its status outcome whatever its body size.
+#'
+#' A status that leaves no body gets a code for its class (404 and 410
+#' `acquisition_missing`, another 4xx `acquisition_http_4xx`, 429
+#' `acquisition_http_429`, 5xx `acquisition_http_5xx`, 1xx
+#' `acquisition_http_protocol`). Its message names the status, what Google,
+#' Yandex and Bing may do with it, and any `Retry-After` delay; the policy
+#' behind it is in [robots_engine_contract_v1()]. The document stays
+#' `"not_validated"`, so a 4xx row has `warning_count` 1 and `error_count` 0.
 #'
 #' This function validates the acquired robots.txt document. It does not answer
 #' whether any target URL is allowed; use [allowed_by_robots_url()] for that
@@ -1221,7 +1241,13 @@ validate_fetched_documents <- function(fetched) {
 
 unavailable_validation <- function(source) {
   outcome <- source$fetch_outcome
-  if (identical(outcome, "missing")) {
+  status <- source$http_status
+  if (outcome %in% c("missing", "http_error") && !is.na(status)) {
+    diagnosis <- status_diagnosis(status, source$retry_after_seconds)
+    severity <- diagnosis$severity
+    code <- diagnosis$code
+    message <- diagnosis$message
+  } else if (identical(outcome, "missing")) {
     severity <- "info"
     code <- "acquisition_missing"
     message <- "No robots.txt body was acquired because the resource is absent."
@@ -1267,6 +1293,84 @@ unavailable_validation <- function(source) {
   document$warning_count <- as.integer(severity == "warning")
   document$error_count <- as.integer(severity == "error")
   list(document = document, diagnostics = diagnostic)
+}
+
+# The code, severity and message for a robots.txt answered by an HTTP status
+# with no body (ROBO-ybzbxfml). The status is mapped to its policy-table
+# category, and each engine's reading comes from engine_policy_table_v1().
+status_diagnosis <- function(status, retry_after_seconds) {
+  category <- http_status_category_v1(status)
+  if (status %in% c(404L, 410L)) {
+    severity <- "info"
+    code <- "acquisition_missing"
+  } else if (identical(category, "status_4xx")) {
+    severity <- "warning"
+    code <- "acquisition_http_4xx"
+  } else if (identical(category, "status_429")) {
+    severity <- "error"
+    code <- "acquisition_http_429"
+  } else if (identical(category, "status_5xx")) {
+    severity <- "error"
+    code <- "acquisition_http_5xx"
+  } else {
+    severity <- "error"
+    code <- "acquisition_http_protocol"
+  }
+  message <- paste0(
+    "HTTP ", status, ": ", status_engine_readings(category), "."
+  )
+  if (status %in% c(401L, 403L)) {
+    message <- paste(
+      message,
+      "A 401 or 403 is often a firewall or bot filter answering this client,",
+      "not the site's own robots.txt."
+    )
+  }
+  if (length(retry_after_seconds) == 1L && !is.na(retry_after_seconds)) {
+    message <- paste0(
+      message, " Retry-After: ",
+      format(retry_after_seconds, scientific = FALSE), " seconds."
+    )
+  }
+  message <- paste(message, "See robots_engine_contract_v1().")
+  list(severity = severity, code = code, message = message)
+}
+
+# "Google: ...; Yandex: ...; Bing: ..." for one policy-table category.
+status_engine_readings <- function(category) {
+  table <- engine_policy_table_v1()
+  engines <- c(google = "Google", yandex = "Yandex", bing = "Bing")
+  readings <- vapply(names(engines), function(ruleset) {
+    row <- table[table$category == category & table$ruleset == ruleset, ,
+                 drop = FALSE]
+    paste0(
+      engines[[ruleset]], ": ",
+      status_policy_phrase(
+        ruleset, category, row$policy_status[[1L]], row$policy_action[[1L]]
+      )
+    )
+  }, character(1L))
+  paste(readings, collapse = "; ")
+}
+
+status_policy_phrase <- function(ruleset, category, status, action) {
+  if (identical(status, "evaluated") && identical(action, "allow_all")) {
+    if (identical(ruleset, "yandex")) {
+      "places no restrictions on crawling"
+    } else {
+      "may treat it as no robots.txt, which places no restrictions on crawling"
+    }
+  } else if (identical(status, "context_required")) {
+    "context-dependent (may pause crawling or use its last cached copy)"
+  } else if (identical(status, "documentation_gap")) {
+    if (identical(ruleset, "google") && identical(category, "status_429")) {
+      "not documented for robots.txt (Google excludes 429 from its 4xx rule)"
+    } else {
+      "not documented"
+    }
+  } else {
+    sprintf("%s (%s)", status, action)
+  }
 }
 
 empty_validation_documents <- function() {

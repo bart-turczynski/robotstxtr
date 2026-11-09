@@ -17,37 +17,208 @@ ybz_status <- function(status, headers = list(), body = raw(),
   )
 }
 
-# --- today: one acquisition_failed error per status class -------------------
+# The phrases each engine's policy cell turns into.
+ybz_no_robots <- paste0(
+  "may treat it as no robots.txt, which places no restrictions on crawling"
+)
+ybz_firewall <- "often a firewall or bot filter answering this client"
 
-test_that("ROBO-ybzbxfml: a status without a body is acquisition_failed", {
-  for (status in c(102L, 400L, 401L, 403L, 429L, 500L, 503L, 600L)) {
-    x <- ybz_status(status)
-    expect_identical(x$documents$http_status, status)
-    expect_identical(x$documents$fetch_outcome, "http_error")
-    expect_identical(x$diagnostics$code, "acquisition_failed")
-    expect_identical(x$diagnostics$severity, "error")
+# One case per status class: code, severity, and the document's counts.
+ybz_cases <- list(
+  list(status = 400L, code = "acquisition_http_4xx", severity = "warning"),
+  list(status = 401L, code = "acquisition_http_4xx", severity = "warning"),
+  list(status = 403L, code = "acquisition_http_4xx", severity = "warning"),
+  list(status = 404L, code = "acquisition_missing", severity = "info"),
+  list(status = 410L, code = "acquisition_missing", severity = "info"),
+  list(status = 429L, code = "acquisition_http_429", severity = "error"),
+  list(status = 500L, code = "acquisition_http_5xx", severity = "error"),
+  list(status = 503L, code = "acquisition_http_5xx", severity = "error"),
+  list(status = 102L, code = "acquisition_http_protocol", severity = "error"),
+  list(status = 600L, code = "acquisition_http_protocol", severity = "error")
+)
+
+ybz_at <- function(pattern, text) {
+  as.integer(regexpr(pattern, text, fixed = TRUE))
+}
+
+# --- each status class ------------------------------------------------------
+
+test_that("ROBO-ybzbxfml: each status class has its own code and severity", {
+  for (case in ybz_cases) {
+    label <- paste("HTTP", case$status)
+    x <- ybz_status(case$status)
+    expect_identical(x$documents$http_status, case$status, label = label)
+    expect_identical(x$diagnostics$code, case$code, label = label)
+    expect_identical(x$diagnostics$severity, case$severity, label = label)
+    expect_identical(x$documents$validation_status, "not_validated",
+                     label = label)
+    expect_identical(x$map$validation_status, "not_validated", label = label)
+    expect_identical(x$documents$diagnostic_count, 1L, label = label)
     expect_identical(
-      x$diagnostics$message,
-      "Acquisition outcome 'http_error' supplied no document body."
+      x$documents$warning_count, as.integer(case$severity == "warning"),
+      label = label
     )
-    expect_identical(x$documents$validation_status, "not_validated")
-    expect_identical(x$documents$error_count, 1L)
-    expect_identical(x$documents$warning_count, 0L)
+    expect_identical(
+      x$documents$error_count, as.integer(case$severity == "error"),
+      label = label
+    )
   }
 })
 
-test_that("ROBO-ybzbxfml: a 404 or 410 is acquisition_missing", {
-  for (status in c(404L, 410L)) {
-    x <- ybz_status(status)
-    expect_identical(x$documents$fetch_outcome, "missing")
-    expect_identical(x$diagnostics$code, "acquisition_missing")
-    expect_identical(x$diagnostics$severity, "info")
-    expect_identical(
-      x$diagnostics$message,
-      "No robots.txt body was acquired because the resource is absent."
-    )
-    expect_identical(x$documents$error_count, 0L)
+test_that("ROBO-ybzbxfml: each message names the status and every engine", {
+  for (case in ybz_cases) {
+    label <- paste("HTTP", case$status)
+    message <- ybz_status(case$status)$diagnostics$message
+    expect_true(startsWith(message, paste0("HTTP ", case$status, ": ")),
+                label = label)
+    google <- ybz_at("Google: ", message)
+    yandex <- ybz_at("Yandex: ", message)
+    bing <- ybz_at("Bing: not documented", message)
+    expect_gt(google, 0L, label = label)
+    expect_gt(yandex, google, label = label)
+    expect_gt(bing, yandex, label = label)
+    expect_true(endsWith(message, "See robots_engine_contract_v1()."),
+                label = label)
+    expect_false(grepl("will be crawled", message, fixed = TRUE),
+                 label = label)
+    expect_false(grepl("Retry-After", message, fixed = TRUE), label = label)
   }
+})
+
+test_that("ROBO-ybzbxfml: a 4xx may place no restrictions", {
+  for (status in c(400L, 401L, 403L, 404L, 410L)) {
+    message <- ybz_status(status)$diagnostics$message
+    expect_true(
+      grepl(paste0("Google: ", ybz_no_robots, ";"), message, fixed = TRUE),
+      label = message
+    )
+    expect_true(
+      grepl("Yandex: places no restrictions on crawling;", message,
+            fixed = TRUE),
+      label = message
+    )
+  }
+  expect_identical(
+    ybz_status(403L)$diagnostics$message,
+    paste0(
+      "HTTP 403: Google: ", ybz_no_robots, "; Yandex: places no restrictions ",
+      "on crawling; Bing: not documented. A 401 or 403 is ", ybz_firewall,
+      ", not the site's own robots.txt. See robots_engine_contract_v1()."
+    )
+  )
+})
+
+test_that("ROBO-ybzbxfml: only a 401 or 403 names a firewall or bot filter", {
+  for (status in c(401L, 403L)) {
+    message <- ybz_status(status)$diagnostics$message
+    expect_true(grepl(ybz_firewall, message, fixed = TRUE), label = message)
+  }
+  for (status in c(400L, 404L, 410L, 429L, 503L)) {
+    message <- ybz_status(status)$diagnostics$message
+    expect_false(grepl(ybz_firewall, message, fixed = TRUE), label = message)
+  }
+})
+
+test_that("ROBO-ybzbxfml: Google's reading of a 429 is not documented", {
+  expect_identical(
+    ybz_status(429L)$diagnostics$message,
+    paste0(
+      "HTTP 429: Google: not documented for robots.txt (Google excludes ",
+      "429 from its 4xx rule); Yandex: places no restrictions on crawling; ",
+      "Bing: not documented. See robots_engine_contract_v1()."
+    )
+  )
+})
+
+test_that("ROBO-ybzbxfml: Google's reading of a 5xx depends on context", {
+  for (status in c(500L, 503L)) {
+    message <- ybz_status(status)$diagnostics$message
+    expect_true(
+      grepl(paste0(
+        "Google: context-dependent (may pause crawling or use its last ",
+        "cached copy); Yandex: places no restrictions on crawling;"
+      ), message, fixed = TRUE),
+      label = message
+    )
+  }
+})
+
+test_that("ROBO-ybzbxfml: a 1xx or out-of-range status is not documented", {
+  expect_identical(
+    ybz_status(102L)$diagnostics$message,
+    paste0(
+      "HTTP 102: Google: not documented; Yandex: not documented; ",
+      "Bing: not documented. See robots_engine_contract_v1()."
+    )
+  )
+})
+
+# --- derived from the policy table ------------------------------------------
+
+test_that("ROBO-ybzbxfml: the message follows engine_policy_table_v1()", {
+  real <- engine_policy_table_v1
+  local_mocked_bindings(engine_policy_table_v1 = function() {
+    table <- real()
+    flip <- table$category == "status_4xx" & table$ruleset == "google"
+    table$policy_status[flip] <- "documentation_gap"
+    table$policy_action[flip] <- NA_character_
+    table
+  })
+  message <- ybz_status(403L)$diagnostics$message
+  expect_true(grepl("HTTP 403: Google: not documented; Yandex: places no",
+                    message, fixed = TRUE))
+  expect_false(grepl(ybz_no_robots, message, fixed = TRUE))
+})
+
+test_that("ROBO-ybzbxfml: http_status_category_v1() maps a final status", {
+  statuses <- c(200L, 204L, 403L, 404L, 429L, 500L, 102L, 600L, NA_integer_)
+  expect_identical(
+    vapply(statuses, http_status_category_v1, character(1L)),
+    c(
+      "status_200", "status_other_2xx", "status_4xx", "status_4xx",
+      "status_429", "status_5xx", "protocol_error", "protocol_error",
+      "protocol_error"
+    )
+  )
+})
+
+# --- Retry-After ------------------------------------------------------------
+
+test_that("ROBO-ybzbxfml: a Retry-After delay is appended", {
+  for (status in c(429L, 503L)) {
+    with_header <- ybz_status(status, headers = list(`Retry-After` = "120"))
+    expect_true(
+      grepl(
+        "Bing: not documented. Retry-After: 120 seconds. See robots_engine",
+        with_header$diagnostics$message, fixed = TRUE
+      ),
+      label = with_header$diagnostics$message
+    )
+    without <- ybz_status(status)
+    expect_false(grepl("Retry-After", without$diagnostics$message,
+                       fixed = TRUE))
+  }
+})
+
+test_that("ROBO-ybzbxfml: an invalid Retry-After is left out", {
+  # robots_fetch() keeps the raw value but no delay (ROBO-cthdyvlk).
+  x <- ybz_status(429L, headers = list(`Retry-After` = "soon"))
+  expect_identical(x$diagnostics$code, "acquisition_http_429")
+  expect_false(grepl("Retry-After", x$diagnostics$message, fixed = TRUE))
+  expect_false(grepl("soon", x$diagnostics$message, fixed = TRUE))
+})
+
+test_that("ROBO-ybzbxfml: a past HTTP-date Retry-After is zero seconds", {
+  local_mocked_bindings(
+    acquire_now = function() {
+      as.double(as.POSIXct("2026-11-05 12:00:00", tz = "UTC"))
+    }
+  )
+  x <- ybz_status(
+    503L, headers = list(`Retry-After` = "Thu, 05 Nov 2026 11:00:00 GMT")
+  )
+  expect_true(grepl("Retry-After: 0 seconds.", x$diagnostics$message,
+                    fixed = TRUE))
 })
 
 # --- outcomes that are not a status class -----------------------------------
@@ -112,7 +283,11 @@ test_that("ROBO-ybzbxfml: an invalid input URL is acquisition_input_invalid", {
 # --- edge inputs ------------------------------------------------------------
 
 test_that("ROBO-ybzbxfml: an oversized 403 or 503 is reported as a small one", {
+  codes <- c(
+    `403` = "acquisition_http_4xx", `503` = "acquisition_http_5xx"
+  )
   for (status in c(403L, 503L)) {
+    small <- ybz_status(status)
     x <- ybz_validate(
       function(req) {
         fake_response(status, url = req$url,
@@ -123,7 +298,10 @@ test_that("ROBO-ybzbxfml: an oversized 403 or 503 is reported as a small one", {
     )
     expect_identical(x$documents$http_status, status)
     expect_identical(x$documents$fetch_outcome, "http_error")
-    expect_identical(x$diagnostics$code, "acquisition_failed")
+    expect_identical(x$diagnostics$code, codes[[as.character(status)]])
+    # Its headers are lost, so no Retry-After is reported.
+    expect_identical(x$diagnostics$severity, small$diagnostics$severity)
+    expect_identical(x$diagnostics$message, small$diagnostics$message)
     expect_false(grepl("Retry-After", x$diagnostics$message, fixed = TRUE))
   }
 })
@@ -136,5 +314,6 @@ test_that("ROBO-ybzbxfml: two URLs on one 403 origin give one diagnostic", {
   expect_identical(nrow(x$documents), 1L)
   expect_identical(nrow(x$diagnostics), 1L)
   expect_identical(x$map$validation_status, rep("not_validated", 2L))
-  expect_identical(x$diagnostics$code, "acquisition_failed")
+  expect_identical(x$diagnostics$code, "acquisition_http_4xx")
+  expect_identical(x$documents$warning_count, 1L)
 })

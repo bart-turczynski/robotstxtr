@@ -200,8 +200,12 @@ over `max_bytes` is cut at the limit, as RFC 9309 section 2.5 allows: its
 first `max_bytes` bytes are validated up to their last complete line, the
 document reports `body_truncated` and `limit_exceeded`, and a `body_truncated`
 warning says the rest was not validated. A 3xx over the limit is reported as an
-acquisition limit failure with `validation_status = "not_validated"`; a 4xx
-or 5xx keeps its status outcome.
+acquisition limit failure with `validation_status = "not_validated"`. A 4xx
+or 5xx keeps its status outcome and gets a code for its class:
+`acquisition_missing` for a 404 or 410, `acquisition_http_4xx` for another
+4xx, `acquisition_http_429` and `acquisition_http_5xx`. Its message names the
+status and what Google, Yandex and Bing may do with it, as
+`robots_engine_contract_v1()` records.
 
 The validation profile is explicitly `google-parser-compatible`: it reflects
 the package's pinned parser (including accepted typo and missing-colon forms)

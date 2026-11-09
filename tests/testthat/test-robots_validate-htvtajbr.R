@@ -278,18 +278,22 @@ test_that("validation_status reports not_validated when nothing was parsed", {
   expect_identical(validation_status(empty_validation_diagnostics()), "valid")
 })
 
-test_that("a generic acquisition failure is one acquisition_failed error", {
+test_that("a 5xx acquisition is one acquisition_http_5xx error", {
   local_fake_ssrfr(validation_mock_response(500L))
   failed <- robots_validate_url("https://example.com/x")
 
   expect_identical(failed$documents$fetch_outcome, "http_error")
   expect_identical(failed$documents$validation_status, "not_validated")
   expect_identical(failed$diagnostics$severity, "error")
-  expect_identical(failed$diagnostics$code, "acquisition_failed")
-  # No transport message exists, so the outcome itself is the stated reason.
+  # ROBO-ybzbxfml: the status class has its own code and message.
+  expect_identical(failed$diagnostics$code, "acquisition_http_5xx")
   expect_identical(
     failed$diagnostics$message,
-    "Acquisition outcome 'http_error' supplied no document body."
+    paste0(
+      "HTTP 500: Google: context-dependent (may pause crawling or use its ",
+      "last cached copy); Yandex: places no restrictions on crawling; ",
+      "Bing: not documented. See robots_engine_contract_v1()."
+    )
   )
   expect_identical(failed$documents$error_count, 1L)
   expect_identical(failed$documents$warning_count, 0L)
