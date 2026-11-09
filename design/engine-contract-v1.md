@@ -345,6 +345,19 @@ Decisions:
 - `max_bytes` below RFC 9309's 500 KiB floor (`512000`) stays accepted, and
   is documented as below it. The default, `524288`, meets the floor.
 
+### Redirect and safety reasons in the legacy frame (ROBO-bsloeclp)
+
+Every legacy `robots` frame gains two character columns, `terminal_redirect_reason`
+and `safety_block_reason`, between `body_truncated` and `body`, under the
+one-schema rule of the columns above. `robots_fetch()` and
+`allowed_by_robots_url()` fill them from the fetch, `allowed_by_robots_text()`
+writes `"none"` and `NA` (no fetch took place), and
+`as_legacy_robots_decisions_v1()` copies the v1 evidence's columns of the same
+names, which already carried both. No v1 enum or column changes, so the engine
+schema revision does not move. `robots_validate_url()` reads the two columns to
+give redirect, transport and safety outcomes their own diagnostic codes;
+`acquisition_failed` stays the code for an outcome no class covers.
+
 ## Sibling compatibility
 
 The supported first-release ranges are:

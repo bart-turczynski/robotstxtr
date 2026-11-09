@@ -136,7 +136,8 @@ validation_unsupported <- c(
 #'     A redirect to a scheme other than \code{http} or \code{https} was
 #'     refused for safety. \cr
 #'   \code{acquisition_transport_failed} \tab error \tab
-#'     A timeout, TLS or network failure, with each engine's reading in
+#'     A timeout, TLS, network or malformed-response failure, with each
+#'     engine's reading in
 #'     \code{message}. \cr
 #'   \code{acquisition_safety_refused} \tab error \tab
 #'     The guard refused the origin or a redirect target; \code{message}
@@ -260,7 +261,8 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' (see [robots_fetch()]): `acquisition_redirect_over_budget`,
 #' `acquisition_redirect_no_location`, `acquisition_redirect_loop`,
 #' `acquisition_redirect_downgrade`, `acquisition_redirect_non_http`,
-#' `acquisition_transport_failed` (a timeout, TLS or network failure) and
+#' `acquisition_transport_failed` (a timeout, TLS, network or malformed-response
+#' failure) and
 #' `acquisition_safety_refused`. The message names the outcome and what
 #' Google, Yandex and Bing may do, or says that an engine's behavior is not
 #' documented. A refusal is robotstxtr's own safety choice, so its message

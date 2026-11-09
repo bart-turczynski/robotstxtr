@@ -251,13 +251,24 @@ test_that("ROBO-bsloeclp: each outcome class has its own code and message", {
   }
 })
 
-test_that("ROBO-bsloeclp: no class falls back to acquisition_failed", {
-  for (name in names(bsl_cases)) {
-    case <- bsl_cases[[name]]
-    x <- bsl_validate(case$handler, url = case$url)
-    expect_false(identical(x$diagnostics$code, "acquisition_failed"),
-                 label = name)
-  }
+test_that("ROBO-bsloeclp: an outcome no class covers keeps acquisition_failed", {
+  source <- data.frame(
+    source_id = 1L, source_type = "url", robots_url = "https://a/robots.txt",
+    effective_url = NA_character_, http_status = NA_integer_,
+    fetch_outcome = "redirect_error", terminal_redirect_reason = "none",
+    safety_block_reason = NA_character_, retry_after_seconds = NA_real_,
+    error_message = NA_character_, body_size = NA_integer_,
+    max_bytes = 512000L, stringsAsFactors = FALSE
+  )
+  x <- unavailable_validation(source)
+  expect_identical(x$diagnostics$code, "acquisition_failed")
+  expect_identical(
+    x$diagnostics$message,
+    "Acquisition outcome 'redirect_error' supplied no document body."
+  )
+  source$error_message <- "Verbatim cause."
+  expect_identical(unavailable_validation(source)$diagnostics$message,
+                   "Verbatim cause.")
 })
 
 test_that("ROBO-bsloeclp: the code comes from the columns, not the message", {

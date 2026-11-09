@@ -83,7 +83,8 @@ from the source row's \code{terminal_redirect_reason} and \code{safety_block_rea
 (see \code{\link[=robots_fetch]{robots_fetch()}}): \code{acquisition_redirect_over_budget},
 \code{acquisition_redirect_no_location}, \code{acquisition_redirect_loop},
 \code{acquisition_redirect_downgrade}, \code{acquisition_redirect_non_http},
-\code{acquisition_transport_failed} (a timeout, TLS or network failure) and
+\code{acquisition_transport_failed} (a timeout, TLS, network or malformed-response
+failure) and
 \code{acquisition_safety_refused}. The message names the outcome and what
 Google, Yandex and Bing may do, or says that an engine's behavior is not
 documented. A refusal is robotstxtr's own safety choice, so its message

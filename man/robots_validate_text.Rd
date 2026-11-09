@@ -145,7 +145,8 @@ no engine documents doing. \cr
 A redirect to a scheme other than \code{http} or \code{https} was
 refused for safety. \cr
 \code{acquisition_transport_failed} \tab error \tab
-A timeout, TLS or network failure, with each engine's reading in
+A timeout, TLS, network or malformed-response failure, with each
+engine's reading in
 \code{message}. \cr
 \code{acquisition_safety_refused} \tab error \tab
 The guard refused the origin or a redirect target; \code{message}
