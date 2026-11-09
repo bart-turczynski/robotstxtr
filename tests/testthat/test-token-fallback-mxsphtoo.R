@@ -1,9 +1,13 @@
 # ROBO-mxsphtoo: the google matcher binding calls the single-agent
 # `OneAgentAllowedByRobots`, so a caller token obeys a group that names it
-# exactly and otherwise the `*` group. It never falls back to a parent
-# token's group (Googlebot-Image to Googlebot, GoogleOther-Image to
-# GoogleOther). These tests pin that current behavior; whether to model a
-# fallback is an open recommendation in design/engine-profiles.md §5a.
+# exactly and otherwise the `*` group, in both directions: Googlebot-Image
+# never reads a Googlebot group, and Googlebot never reads a Googlebot-Image
+# group. Google's common-crawlers page lists two tokens for Googlebot-Image
+# (`Googlebot-Image`, `Googlebot`) and GoogleOther-Image (`GoogleOther-Image`,
+# `GoogleOther`), and a rule applies when either matches, so the first and
+# last tests pin a known divergence from that listing, not Google's
+# behavior. They pin current behavior only; whether to model the fallback is
+# a recommendation for the maintainer in design/engine-profiles.md §5a.
 
 tf_lines <- function(...) paste0(paste(c(...), collapse = "\n"), "\n")
 
@@ -49,6 +53,22 @@ test_that("Googlebot-Image with its own group follows only that group", {
   expect_identical(
     x$results$decision_source,
     c("default_allow", "default_allow", "rule_disallow")
+  )
+})
+
+test_that("Googlebot ignores a Googlebot-Image group and follows *", {
+  body <- tf_lines(
+    "User-agent: Googlebot-Image",
+    "Disallow: /i/",
+    "",
+    "User-agent: *",
+    "Disallow: /s/"
+  )
+  x <- allowed_by_robots_text(body, tf_urls, "Googlebot")
+  expect_identical(x$results$allowed, c(TRUE, FALSE, TRUE))
+  expect_identical(
+    x$results$decision_source,
+    c("default_allow", "rule_disallow", "default_allow")
   )
 })
 
