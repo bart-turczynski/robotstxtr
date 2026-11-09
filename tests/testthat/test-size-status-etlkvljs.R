@@ -89,10 +89,18 @@ ss_eval_url <- function(paths, max_bytes, grid = ss_grid) {
   )
 }
 
+# Supplied text marked as UTF-8: under LC_ALL=C an unmarked string with the
+# bytes of "é" is native-encoded and gets re-encoded on its way in.
+ss_text <- function(body) {
+  text <- rawToChar(body)
+  Encoding(text) <- "UTF-8"
+  text
+}
+
 ss_eval_text <- function(body, paths, grid = ss_grid) {
   rows <- grid[rep(seq_len(nrow(grid)), each = length(paths)), ]
   robots_evaluate_text_v1(
-    rawToChar(body), ss_urls(rep(paths, nrow(grid))),
+    ss_text(body), ss_urls(rep(paths, nrow(grid))),
     unname(ss_tokens[rows$backend]), rows$ruleset, rows$backend
   )
 }
@@ -353,7 +361,7 @@ test_that("etlkvljs: allowed_by_robots_text() reads past byte 512,000", {
   for (name in names(ss_tails)) {
     tail <- ss_tails[[name]]
     x <- allowed_by_robots_text(
-      rawToChar(ss_split_body(tail)), ss_urls(names(tail$probes)), "bot"
+      ss_text(ss_split_body(tail)), ss_urls(names(tail$probes)), "bot"
     )
     expect_identical(
       x$results$allowed, unname(tail$probes == "allow"), label = name
