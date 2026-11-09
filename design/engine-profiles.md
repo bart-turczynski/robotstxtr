@@ -211,11 +211,13 @@ These byte-level limits affect the current policy/matcher decision (not future-v
   `stored_bytes ≥ 512000` → `allow_all` `[documented]` (the file exceeds 500 KB under either reading of
   the unit; ROBO-arrtietl): a cut 200 takes the same rule and reason as a retained body over 500,000
   bytes, `yandex_file_over_500000_bytes`, and a cut non-200 2xx takes `non_200_allow_all` from §4, as
-  its uncut form does; under sitemapr ADR-009 §3 as amended. `google` with `stored_bytes ≥ 512000` →
+  its uncut form does; under sitemapr ADR-009 §3 as amended. `google` with the `google` matcher backend
+  and `stored_bytes ≥ 512000` →
   the §4 cell of its uncut form, `use_rules` (`http_200_use_rules`, or `http_2xx_use_rules` for a non-200
   2xx) `[documented]` (the cut holds the whole window; ROBO-ptibdnvy), matched on the complete lines of
   its first 512,000 bytes with `matcher_body_truncated = TRUE`; under sitemapr ADR-011 §2. `yandex` and
-  `google` below that size, `rfc9309`, `assumed_rfc9309`, `bing` → `policy_status = not_evaluated`
+  `google` below that size, `google` with any other matcher backend (the reading is the google
+  matcher's), `rfc9309`, `assumed_rfc9309`, `bing` → `policy_status = not_evaluated`
   (`incomplete_evidence`). A 3xx, an unknown
   status or a status mismatch over the limit is `body_too_large`, nothing stored, `incomplete` under
   every ruleset. A 4xx/5xx over the limit is classified by its status (§4).

@@ -81,9 +81,10 @@ policy, partial response, or unavailable matcher never fabricates a URL
 decision. The one reading of incomplete acquisition is a ruleset's documented
 meaning of a 2xx cut at `max_bytes` (`engine-profiles.md` §7): under `yandex`,
 a cut that stored at least 512,000 bytes is a file over Yandex's 500 KB limit,
-which is `allow_all` (ROBO-arrtietl); under `google`, a cut that stored at
-least 512,000 bytes holds the whole window Google parses, so it is matched on
-the complete lines inside that window (ROBO-ptibdnvy).
+which is `allow_all` (ROBO-arrtietl); under `google` with the `google`
+matcher backend, a cut that stored at least 512,000 bytes holds the whole
+window Google parses, so it is matched on the complete lines inside that
+window (ROBO-ptibdnvy).
 
 ## Backend and policy revisions
 
@@ -99,7 +100,8 @@ rules. `matcher_input_bytes` is the bytes fed to the matcher, after that drop;
 acquisition limit is retained as its first `max_bytes` bytes, marked
 `body_truncated` and `incomplete`, and not matched by the v1 engines, with
 two exceptions for a cut of at least 512,000 bytes: under `yandex` it resolves
-`allow_all` with no matcher (ROBO-arrtietl), and under `google` it is matched
+`allow_all` with no matcher (ROBO-arrtietl), and under `google` with the
+`google` backend it is matched
 on the complete lines of its first 512,000 bytes, with
 `matcher_body_truncated` `TRUE` (ROBO-ptibdnvy). The legacy path matches every
 cut, up to its last complete line (see "A robots.txt over `max_bytes`"
@@ -262,7 +264,7 @@ split a character.
 | v1 `body_truncated` | `TRUE`; `FALSE` on every other row |
 | v1 `observed_bytes` | ssrfr's count of the decoded bytes reached, past the limit by up to one delivery; not the file's size, which is never read |
 | v1 `termination_reason` | `ceiling` |
-| v1 `evidence_status` | `incomplete`, as before: no v1 policy verdict or URL decision is made from a prefix, except for a cut of at least 512,000 bytes: the `yandex` ruleset's `allow_all` (ROBO-arrtietl) and the `google` ruleset's match of the complete lines in its first 512,000 bytes (ROBO-ptibdnvy) |
+| v1 `evidence_status` | `incomplete`, as before: no v1 policy verdict or URL decision is made from a prefix, except for a cut of at least 512,000 bytes: the `yandex` ruleset's `allow_all` (ROBO-arrtietl) and the `google` ruleset's match, with the `google` backend, of the complete lines in its first 512,000 bytes (ROBO-ptibdnvy) |
 
 A 3xx body over `max_bytes` is still `body_too_large` with no body, and a 4xx
 or 5xx still keeps its status outcome with no body: ssrfr truncates only a 2xx.
@@ -296,17 +298,24 @@ Decisions:
   not move, and the yandex policy revision moves to
   `yandex-robots-policy-2026-11-09`.
 - Under `google` (ADR 0001 §5, slice 9; ROBO-ptibdnvy), a cut that stored
-  at least 512,000 bytes holds the whole window Google parses, so
-  `resolve_policy_v1()` lets it past the `incomplete` return to the policy
+  at least 512,000 bytes holds the whole window Google parses, so, when the
+  matcher backend is `google` too, `resolve_policy_v1()` lets it past the
+  `incomplete` return to the policy
   table cell of its uncut form: a cut 200 resolves `use_rules` /
   `http_200_use_rules` `[documented]` and a cut non-200 2xx `use_rules` /
   `http_2xx_use_rules` `[documented]`, with no new reason. The row is
   matched on the cut body's complete lines (the bullet on matching below),
   then on Google's 512,000-byte window, so a cut of exactly 512,000 bytes
-  loses its partial last line as a longer cut does. `matcher_body_truncated`
+  loses its partial last line as a longer cut does. With `max_bytes`
+  exactly 512,000, a line whose break falls at byte 512,001 is dropped,
+  although the uncut file would keep it inside the window: the break is not
+  stored, and dropping the line is the cautious reading, tagged
+  `[application_choice]` in `engine-profiles.md` §7. `matcher_body_truncated`
   is `TRUE` for every such row, since the cut proves the file exceeded the
-  window. A smaller cut stays `incomplete_evidence`, and `rfc9309`,
-  `assumed_rfc9309` and `bing` keep every cut incomplete. The evidence row
+  window. A smaller cut stays `incomplete_evidence`; a google-ruleset cut
+  with another matcher backend stays `incomplete_evidence` too, since the
+  reading is the google matcher's; and `rfc9309`, `assumed_rfc9309` and
+  `bing` keep every cut incomplete. The evidence row
   and the schema revision do not move. The google policy revision
   `google-robots-policy-2026-11-09`, not yet released, covers both the
   512,000-byte window (ROBO-phfbpfiy) and this reading of the cut.

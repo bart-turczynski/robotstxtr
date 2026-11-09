@@ -892,21 +892,30 @@ http_status_category_v1 <- function(status) {
 # goes on to the policy table and the yandex size branch (ROBO-arrtietl).
 # Google parses the first 512,000 bytes; a cut that stored at least that
 # many holds the whole window, so it goes on to the policy table and is
-# matched on its complete lines inside the window (ROBO-ptibdnvy).
+# matched on its complete lines inside the window (ROBO-ptibdnvy). That
+# reading is the google matcher's, so it needs `matcher_backend` "google":
+# another backend would match the cut prefix on its own terms. The yandex
+# reading resolves allow_all with no matcher, so it needs no backend.
 # A body_too_large row is not cut (`body_truncated` FALSE) and stays
 # incomplete. rfc9309, assumed_rfc9309 and bing keep a cut incomplete, as
-# do yandex and google below 512,000 stored bytes.
-ceiling_cut_readable_v1 <- function(evidence, ruleset) {
+# do yandex and google below 512,000 stored bytes and google with any other
+# backend.
+ceiling_cut_readable_v1 <- function(evidence, ruleset,
+                                    matcher_backend = NA_character_) {
   if (!isTRUE(evidence$body_truncated)) {
     return(FALSE)
   }
-  if (identical(ruleset, "yandex") || identical(ruleset, "google")) {
+  if (identical(ruleset, "yandex")) {
+    return(evidence$stored_bytes >= 512000L)
+  }
+  if (identical(ruleset, "google") && identical(matcher_backend, "google")) {
     return(evidence$stored_bytes >= 512000L)
   }
   FALSE
 }
 
-resolve_policy_v1 <- function(evidence, ruleset, policy_table) {
+resolve_policy_v1 <- function(evidence, ruleset, policy_table,
+                              matcher_backend = NA_character_) {
   evidence_status <- evidence$evidence_status
   if (identical(evidence_status, "safety_refused")) {
     return(policy_result_v1(
@@ -915,7 +924,7 @@ resolve_policy_v1 <- function(evidence, ruleset, policy_table) {
     ))
   }
   if (identical(evidence_status, "incomplete") &&
-        !ceiling_cut_readable_v1(evidence, ruleset)) {
+        !ceiling_cut_readable_v1(evidence, ruleset, matcher_backend)) {
     return(policy_result_v1(
       "not_evaluated", NA_character_, "incomplete_evidence",
       "application_choice", "design/engine-profiles.md#neutral-fetch"
@@ -1317,11 +1326,14 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
   yandex_bodies <- list()
   bing_rows <- integer(0)
   bing_bodies <- list()
+  readable_bodies <- vector("list", length(evidence$source_id))
   for (i in which(valid)) {
     evidence_index <- match(source_id[[i]], evidence$source_id)
     ev <- lapply(evidence, function(column) column[[evidence_index]])
     evidence_status[[i]] <- ev$evidence_status
-    policy <- resolve_policy_v1(ev, ruleset[[i]], policy_table)
+    policy <- resolve_policy_v1(
+      ev, ruleset[[i]], policy_table, matcher_backend[[i]]
+    )
     policy_status[[i]] <- policy$policy_status
     policy_action[[i]] <- policy$policy_action
     policy_reason[[i]] <- policy$policy_reason
@@ -1365,12 +1377,18 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
       bing_bodies[[length(bing_bodies) + 1L]] <- ev$body
       next
     }
-    # A cut body reaches here only under google (ceiling_cut_readable_v1()).
-    # Its partial last line is dropped before the window, so a cut of
-    # exactly 512,000 bytes is read like a longer one; uncut bodies pass
-    # through unchanged (ROBO-ptibdnvy).
+    # A cut body reaches here only under the google ruleset with the google
+    # backend (ceiling_cut_readable_v1()). Its partial last line is dropped
+    # before the window, so a cut of exactly 512,000 bytes is read like a
+    # longer one; uncut bodies pass through unchanged (ROBO-ptibdnvy). Each
+    # source's readable body is computed once, however many URLs share it.
+    if (is.null(readable_bodies[[evidence_index]])) {
+      readable_bodies[evidence_index] <- list(
+        readable_body(ev$body, ev$body_truncated)
+      )
+    }
     matched <- match_backend_v1(
-      matcher_backend[[i]], readable_body(ev$body, ev$body_truncated),
+      matcher_backend[[i]], readable_bodies[[evidence_index]],
       url[[i]], product_token[[i]], matcher_registry
     )
     matcher_status[[i]] <- "evaluated"

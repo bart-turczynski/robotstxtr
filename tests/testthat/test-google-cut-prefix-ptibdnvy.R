@@ -1,10 +1,12 @@
 # A robots.txt cut at max_bytes under the google ruleset (ROBO-ptibdnvy,
 # ADR 0001 slice 9). The evidence of a cut 2xx stays `incomplete` (an L0
-# fact); the google ruleset reads a cut that stored at least 512,000 bytes,
-# its whole parse window, as the table does an uncut 2xx and matches the
-# complete lines inside the window. A smaller cut, and a cut under any other
-# ruleset but yandex, stays unmatched. Responses are scripted at the ssrfr
-# boundary (helper-fake-ssrfr.R).
+# fact); the google ruleset with the google matcher backend reads a cut that
+# stored at least 512,000 bytes, its whole parse window, as the table does an
+# uncut 2xx and matches the complete lines inside the window. A smaller cut,
+# a google cut with another backend, and a cut under rfc9309,
+# assumed_rfc9309 or bing stay incomplete; yandex resolves a cut of that
+# size allow_all with no matcher (ROBO-arrtietl). Responses are scripted at
+# the ssrfr boundary (helper-fake-ssrfr.R).
 
 gc_url <- "http://example.test/private"
 
@@ -123,8 +125,8 @@ gc_cut_ev <- function(stored_bytes, body_truncated = TRUE, status = 200L) {
   ev
 }
 
-gc_resolve <- function(ev, ruleset = "google") {
-  resolve_policy_v1(ev, ruleset, engine_policy_table_v1())
+gc_resolve <- function(ev, ruleset = "google", backend = ruleset) {
+  resolve_policy_v1(ev, ruleset, engine_policy_table_v1(), backend)
 }
 
 # --- The facade ---------------------------------------------------------------
@@ -248,6 +250,56 @@ test_that("ROBO-ptibdnvy: a google cut at 511,999 bytes stays incomplete", {
   }
 })
 
+test_that("ROBO-ptibdnvy: a google cut needs the google backend", {
+  # The 524,288 cut leaves "disallow: /" of "disallow: /private-drafts/".
+  body <- gc_edge_body("disallow: /private-drafts/\n", 524288L - 11L)
+  url <- "http://example.test/public"
+  gc_serve(body = body)
+  calls <- gc_forbid_matchers()
+  x <- robots_evaluate_url_v1(
+    rep(url, 2L), c("Yandex", "bingbot"), "google", c("yandex", "bing")
+  )
+  gc_expect_cut_evidence(x, 524288L)
+  gc_expect_incomplete(x)
+  expect_identical(x$results$matcher_body_truncated, c(NA, NA))
+  gc_expect_no_matcher(calls)
+})
+
+test_that("ROBO-ptibdnvy: google with the google backend reads that cut", {
+  body <- gc_edge_body("disallow: /private-drafts/\n", 524288L - 11L)
+  gc_serve(body = body)
+  x <- gc_eval("http://example.test/public")
+  gc_expect_matched(x)
+  expect_identical(x$results$url_decision, "allow")
+  # The comment line crosses the window, so only "User-agent: *\n" is read.
+  expect_identical(x$results$matcher_input_bytes, 14L)
+})
+
+test_that("ROBO-ptibdnvy: a cut source's readable body is built once", {
+  body <- gc_edge_body("disallow: /private-drafts/\n", 512000L - 11L)
+  urls <- paste0("http://example.test", c("/public", "/private-drafts/x", "/"))
+  original <- readable_body
+  count <- new.env(parent = emptyenv())
+  count$n <- 0L
+  testthat::local_mocked_bindings(
+    readable_body = function(body, body_truncated) {
+      count$n <- count$n + 1L
+      original(body, body_truncated)
+    },
+    .package = "robotstxtr"
+  )
+  gc_serve(body = body)
+  one <- gc_eval(urls[[1L]], max_bytes = 512000L)
+  calls_one <- count$n
+  count$n <- 0L
+  all <- gc_eval(urls, max_bytes = 512000L)
+  expect_identical(count$n, calls_one)
+  expect_identical(all$results$url_decision, rep("allow", 3L))
+  expect_identical(all$results$matcher_input_bytes, rep(512000L - 11L, 3L))
+  expect_identical(all$results$matcher_body_truncated, rep(TRUE, 3L))
+  expect_identical(all$results[1L, "url_decision"], one$results$url_decision)
+})
+
 test_that("ROBO-ptibdnvy: rfc9309, assumed_rfc9309 and bing keep a cut", {
   gc_serve()
   calls <- gc_forbid_matchers()
@@ -316,8 +368,22 @@ test_that("ROBO-ptibdnvy: resolve_policy_v1() on cut google evidence", {
     expect_identical(policy$policy_action, "use_rules")
     expect_identical(policy$policy_reason, "http_2xx_use_rules")
   }
-  expect_true(ceiling_cut_readable_v1(gc_cut_ev(512000L), "google"))
-  expect_false(ceiling_cut_readable_v1(gc_cut_ev(511999L), "google"))
+  expect_true(ceiling_cut_readable_v1(gc_cut_ev(512000L), "google", "google"))
+  expect_false(
+    ceiling_cut_readable_v1(gc_cut_ev(511999L), "google", "google")
+  )
+  # The google reading is the google matcher's: no other backend, and no
+  # backend given, opens the cut.
+  for (backend in list("yandex", "bing", "rfc9309", NA_character_)) {
+    expect_false(
+      ceiling_cut_readable_v1(gc_cut_ev(524288L), "google", backend)
+    )
+    expect_identical(
+      gc_resolve(gc_cut_ev(524288L), backend = backend)$policy_reason,
+      "incomplete_evidence"
+    )
+  }
+  expect_false(ceiling_cut_readable_v1(gc_cut_ev(524288L), "google"))
   for (ruleset in c("rfc9309", "assumed_rfc9309", "bing")) {
     expect_false(ceiling_cut_readable_v1(gc_cut_ev(524288L), ruleset))
   }

@@ -336,7 +336,7 @@ test_that("safety refusal never becomes an allow or deny", {
   expect_true(is.na(x$results$url_decision))
 })
 
-test_that("over-ceiling evidence is incomplete and never matched", {
+test_that("a small over-ceiling cut is incomplete and not matched", {
   local_fake_ssrfr(engine_mock_router(list(
     "http://example.test/robots.txt" = engine_response(
       200L, "user-agent: *\ndisallow: /"
