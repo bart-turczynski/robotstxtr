@@ -1399,8 +1399,9 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
   # Rows that need a matcher are collected here, with the evidence row whose
   # body they match and whether that body was cut at `max_bytes`, and
   # dispatched after the loop: one adapter call per backend.
-  matcher_rows <- integer(0)
-  matcher_sources <- integer(0)
+  # Preallocated and set by index: growing them row by row is quadratic.
+  needs_matcher <- logical(n)
+  source_of <- integer(n)
   body_cut <- rep(FALSE, n)
   readable_bodies <- vector("list", length(evidence$source_id))
   for (i in which(valid)) {
@@ -1450,8 +1451,8 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
         readable_body(ev$body, ev$body_truncated)
       )
     }
-    matcher_rows <- c(matcher_rows, i)
-    matcher_sources <- c(matcher_sources, evidence_index)
+    needs_matcher[[i]] <- TRUE
+    source_of[[i]] <- evidence_index
     body_cut[[i]] <- isTRUE(ev$body_truncated)
   }
 
@@ -1459,6 +1460,8 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
   # decision frame's row k scatters back to the backend's k-th row. Adapters
   # that parse once per distinct body (yandex, bing) dedupe inside.
   matched_rule_value_raw <- vector("list", n)
+  matcher_rows <- which(needs_matcher)
+  matcher_sources <- source_of[matcher_rows]
   row_backends <- matcher_backend[matcher_rows]
   for (backend in unique(row_backends)) {
     picked <- row_backends == backend

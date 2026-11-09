@@ -73,14 +73,12 @@ yandex_empty_result_v1 <- function() {
 
 #' Map checked Yandex native results onto the host per-row result shape
 #'
-#' Package-private, HIDDEN engine-aware adapter (YI4c). It runs the YI4a
-#' request-target extractor per row, groups rows by distinct body, evaluates
-#' them through the checked robotstxtyandex batch binding (parse-once per
-#' distinct body), and maps native columns to the normative §10/§11 status,
-#' reason, error, and exact-byte raw-value contract. It performs no
-#' registration, no availability flip, and no schema-revision change; the
-#' dispatcher is wired to
-#' call it in batch by a later unit (YI5).
+#' Package-private engine-aware adapter (YI4c), registered for the `yandex`
+#' backend and called once per evaluation with every `yandex` row
+#' (ROBO-bukqpjli). It runs the YI4a request-target extractor per row, groups
+#' rows by distinct body, evaluates them through the checked robotstxtyandex
+#' batch binding (parse-once per distinct body), and maps native columns to the
+#' normative §10/§11 status, reason, error, and exact-byte raw-value contract.
 #'
 #' @param bodies A list of raw vectors, one per row -- the use_rules robots body
 #'   for that row (bytes verbatim). Deduped internally for parse-once batching.

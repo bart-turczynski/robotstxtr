@@ -6,7 +6,7 @@
 # both supplied and fetched tracer bullets and for every non-evaluated path. It
 # also proves the v2 contract identity is published (robots_engine_contract_v2),
 # reconciles the single-sourced Bing identity against the compiled ground truth,
-# exercises the batch dispatch (rejecting row-dispatch), and proves Google and
+# exercises the one batch dispatch (ROBO-bukqpjli), and proves Google and
 # Yandex identities/behavior are byte-unchanged (SS15/SS16.5).
 
 # ---------------------------------------------------------------------------

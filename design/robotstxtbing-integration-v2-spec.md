@@ -243,7 +243,9 @@ Like Yandex, the Bing adapter is **batch-shaped** (parse-once per distinct
 body). `evaluate_rows_v1()` MUST collect Bing rows and invoke `match_bing_v1`
 once in batch form, and the per-row `match_backend_v1` guard that today rejects
 row-dispatching `yandex` MUST be extended to also reject row-dispatching `bing`
-as an internal invariant violation.
+as an internal invariant violation. (Superseded by ROBO-bukqpjli: that guard
+and `match_backend_v1` are gone, and every backend is a batch adapter behind
+one interface; see design/engine-contract-v1.md.)
 
 The explicit-dispatch refactor already landed for Yandex; no new Google-only
 dispatch slice is required. Bing MUST remain `capability_unavailable` until its
