@@ -89,6 +89,10 @@ A Sitemap line with an empty value. \cr
 A Sitemap value that is not a valid absolute URL. \cr
 \code{unsupported_sitemap_scheme} \tab warning \tab
 A Sitemap scheme other than \code{http}, \code{https} or \code{ftp}. \cr
+\code{wildcard_rules_not_inherited} \tab info \tab
+A named User-agent group lacks some \code{User-agent: *} rules, which
+its crawlers therefore do not obey. Anchored on the group's first
+User-agent line. Not reported for a body cut at \code{max_bytes}. \cr
 \code{missing_user_agent} \tab error \tab
 Allow or Disallow rules exist but no line names a non-empty
 User-agent. \cr
@@ -110,6 +114,17 @@ A partial HTTP response was rejected. \cr
 \code{acquisition_failed} \tab error \tab
 Acquisition supplied no body, for the reason in \code{message}.
 }
+
+For \code{wildcard_rules_not_inherited}, a crawler obeys only the groups that
+name it (combined when several do) and ignores the \verb{User-agent: *} group,
+as RFC 9309 section 2.2.1 says. Each \code{*} Allow or Disallow is compared
+with the named crawler's rules by type and value; a trailing \code{*} is
+ignored (\verb{/x} equals \verb{/x*}, and \code{*} and \verb{/*} equal \code{/}), \code{$} is not, and
+empty values are left out. The message lists the missing \code{*} rules, ten at
+most. A crawler whose rules are all explicit allow-all (an empty
+\verb{Disallow:}, \verb{Allow: /}, \verb{Allow: /*} or \verb{Allow: *}) is not reported; an
+empty \verb{Allow:} is ignored, and a crawler whose groups have no other rule
+is reported.
 }
 
 \examples{

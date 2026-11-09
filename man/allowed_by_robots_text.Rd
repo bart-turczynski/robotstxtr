@@ -52,6 +52,13 @@ Such an invalid row is detached from the supplied body: its \code{source_id},
 \code{"input_invalid"}. When both the URL and the user agent of a row are invalid,
 the URL error is reported (URL validity is checked first).
 
+A crawler obeys the groups whose User-agent product token equals the
+crawler's (ASCII case-insensitive), combined when several do, and then
+ignores every \verb{User-agent: *} rule; \verb{User-agent: *} applies only to a
+crawler no group names (RFC 9309 section 2.2.1). \code{\link[=robots_validate_text]{robots_validate_text()}}
+reports a named group that lacks \verb{User-agent: *} rules as
+\code{wildcard_rules_not_inherited}.
+
 Match metadata is fully populated on the text path. \code{matched_line} carries
 the upstream one-based matching line (or \code{NA} when no rule matched). For a
 matched row, \code{matched_rule_type} and \code{matched_rule_value} are correlated from

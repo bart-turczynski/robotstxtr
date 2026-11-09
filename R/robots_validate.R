@@ -80,6 +80,10 @@ validation_unsupported <- c(
 #'     A Sitemap value that is not a valid absolute URL. \cr
 #'   \code{unsupported_sitemap_scheme} \tab warning \tab
 #'     A Sitemap scheme other than \code{http}, \code{https} or \code{ftp}. \cr
+#'   \code{wildcard_rules_not_inherited} \tab info \tab
+#'     A named User-agent group lacks some \code{User-agent: *} rules, which
+#'     its crawlers therefore do not obey. Anchored on the group's first
+#'     User-agent line. Not reported for a body cut at \code{max_bytes}. \cr
 #'   \code{missing_user_agent} \tab error \tab
 #'     Allow or Disallow rules exist but no line names a non-empty
 #'     User-agent. \cr
@@ -101,6 +105,17 @@ validation_unsupported <- c(
 #'   \code{acquisition_failed} \tab error \tab
 #'     Acquisition supplied no body, for the reason in \code{message}.
 #' }
+#'
+#' For `wildcard_rules_not_inherited`, a crawler obeys only the groups that
+#' name it (combined when several do) and ignores the `User-agent: *` group,
+#' as RFC 9309 section 2.2.1 says. Each `*` Allow or Disallow is compared
+#' with the named crawler's rules by type and value; a trailing `*` is
+#' ignored (`/x` equals `/x*`, and `*` and `/*` equal `/`), `$` is not, and
+#' empty values are left out. The message lists the missing `*` rules, ten at
+#' most. A crawler whose rules are all explicit allow-all (an empty
+#' `Disallow:`, `Allow: /`, `Allow: /*` or `Allow: *`) is not reported; an
+#' empty `Allow:` is ignored, and a crawler whose groups have no other rule
+#' is reported.
 #'
 #' @param robots_txt A single non-missing character string or a raw vector.
 #' @param source_id A single non-empty character string identifying the supplied
@@ -489,6 +504,18 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     }
   }
 
+  # A named group drops the `*` rules for its crawlers (ROBO-gfjotdrr). On a
+  # cut body a group's rules may lie past the cut, so the check is skipped.
+  if (!body_truncated) {
+    inheritance <- wildcard_inheritance_diagnostics(validation_groups(parsed))
+    for (found in inheritance) {
+      add_diagnostic(
+        found$line, "info", "wildcard_rules_not_inherited", "user-agent",
+        found$message
+      )
+    }
+  }
+
   # A file with no Allow or Disallow line restricts nothing (RFC 9309
   # section 2.2.1), so a missing User-agent is an error only when rules need
   # one (ROBO-vxrzcqpe). An empty or typo'd rule line still counts. A cut
@@ -586,6 +613,194 @@ directive_value_diagnostics <- function(type, value) {
     return(if (is.null(found)) list() else list(found))
   }
   list()
+}
+
+# The User-agent groups of a parsed document, as the Google matcher forms
+# them (src/robots.cc, RobotsMatcher::HandleUserAgent). A User-agent line
+# opens a new group when it is the first one or follows an Allow or
+# Disallow; consecutive User-agent lines share a group, and Sitemap or
+# unknown lines never close one. Reused by ROBO-fdhmlvwm. Returns a list of
+# three data frames:
+# - `groups`: one row per group, in file order: `group` (integer id),
+#   `first_line` (the group's first User-agent line) and `global` (any of
+#   its User-agent lines is `*`, alone or followed by whitespace).
+# - `agents`: one row per User-agent line: `group`, `line`, `global`,
+#   `token` (the ExtractUserAgent run of [A-Za-z_-] as spelled, ASCII; ""
+#   for a global line or one led by any other byte) and `key`
+#   (`ascii_lower(token)`, the merge key).
+# - `rules`: one row per Allow or Disallow inside a group (rules before the
+#   first User-agent are dropped): `group`, `line`, `type` ("allow" or
+#   "disallow"), `value` (canonical, as parsed), `empty` and `key` (type and
+#   value with a trailing `*` run removed, `/` for a value of only `*` or
+#   `/` then only `*`, NA when `empty`).
+validation_groups <- function(parsed) {
+  kept <- parsed[parsed$type %in% c("user-agent", "allow", "disallow"),
+                 c("line", "type", "value"), drop = FALSE]
+  is_agent <- kept$type == "user-agent"
+  opens <- is_agent & c(TRUE, !is_agent[-length(is_agent)])
+  kept$group <- cumsum(opens)
+  kept <- kept[kept$group > 0L, , drop = FALSE]
+  is_agent <- kept$type == "user-agent"
+
+  agent_rows <- kept[is_agent, , drop = FALSE]
+  agent_bytes <- lapply(agent_rows$value, charToRaw)
+  agent_global <- vapply(agent_bytes, function(bytes) {
+    length(bytes) >= 1L && bytes[[1L]] == charToRaw("*") &&
+      (length(bytes) == 1L || bytes[[2L]] %in% as.raw(c(0x20, 0x09:0x0d)))
+  }, logical(1L))
+  token_bytes <- charToRaw(paste0(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", "-_"
+  ))
+  agent_token <- vapply(agent_bytes, function(bytes) {
+    outside <- which(!bytes %in% token_bytes)
+    run <- if (length(outside) == 0L) length(bytes) else outside[[1L]] - 1L
+    rawToChar(bytes[seq_len(run)])
+  }, character(1L))
+  agents <- data.frame(
+    group = as.integer(agent_rows$group),
+    line = as.integer(agent_rows$line),
+    global = agent_global,
+    token = agent_token,
+    key = ascii_lower(agent_token),
+    stringsAsFactors = FALSE
+  )
+
+  group_ids <- unique(agents$group)
+  groups <- data.frame(
+    group = group_ids,
+    first_line = agents$line[match(group_ids, agents$group)],
+    global = group_ids %in% agents$group[agents$global],
+    stringsAsFactors = FALSE
+  )
+
+  rule_rows <- kept[!is_agent, , drop = FALSE]
+  empty <- !nzchar(rule_rows$value)
+  # `/x` and `/x*` match the same paths, and `*`, `**` and `/*` match every
+  # path as `/` does; the empty no-op value stays apart (NA). `$` is
+  # significant and kept.
+  stripped <- sub("\\*+$", "", rule_rows$value, useBytes = TRUE)
+  stripped[!nzchar(stripped)] <- "/"
+  key <- paste(rule_rows$type, stripped)
+  key[empty] <- NA_character_
+  rules <- data.frame(
+    group = as.integer(rule_rows$group),
+    line = as.integer(rule_rows$line),
+    type = as.character(rule_rows$type),
+    value = as.character(rule_rows$value),
+    empty = empty,
+    key = key,
+    stringsAsFactors = FALSE
+  )
+  list(groups = groups, agents = agents, rules = rules)
+}
+
+# A crawler obeys only the groups that name it (merged, as Google does) and
+# never the `*` group (ROBO-gfjotdrr). For each named agent, the `*` rules
+# missing from its effective rules, as a list of list(line, agents, missing,
+# message): `line` is the first User-agent line of the first group naming
+# the agents, `agents` their tokens as first spelled, `missing` the lines of
+# every missing `*` rule (uncapped) and `message` the capped text. An agent
+# whose rules are all explicit allow-all (an empty Disallow, or an Allow
+# keyed `/`) is exempt; an empty Allow is a no-op and is not counted, so an
+# agent with no other rule is not exempt. Rows come in anchor-line order:
+# agents are visited in the order they are first named.
+wildcard_inheritance_diagnostics <- function(groups) {
+  rules <- groups$rules
+  # An empty key (a global line, or one led by a byte outside [A-Za-z_-])
+  # names no crawler.
+  agents <- groups$agents[nzchar(groups$agents$key), , drop = FALSE]
+  global <- rules[!rules$empty &
+                    rules$group %in% groups$groups$group[groups$groups$global],
+                  , drop = FALSE]
+  global <- global[!duplicated(global$key), , drop = FALSE]
+  no_op <- rules$type == "allow" & rules$empty
+  allow_all <- (rules$type == "disallow" & rules$empty) |
+    (!rules$empty & rules$key == "allow /")
+
+  losers <- list()
+  for (key in unique(agents$key)) {
+    agent_groups <- unique(agents$group[agents$key == key])
+    in_effect <- rules$group %in% agent_groups
+    judged <- in_effect & !no_op
+    if (any(judged) && all(allow_all[judged])) {
+      next
+    }
+    missing <- which(!global$key %in% rules$key[in_effect])
+    if (length(missing) == 0L) {
+      next
+    }
+    losers[[length(losers) + 1L]] <- list(
+      token = agents$token[[match(key, agents$key)]],
+      first_group = min(agent_groups),
+      one_group = length(agent_groups) == 1L,
+      missing = missing
+    )
+  }
+
+  signature <- paste(
+    vapply(losers, `[[`, integer(1L), "first_group"),
+    vapply(losers, function(x) paste(x$missing, collapse = ","), "")
+  )
+  sets <- split(seq_along(losers), factor(signature, unique(signature)))
+  lapply(unname(sets), function(i) {
+    members <- losers[i]
+    missing <- members[[1L]]$missing
+    tokens <- vapply(members, `[[`, "", "token")
+    list(
+      line = groups$groups$first_line[[
+        match(members[[1L]]$first_group, groups$groups$group)
+      ]],
+      agents = tokens,
+      missing = global$line[missing],
+      message = wildcard_inheritance_message(
+        tokens, all(vapply(members, `[[`, TRUE, "one_group")),
+        global[missing, , drop = FALSE]
+      )
+    )
+  })
+}
+
+wildcard_inheritance_message <- function(tokens, one_group, missing,
+                                         cap = 10L) {
+  several <- length(tokens) > 1L
+  named <- if (several) {
+    paste(toString(tokens[-length(tokens)]),
+          "and", tokens[[length(tokens)]])
+  } else {
+    tokens
+  }
+  where <- if (one_group) {
+    "this group"
+  } else if (several) {
+    "the groups that name them"
+  } else {
+    "the groups that name it"
+  }
+  k <- nrow(missing)
+  shown <- seq_len(min(k, cap))
+  items <- sprintf(
+    "%s: %s (line %d)",
+    ifelse(missing$type[shown] == "allow", "Allow", "Disallow"),
+    vapply(missing$value[shown], function(value) {
+      render_validation_line(charToRaw(value))
+    }, "", USE.NAMES = FALSE),
+    missing$line[shown]
+  )
+  listed <- toString(items)
+  if (k > cap) {
+    listed <- sprintf("%s, and %d more", listed, k - cap)
+  }
+  sprintf(
+    paste0(
+      "%s %s only %s, so %s `User-agent: *` %s not apply to %s: %s. ",
+      "A crawler obeys only the groups that name it and ignores ",
+      "`User-agent: *` once any group does; `User-agent: *` applies only to ",
+      "crawlers no group names."
+    ),
+    named, if (several) "obey" else "obeys", where,
+    if (k == 1L) "this" else "these", if (k == 1L) "rule does" else "rules do",
+    if (several) "them" else "it", listed
+  )
 }
 
 # The parser's value is canonical: non-ASCII bytes are already %XX escapes,
