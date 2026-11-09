@@ -867,6 +867,9 @@ policy_result_v1 <- function(status, action, reason, provenance, source) {
 # its evidence status is `partial`. A 1xx or a status outside 100-599 is a
 # protocol error. robots_validate_url() uses it too (ROBO-ybzbxfml).
 http_status_category_v1 <- function(status) {
+  if (length(status) == 1L) {
+    status <- suppressWarnings(as.integer(status))
+  }
   if (identical(status, 200L)) {
     "status_200"
   } else if (!is.na(status) && status >= 200L && status <= 299L) {

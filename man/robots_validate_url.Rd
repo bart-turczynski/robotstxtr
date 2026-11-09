@@ -75,7 +75,8 @@ A status that leaves no body gets a code for its class (404 and 410
 \code{acquisition_http_protocol}). Its message names the status, what Google,
 Yandex and Bing may do with it, and any \code{Retry-After} delay; the policy
 behind it is in \code{\link[=robots_engine_contract_v1]{robots_engine_contract_v1()}}. The document stays
-\code{"not_validated"}, so a 4xx row has \code{warning_count} 1 and \code{error_count} 0.
+\code{"not_validated"}, so an \code{acquisition_http_4xx} row (a 4xx other than 404,
+410 and 429) has \code{warning_count} 1 and \code{error_count} 0.
 
 This function validates the acquired robots.txt document. It does not answer
 whether any target URL is allowed; use \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} for that

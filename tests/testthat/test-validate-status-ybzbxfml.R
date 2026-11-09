@@ -170,6 +170,27 @@ test_that("ROBO-ybzbxfml: the message follows engine_policy_table_v1()", {
   expect_false(grepl(ybz_no_robots, message, fixed = TRUE))
 })
 
+test_that("ROBO-ybzbxfml: every status cell the validator reads has a phrase", {
+  table <- engine_policy_table_v1()
+  categories <- c("status_4xx", "status_429", "status_5xx", "protocol_error")
+  for (category in categories) {
+    for (ruleset in c("google", "yandex", "bing")) {
+      row <- table[table$category == category & table$ruleset == ruleset, ,
+                   drop = FALSE]
+      expect_identical(nrow(row), 1L, label = paste(category, ruleset))
+      phrase <- status_policy_phrase(
+        ruleset, category, row$policy_status[[1L]], row$policy_action[[1L]]
+      )
+      expect_type(phrase, "character")
+      expect_true(nzchar(phrase), label = paste(category, ruleset))
+    }
+  }
+  expect_error(
+    status_policy_phrase("google", "status_4xx", "evaluated", "use_rules"),
+    "No status phrase for policy (evaluated, use_rules).", fixed = TRUE
+  )
+})
+
 test_that("ROBO-ybzbxfml: http_status_category_v1() maps a final status", {
   statuses <- c(200L, 204L, 403L, 404L, 429L, 500L, 102L, 600L, NA_integer_)
   expect_identical(
@@ -180,6 +201,9 @@ test_that("ROBO-ybzbxfml: http_status_category_v1() maps a final status", {
       "protocol_error"
     )
   )
+  # A double status maps as its integer does.
+  expect_identical(http_status_category_v1(429), "status_429")
+  expect_identical(http_status_category_v1(200), "status_200")
 })
 
 # --- Retry-After ------------------------------------------------------------
@@ -198,6 +222,24 @@ test_that("ROBO-ybzbxfml: a Retry-After delay is appended", {
     expect_false(grepl("Retry-After", without$diagnostics$message,
                        fixed = TRUE))
   }
+})
+
+test_that("ROBO-ybzbxfml: a Retry-After delay is whole seconds", {
+  delay <- function(seconds) {
+    sub("^.*(Retry-After: [^.]*\\.).*$", "\\1",
+        status_diagnosis(503L, seconds)$message)
+  }
+  expect_identical(delay(119.4), "Retry-After: 119 seconds.")
+  expect_identical(delay(1), "Retry-After: 1 second.")
+  expect_identical(delay(0), "Retry-After: 0 seconds.")
+  expect_identical(delay(99999999999), "Retry-After: 99999999999 seconds.")
+  for (seconds in c(Inf, NaN, NA_real_)) {
+    expect_false(grepl("Retry-After", status_diagnosis(503L, seconds)$message,
+                       fixed = TRUE), label = format(seconds))
+  }
+  old <- options(OutDec = ",")
+  comma <- tryCatch(delay(119.4), finally = options(old))
+  expect_identical(comma, "Retry-After: 119 seconds.")
 })
 
 test_that("ROBO-ybzbxfml: an invalid Retry-After is left out", {

@@ -232,7 +232,8 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' `acquisition_http_protocol`). Its message names the status, what Google,
 #' Yandex and Bing may do with it, and any `Retry-After` delay; the policy
 #' behind it is in [robots_engine_contract_v1()]. The document stays
-#' `"not_validated"`, so a 4xx row has `warning_count` 1 and `error_count` 0.
+#' `"not_validated"`, so an `acquisition_http_4xx` row (a 4xx other than 404,
+#' 410 and 429) has `warning_count` 1 and `error_count` 0.
 #'
 #' This function validates the acquired robots.txt document. It does not answer
 #' whether any target URL is allowed; use [allowed_by_robots_url()] for that
@@ -1326,11 +1327,10 @@ status_diagnosis <- function(status, retry_after_seconds) {
       "not the site's own robots.txt."
     )
   }
-  if (length(retry_after_seconds) == 1L && !is.na(retry_after_seconds)) {
-    message <- paste0(
-      message, " Retry-After: ",
-      format(retry_after_seconds, scientific = FALSE), " seconds."
-    )
+  if (length(retry_after_seconds) == 1L && is.finite(retry_after_seconds)) {
+    seconds <- sprintf("%.0f", round(retry_after_seconds))
+    unit <- if (identical(seconds, "1")) "second" else "seconds"
+    message <- paste0(message, " Retry-After: ", seconds, " ", unit, ".")
   }
   message <- paste(message, "See robots_engine_contract_v1().")
   list(severity = severity, code = code, message = message)
@@ -1369,7 +1369,9 @@ status_policy_phrase <- function(ruleset, category, status, action) {
       "not documented"
     }
   } else {
-    sprintf("%s (%s)", status, action)
+    stop(sprintf(
+      "No status phrase for policy (%s, %s).", status, action
+    ), call. = FALSE)
   }
 }
 

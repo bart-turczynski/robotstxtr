@@ -203,7 +203,8 @@ warning says the rest was not validated. A 3xx over the limit is reported as an
 acquisition limit failure with `validation_status = "not_validated"`. A 4xx
 or 5xx keeps its status outcome and gets a code for its class:
 `acquisition_missing` for a 404 or 410, `acquisition_http_4xx` for another
-4xx, `acquisition_http_429` and `acquisition_http_5xx`. Its message names the
+4xx, `acquisition_http_429` and `acquisition_http_5xx`; a 1xx or
+out-of-range status gets `acquisition_http_protocol`. Its message names the
 status and what Google, Yandex and Bing may do with it, as
 `robots_engine_contract_v1()` records.
 
