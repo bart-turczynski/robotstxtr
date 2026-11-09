@@ -206,8 +206,9 @@ These byte-level limits affect the current policy/matcher decision (not future-v
   (ROBO-ldpahknv; `body_truncated = TRUE`, `termination_reason = ceiling`); the legacy path matches it.
   The v1 evidence records it as `incomplete`, and the ruleset decides what it means: `yandex` with
   `stored_bytes ≥ 512000` → `allow_all` `[documented]` (the file exceeds 500 KB under either reading of
-  the unit; same rule and reason as a retained body over 500,000 bytes, `yandex_file_over_500000_bytes`;
-  ROBO-arrtietl), under sitemapr ADR-009 §3 as amended. `yandex` below that size, `google`, `rfc9309`,
+  the unit; ROBO-arrtietl): a cut 200 takes the same rule and reason as a retained body over 500,000
+  bytes, `yandex_file_over_500000_bytes`, and a cut non-200 2xx takes `non_200_allow_all` from §4, as
+  its uncut form does; under sitemapr ADR-009 §3 as amended. `yandex` below that size, `google`, `rfc9309`,
   `assumed_rfc9309`, `bing` → `policy_status = not_evaluated` (`incomplete_evidence`). A 3xx, an unknown
   status or a status mismatch over the limit is `body_too_large`, nothing stored, `incomplete` under
   every ruleset. A 4xx/5xx over the limit is classified by its status (§4).

@@ -20,19 +20,36 @@ ac_serve <- function(status = 200L, body = ac_body(), env = parent.frame()) {
   local_fake_ssrfr(function(req) fake_response(status, body = body), env = env)
 }
 
-# Fail any matcher call: an allow_all row must not reach one.
+# Fail any matcher call: an allow_all or incomplete row must not reach one.
+# The registry (engine_matcher_registry_v1()) looks these up at call time.
 ac_forbid_matchers <- function(env = parent.frame()) {
   calls <- new.env(parent = emptyenv())
   calls$google <- 0L
+  calls$yandex <- 0L
+  calls$bing <- 0L
   testthat::local_mocked_bindings(
     match_google_v1 = function(body, url, product_token) {
       calls$google <- calls$google + 1L
       stop("match_google_v1 must not be called")
     },
+    match_yandex_v1 = function(bodies, urls, product_tokens) {
+      calls$yandex <- calls$yandex + 1L
+      stop("match_yandex_v1 must not be called")
+    },
+    match_bing_v1 = function(bodies, urls, product_tokens) {
+      calls$bing <- calls$bing + 1L
+      stop("match_bing_v1 must not be called")
+    },
     .package = "robotstxtr",
     .env = env
   )
   calls
+}
+
+ac_expect_no_matcher <- function(calls) {
+  expect_identical(
+    c(calls$google, calls$yandex, calls$bing), c(0L, 0L, 0L)
+  )
 }
 
 ac_eval <- function(ruleset = "yandex", backend = ruleset,
@@ -103,14 +120,16 @@ test_that("ROBO-arrtietl: a yandex 200 cut at the default 512 KiB", {
   x <- ac_eval()
   ac_expect_cut_evidence(x, 524288L)
   ac_expect_open(x)
-  expect_identical(calls$google, 0L)
+  ac_expect_no_matcher(calls)
 })
 
 test_that("ROBO-arrtietl: a yandex 200 cut at exactly 512,000 bytes", {
   ac_serve()
+  calls <- ac_forbid_matchers()
   x <- ac_eval(max_bytes = 512000L)
   ac_expect_cut_evidence(x, 512000L)
   ac_expect_open(x)
+  ac_expect_no_matcher(calls)
 })
 
 test_that("ROBO-arrtietl: a yandex 200 cut at 511,999 bytes stays incomplete", {
@@ -152,7 +171,7 @@ test_that("ROBO-arrtietl: other rulesets keep a cut body incomplete", {
   expect_identical(x$evidence$evidence_status, "incomplete")
   expect_true(x$evidence$body_truncated)
   ac_expect_incomplete(x)
-  expect_identical(calls$google, 0L)
+  ac_expect_no_matcher(calls)
 })
 
 test_that("ROBO-arrtietl: a 3xx over max_bytes stays incomplete", {

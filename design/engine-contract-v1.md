@@ -131,10 +131,12 @@ Yandex row the matcher status is `not_evaluated` with either
 `error_stage = "input"`; `unsupported_crawler` takes precedence when both a
 target and a token are invalid. Bodies over 500,000 bytes resolve through the
 documented Yandex `allow_all` policy (`matcher_status = "not_needed"`) before
-the matcher runs, and so does a 2xx cut at `max_bytes` that stored at least
-512,000 bytes: the file is over 500 KB under either reading of the unit, with
-the same `yandex_file_over_500000_bytes` reason, while its `evidence_status`
-stays `incomplete` (ROBO-arrtietl). A smaller cut stays `incomplete_evidence`.
+the matcher runs. A 2xx cut at `max_bytes` that stored at least 512,000 bytes
+is a file over 500 KB under either reading of the unit, so it resolves
+`allow_all` too, while its `evidence_status` stays `incomplete`
+(ROBO-arrtietl): a cut 200 with the same `yandex_file_over_500000_bytes`
+reason, a cut non-200 2xx with `non_200_allow_all` from the policy table, as
+its uncut form does. A smaller cut stays `incomplete_evidence`.
 
 RFC 9309 and Bing matcher requests return `capability_unavailable-v1`. Their
 policy tables still resolve independently where the accepted design has
@@ -281,9 +283,11 @@ Decisions:
   `max_bytes` hides. The ruleset reads the cut instead (ADR 0001 §5, slice
   8; ROBO-arrtietl): a `yandex` cut that stored at least 512,000 bytes
   proves the file is over 500 KB under either reading of the unit, so
-  `resolve_policy_v1()` lets it past the `incomplete` return into the
-  existing size branch, `allow_all` / `yandex_file_over_500000_bytes`
-  `[documented]`. The evidence row is unchanged, the schema revision does
+  `resolve_policy_v1()` lets it past the `incomplete` return to the policy
+  table: a cut 200 reaches the existing size branch, `allow_all` /
+  `yandex_file_over_500000_bytes` `[documented]`, and a cut non-200 2xx
+  resolves `allow_all` / `non_200_allow_all` `[documented]`, as its uncut
+  form does. The evidence row is unchanged, the schema revision does
   not move, and the yandex policy revision moves to
   `yandex-robots-policy-2026-11-09`.
 - Every legacy `robots` frame gains a logical `body_truncated` column,
