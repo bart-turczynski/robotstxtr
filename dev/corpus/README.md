@@ -42,11 +42,16 @@ Options: `--run-id ID` (default `<mode>-<UTC time>`), `--seed N` (the random
 path set), `--workers 1|2`, `--chunk-size N` (host directories per shard),
 `--max-rule-paths N` (cap on rule-derived paths per file), `--random-paths N`,
 `--large-bytes N` and `--size-rule-paths N` (the narrow tier, below),
-`--subset K/N` (only the chunks whose index mod N is K), `--max-hosts N`
-(only the first N host directories), and `--manifest ID` (record whether the
-corpus still matches an earlier run's manifest).
+`--subset K/N` (only the chunks whose index mod N is K, K < N),
+`--max-hosts N` (only the first N host directories, N >= 1), and
+`--manifest ID` (record whether the corpus still matches an earlier finished
+run's manifest).
 
-Exit status: 0 for a valid run, 2 for a refusal, 3 for an invalid run.
+Exit status: 0 for a valid run, 2 for a refusal, 3 for an invalid run. Every
+refusal that can be decided before the work starts is: the arguments, every
+run id (`--run-id`, `--a`, `--b`, `--manifest`: a plain name, never a path),
+the run `--manifest` names (it must exist and be finished), and an empty
+chunk plan all refuse before the run directory is created.
 
 ## Modes
 

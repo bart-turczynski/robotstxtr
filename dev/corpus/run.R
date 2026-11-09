@@ -36,6 +36,15 @@ harness_main <- function(args) {
   gc(reset = TRUE)
   opts <- parse_harness_args(args)
   cfg <- corpus_env_config(need_corpus = opts$mode != "compare")
+  # Everything that can refuse runs before the run directory exists, so a
+  # refusal leaves no "running" record behind.
+  frozen_hash <- if (!is.na(opts$manifest)) {
+    frozen_manifest_hash(cfg$out, opts$manifest)
+  }
+  if (opts$mode != "compare") {
+    hosts <- list_host_dirs(cfg$corpus)
+    chunks <- plan_chunks(hosts, opts)
+  }
   if (is.na(opts$run_id)) {
     opts$run_id <- paste0(
       opts$mode, "-", format(Sys.time(), "%Y%m%dT%H%M%SZ", tz = "UTC")
@@ -102,8 +111,8 @@ harness_main <- function(args) {
     res <- mode_compare(ctx)
     record$compare <- res
   } else {
-    ctx$hosts <- list_host_dirs(cfg$corpus)
-    ctx$chunks <- plan_chunks(ctx$hosts, opts)
+    ctx$hosts <- hosts
+    ctx$chunks <- chunks
     plan <- plan_frame(ctx$hosts, ctx$chunks)
     start <- corpus_manifest(cfg$corpus, plan)
     saveRDS(start, file.path(run_dir, "manifest.rds"), compress = "xz")
@@ -115,11 +124,10 @@ harness_main <- function(args) {
       evaluate = mode_evaluate, size = mode_size
     )
     record <- run_and_check(record, ctx, runner, start)
-    if (!is.na(opts$manifest)) {
-      frozen <- readRDS(file.path(cfg$out, opts$manifest, "record.rds"))
+    if (!is.null(frozen_hash)) {
       record$manifest$frozen_run <- opts$manifest
       record$manifest$matches_frozen <- identical(
-        frozen$manifest$start_hash, record$manifest$start_hash
+        frozen_hash, record$manifest$start_hash
       )
     }
   }

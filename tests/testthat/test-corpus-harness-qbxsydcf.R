@@ -273,6 +273,33 @@ test_that("arguments are checked before any work", {
   )
   expect_identical(opts$seed, 5L)
   expect_identical(opts$subset, "0/10")
+  expect_identical(
+    h$parse_harness_args(c("manifest", "--subset", "2/3"))$subset, "2/3"
+  )
+  for (bad in c("3/3", "4/3", "1/0", "x/2", "1")) {
+    expect_refusal(
+      h$parse_harness_args(c("manifest", "--subset", bad)), "--subset",
+      info = bad
+    )
+  }
+  expect_refusal(
+    h$parse_harness_args(c("manifest", "--max-hosts", "0")), "--max-hosts"
+  )
+  # Run ids are names under OUT, never paths, wherever they are given.
+  for (opt in c("--run-id", "--manifest")) {
+    expect_refusal(
+      h$parse_harness_args(c("manifest", opt, "../..")), "run id", info = opt
+    )
+  }
+  expect_refusal(
+    h$parse_harness_args(c("compare", "--a", "../x", "--b", "y")), "run id"
+  )
+  expect_refusal(
+    h$parse_harness_args(
+      c("compare", "--a", "x", "--b", "y", "--manifest", "z")
+    ),
+    "scan mode"
+  )
 })
 
 # ---------------------------------------------------------------------------
@@ -660,4 +687,80 @@ test_that("a shard only one full run holds makes the runs different", {
   expect_false(
     h$mode_compare(compare_ctx(out, "short", "part-extra"))$identical
   )
+})
+
+# ---------------------------------------------------------------------------
+# Up-front checks: everything that can refuse does so before any work.
+
+test_that("an empty chunk plan is refused", {
+  h <- load_harness()
+  expect_refusal(h$plan_chunks(character(), plan_opts()), "no chunks")
+  hosts <- c("a.test", "b.test")
+  expect_refusal(
+    h$plan_chunks(hosts, plan_opts(chunk_size = 1L, subset = "5/9")),
+    "no chunks"
+  )
+  expect_length(h$plan_chunks(hosts, plan_opts(chunk_size = 1L)), 2L)
+})
+
+test_that("the run directory's leaf is created once, under a made parent", {
+  h <- load_harness()
+  root <- local_test_dir()
+  out <- file.path(root, "not", "yet")
+  run <- h$create_run_dir(out, "r-1")
+  expect_true(dir.exists(file.path(run, "shards")))
+  # A file in the leaf's place: dir.create() fails, and so does the run.
+  writeLines("x", file.path(out, "taken"))
+  expect_refusal(h$create_run_dir(out, "taken"), "already exists")
+})
+
+test_that("--manifest must name a finished run with a manifest", {
+  h <- load_harness()
+  out <- local_test_dir()
+  expect_refusal(h$frozen_manifest_hash(out, "../.."), "run id")
+  expect_refusal(h$frozen_manifest_hash(out, "missing"), "names no run")
+  fake_run(out, "running", status = "running")
+  expect_refusal(h$frozen_manifest_hash(out, "running"), "finished run")
+  fake_run(out, "no-manifest")
+  expect_refusal(h$frozen_manifest_hash(out, "no-manifest"), "finished run")
+  fake_run(out, "frozen")
+  rec <- readRDS(file.path(out, "frozen", "record.rds"))
+  rec$manifest <- list(start_hash = "abc")
+  saveRDS(rec, file.path(out, "frozen", "record.rds"))
+  expect_identical(h$frozen_manifest_hash(out, "frozen"), "abc")
+})
+
+test_that("run.R checks --manifest before it creates a run directory", {
+  skip_on_os("windows")
+  run_r <- harness_file("run.R")
+  skip_if_not(file.exists(run_r), "corpus harness dev/ not present")
+  h <- load_harness()
+  root <- local_test_dir()
+  corpus <- local_corpus()
+  out <- file.path(root, "out")
+  rscript <- file.path(R.home("bin"), "Rscript")
+  run <- function(...) {
+    suppressWarnings(system2(
+      rscript, c(shQuote(normalizePath(run_r)), ...),
+      env = c(
+        paste0("ROBOTSTXTR_CORPUS=", shQuote(corpus)),
+        paste0("ROBOTSTXTR_CORPUS_OUT=", shQuote(out))
+      ),
+      stdout = FALSE, stderr = FALSE
+    ))
+  }
+  expect_identical(run("manifest", "--run-id", "first"), 0L)
+  rec <- readRDS(file.path(out, "first", "record.rds"))
+  expect_identical(rec$status, "finished")
+  expect_identical(run("manifest", "--run-id", "typo", "--manifest", "nope"),
+                   2L)
+  expect_identical(run("manifest", "--run-id", "up", "--manifest", "../.."),
+                   2L)
+  expect_identical(run("manifest", "--run-id", "none", "--subset", "3/3"), 2L)
+  expect_identical(sort(list.files(out)), "first")
+  expect_identical(
+    run("manifest", "--run-id", "second", "--manifest", "first"), 0L
+  )
+  rec <- readRDS(file.path(out, "second", "record.rds"))
+  expect_true(rec$manifest$matches_frozen)
 })

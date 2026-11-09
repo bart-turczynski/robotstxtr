@@ -106,20 +106,57 @@ validate_run_id <- function(run_id) {
 }
 
 # Create OUT/<run-id>/ and return it; an existing run is never overwritten.
+# The leaf is created with recursive = FALSE, so its creation is the
+# existence check: of two runs racing for one id, only one gets the
+# directory.
 create_run_dir <- function(out, run_id) {
   validate_run_id(run_id)
-  dir <- file.path(out, run_id)
-  if (file.exists(dir)) {
-    harness_refuse(paste0("Run directory already exists: ", dir))
+  if (!dir.exists(out)) {
+    dir.create(out, recursive = TRUE, mode = "0700")
   }
-  dir.create(dir, recursive = TRUE, mode = "0700")
+  if (!dir.exists(out)) {
+    harness_refuse(paste0("Cannot create ROBOTSTXTR_CORPUS_OUT: ", out))
+  }
+  dir <- file.path(out, run_id)
+  if (!suppressWarnings(dir.create(dir, recursive = FALSE, mode = "0700"))) {
+    harness_refuse(paste0(
+      if (file.exists(dir)) "Run directory already exists: " else {
+        "Cannot create the run directory: "
+      },
+      dir
+    ))
+  }
   # Re-check after creation, through any symlink the parent may carry.
   if (!is.null(git_work_tree_root(dir))) {
     unlink(dir, recursive = TRUE)
     harness_refuse("The run directory resolved into a git work tree.")
   }
-  dir.create(file.path(dir, "shards"))
+  if (!dir.create(file.path(dir, "shards"))) {
+    harness_refuse(paste0("Cannot create the shards directory in ", dir))
+  }
   normalizePath(dir, winslash = "/", mustWork = TRUE)
+}
+
+# The start-manifest hash of the earlier run --manifest names, checked before
+# any work: a plain run id (never a path), a run that exists under OUT and
+# finished, with a manifest.
+frozen_manifest_hash <- function(out, run_id) {
+  validate_run_id(run_id)
+  path <- file.path(out, run_id, "record.rds")
+  if (!file.exists(path)) {
+    harness_refuse(paste0(
+      "--manifest names no run under ROBOTSTXTR_CORPUS_OUT: ", run_id
+    ))
+  }
+  rec <- tryCatch(readRDS(path), error = function(e) NULL)
+  hash <- if (is.list(rec)) rec$manifest$start_hash
+  if (!identical(rec$status, "finished") || !is.character(hash) ||
+        length(hash) != 1L) {
+    harness_refuse(paste0(
+      "--manifest must name a finished run with a manifest: ", run_id
+    ))
+  }
+  hash
 }
 
 # ---------------------------------------------------------------------------
@@ -186,12 +223,32 @@ parse_harness_args <- function(args) {
   if (opts$chunk_size < 1L) {
     harness_refuse("--chunk-size is at least 1.")
   }
-  if (!is.na(opts$subset) && !grepl("^[0-9]+/[1-9][0-9]*$", opts$subset)) {
-    harness_refuse("--subset is K/N: the chunks whose index mod N is K.")
+  if (!is.na(opts$subset)) {
+    kn <- suppressWarnings(
+      as.integer(strsplit(opts$subset, "/", fixed = TRUE)[[1L]])
+    )
+    if (!grepl("^[0-9]+/[1-9][0-9]*$", opts$subset) || anyNA(kn) ||
+          kn[[1L]] >= kn[[2L]]) {
+      harness_refuse(
+        "--subset is K/N with K < N: the chunks whose index mod N is K."
+      )
+    }
+  }
+  if (!is.na(opts$max_hosts) && opts$max_hosts < 1L) {
+    harness_refuse("--max-hosts is at least 1.")
+  }
+  # Every run id is a plain name under OUT, never a path.
+  for (id in c("run_id", "a", "b", "manifest")) {
+    if (!is.na(opts[[id]])) {
+      validate_run_id(opts[[id]])
+    }
   }
   if (opts$mode == "compare") {
     if (is.na(opts$a) || is.na(opts$b)) {
       harness_refuse("compare needs --a <run-id> --b <run-id>.")
+    }
+    if (!is.na(opts$manifest)) {
+      harness_refuse("--manifest belongs to a scan mode, not to compare.")
     }
   } else if (opts$mode != "manifest" && is.na(opts$pkg)) {
     harness_refuse(paste0(opts$mode, " needs --pkg <package source path>."))

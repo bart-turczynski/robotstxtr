@@ -19,6 +19,12 @@ plan_chunks <- function(hosts, opts) {
     chunks <- chunks[keep]
     index <- index[keep]
   }
+  if (!length(chunks)) {
+    harness_refuse(paste0(
+      "The plan holds no chunks: the corpus has no host directories, or ",
+      "--subset selects none."
+    ))
+  }
   Map(function(i, ids) list(chunk = i, ids = ids), index, chunks)
 }
 
