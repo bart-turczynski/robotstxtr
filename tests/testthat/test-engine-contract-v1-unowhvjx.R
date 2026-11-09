@@ -426,16 +426,181 @@ test_that("HTTPS downgrade redirect is an engine-independent safety refusal", {
 test_that("Google applies its 500 KiB matcher prefix independently", {
   prefix <- paste0("user-agent: *\ndisallow: /private\n", strrep("#", 524250L))
   body <- paste0(prefix, "\nallow: /private")
-  expect_gt(nchar(body, type = "bytes"), 524288L)
+  expect_gt(nchar(body, type = "bytes"), 512000L)
   x <- robots_evaluate_text_v1(
     body, "https://example.com/private", "bot", "google", "google"
   )
 
+  # The window ends inside the comment line, so matching stops after byte 33.
   expect_identical(x$results$url_decision, "disallow")
   expect_true(x$results$matcher_body_truncated)
-  expect_identical(x$results$matcher_input_bytes, 524288L)
+  expect_identical(x$results$matcher_input_bytes, 33L)
   expect_false(x$evidence$body_truncated)
   expect_identical(x$evidence$stored_bytes, nchar(body, type = "bytes"))
+})
+
+# ROBO-phfbpfiy: Google's 500 KiB window, pinned at its byte boundary.
+# A rule whose first byte is byte 512,001, in a body under 524,288 bytes.
+google_band_body <- function() {
+  head <- paste0("user-agent: *\n", strrep("#", 511985L), "\n")
+  paste0(head, "disallow: /private\n")
+}
+
+# A 512,000-byte body ending in "disallow: /private", then `tail`.
+google_edge_body <- function(tail = "") {
+  pad <- strrep("#", 511967L)
+  paste0("user-agent: *\n", pad, "\ndisallow: /private", tail)
+}
+
+google_eval <- function(body, ruleset = "google",
+                        url = "https://example.com/private") {
+  robots_evaluate_text_v1(body, url, "bot", ruleset, "google")
+}
+
+test_that("Google ignores a rule past byte 512,000 under 524,288", {
+  body <- google_band_body()
+  expect_gt(nchar(body, type = "bytes"), 512000L)
+  expect_lte(nchar(body, type = "bytes"), 524288L)
+  x <- google_eval(body)
+
+  expect_identical(x$results$url_decision, "allow")
+  expect_true(x$results$matcher_body_truncated)
+  expect_identical(x$results$matcher_input_bytes, 512000L)
+  expect_identical(x$results$policy_body_limit_bytes, 512000L)
+  expect_identical(policy_limit_v1("google"), 512000L)
+  expect_identical(
+    x$results$policy_ruleset_revision, "google-robots-policy-2026-11-09"
+  )
+  expect_identical(policy_limit_v1("yandex"), 500000L)
+})
+
+test_that("Google's window boundary is exact to the byte", {
+  at_limit <- google_edge_body()
+  expect_identical(nchar(at_limit, type = "bytes"), 512000L)
+  x <- google_eval(at_limit)
+  expect_identical(x$results$url_decision, "disallow")
+  expect_false(x$results$matcher_body_truncated)
+  expect_identical(x$results$matcher_input_bytes, 512000L)
+
+  # One byte more and "disallow: /privatex" is cut: the partial line is
+  # dropped, not read as "disallow: /private".
+  over_limit <- google_edge_body("x")
+  expect_identical(nchar(over_limit, type = "bytes"), 512001L)
+  y <- google_eval(over_limit)
+  expect_identical(y$results$url_decision, "allow")
+  expect_true(y$results$matcher_body_truncated)
+  expect_identical(y$results$matcher_input_bytes, 511982L)
+})
+
+test_that("Google's window drops a line it cuts, never widening a rule", {
+  body <- paste0(
+    "user-agent: *\n", strrep("#", 511974L), "\ndisallow: /",
+    "private-drafts/\n"
+  )
+  expect_identical(nchar(body, type = "bytes"), 512016L)
+  local_fake_ssrfr(engine_mock_router(list(
+    "http://example.test/robots.txt" = engine_response(200L, body)
+  )))
+  x <- robots_evaluate_url_v1(
+    "http://example.test/public", "bot", "google", "google"
+  )
+
+  expect_identical(x$evidence$evidence_status, "usable_body")
+  expect_false(x$evidence$body_truncated)
+  expect_identical(x$results$url_decision, "allow")
+  expect_true(x$results$matcher_body_truncated)
+  expect_identical(x$results$matcher_input_bytes, 511989L)
+  expect_true(is.na(x$results$matched_line))
+})
+
+test_that("Google keeps a rule ending at byte 512,000, its break past it", {
+  for (eol in c("\n", "\r", "\r\n")) {
+    body <- google_edge_body(eol)
+    expect_identical(
+      nchar(body, type = "bytes"), 512000L + nchar(eol, type = "bytes")
+    )
+    x <- google_eval(body)
+    expect_identical(x$results$url_decision, "disallow")
+    expect_true(x$results$matcher_body_truncated)
+    expect_identical(x$results$matcher_input_bytes, 512000L)
+  }
+})
+
+test_that("Google's window with no line break feeds no rules", {
+  body <- paste0("disallow: /x", strrep("x", 511999L))
+  x <- google_eval(body, url = "https://example.com/xx")
+  expect_identical(x$results$url_decision, "allow")
+  expect_true(x$results$matcher_body_truncated)
+  expect_identical(x$results$matcher_input_bytes, 0L)
+})
+
+test_that("Google's window keeps a CRLF line whose CR is byte 512,000", {
+  body <- paste0(
+    "user-agent: *\r\n", strrep("#", 511964L), "\r\n",
+    "disallow: /private\r\nallow: /private\r\n"
+  )
+  expect_identical(
+    substr(body, 512000L, 512001L), "\r\n"
+  )
+  x <- google_eval(body)
+  expect_identical(x$results$url_decision, "disallow")
+  expect_true(x$results$matcher_body_truncated)
+  expect_identical(x$results$matcher_input_bytes, 512000L)
+})
+
+test_that("Google's window applies to the backend under any ruleset", {
+  x <- google_eval(google_band_body(), "rfc9309")
+  expect_identical(x$results$url_decision, "allow")
+  expect_true(x$results$matcher_body_truncated)
+  expect_identical(x$results$matcher_input_bytes, 512000L)
+  expect_true(is.na(x$results$policy_body_limit_bytes))
+})
+
+test_that("Google's window cuts raw bytes: UTF-8, NUL and empty bodies", {
+  head <- "user-agent: *\ndisallow: /private\n"
+  straddle <- paste0(
+    head, strrep("#", 511949L), "\n", "disallow: /docs-é\n"
+  )
+  expect_identical(nchar(straddle, type = "bytes"), 512002L)
+  expect_identical(
+    charToRaw(straddle)[512000L], charToRaw("é")[[1L]]
+  )
+  x <- expect_no_error(google_eval(straddle))
+  expect_identical(x$results$url_decision, "disallow")
+  expect_true(x$results$matcher_body_truncated)
+  expect_identical(x$results$matcher_input_bytes, 511983L)
+
+  nul_body <- c(
+    charToRaw(head), as.raw(0L), charToRaw(strrep("#", 511965L)),
+    charToRaw("\n"), charToRaw(strrep("#", 10L))
+  )
+  expect_length(nul_body, 512010L)
+  m <- match_google_v1(nul_body, "https://example.com/private", "bot")
+  expect_identical(m$url_decision, "disallow")
+  expect_true(m$matcher_body_truncated)
+  expect_identical(m$matcher_input_bytes, 512000L)
+
+  empty <- google_eval("")
+  expect_identical(empty$results$url_decision, "allow")
+  expect_false(empty$results$matcher_body_truncated)
+  expect_identical(empty$results$matcher_input_bytes, 0L)
+})
+
+test_that("Yandex ignores Google's window: a band fetch allows all", {
+  local_fake_ssrfr(engine_mock_router(list(
+    "http://example.test/robots.txt" = engine_response(
+      200L, google_band_body()
+    )
+  )))
+  x <- robots_evaluate_url_v1(
+    "http://example.test/private", "bot", "yandex", "yandex"
+  )
+
+  expect_identical(x$results$policy_action, "allow_all")
+  expect_identical(x$results$policy_reason, "yandex_file_over_500000_bytes")
+  expect_identical(x$results$matcher_status, "not_needed")
+  expect_identical(x$results$url_decision, "allow")
+  expect_identical(x$results$policy_body_limit_bytes, 500000L)
 })
 
 test_that("legacy adapter retains generic HTTP failures as unknown", {

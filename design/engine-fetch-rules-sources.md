@@ -117,7 +117,7 @@ Findings:
   constants finds only the per-line buffer, `kMaxLineLen = kBrowserMaxLineLen * 8` with
   `kBrowserMaxLineLen = 2083`). The size limit is applied before the parser, which is why
   robotstxtr applies it at the matcher stage (`design/engine-contract-v1.md`, "Backend and
-  policy revisions": "Google parses only its first 524,288 bytes"). The code adds no fetch
+  policy revisions": "Google parses only its first 512,000 bytes"). The code adds no fetch
   value beyond G1.
 
 ## Yandex (`yandex`)

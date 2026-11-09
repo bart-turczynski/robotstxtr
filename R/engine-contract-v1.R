@@ -99,7 +99,7 @@ validate_matcher_status_v2 <- function(matcher_status) {
 
 engine_policy_revisions_v1 <- function() {
   c(
-    google = "google-robots-policy-2026-07-17",
+    google = "google-robots-policy-2026-11-09",
     yandex = "yandex-robots-policy-2026-07-17",
     rfc9309 = "rfc9309-policy-2022",
     bing = "bing-documentation-gap-2026-07-17",
@@ -934,10 +934,21 @@ resolve_policy_v1 <- function(evidence, ruleset, policy_table) {
   policy
 }
 
+# Google parses a robots.txt's first 500 KiB (512,000 bytes) and ignores the
+# rest. A line the window cuts is not the site's rule, so, as for a body cut
+# at `max_bytes` (ROBO-ldpahknv), matching stops at the last complete line
+# inside the window. `matcher_input_bytes` counts the bytes fed to the
+# matcher; `matcher_body_truncated` says the body exceeded the window.
 match_google_v1 <- function(body, url, product_token) {
-  limit <- 524288L
+  limit <- 512000L
   truncated <- length(body) > limit
-  matcher_body <- if (truncated) body[seq_len(limit)] else body
+  matcher_body <- if (truncated) {
+    # One byte past the window says whether the line at its edge is complete.
+    lines <- complete_lines_prefix(body[seq_len(limit + 1L)])
+    lines[seq_len(min(length(lines), limit))]
+  } else {
+    body
+  }
   body_string <- matcher_string_v1(matcher_body)
   allowed <- robotstxtr_allowed_text_(body_string, url, product_token)[[1L]]
   line <- robotstxtr_matching_line_text_(
@@ -1209,7 +1220,7 @@ match_backend_v1 <- function(backend, body, url, product_token,
 
 policy_limit_v1 <- function(ruleset) {
   out <- rep(NA_integer_, length(ruleset))
-  out[ruleset == "google"] <- 524288L
+  out[ruleset == "google"] <- 512000L
   out[ruleset == "yandex"] <- 500000L
   out
 }
