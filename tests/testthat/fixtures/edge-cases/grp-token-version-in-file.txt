@@ -1,0 +1,2 @@
+User-agent: Googlebot/2.1
+Disallow: /x

@@ -1,0 +1,2 @@
+User-agent: * # everyone
+Disallow: /a # private

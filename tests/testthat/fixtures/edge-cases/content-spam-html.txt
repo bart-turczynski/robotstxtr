@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lucky Spin Casino - Play Now</title>
+<script src="https://ads.example.net/popunder.js"></script>
+<script>window.onload = function () { window.open("https://casino.example.net/?ref=robots"); };</script>
+</head>
+<body>
+<h1>Hot singles and free spins</h1>
+<a href="https://casino.example.net/bonus">Claim your bonus</a>
+<a href="https://pills.example.org/">Cheap pills</a>
+<iframe src="https://ads.example.net/frame" width="1" height="1"></iframe>
+</body>
+</html>
