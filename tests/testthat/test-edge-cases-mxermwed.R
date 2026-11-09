@@ -14,20 +14,31 @@
 
 edge_dir <- test_path("fixtures", "edge-cases")
 
-edge_manifest <- function() {
-  utils::read.csv(
-    file.path(edge_dir, "manifest.csv"),
-    colClasses = "character", na.strings = character(),
-    encoding = "UTF-8", check.names = FALSE
-  )
+edge_manifest <- utils::read.csv(
+  file.path(edge_dir, "manifest.csv"),
+  colClasses = "character", na.strings = character(),
+  encoding = "UTF-8", check.names = FALSE
+)
+
+# Lowercase hex digits and whitespace only, an even number of digits: any
+# other character or a dangling nibble is a broken fixture, not a byte.
+edge_hex_bytes <- function(lines, file = "hex") {
+  text <- paste(lines, collapse = "\n")
+  if (grepl("[^0-9a-f[:space:]]", text)) {
+    stop(sprintf("%s: a character outside [0-9a-f] and whitespace", file))
+  }
+  hex <- gsub("[[:space:]]", "", text)
+  if (nchar(hex) %% 2L != 0L) {
+    stop(sprintf("%s: an odd number of hex digits", file))
+  }
+  starts <- seq(1L, nchar(hex), by = 2L)
+  as.raw(strtoi(substring(hex, starts, starts + 1L), 16L))
 }
 
 edge_body <- function(file) {
   path <- file.path(edge_dir, file)
   if (endsWith(file, ".hex")) {
-    hex <- gsub("[^0-9a-f]", "", paste(readLines(path), collapse = ""))
-    starts <- seq(1L, nchar(hex), by = 2L)
-    return(as.raw(strtoi(substring(hex, starts, starts + 1L), 16L)))
+    return(edge_hex_bytes(readLines(path), file))
   }
   readBin(path, "raw", file.size(path))
 }
@@ -61,14 +72,26 @@ edge_decision <- function(bytes, path, token) {
   if (allowed) "allow" else "disallow"
 }
 
-edge_codes <- function(bytes) {
-  d <- robots_validate_text(bytes)$diagnostics
+# Diagnostics as the manifest writes them: `code@line`, `;`-separated.
+edge_format_codes <- function(d) {
   paste(sprintf("%s@%s", d$code, ifelse(is.na(d$line), "NA", d$line)),
         collapse = ";")
 }
 
+edge_codes <- function(bytes) {
+  edge_format_codes(robots_validate_text(bytes)$diagnostics)
+}
+
+test_that("ROBO-mxermwed: a .hex fixture holds hex digits in pairs only", {
+  expect_identical(edge_hex_bytes(c("ef bb", "bf0a")),
+                   as.raw(c(0xef, 0xbb, 0xbf, 0x0a)))
+  expect_error(edge_hex_bytes("efbbg0"), "outside")
+  expect_error(edge_hex_bytes("EFBB"), "outside")
+  expect_error(edge_hex_bytes("efb"), "odd")
+})
+
 test_that("ROBO-mxermwed: the manifest and the fixture files agree", {
-  m <- edge_manifest()
+  m <- edge_manifest
   expect_named(
     m,
     c("id", "family", "body_file", "path", "token", "google_decision",
@@ -92,13 +115,17 @@ test_that("ROBO-mxermwed: the manifest and the fixture files agree", {
 })
 
 test_that("ROBO-mxermwed: every .txt fixture is one the hooks leave alone", {
-  m <- edge_manifest()
+  m <- edge_manifest
   for (file in unique(m$body_file[endsWith(m$body_file, ".txt")])) {
     bytes <- edge_body(file)
+    # Checked on the raw bytes: rawToChar() errors on a NUL before any
+    # assertion on the string could run.
+    expect_false(any(bytes %in% as.raw(c(0x00, 0x0d))), label = file)
     txt <- rawToChar(bytes)
     expect_true(validUTF8(txt), label = file)
-    expect_false(any(bytes %in% as.raw(c(0x00, 0x0d))), label = file)
     expect_identical(bytes[[length(bytes)]], as.raw(0x0a), label = file)
+    # end-of-file-fixer collapses trailing blank lines to one newline.
+    expect_false(endsWith(txt, "\n\n"), label = file)
     expect_false(grepl("[ \t]\n", txt, useBytes = TRUE), label = file)
     expect_false(
       grepl("\xef\xbb\xbf", txt, fixed = TRUE, useBytes = TRUE),
@@ -108,7 +135,7 @@ test_that("ROBO-mxermwed: every .txt fixture is one the hooks leave alone", {
 })
 
 test_that("ROBO-mxermwed: the Google matcher's decision on every check", {
-  m <- edge_manifest()
+  m <- edge_manifest
   for (i in seq_len(nrow(m))) {
     row <- m[i, ]
     expect_identical(
@@ -121,7 +148,7 @@ test_that("ROBO-mxermwed: the Google matcher's decision on every check", {
 })
 
 test_that("ROBO-mxermwed: the v1 google engine agrees on every NUL-free body", {
-  m <- edge_manifest()
+  m <- edge_manifest
   for (i in seq_len(nrow(m))) {
     row <- m[i, ]
     bytes <- edge_body(row$body_file)
@@ -139,7 +166,7 @@ test_that("ROBO-mxermwed: the v1 google engine agrees on every NUL-free body", {
 })
 
 test_that("ROBO-mxermwed: the validator's diagnostics on every body", {
-  m <- edge_manifest()
+  m <- edge_manifest
   per_case <- unique(m[c("id", "body_file", "validator_codes")])
   expect_false(anyDuplicated(per_case$id) > 0L)
   for (i in seq_len(nrow(per_case))) {
@@ -156,34 +183,36 @@ test_that("ROBO-mxermwed: the validator's diagnostics on every body", {
 # set. Fixing a gap turns its block red on purpose.
 
 edge_case <- function(id) {
-  m <- edge_manifest()
+  m <- edge_manifest
   edge_body(m$body_file[m$id == id][[1L]])
 }
 
 test_that("ROBO-mxermwed: a BOM inside the file is only an unknown line", {
-  # known gap (ROBO-atkmqcov): a BOM mid-file gets no BOM diagnostic, only unknown_directive
+  # known gap (ROBO-atkmqcov): a BOM mid-file gets no BOM diagnostic, only
+  # unknown_directive
   x <- robots_validate_text(edge_case("enc-bom-mid-file"))
   expect_false("byte_order_mark" %in% x$diagnostics$code)
   expect_identical(edge_decision(edge_case("enc-bom-mid-file"), "/a",
                                  "FooBot"), "allow")
-  # known gap (ROBO-atkmqcov): a BOM before a User-agent line drops that group silently;
-  # its rules join the group before it
+  # known gap (ROBO-atkmqcov): a BOM before a User-agent line drops that group
+  # silently; its rules join the group before it
   bytes <- edge_case("enc-bom-before-user-agent")
   expect_identical(edge_codes(bytes), "unknown_directive@4")
   expect_identical(edge_decision(bytes, "/a", "FooBot"), "disallow")
 })
 
 test_that("ROBO-mxermwed: UTF-16 without a BOM matches what no_rules denies", {
-  # known gap (ROBO-igrkabdb): the matcher drops the NULs and enforces Disallow: /a, while the
-  # validator reports no_rules ("places no restrictions") for the same bytes
+  # known gap (ROBO-igrkabdb): the matcher drops the NULs and enforces
+  # Disallow: /a, while the validator reports no_rules ("places no
+  # restrictions") for the same bytes
   bytes <- edge_case("enc-utf16le-no-bom")
   expect_identical(edge_decision(bytes, "/a", "FooBot"), "disallow")
   expect_true("no_rules" %in% robots_validate_text(bytes)$diagnostics$code)
 })
 
 test_that("ROBO-mxermwed: a Latin-1 byte in a comment is a lineless error", {
-  # known gap (ROBO-sniltuap): invalid_utf8 has no line and is an error although only a
-  # comment holds the byte and the decision is unchanged
+  # known gap (ROBO-sniltuap): invalid_utf8 has no line and is an error
+  # although only a comment holds the byte and the decision is unchanged
   x <- robots_validate_text(edge_case("enc-latin1-comment"))
   expect_identical(x$diagnostics$code, "invalid_utf8")
   expect_identical(x$diagnostics$line, NA_integer_)
@@ -191,23 +220,24 @@ test_that("ROBO-mxermwed: a Latin-1 byte in a comment is a lineless error", {
 })
 
 test_that("ROBO-mxermwed: an escaped unreserved character goes unflagged", {
-  # known gap (ROBO-gaczsrgj): Disallow: /%7Ejoe never matches /~joe under Google (RFC 9309
-  # section 2.2.2 would decode %7E), and nothing says so
+  # known gap (ROBO-gaczsrgj): Disallow: /%7Ejoe never matches /~joe under
+  # Google (RFC 9309 section 2.2.2 would decode %7E), and nothing says so
   bytes <- edge_case("esc-pct7e-rule-tilde-url")
   expect_identical(edge_codes(bytes), "")
   expect_identical(edge_decision(bytes, "/~joe", "FooBot"), "allow")
 })
 
 test_that("ROBO-mxermwed: a raw space inside a rule goes unflagged", {
-  # known gap (ROBO-dlgeqluf): Disallow: /a b matches no percent-encoded URL; no diagnostic
+  # known gap (ROBO-dlgeqluf): Disallow: /a b matches no percent-encoded URL;
+  # no diagnostic
   bytes <- edge_case("esc-space-in-rule")
   expect_identical(edge_codes(bytes), "")
   expect_identical(edge_decision(bytes, "/a%20b", "FooBot"), "allow")
 })
 
 test_that("ROBO-mxermwed: a # inside a rule widens it, unflagged", {
-  # known gap (ROBO-gjhpykcj): Disallow: /a#b is read as Disallow: /a and blocks /abc;
-  # no diagnostic
+  # known gap (ROBO-gjhpykcj): Disallow: /a#b is read as Disallow: /a and
+  # blocks /abc; no diagnostic
   bytes <- edge_case("cmt-hash-in-rule")
   expect_identical(edge_codes(bytes), "")
   expect_identical(edge_decision(bytes, "/abc", "FooBot"), "disallow")
@@ -225,12 +255,14 @@ test_that("ROBO-mxermwed: Googlebot-Image does not fall back to Googlebot", {
 })
 
 test_that("ROBO-mxermwed: a User-agent value is cut to its token, unflagged", {
-  # known gap (ROBO-zvhrayhx): User-agent: Foo Bot names Foo, not FooBot; no diagnostic
+  # known gap (ROBO-zvhrayhx): User-agent: Foo Bot names Foo, not FooBot; no
+  # diagnostic
   bytes <- edge_case("grp-user-agent-with-space")
   expect_identical(edge_codes(bytes), "")
   expect_identical(edge_decision(bytes, "/x", "Foo"), "disallow")
   expect_identical(edge_decision(bytes, "/x", "FooBot"), "allow")
-  # known gap (ROBO-zvhrayhx): User-agent: Bot2 names Bot, not Bot2; no diagnostic
+  # known gap (ROBO-zvhrayhx): User-agent: Bot2 names Bot, not Bot2; no
+  # diagnostic
   bytes <- edge_case("grp-digit-in-token")
   expect_identical(edge_codes(bytes), "")
   expect_identical(edge_decision(bytes, "/x", "Bot2"), "allow")
@@ -241,22 +273,58 @@ test_that("ROBO-mxermwed: a User-agent value is cut to its token, unflagged", {
   expect_identical(edge_decision(bytes, "/x", "FooBot"), "allow")
 })
 
+test_that("ROBO-mxermwed: a lower-case escape in a rule misses its own path", {
+  # known gap (ROBO-kormmfyg): Disallow: /a%3cb is stored as /a%3Cb, so the
+  # exact path the owner wrote, /a%3cb, is allowed (RFC 9309 section 2.2.2
+  # keeps %3c encoded and matches it octet for octet); no diagnostic
+  bytes <- edge_case("esc-lower-hex-rule")
+  expect_identical(edge_codes(bytes), "")
+  expect_identical(edge_decision(bytes, "/a%3cb", "FooBot"), "allow")
+  expect_identical(edge_decision(bytes, "/a%3Cb", "FooBot"), "disallow")
+})
+
 test_that("ROBO-mxermwed: every known_gap row is restated above", {
-  m <- edge_manifest()
+  m <- edge_manifest
   expect_setequal(
     unique(m$id[nzchar(m$known_gap)]),
     c("enc-bom-mid-file", "enc-bom-before-user-agent", "enc-utf16le-no-bom",
       "enc-latin1-comment", "esc-pct7e-rule-tilde-url", "esc-space-in-rule",
-      "cmt-hash-in-rule", "grp-user-agent-with-space", "grp-digit-in-token",
-      "grp-star-prefixed-token", "content-spam-html",
-      "grp-googlebot-image-fallback")
+      "esc-lower-hex-rule", "cmt-hash-in-rule", "grp-user-agent-with-space",
+      "grp-digit-in-token", "grp-star-prefixed-token", "content-spam-html",
+      "grp-googlebot-image-fallback", "redirect-cross-host-html")
   )
 })
 
+# A surprise counts as covered when it has a known_gap issue or when an
+# existing validator diagnostic already reports it
+# (design/edge-case-catalog.md, "Reading the fixtures"). The one exception
+# is a URL-side difference, which the caller owns: allowed_by_robots_text()
+# matches the URL unchanged.
+edge_covering_code <- c(
+  "enc-bom-doubled" = "rule_without_user_agent",
+  "enc-utf16le-bom" = "nul_byte",
+  "enc-utf16be-bom" = "nul_byte",
+  "enc-latin1-rule" = "invalid_utf8",
+  "esc-dollar-then-star" = "rule_inner_dollar",
+  "esc-lone-dollar" = "rule_missing_leading_slash",
+  "size-long-line" = "line_too_long"
+)
+edge_caller_side <- "esc-tilde-rule-pct7e-url"
+
+test_that("ROBO-mxermwed: every surprise is an issue or a diagnostic", {
+  m <- edge_manifest
+  open <- unique(m$id[m$surprise == "yes" & !nzchar(m$known_gap)])
+  expect_setequal(open, c(names(edge_covering_code), edge_caller_side))
+  for (id in names(edge_covering_code)) {
+    codes <- robots_validate_text(edge_case(id))$diagnostics$code
+    expect_true(edge_covering_code[[id]] %in% codes, label = id)
+  }
+})
+
 test_that("ROBO-mxermwed: a spam HTML page served as robots.txt", {
-  # known gap (ROBO-ccfsanhq): no validator diagnostic says the body is HTML; it shows only
-  # as malformed_line and unknown_directive rows plus no_rules, and the
-  # matcher allows everything
+  # known gap (ROBO-ccfsanhq): no validator diagnostic says the body is HTML;
+  # it shows only as malformed_line and unknown_directive rows plus no_rules,
+  # and the matcher allows everything
   bytes <- edge_case("content-spam-html")
   x <- robots_validate_text(bytes)
   expect_identical(x$documents$validation_status, "error")
@@ -269,22 +337,36 @@ test_that("ROBO-mxermwed: a spam HTML page served as robots.txt", {
 })
 
 # A robots.txt that redirects to an HTML page on another host. The fetch
-# follows the redirect and matches the landing page as the robots.txt.
-edge_redirect_handler <- function(req) {
-  if (startsWith(req$url, "http://a.example/")) {
-    return(fake_response(
-      301L, headers = list(Location = "https://b.example/landing")
-    ))
+# follows the redirect and matches the landing page as the robots.txt. The
+# handler records every requested URL and refuses any other.
+edge_redirect_handler <- function(state) {
+  state$seen <- character()
+  function(req) {
+    state$seen[[length(state$seen) + 1L]] <- req$url
+    if (identical(req$url, "http://a.example/robots.txt")) {
+      fake_response(
+        301L, url = req$url,
+        headers = list(Location = "https://b.example/landing")
+      )
+    } else if (identical(req$url, "https://b.example/landing")) {
+      fake_response(
+        200L, url = req$url, headers = list(`Content-Type` = "text/html"),
+        body = edge_case("redirect-cross-host-html")
+      )
+    } else {
+      stop(sprintf("unexpected request URL in mock: %s", req$url))
+    }
   }
-  fake_response(
-    200L, headers = list(`Content-Type` = "text/html"),
-    body = edge_case("redirect-cross-host-html")
-  )
 }
 
+edge_redirect_hops <- c("http://a.example/robots.txt",
+                        "https://b.example/landing")
+
 test_that("ROBO-mxermwed: a cross-host redirect to HTML is fetched and used", {
-  local_fake_ssrfr(edge_redirect_handler)
+  state <- new.env(parent = emptyenv())
+  local_fake_ssrfr(edge_redirect_handler(state))
   f <- robots_fetch("http://a.example/page")$robots
+  expect_identical(state$seen, edge_redirect_hops)
   expect_identical(f$robots_url, "http://a.example/robots.txt")
   expect_identical(f$effective_url, "https://b.example/landing")
   expect_identical(f$fetch_outcome, "fetched")
@@ -306,21 +388,22 @@ test_that("ROBO-mxermwed: a cross-host redirect to HTML is fetched and used", {
   expect_identical(e$evidence$redirect_count, 1L)
   expect_identical(e$results$policy_reason, "http_200_use_rules")
   expect_identical(e$results$url_decision, "allow")
+  # Each entry point fetched afresh, through the same two hops.
+  expect_identical(state$seen, rep(edge_redirect_hops, 3L))
 })
 
 test_that("ROBO-mxermwed: the validator reports no redirect", {
-  # A diagnostic for a successful cross-host redirect is ROBO-gokbvzcb; today
-  # the document validates the landing page's lines only.
-  local_fake_ssrfr(edge_redirect_handler)
+  # known gap (ROBO-gokbvzcb): no diagnostic for a successful cross-host
+  # redirect; the document validates the landing page's lines only
+  state <- new.env(parent = emptyenv())
+  local_fake_ssrfr(edge_redirect_handler(state))
   v <- robots_validate_url("http://a.example/page")
+  expect_identical(state$seen, edge_redirect_hops)
   expect_identical(v$documents$effective_url, "https://b.example/landing")
   expect_identical(v$documents$validation_status, "error")
-  m <- edge_manifest()
+  m <- edge_manifest
   expect_identical(
-    paste(sprintf("%s@%s", v$diagnostics$code,
-                  ifelse(is.na(v$diagnostics$line), "NA",
-                         v$diagnostics$line)),
-          collapse = ";"),
+    edge_format_codes(v$diagnostics),
     m$validator_codes[m$id == "redirect-cross-host-html"][[1L]]
   )
 })
