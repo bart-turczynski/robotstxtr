@@ -74,7 +74,7 @@ means `unreachable_local` (§3a). `fetch_outcome` stays `ssrf_blocked` at both l
 |---|---|---|
 | `usable_body` | 2xx (excl. 206) within ceiling (`source_kind=fetched`), OR a supplied/local body (`source_kind ∈ {supplied, local}`) | fetched → §4 by `final_http_status`; supplied/local → `use_rules` `[application_choice]`, then §6 |
 | `partial` | 206 | policy resolves per §4, but body unusable → `matcher_status = not_evaluated` (ADR-009 §2 row) |
-| `incomplete` | body over ceiling or `termination_reason ∈ {deadline, ceiling}` | never a policy verdict; `policy_status = not_evaluated` |
+| `incomplete` | body over ceiling or `termination_reason ∈ {deadline, ceiling}` | never a policy verdict, except a ruleset's §7 reading of a cut 2xx; otherwise `policy_status = not_evaluated` |
 | `http_status` | final non-2xx status received (4xx/5xx) | §4 by `final_http_status` |
 | `http_protocol_error` | 1xx received, or malformed redirect (`no_location`/`loop`) | §3 terminal-reason handling |
 | `redirect_over_budget` | `terminal_redirect_reason = over_budget` | §3 engine exhaustion rule |
@@ -199,12 +199,19 @@ These byte-level limits affect the current policy/matcher decision (not future-v
 - `google`: **500 KiB**; content after the max is ignored and the **prefix is parsed** `[documented]`.
 - `rfc9309`: **≥500 KiB minimum parse capacity** — a floor, NOT a maximum or truncation mandate
   `[documented]`.
-- `yandex`: **500 KB** file; a file exceeding it fails the requirements → open fallback (allow_all)
-  `[documented]`.
+- `yandex`: **500 KB** file (read as 500,000 bytes; the unit is not stated `[documentation_gap]`); a
+  file exceeding it fails the requirements → open fallback (allow_all) `[documented]`.
 - `bing`: no size limit found `[documentation_gap]`.
 - **Over-limit body**: Google parses the ≤-limit prefix. robotstxtr retains the ≤-limit prefix of a 2xx
-  (ROBO-ldpahknv); the legacy path matches it, the v1 evidence records it as incomplete. A 3xx over the
-  limit is `body_too_large`, and a 4xx/5xx over it is classified by its status (§4).
+  (ROBO-ldpahknv; `body_truncated = TRUE`, `termination_reason = ceiling`); the legacy path matches it.
+  The v1 evidence records it as `incomplete`, and the ruleset decides what it means: `yandex` with
+  `stored_bytes ≥ 512000` → `allow_all` `[documented]` (the file exceeds 500 KB under either reading of
+  the unit; ROBO-arrtietl): a cut 200 takes the same rule and reason as a retained body over 500,000
+  bytes, `yandex_file_over_500000_bytes`, and a cut non-200 2xx takes `non_200_allow_all` from §4, as
+  its uncut form does; under sitemapr ADR-009 §3 as amended. `yandex` below that size, `google`, `rfc9309`,
+  `assumed_rfc9309`, `bing` → `policy_status = not_evaluated` (`incomplete_evidence`). A 3xx, an unknown
+  status or a status mismatch over the limit is `body_too_large`, nothing stored, `incomplete` under
+  every ruleset. A 4xx/5xx over the limit is classified by its status (§4).
 
 ## 8. Future-validator reference (NOT executed this release)
 
@@ -223,7 +230,7 @@ prohibits Cyrillic, Punycode/%-encoding `[documented]`; Yandex UTF-8/BOM `[docum
 resolves to `NA`. Deltas vs this spec: (a) generic 4xx → `NA` diverges from documented
 `google`/`yandex` (allow_all); (b) 1xx → `http_error` conflates protocol with transport
 (`R/fetch-policy.R:88`); (c) oversized body discarded, not retained-prefix: closed for the legacy path by ROBO-ldpahknv,
-which retains and matches a 2xx prefix; the v1 evidence keeps it `incomplete` (§7). These are implementation slices, filed only after this
+which retains and matches a 2xx prefix; the v1 ruleset reading is §7's (ADR 0001 slice 8). These are implementation slices, filed only after this
 spec is accepted; ADR-009 §3 (safety precedence) and §6 (findings encoding) govern how they surface.
 
 ## 10. Sources (self-contained; per-section)

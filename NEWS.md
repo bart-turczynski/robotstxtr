@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* Under the v1 `yandex` ruleset, a robots.txt cut at `max_bytes` with at least 512,000 bytes stored now resolves `allow_all`, as a file over Yandex's 500 KB limit; the `yandex` policy revision follows (ROBO-arrtietl).
+
 * `robots_validate_url()` reports a 4xx, 429, 5xx or 1xx robots.txt with its own code, naming the status and what Google, Yandex and Bing may do (ROBO-ybzbxfml).
 
 * The v1 `google` matcher now reads at most a body's first 512,000 bytes (Google's 500 KiB, not 524,288), up to the last complete line; `matcher_input_bytes`, `policy_body_limit_bytes` and the google policy revision follow (ROBO-phfbpfiy).
