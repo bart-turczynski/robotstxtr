@@ -278,17 +278,31 @@ test_that("arguments are checked before any work", {
 # ---------------------------------------------------------------------------
 # Input-set checks
 
-local_corpus <- function(env = parent.frame()) {
+local_corpus <- function(env = parent.frame(), hosts = c("a.test", "b.test"),
+                         empty = "c.test") {
   root <- local_test_dir(env)
-  for (host in c("a.test", "b.test")) {
+  for (host in hosts) {
     dir.create(file.path(root, host))
     saveRDS(
       list(fetch_outcome = "fetched", body = body_of(host)),
       file.path(root, host, "robots.rds")
     )
   }
-  dir.create(file.path(root, "c.test"))
+  for (host in empty) {
+    dir.create(file.path(root, host))
+  }
   root
+}
+
+plan_opts <- function(chunk_size = 2L, subset = NA_character_,
+                      max_hosts = NA_integer_) {
+  list(chunk_size = chunk_size, subset = subset, max_hosts = max_hosts)
+}
+
+# The start manifest of a run over `corpus` with `opts`, as run.R takes it.
+planned_manifest <- function(h, corpus, opts) {
+  hosts <- h$list_host_dirs(corpus)
+  h$corpus_manifest(corpus, h$plan_frame(hosts, h$plan_chunks(hosts, opts)))
 }
 
 test_that("a file changed or vanished mid-run makes the run invalid", {
@@ -296,7 +310,8 @@ test_that("a file changed or vanished mid-run makes the run invalid", {
   corpus <- local_corpus()
   hosts <- h$list_host_dirs(corpus)
   start <- h$corpus_manifest(corpus, hosts)
-  expect_identical(start$host, c("a.test", "b.test"))
+  expect_identical(start$host, c("a.test", "b.test", "c.test"))
+  expect_identical(start$has_rds, c(TRUE, TRUE, FALSE))
   ok <- h$verify_run_inputs(start, start, h$corpus_manifest(corpus, hosts))
   expect_true(ok$valid)
   expect_identical(ok$start_hash, ok$end_hash)
@@ -311,16 +326,115 @@ test_that("a file changed or vanished mid-run makes the run invalid", {
   expect_false(changed$end_ok)
   expect_identical(changed$changes$change, "changed")
 
-  unlink(file.path(corpus, "b.test", "robots.rds"))
-  gone <- h$verify_run_inputs(start, start, h$corpus_manifest(corpus, hosts))
+  unlink(file.path(corpus, "b.test"), recursive = TRUE)
+  gone <- h$verify_run_inputs(
+    start, start, h$corpus_manifest(corpus, h$list_host_dirs(corpus))
+  )
   expect_setequal(gone$changes$change, c("changed", "vanished"))
+  # A robots.rds removed from a directory that stays is a change too.
+  unlink(file.path(corpus, "a.test", "robots.rds"))
+  emptied <- h$manifest_diff(start, h$corpus_manifest(corpus, hosts))
+  expect_true("a.test" %in% emptied$host)
 
   # The bytes processed are checked too, apart from the end manifest.
-  during <- start[1L, , drop = FALSE]
+  during <- start[c(1L, 3L), , drop = FALSE]
   mid <- h$verify_run_inputs(start, during, start)
   expect_false(mid$valid)
   expect_false(mid$during_ok)
   expect_identical(mid$changes$host, "b.test")
+})
+
+test_that("the manifest covers host directories without a robots.rds", {
+  h <- load_harness()
+  with_empty <- local_corpus()
+  without <- local_corpus(empty = character())
+  m1 <- planned_manifest(h, with_empty, plan_opts())
+  m2 <- planned_manifest(h, without, plan_opts())
+  expect_identical(m1$host, c("a.test", "b.test", "c.test"))
+  expect_identical(m1$chunk, c(1L, 1L, 2L))
+  expect_false(identical(h$manifest_hash(m1), h$manifest_hash(m2)))
+  # Two full runs over listings that differ only in an empty directory.
+  expect_refusal(h$check_input_sets(m1, m2, FALSE, FALSE), "different input")
+  # A robots.rds appearing in a directory that had none is a change.
+  saveRDS(list(body = raw(0)), file.path(with_empty, "c.test", "robots.rds"))
+  end <- h$corpus_manifest(with_empty, m1)
+  expect_identical(h$manifest_diff(m1, end)$change, "changed")
+})
+
+test_that("chunks over different host directories are never compared", {
+  h <- load_harness()
+  hosts <- c("a.test", "b.test", "c.test", "d.test")
+  full <- local_corpus(hosts = hosts, empty = character())
+  # The same files plus an empty directory sorted first: every later file
+  # moves up one place, so chunk 2 holds b and c here and c and d in `full`.
+  shifted <- local_corpus(hosts = hosts, empty = "0.test")
+  m_full <- planned_manifest(h, full, plan_opts())
+  m_sub <- planned_manifest(h, shifted, plan_opts(subset = "0/2"))
+  expect_identical(m_sub$host, c("b.test", "c.test"))
+  # Every file the subset run read matches the full run byte for byte ...
+  expect_true(h$check_input_sets(m_full, m_sub, FALSE, TRUE))
+  # ... but its chunk 2 is not the full run's chunk 2.
+  expect_refusal(h$check_chunk_plans(m_full, m_sub), "chunk 2")
+  expect_true(h$check_chunk_plans(
+    m_full, planned_manifest(h, full, plan_opts(subset = "0/2"))
+  ))
+
+  # A --max-hosts run cut mid-chunk against a run with the whole chunk.
+  cut <- planned_manifest(h, full, plan_opts(max_hosts = 3L))
+  expect_true(h$check_input_sets(m_full, cut, FALSE, TRUE))
+  expect_refusal(h$check_chunk_plans(m_full, cut), "mid-chunk")
+  expect_true(h$check_chunk_plans(
+    m_full, planned_manifest(h, full, plan_opts(max_hosts = 2L))
+  ))
+  expect_refusal(
+    h$check_chunk_plans(m_full, m_full[, c("host", "rds_sha256")]),
+    "no chunk plan"
+  )
+})
+
+test_that("a manifest-mode run reads back the manifest it started from", {
+  h <- load_harness()
+  corpus <- local_corpus()
+  run_dir <- file.path(local_test_dir(), "run")
+  dir.create(file.path(run_dir, "shards"), recursive = TRUE)
+  opts <- c(plan_opts(), list(workers = 1L))
+  hosts <- h$list_host_dirs(corpus)
+  chunks <- h$plan_chunks(hosts, opts)
+  ctx <- list(opts = opts, corpus = corpus, run_dir = run_dir,
+              hosts = hosts, chunks = chunks)
+  start <- h$corpus_manifest(corpus, h$plan_frame(hosts, chunks))
+  stats <- h$mode_manifest(ctx)
+  expect_length(stats, 2L)
+  during <- h$read_manifest(run_dir)
+  expect_identical(during$manifest$chunk, start$chunk)
+  expect_identical(during$manifest$file_id, start$file_id)
+  expect_identical(during$n_skipped_no_rds, 1L)
+  check <- h$verify_run_inputs(
+    start, during$manifest, h$end_manifest(corpus, start, partial = FALSE)
+  )
+  expect_true(check$valid)
+})
+
+test_that("a full run's end manifest lists the corpus again", {
+  h <- load_harness()
+  corpus <- local_corpus()
+  opts <- plan_opts(chunk_size = 10L)
+  hosts <- h$list_host_dirs(corpus)
+  plan <- h$plan_frame(hosts, h$plan_chunks(hosts, opts))
+  start <- h$corpus_manifest(corpus, plan)
+  dir.create(file.path(corpus, "new.test"))
+  saveRDS(list(body = raw(0)), file.path(corpus, "new.test", "robots.rds"))
+  full <- h$verify_run_inputs(
+    start, start, h$end_manifest(corpus, plan, partial = FALSE)
+  )
+  expect_false(full$valid)
+  expect_identical(full$changes$host, "new.test")
+  expect_identical(full$changes$change, "appeared")
+  # A partial run re-hashes only what it planned.
+  part <- h$verify_run_inputs(
+    start, start, h$end_manifest(corpus, plan, partial = TRUE)
+  )
+  expect_true(part$valid)
 })
 
 test_that("a corrupt compressed robots.rds is recorded unreadable", {
@@ -350,8 +464,9 @@ test_that("a corrupt compressed robots.rds is recorded unreadable", {
 test_that("comparing runs with different input sets fails before diffing", {
   h <- load_harness()
   m <- data.frame(
-    host = c("a.test", "b.test"), rds_sha256 = c("1", "2"),
-    rds_bytes = c(1L, 1L), stringsAsFactors = FALSE
+    file_id = 1:2, host = c("a.test", "b.test"), chunk = c(1L, 1L),
+    has_rds = TRUE, rds_sha256 = c("1", "2"), rds_bytes = c(1L, 1L),
+    stringsAsFactors = FALSE
   )
   expect_true(h$check_input_sets(m, m, FALSE, FALSE))
   m2 <- m

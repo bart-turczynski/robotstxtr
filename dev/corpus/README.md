@@ -13,7 +13,9 @@ writes, belongs in this repository.
   host, each holding a `robots.rds`: a list with at least `fetch_outcome`,
   `http_status`, `content_type`, `content_flag`, `body_truncated` and `body`
   (a raw vector, or `NULL` when nothing was stored). A host directory with no
-  `robots.rds` is skipped and counted in the run's files table.
+  `robots.rds` is skipped, counted in the run's files table and listed in its
+  manifest (`has_rds = FALSE`): file ids and chunks come from the whole
+  listing, so an empty directory is part of the input set.
 - `ROBOTSTXTR_CORPUS_OUT`: the private store. A run writes only under
   `ROBOTSTXTR_CORPUS_OUT/<run-id>/`.
 
@@ -79,7 +81,11 @@ Exit status: 0 for a valid run, 2 for a refusal, 3 for an invalid run.
 - `compare`: two runs of one mode, shard by shard. It first refuses when the
   two runs read different input sets (different manifests for full runs; for
   a `--subset` or `--max-hosts` run, any file it read that the other run read
-  differently), then diffs the result tables at `identical()` level, prints
+  differently), and when a chunk both runs hold names different host
+  directories or file ids in each (a different listing behind a `--subset`
+  run, or a `--max-hosts` cut mid-chunk: compare a `--max-hosts` run with a
+  fuller one only when N is a multiple of `--chunk-size`). It then diffs the
+  result tables at `identical()` level, prints
   the count of differing rows per table and writes the detail to its own run
   directory (`compare-summary.rds`, `compare-detail.rds`).
 
@@ -101,7 +107,10 @@ Exit status: 0 for a valid run, 2 for a refusal, 3 for an invalid run.
 
 Every run takes a manifest of its input files at the start, hashes each file
 again from the bytes it actually processes, and takes a fresh manifest at the
-end. If any file vanished, appeared or changed between the three, the run is
+end. A full run lists the corpus again for the end manifest, so a host
+directory or `robots.rds` that appeared during the run counts; a `--subset`
+or `--max-hosts` run re-hashes the directories it planned. If any file
+vanished, appeared or changed between the three, the run is
 recorded as `invalid`, the changes go to `input-changes.rds`, and the script
 exits with status 3.
 

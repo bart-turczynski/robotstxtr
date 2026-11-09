@@ -22,6 +22,31 @@ plan_chunks <- function(hosts, opts) {
   Map(function(i, ids) list(chunk = i, ids = ids), index, chunks)
 }
 
+# The chunk plan as a frame: one row per planned host directory, with its
+# file id (its position in the whole listing) and its chunk.
+plan_frame <- function(hosts, chunks) {
+  ids <- unlist(lapply(chunks, `[[`, "ids"))
+  chunk <- unlist(lapply(chunks, function(ch) rep(ch$chunk, length(ch$ids))))
+  data.frame(
+    file_id = as.integer(ids), host = hosts[ids], chunk = as.integer(chunk),
+    stringsAsFactors = FALSE
+  )
+}
+
+# The manifest at the end of a run. A full run lists the corpus again, so a
+# host directory or robots.rds that appeared during the run shows up as a
+# change; a partial run re-hashes the directories it planned.
+end_manifest <- function(corpus, plan, partial) {
+  if (partial) {
+    return(corpus_manifest(corpus, plan))
+  }
+  corpus_manifest(corpus, list_host_dirs(corpus))
+}
+
+is_partial_run <- function(params) {
+  !is.na(params$subset) || !is.na(params$max_hosts)
+}
+
 # Run `work(chunk)` over the chunks on at most two forked workers. Each call
 # returns a small list; the shards are written by the worker itself.
 run_chunks <- function(chunks, work, workers) {
@@ -265,15 +290,21 @@ mode_size <- function(ctx) {
 read_manifest <- function(run_dir) {
   idx <- shard_index(run_dir)
   idx <- idx[idx$table == "files", , drop = FALSE]
-  files <- bind_frames(lapply(file.path(run_dir, "shards", idx$file),
-                              function(p) decode_frame(readRDS(p))))
-  present <- files[files$has_rds, c("host", "rds_sha256", "rds_bytes")]
-  present <- present[order(present$host, method = "radix"), , drop = FALSE]
-  rownames(present) <- NULL
+  files <- bind_frames(Map(function(p, chunk) {
+    f <- decode_frame(readRDS(p))
+    if (!is.null(f)) {
+      f$chunk <- rep(chunk, nrow(f))
+    }
+    f
+  }, file.path(run_dir, "shards", idx$file), idx$chunk))
+  seen <- files[, c("file_id", "host", "chunk", "has_rds", "rds_sha256",
+                    "rds_bytes")]
+  seen <- seen[order(seen$host, method = "radix"), , drop = FALSE]
+  rownames(seen) <- NULL
   list(
-    manifest = present,
+    manifest = seen,
     n_dirs = nrow(files),
-    n_files = nrow(present),
+    n_files = sum(files$has_rds),
     n_skipped_no_rds = sum(!files$has_rds),
     n_unreadable = sum(files$has_rds & !files$readable, na.rm = TRUE),
     n_bodies = sum(files$body_present),
@@ -368,13 +399,14 @@ mode_compare <- function(ctx, detail_cap = 1000L) {
       harness_refuse(paste0("Run ", r$run_id, " is not a valid finished run."))
     }
   }
-  partial <- function(r) !is.na(r$params$subset) || !is.na(r$params$max_hosts)
-  # Inputs first: no result is diffed across two different input sets.
-  check_input_sets(
-    readRDS(file.path(dir_a, "manifest.rds")),
-    readRDS(file.path(dir_b, "manifest.rds")),
-    partial(ra), partial(rb)
-  )
+  partial_a <- is_partial_run(ra$params)
+  partial_b <- is_partial_run(rb$params)
+  # Inputs first: no result is diffed across two different input sets, nor
+  # across two chunks that name different host directories.
+  manifest_a <- readRDS(file.path(dir_a, "manifest.rds"))
+  manifest_b <- readRDS(file.path(dir_b, "manifest.rds"))
+  check_input_sets(manifest_a, manifest_b, partial_a, partial_b)
+  check_chunk_plans(manifest_a, manifest_b)
   ia <- shard_index(dir_a)
   ib <- shard_index(dir_b)
   key_a <- paste(ia$table, ia$chunk)

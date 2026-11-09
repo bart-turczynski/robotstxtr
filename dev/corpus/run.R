@@ -104,8 +104,8 @@ harness_main <- function(args) {
   } else {
     ctx$hosts <- list_host_dirs(cfg$corpus)
     ctx$chunks <- plan_chunks(ctx$hosts, opts)
-    planned <- ctx$hosts[unlist(lapply(ctx$chunks, `[[`, "ids"))]
-    start <- corpus_manifest(cfg$corpus, planned)
+    plan <- plan_frame(ctx$hosts, ctx$chunks)
+    start <- corpus_manifest(cfg$corpus, plan)
     saveRDS(start, file.path(run_dir, "manifest.rds"), compress = "xz")
     record$manifest <- list(start_hash = manifest_hash(start))
     write_record(run_dir, record)
@@ -117,7 +117,7 @@ harness_main <- function(args) {
     chunk_stats <- runner(ctx)
     record$chunks <- bind_frames(lapply(chunk_stats, as.data.frame))
     during <- read_manifest(run_dir)
-    end <- corpus_manifest(cfg$corpus, planned)
+    end <- end_manifest(cfg$corpus, plan, is_partial_run(opts))
     check <- verify_run_inputs(start, during$manifest, end)
     if (!check$valid) {
       saveRDS(check$changes, file.path(run_dir, "input-changes.rds"))

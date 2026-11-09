@@ -423,38 +423,53 @@ read_corpus_record <- function(path) {
   list(sha256 = sha, bytes = length(bytes), record = record)
 }
 
-# The manifest of the planned host directories: one row per robots.rds, with
-# its sha256 and size, sorted by host. Directories without one are left out
-# (the files table counts them).
-corpus_manifest <- function(corpus, hosts) {
-  hosts <- sort(hosts, method = "radix")
-  paths <- file.path(corpus, hosts, "robots.rds")
-  present <- file.exists(paths)
-  hosts <- hosts[present]
-  paths <- paths[present]
-  data.frame(
-    host = hosts,
-    rds_sha256 = unname(tools::sha256sum(paths)),
-    rds_bytes = as.integer(file.size(paths)),
-    stringsAsFactors = FALSE
-  )
+# The manifest of the planned host directories: one row per directory, with
+# `has_rds` and, when it has one, its robots.rds's sha256 and size, sorted by
+# host. Every listed directory is in it, those without a robots.rds too:
+# file ids and chunk membership come from the whole listing, so two listings
+# that differ only in an empty directory are different input sets. `plan` is
+# a frame with a `host` column (plan_frame() adds `file_id` and `chunk`), or
+# a character vector of host directories.
+corpus_manifest <- function(corpus, plan) {
+  if (is.character(plan)) {
+    plan <- data.frame(host = plan, stringsAsFactors = FALSE)
+  }
+  plan <- plan[order(plan$host, method = "radix"), , drop = FALSE]
+  paths <- file.path(corpus, plan$host, "robots.rds")
+  has <- file.exists(paths)
+  sha <- rep(NA_character_, length(paths))
+  bytes <- rep(NA_integer_, length(paths))
+  if (any(has)) {
+    sha[has] <- unname(tools::sha256sum(paths[has]))
+    bytes[has] <- as.integer(file.size(paths[has]))
+  }
+  plan$has_rds <- has
+  plan$rds_sha256 <- sha
+  plan$rds_bytes <- bytes
+  rownames(plan) <- NULL
+  plan
 }
 
 manifest_hash <- function(manifest) {
   manifest <- manifest[order(manifest$host, method = "radix"), , drop = FALSE]
-  lines <- paste0(manifest$host, "/robots.rds\t", manifest$rds_sha256, "\n")
+  sha <- ifelse(is.na(manifest$rds_sha256), "-", manifest$rds_sha256)
+  lines <- paste0(manifest$host, "/robots.rds\t", sha, "\n")
   tools::sha256sum(bytes = charToRaw(enc2utf8(paste(lines, collapse = ""))))
 }
 
-# How `after` differs from `before`: one row per host that vanished, appeared
-# or changed its bytes. Zero rows when the two name the same snapshot.
+# How `after` differs from `before`: one row per host directory that
+# vanished, appeared or changed (its robots.rds bytes, or whether it has
+# one). Zero rows when the two name the same snapshot.
 manifest_diff <- function(before, after) {
   b <- stats::setNames(before$rds_sha256, before$host)
   a <- stats::setNames(after$rds_sha256, after$host)
   vanished <- setdiff(names(b), names(a))
   appeared <- setdiff(names(a), names(b))
   common <- intersect(names(b), names(a))
-  changed <- common[b[common] != a[common]]
+  x <- b[common]
+  y <- a[common]
+  same <- (is.na(x) & is.na(y)) | (!is.na(x) & !is.na(y) & x == y)
+  changed <- common[!same]
   data.frame(
     host = c(vanished, appeared, changed),
     change = c(
@@ -511,6 +526,34 @@ check_input_sets <- function(manifest_a, manifest_b, partial_a, partial_b) {
     harness_refuse(
       "The two runs read different input sets on the files they share."
     )
+  }
+  invisible(TRUE)
+}
+
+# Refuse to compare two runs whose shared chunks cover different host
+# directories or file ids: shards are diffed chunk by chunk, so a chunk must
+# name the same hosts in both. This catches a different directory listing
+# behind a --subset run, and a --max-hosts run cut mid-chunk compared with a
+# run that holds the whole chunk.
+check_chunk_plans <- function(manifest_a, manifest_b) {
+  need <- c("file_id", "host", "chunk")
+  if (!all(need %in% names(manifest_a)) || !all(need %in% names(manifest_b))) {
+    harness_refuse("A run's manifest carries no chunk plan: rerun it.")
+  }
+  members <- function(m) {
+    m <- m[order(m$file_id), , drop = FALSE]
+    split(paste(m$file_id, m$host, sep = "\t"), m$chunk)
+  }
+  a <- members(manifest_a)
+  b <- members(manifest_b)
+  shared <- intersect(names(a), names(b))
+  same <- vapply(shared, function(k) identical(a[[k]], b[[k]]), logical(1))
+  if (!all(same)) {
+    harness_refuse(paste0(
+      "The two runs planned chunk ", paste(shared[!same], collapse = ", "),
+      " over different host directories (a different listing, or a ",
+      "--max-hosts cut mid-chunk)."
+    ))
   }
   invisible(TRUE)
 }
