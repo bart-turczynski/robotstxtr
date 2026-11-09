@@ -88,6 +88,10 @@ validation_unsupported <- c(
 #'     A Disallow never takes effect: an Allow with the identical pattern
 #'     applies to the same crawlers and wins the tie. Anchored on the
 #'     Disallow line; the message names the Allow line. \cr
+#'   \code{duplicate_rule} \tab info \tab
+#'     An Allow or Disallow repeats an earlier rule of the same type and
+#'     pattern for the same crawlers, so it has no effect. Anchored on the
+#'     repeat; the message names the earlier line. \cr
 #'   \code{missing_user_agent} \tab error \tab
 #'     Allow or Disallow rules exist but no line names a non-empty
 #'     User-agent. \cr
@@ -132,9 +136,21 @@ validation_unsupported <- c(
 #' when every crawler its group names has the identical Allow. Bing and
 #' Yandex also let Allow win an identical-pattern tie. The check also runs
 #' on a body cut at `max_bytes`: lines past the cut cannot revive the
-#' Disallow. A document holding a NUL byte gets neither this check nor
-#' `wildcard_rules_not_inherited`, because the parser stops a value at the
-#' NUL while the matchers drop it and read on.
+#' Disallow.
+#'
+#' For `duplicate_rule`, two rules are the same when type and canonical
+#' value are byte-identical, as for `disallow_tied_by_allow`, so `/x` and
+#' `/x*` are not duplicates. Groups that name the same crawler are combined,
+#' `*` and named crawlers are kept apart, and a rule is reported only when
+#' every crawler its group names already has it from an earlier line. Empty
+#' values and patterns that never match are skipped, and a body cut at
+#' `max_bytes` is checked too. A group's only Allow or Disallow line is not
+#' reported when a User-agent line follows it: that line keeps the next
+#' User-agent line from joining its group.
+#'
+#' A document holding a NUL byte gets none of `wildcard_rules_not_inherited`,
+#' `disallow_tied_by_allow` or `duplicate_rule`, because the parser stops a
+#' value at the NUL while the matchers drop it and read on.
 #'
 #' @param robots_txt A single non-missing character string or a raw vector.
 #' @param source_id A single non-empty character string identifying the supplied
@@ -525,7 +541,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
 
   # The group checks need the values the matchers read. The parser stops a
   # value at a NUL, but every matcher drops the NULs and reads on, so a
-  # document with any NUL (already a `nul_byte` error) gets neither check.
+  # document with any NUL (already a `nul_byte` error) gets none of the group
+  # checks.
   if (length(nul_lines) == 0L) {
     groups <- validation_groups(parsed)
     # A named group drops the `*` rules for its crawlers (ROBO-gfjotdrr). On
@@ -545,6 +562,19 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     for (found in tied_disallow_diagnostics(groups)) {
       add_diagnostic(
         found$line, "warning", "disallow_tied_by_allow", "disallow",
+        found$message
+      )
+    }
+    # A rule an earlier identical rule already gives the same crawlers has
+    # no effect (ROBO-xexjgecr). Lines past a cut cannot give it one, so a
+    # cut body is checked too.
+    # Its rows go in as one frame: a file can repeat thousands of rules.
+    found <- duplicate_rule_diagnostics(groups)
+    if (nrow(found) > 0L) {
+      diag_env$items[[length(diag_env$items) + 1L]] <- validation_diagnostic(
+        source_id, found$line, "info", "duplicate_rule", found$type,
+        vapply(raw_lines[found$line], render_validation_line, "",
+               USE.NAMES = FALSE),
         found$message
       )
     }
@@ -653,8 +683,8 @@ directive_value_diagnostics <- function(type, value) {
 # them (src/robots.cc, RobotsMatcher::HandleUserAgent). A User-agent line
 # opens a new group when it is the first one or follows an Allow or
 # Disallow; consecutive User-agent lines share a group, and Sitemap or
-# unknown lines never close one. Reused by ROBO-fdhmlvwm. Returns a list of
-# three data frames:
+# unknown lines never close one. Reused by ROBO-fdhmlvwm and ROBO-xexjgecr.
+# Returns a list of three data frames:
 # - `groups`: one row per group, in file order: `group` (integer id),
 #   `first_line` (the group's first User-agent line) and `global` (any of
 #   its User-agent lines is `*`, alone or followed by whitespace).
@@ -807,32 +837,7 @@ wildcard_inheritance_diagnostics <- function(groups) {
 # `allow_line` is the smallest line among each token's first identical Allow.
 # The work is vectorized: files of hundreds of groups and rules are in scope.
 tied_disallow_diagnostics <- function(groups) {
-  agents <- groups$agents
-  token <- ifelse(agents$global, "*", agents$key)
-  group <- agents$group[nzchar(token)]
-  token <- token[nzchar(token)]
-  # Tokens named by the same set of groups are interchangeable here, so one
-  # class stands for each such set (a group of 6,000 agents is one class).
-  # Rows stay in group order, as agent lines are in file order.
-  signature <- vapply(split(group, token), function(g) {
-    paste(unique(g), collapse = " ")
-  }, "")
-  class <- match(signature, unique(signature))[match(token, names(signature))]
-  pair <- !duplicated(paste(group, class))
-  class_group <- group[pair]
-  class_id <- class[pair]
-  group_ids <- unique(class_group)
-  start <- match(group_ids, class_group)
-  count <- tabulate(match(class_group, group_ids), length(group_ids))
-  # Each rule crossed with the token classes of its group.
-  expand <- function(rule_group) {
-    k <- match(rule_group, group_ids)
-    n <- count[k]
-    n[is.na(k)] <- 0L
-    owner <- rep(seq_along(rule_group), n)
-    list(owner = owner, class = class_id[start[k[owner]] + sequence(n) - 1L])
-  }
-
+  expand <- validation_token_expander(groups)
   rules <- groups$rules
   rules <- rules[substr(rules$value, 1L, 1L) %in% c("/", "*"), , drop = FALSE]
   disallows <- rules[rules$type == "disallow", , drop = FALSE]
@@ -879,6 +884,88 @@ tied_disallow_diagnostics <- function(groups) {
   Map(function(line, allow_line, message) {
     list(line = line, allow_line = allow_line, message = message)
   }, disallows$line[owner], hit, message, USE.NAMES = FALSE)
+}
+
+# The crawler tokens of the groups the rule checks merge over (ROBO-fdhmlvwm,
+# ROBO-xexjgecr): `*` for a global User-agent line, the merge key otherwise;
+# a line naming no token is dropped, and a `*` token never stands for a named
+# one. Returns a function that crosses a vector of rule group ids with the
+# token classes of each group, as list(owner, class): `owner` indexes the
+# input (ascending, so rows keep its order) and `class` is the token class.
+validation_token_expander <- function(groups) {
+  agents <- groups$agents
+  token <- ifelse(agents$global, "*", agents$key)
+  group <- agents$group[nzchar(token)]
+  token <- token[nzchar(token)]
+  # Tokens named by the same set of groups are interchangeable here, so one
+  # class stands for each such set (a group of 6,000 agents is one class).
+  # Rows stay in group order, as agent lines are in file order.
+  signature <- vapply(split(group, token), function(g) {
+    paste(unique(g), collapse = " ")
+  }, "")
+  class <- match(signature, unique(signature))[match(token, names(signature))]
+  pair <- !duplicated(paste(group, class))
+  class_group <- group[pair]
+  class_id <- class[pair]
+  group_ids <- unique(class_group)
+  start <- match(group_ids, class_group)
+  count <- tabulate(match(class_group, group_ids), length(group_ids))
+  function(rule_group) {
+    k <- match(rule_group, group_ids)
+    n <- count[k]
+    n[is.na(k)] <- 0L
+    owner <- rep(seq_along(rule_group), n)
+    list(owner = owner, class = class_id[start[k[owner]] + sequence(n) - 1L])
+  }
+}
+
+# A rule that repeats an earlier rule, in the rules a crawler obeys, never
+# changes a decision (ROBO-xexjgecr). Tokens merge as in
+# tied_disallow_diagnostics(). A rule is reported when, for every token its
+# group names, an earlier line in a group naming that token holds a rule of
+# the same type and byte-identical canonical value (no `*` or `$` stripping:
+# `rules$key` is not used, so `/x` and `/x*` differ). Empty values, patterns
+# not led by `/` or `*`, groups naming no token, and a group's only rule
+# line when a User-agent line follows it are skipped. Returns a data frame
+# of `line`, `type` and `message`, in line order; the message names the
+# smallest line among each token's first identical rule.
+duplicate_rule_diagnostics <- function(groups) {
+  expand <- validation_token_expander(groups)
+  rules <- groups$rules
+  # Any rule line, empty or not, ends its group. A group's only rule line
+  # keeps the next User-agent line from joining it, so it is not reported
+  # when a User-agent line follows it: deleting it would merge the groups.
+  rule_lines <- tabulate(match(rules$group, groups$groups$group),
+                         nrow(groups$groups))
+  rules$sole <- rule_lines[match(rules$group, groups$groups$group)] == 1L &
+    rules$line < max(groups$agents$line, -Inf)
+  rules <- rules[substr(rules$value, 1L, 1L) %in% c("/", "*"), , drop = FALSE]
+  by_rule <- expand(rules$group)
+  owner <- by_rule$owner
+  key <- paste(by_rule$class, rules$type[owner], rules$value[owner],
+               sep = "\n")
+  # Rows are in file order, so a key's first row has its smallest line.
+  first <- rules$line[owner[match(key, key)]]
+  uncovered <- unique(owner[first == rules$line[owner] | rules$sole[owner]])
+  covered <- !owner %in% uncovered
+  owner <- owner[covered]
+  first <- first[covered]
+  order_by <- order(owner, first)
+  owner <- owner[order_by]
+  first <- first[order_by]
+  keep <- !duplicated(owner)
+  owner <- owner[keep]
+  first <- first[keep]
+
+  type <- rules$type[owner]
+  message <- sprintf(
+    "Rule has no effect: line %d already has the same %s.",
+    first, ifelse(type == "allow", "Allow", "Disallow")
+  )
+  data.frame(
+    line = rules$line[owner], type = type, message = message,
+    stringsAsFactors = FALSE
+  )
 }
 
 wildcard_inheritance_message <- function(tokens, one_group, missing,
