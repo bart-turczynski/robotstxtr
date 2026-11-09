@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* `robots_validate_url()` reports a 4xx, 429, 5xx or 1xx robots.txt with its own code, naming the status and what Google, Yandex and Bing may do (ROBO-ybzbxfml).
+
 * The v1 `google` matcher now reads at most a body's first 512,000 bytes (Google's 500 KiB, not 524,288), up to the last complete line; `matcher_input_bytes`, `policy_body_limit_bytes` and the google policy revision follow (ROBO-phfbpfiy).
 
 * `robots_validate_text()` and `robots_validate_url()` report, as info, an exact duplicate Allow or Disallow for the same crawlers, which has no effect (ROBO-xexjgecr).
