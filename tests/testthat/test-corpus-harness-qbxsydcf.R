@@ -452,6 +452,70 @@ test_that("a manifest-mode run reads back the manifest it started from", {
   expect_true(check$valid)
 })
 
+test_that("a chunk without a result fails the run and names its worker", {
+  h <- load_harness()
+  chunks <- list(list(chunk = 1L, ids = 1L), list(chunk = 2L, ids = 2L))
+  fail <- function(ch) {
+    if (ch$chunk == 2L) stop("boom") else list(n = 1L)
+  }
+  err <- tryCatch(h$run_chunks(chunks, fail, 1L), error = function(e) e)
+  expect_s3_class(err, "corpus_harness_worker_failure")
+  expect_identical(err$failures$chunk, 2L)
+  expect_match(err$failures$cause, "boom")
+
+  f <- h$chunk_failures(chunks, list(list(n = 1L), NULL))
+  expect_identical(f$chunk, 2L)
+  expect_match(f$cause, "died without a result")
+  expect_match(h$chunk_failures(chunks, list(1L, list()))$cause, "integer")
+  expect_identical(nrow(h$chunk_failures(chunks, list(list(), list()))), 0L)
+
+  # A forked worker killed mid-chunk: mclapply() hands back NULL for it.
+  skip_on_os("windows")
+  kill <- function(ch) {
+    if (ch$chunk == 2L) tools::pskill(Sys.getpid(), tools::SIGKILL)
+    list(n = 1L)
+  }
+  err <- suppressWarnings(
+    tryCatch(h$run_chunks(chunks, kill, 2L), error = function(e) e)
+  )
+  expect_s3_class(err, "corpus_harness_worker_failure")
+  expect_identical(err$failures$chunk, 2L)
+  expect_match(conditionMessage(err), "chunk 2: its worker died")
+})
+
+test_that("a run whose worker died is invalid for that cause alone", {
+  h <- load_harness()
+  corpus <- local_corpus()
+  run_dir <- file.path(local_test_dir(), "run")
+  dir.create(file.path(run_dir, "shards"), recursive = TRUE)
+  opts <- c(plan_opts(chunk_size = 1L), list(workers = 1L))
+  hosts <- h$list_host_dirs(corpus)
+  chunks <- h$plan_chunks(hosts, opts)
+  ctx <- list(opts = opts, corpus = corpus, run_dir = run_dir,
+              hosts = hosts, chunks = chunks)
+  start <- h$corpus_manifest(corpus, h$plan_frame(hosts, chunks))
+  runner <- function(ctx) {
+    h$run_chunks(ctx$chunks, function(ch) {
+      if (ch$chunk == 2L) stop("worker lost")
+      tables <- h$walk_chunk(ctx$corpus, ctx$hosts, ch)
+      h$write_tables(ctx$run_dir, ch$chunk, tables, "files")
+      h$chunk_summary(tables)
+    }, 1L)
+  }
+  rec <- h$run_and_check(list(manifest = list()), ctx, runner, start)
+  expect_false(rec$manifest$valid)
+  expect_identical(rec$worker_failures$chunk, 2L)
+  expect_match(rec$invalid_cause, "chunk 2: its worker failed: .*worker lost")
+  expect_no_match(rec$invalid_cause, "vanished")
+  expect_false(file.exists(file.path(run_dir, "input-changes.rds")))
+
+  # The same run with every worker alive is valid.
+  ok <- h$run_and_check(list(), ctx, h$mode_manifest, start)
+  expect_true(ok$manifest$valid)
+  expect_null(ok$invalid_cause)
+  expect_identical(nrow(ok$chunks), 3L)
+})
+
 test_that("a full run's end manifest lists the corpus again", {
   h <- load_harness()
   corpus <- local_corpus()

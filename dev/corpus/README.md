@@ -120,6 +120,12 @@ vanished, appeared or changed between the three, the run is
 recorded as `invalid`, the changes go to `input-changes.rds`, and the script
 exits with status 3.
 
+A chunk that delivers no result (its forked worker was killed, ran out of
+memory or raised an error) also makes the run `invalid` and exits 3; the
+record's `worker_failures` names each such chunk and its cause, and the
+input checks are skipped, since the missing shards say nothing about the
+corpus.
+
 ## Comparing two package trees
 
 Run the same mode with the same parameters against each tree, then compare:

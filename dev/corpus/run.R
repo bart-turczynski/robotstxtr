@@ -114,21 +114,7 @@ harness_main <- function(args) {
       manifest = mode_manifest, validate = mode_validate,
       evaluate = mode_evaluate, size = mode_size
     )
-    chunk_stats <- runner(ctx)
-    record$chunks <- bind_frames(lapply(chunk_stats, as.data.frame))
-    during <- read_manifest(run_dir)
-    end <- end_manifest(cfg$corpus, plan, is_partial_run(opts))
-    check <- verify_run_inputs(start, during$manifest, end)
-    if (!check$valid) {
-      saveRDS(check$changes, file.path(run_dir, "input-changes.rds"))
-    }
-    record$manifest <- c(
-      check[setdiff(names(check), "changes")],
-      list(n_changes = if (is.null(check$changes)) 0L else {
-        nrow(check$changes)
-      }),
-      during[setdiff(names(during), "manifest")]
-    )
+    record <- run_and_check(record, ctx, runner, start)
     if (!is.na(opts$manifest)) {
       frozen <- readRDS(file.path(cfg$out, opts$manifest, "record.rds"))
       record$manifest$frozen_run <- opts$manifest
@@ -172,10 +158,7 @@ harness_main <- function(args) {
     }
     message(if (record$compare$identical) "IDENTICAL" else "DIFFERENT")
   } else if (invalid) {
-    message(
-      "INVALID RUN: input files vanished or changed during the run ",
-      "(start/during/end manifest checks; see input-changes.rds)."
-    )
+    message("INVALID RUN: ", record$invalid_cause, ".")
   } else if (!is.null(record$manifest$matches_frozen) &&
                !record$manifest$matches_frozen) {
     message("WARNING: the corpus no longer matches the frozen manifest.")

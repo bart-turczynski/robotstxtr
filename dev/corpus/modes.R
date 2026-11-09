@@ -47,8 +47,44 @@ is_partial_run <- function(params) {
   !is.na(params$subset) || !is.na(params$max_hosts)
 }
 
+# Why each chunk that delivered no result failed, one row per failed chunk.
+# parallel::mclapply() returns NULL for a worker that died (killed, out of
+# memory) and a try-error for one that raised an error.
+chunk_failures <- function(chunks, results) {
+  causes <- vapply(seq_along(chunks), function(i) {
+    r <- if (i <= length(results)) results[[i]] else NULL
+    if (is.null(r)) {
+      "its worker died without a result (killed, or out of memory)"
+    } else if (inherits(r, "try-error")) {
+      paste0("its worker failed: ", trimws(as.character(r)))
+    } else if (!is.list(r)) {
+      paste0("its worker returned a ", class(r)[[1L]], ", not a list")
+    } else {
+      NA_character_
+    }
+  }, character(1))
+  bad <- !is.na(causes)
+  data.frame(
+    chunk = vapply(chunks[bad], function(ch) as.integer(ch$chunk), integer(1)),
+    cause = causes[bad],
+    stringsAsFactors = FALSE
+  )
+}
+
+worker_failure <- function(failures) {
+  msg <- paste0(
+    nrow(failures), " chunk(s) delivered no result; chunk ",
+    failures$chunk[[1L]], ": ", failures$cause[[1L]]
+  )
+  structure(
+    class = c("corpus_harness_worker_failure", "error", "condition"),
+    list(message = msg, call = NULL, failures = failures)
+  )
+}
+
 # Run `work(chunk)` over the chunks on at most two forked workers. Each call
-# returns a small list; the shards are written by the worker itself.
+# returns a small list; the shards are written by the worker itself. A chunk
+# without a result signals a corpus_harness_worker_failure naming it.
 run_chunks <- function(chunks, work, workers) {
   task <- function(ch) {
     gc(reset = TRUE)
@@ -65,13 +101,48 @@ run_chunks <- function(chunks, work, workers) {
       chunks, task, mc.cores = workers, mc.preschedule = FALSE
     )
   } else {
-    lapply(chunks, task)
+    lapply(chunks, function(ch) try(task(ch), silent = TRUE))
   }
-  failed <- vapply(results, function(r) inherits(r, "try-error"), logical(1))
-  if (any(failed)) {
-    stop("A worker failed: ", as.character(results[failed][[1L]]))
+  failures <- chunk_failures(chunks, results)
+  if (nrow(failures)) {
+    stop(worker_failure(failures))
   }
   results
+}
+
+# Run the mode's chunks, then the input checks; return the record with the
+# chunk statistics and the manifest checks, or with the failed chunks. A run
+# whose worker failed is invalid for that cause alone: its missing files
+# shards say nothing about the corpus.
+run_and_check <- function(record, ctx, runner, start) {
+  stats <- tryCatch(
+    runner(ctx), corpus_harness_worker_failure = function(e) e
+  )
+  if (inherits(stats, "corpus_harness_worker_failure")) {
+    record$worker_failures <- stats$failures
+    record$invalid_cause <- conditionMessage(stats)
+    record$manifest$valid <- FALSE
+    return(record)
+  }
+  record$chunks <- bind_frames(lapply(stats, as.data.frame))
+  during <- read_manifest(ctx$run_dir)
+  end <- end_manifest(ctx$corpus, start, is_partial_run(ctx$opts))
+  check <- verify_run_inputs(start, during$manifest, end)
+  if (!check$valid) {
+    saveRDS(check$changes, file.path(ctx$run_dir, "input-changes.rds"))
+    record$invalid_cause <- paste0(
+      "input files vanished, appeared or changed during the run ",
+      "(start/during/end manifest checks; see input-changes.rds)"
+    )
+  }
+  record$manifest <- c(
+    check[setdiff(names(check), "changes")],
+    list(n_changes = if (is.null(check$changes)) 0L else {
+      nrow(check$changes)
+    }),
+    during[setdiff(names(during), "manifest")]
+  )
+  record
 }
 
 # Read each host of a chunk; `on_body(file_id, host, row, record)` returns a
