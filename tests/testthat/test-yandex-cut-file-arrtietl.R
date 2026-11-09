@@ -102,7 +102,7 @@ test_that("ROBO-arrtietl: a yandex 200 cut at the default 512 KiB", {
   calls <- ac_forbid_matchers()
   x <- ac_eval()
   ac_expect_cut_evidence(x, 524288L)
-  ac_expect_incomplete(x)
+  ac_expect_open(x)
   expect_identical(calls$google, 0L)
 })
 
@@ -110,7 +110,7 @@ test_that("ROBO-arrtietl: a yandex 200 cut at exactly 512,000 bytes", {
   ac_serve()
   x <- ac_eval(max_bytes = 512000L)
   ac_expect_cut_evidence(x, 512000L)
-  ac_expect_incomplete(x)
+  ac_expect_open(x)
 })
 
 test_that("ROBO-arrtietl: a yandex 200 cut at 511,999 bytes stays incomplete", {
@@ -121,9 +121,22 @@ test_that("ROBO-arrtietl: a yandex 200 cut at 511,999 bytes stays incomplete", {
 })
 
 test_that("ROBO-arrtietl: a yandex 203 cut at the default 512 KiB", {
+  # A non-200 2xx is allow_all from the table, as when uncut.
   ac_serve(status = 203L)
   x <- ac_eval()
   ac_expect_cut_evidence(x, 524288L)
+  table <- engine_policy_table_v1()
+  row <- table[
+    table$category == "status_other_2xx" & table$ruleset == "yandex", ,
+    drop = FALSE
+  ]
+  ac_expect_open(x, "non_200_allow_all", row$policy_source[[1L]])
+})
+
+test_that("ROBO-arrtietl: a yandex 203 cut under 512,000 stays incomplete", {
+  ac_serve(status = 203L)
+  x <- ac_eval(max_bytes = 511999L)
+  ac_expect_cut_evidence(x, 511999L)
   ac_expect_incomplete(x)
 })
 
@@ -187,21 +200,28 @@ test_that("ROBO-arrtietl: the yandex policy revision", {
   ac_serve(body = ac_body(1000L))
   x <- ac_eval()
   expect_identical(
-    x$results$policy_ruleset_revision, "yandex-robots-policy-2026-07-17"
+    x$results$policy_ruleset_revision, "yandex-robots-policy-2026-11-09"
   )
   expect_identical(
-    engine_policy_revisions_v1()[["yandex"]], "yandex-robots-policy-2026-07-17"
+    engine_policy_revisions_v1()[["yandex"]], "yandex-robots-policy-2026-11-09"
   )
 })
 
 # --- resolve_policy_v1() ------------------------------------------------------
 
 test_that("ROBO-arrtietl: resolve_policy_v1() on cut evidence", {
-  for (bytes in c(511999L, 512000L, 524288L)) {
-    expect_identical(
-      ac_resolve(ac_cut_ev(bytes))$policy_reason, "incomplete_evidence"
-    )
+  expect_identical(
+    ac_resolve(ac_cut_ev(511999L))$policy_reason, "incomplete_evidence"
+  )
+  for (bytes in c(512000L, 524288L)) {
+    policy <- ac_resolve(ac_cut_ev(bytes))
+    expect_identical(policy$policy_status, "evaluated")
+    expect_identical(policy$policy_action, "allow_all")
+    expect_identical(policy$policy_reason, "yandex_file_over_500000_bytes")
+    expect_identical(policy$policy_provenance, "documented")
   }
+  expect_true(ceiling_cut_readable_v1(ac_cut_ev(512000L), "yandex"))
+  expect_false(ceiling_cut_readable_v1(ac_cut_ev(511999L), "yandex"))
 })
 
 test_that("ROBO-arrtietl: resolve_policy_v1() needs the cut flag", {

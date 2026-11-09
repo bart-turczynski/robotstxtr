@@ -78,7 +78,10 @@ Matcher status is one of `evaluated`, `not_needed`, `not_evaluated`, or
 The absence cases are part of the contract. In particular, a safety refusal,
 incomplete acquisition, lifecycle-dependent status, undocumented engine
 policy, partial response, or unavailable matcher never fabricates a URL
-decision.
+decision. The one reading of incomplete acquisition is a ruleset's documented
+meaning of a 2xx cut at `max_bytes` (`engine-profiles.md` §7): under `yandex`,
+a cut that stored at least 512,000 bytes is a file over Yandex's 500 KB limit,
+which is `allow_all` (ROBO-arrtietl).
 
 ## Backend and policy revisions
 
@@ -92,8 +95,9 @@ within them: a line the window cuts is dropped, as for a body cut at
 rules. `matcher_input_bytes` is the bytes fed to the matcher, after that drop;
 `matcher_body_truncated` is `TRUE` whenever the body exceeded the window. A fetched 2xx body over the
 acquisition limit is retained as its first `max_bytes` bytes, marked
-`body_truncated` and `incomplete`, and not matched by the v1 engines; the
-legacy path matches it, up to its last complete line (see "A robots.txt over
+`body_truncated` and `incomplete`, and not matched by the v1 engines (under
+`yandex`, a cut of at least 512,000 bytes resolves `allow_all` with no
+matcher; ROBO-arrtietl); the legacy path matches it, up to its last complete line (see "A robots.txt over
 `max_bytes`" below).
 
 The Yandex matcher backend is `available` (as of schema revision
@@ -127,7 +131,10 @@ Yandex row the matcher status is `not_evaluated` with either
 `error_stage = "input"`; `unsupported_crawler` takes precedence when both a
 target and a token are invalid. Bodies over 500,000 bytes resolve through the
 documented Yandex `allow_all` policy (`matcher_status = "not_needed"`) before
-the matcher runs.
+the matcher runs, and so does a 2xx cut at `max_bytes` that stored at least
+512,000 bytes: the file is over 500 KB under either reading of the unit, with
+the same `yandex_file_over_500000_bytes` reason, while its `evidence_status`
+stays `incomplete` (ROBO-arrtietl). A smaller cut stays `incomplete_evidence`.
 
 RFC 9309 and Bing matcher requests return `capability_unavailable-v1`. Their
 policy tables still resolve independently where the accepted design has
@@ -248,7 +255,7 @@ split a character.
 | v1 `body_truncated` | `TRUE`; `FALSE` on every other row |
 | v1 `observed_bytes` | ssrfr's count of the decoded bytes reached, past the limit by up to one delivery; not the file's size, which is never read |
 | v1 `termination_reason` | `ceiling` |
-| v1 `evidence_status` | `incomplete`, as before: no v1 policy verdict or URL decision is made from a prefix |
+| v1 `evidence_status` | `incomplete`, as before: no v1 policy verdict or URL decision is made from a prefix, except the `yandex` ruleset's `allow_all` for a cut of at least 512,000 bytes (ROBO-arrtietl) |
 
 A 3xx body over `max_bytes` is still `body_too_large` with no body, and a 4xx
 or 5xx still keeps its status outcome with no body: ssrfr truncates only a 2xx.
@@ -271,7 +278,14 @@ Decisions:
   §2 maps `termination_reason = ceiling` there, and a prefix cannot stand in
   for a whole file under every engine: Yandex's documented over-500 KB
   `allow_all` needs the file's real size, which a prefix under a smaller
-  `max_bytes` hides.
+  `max_bytes` hides. The ruleset reads the cut instead (ADR 0001 §5, slice
+  8; ROBO-arrtietl): a `yandex` cut that stored at least 512,000 bytes
+  proves the file is over 500 KB under either reading of the unit, so
+  `resolve_policy_v1()` lets it past the `incomplete` return into the
+  existing size branch, `allow_all` / `yandex_file_over_500000_bytes`
+  `[documented]`. The evidence row is unchanged, the schema revision does
+  not move, and the yandex policy revision moves to
+  `yandex-robots-policy-2026-11-09`.
 - Every legacy `robots` frame gains a logical `body_truncated` column,
   between `content_flag` and `body`, under the one-schema rule of the
   Retry-After and Content-Type columns above: `robots_fetch()` and

@@ -100,7 +100,7 @@ validate_matcher_status_v2 <- function(matcher_status) {
 engine_policy_revisions_v1 <- function() {
   c(
     google = "google-robots-policy-2026-11-09",
-    yandex = "yandex-robots-policy-2026-07-17",
+    yandex = "yandex-robots-policy-2026-11-09",
     rfc9309 = "rfc9309-policy-2022",
     bing = "bing-documentation-gap-2026-07-17",
     assumed_rfc9309 = "assumed-rfc9309-policy-2026-07-17"
@@ -885,6 +885,23 @@ http_status_category_v1 <- function(status) {
   }
 }
 
+# Whether `ruleset` reads a 2xx cut at `max_bytes` despite its `incomplete`
+# evidence (ADR 0001 section 5: the cut is an L0 fact, the ruleset decides
+# what it means). Yandex ignores a file over 500 KB; a cut that stored
+# 512,000 bytes or more is over it under either reading of "500 KB", so it
+# goes on to the policy table and the yandex size branch (ROBO-arrtietl).
+# A body_too_large row is not cut (`body_truncated` FALSE) and stays
+# incomplete. Every other ruleset keeps a cut incomplete.
+ceiling_cut_readable_v1 <- function(evidence, ruleset) {
+  if (!isTRUE(evidence$body_truncated)) {
+    return(FALSE)
+  }
+  if (identical(ruleset, "yandex")) {
+    return(evidence$stored_bytes >= 512000L)
+  }
+  FALSE
+}
+
 resolve_policy_v1 <- function(evidence, ruleset, policy_table) {
   evidence_status <- evidence$evidence_status
   if (identical(evidence_status, "safety_refused")) {
@@ -893,7 +910,8 @@ resolve_policy_v1 <- function(evidence, ruleset, policy_table) {
       "application_choice", "design/engine-profiles.md#neutral-fetch"
     ))
   }
-  if (identical(evidence_status, "incomplete")) {
+  if (identical(evidence_status, "incomplete") &&
+        !ceiling_cut_readable_v1(evidence, ruleset)) {
     return(policy_result_v1(
       "not_evaluated", NA_character_, "incomplete_evidence",
       "application_choice", "design/engine-profiles.md#neutral-fetch"
