@@ -116,13 +116,15 @@ Acquisition supplied no body, for the reason in \code{message}.
 }
 
 For \code{wildcard_rules_not_inherited}, a crawler obeys only the groups that
-name it (several such groups merge) and never the \verb{User-agent: *} group,
+name it (combined when several do) and ignores the \verb{User-agent: *} group,
 as RFC 9309 section 2.2.1 says. Each \code{*} Allow or Disallow is compared
 with the named crawler's rules by type and value; a trailing \code{*} is
-ignored (\verb{/x} equals \verb{/x*}), \code{$} is not, and empty values are left out.
-The message lists the missing \code{*} rules, ten at most. A crawler whose
-rules are all explicit allow-all (an empty \verb{Disallow:} or \verb{Allow: /}) is
-not reported; one whose group has no rules is.
+ignored (\verb{/x} equals \verb{/x*}, and \code{*} and \verb{/*} equal \code{/}), \code{$} is not, and
+empty values are left out. The message lists the missing \code{*} rules, ten at
+most. A crawler whose rules are all explicit allow-all (an empty
+\verb{Disallow:}, \verb{Allow: /}, \verb{Allow: /*} or \verb{Allow: *}) is not reported; an
+empty \verb{Allow:} is ignored, and a crawler whose groups have no other rule
+is reported.
 }
 
 \examples{

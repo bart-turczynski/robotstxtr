@@ -107,13 +107,15 @@ validation_unsupported <- c(
 #' }
 #'
 #' For `wildcard_rules_not_inherited`, a crawler obeys only the groups that
-#' name it (several such groups merge) and never the `User-agent: *` group,
+#' name it (combined when several do) and ignores the `User-agent: *` group,
 #' as RFC 9309 section 2.2.1 says. Each `*` Allow or Disallow is compared
 #' with the named crawler's rules by type and value; a trailing `*` is
-#' ignored (`/x` equals `/x*`), `$` is not, and empty values are left out.
-#' The message lists the missing `*` rules, ten at most. A crawler whose
-#' rules are all explicit allow-all (an empty `Disallow:` or `Allow: /`) is
-#' not reported; one whose group has no rules is.
+#' ignored (`/x` equals `/x*`, and `*` and `/*` equal `/`), `$` is not, and
+#' empty values are left out. The message lists the missing `*` rules, ten at
+#' most. A crawler whose rules are all explicit allow-all (an empty
+#' `Disallow:`, `Allow: /`, `Allow: /*` or `Allow: *`) is not reported; an
+#' empty `Allow:` is ignored, and a crawler whose groups have no other rule
+#' is reported.
 #'
 #' @param robots_txt A single non-missing character string or a raw vector.
 #' @param source_id A single non-empty character string identifying the supplied
@@ -629,7 +631,8 @@ directive_value_diagnostics <- function(type, value) {
 # - `rules`: one row per Allow or Disallow inside a group (rules before the
 #   first User-agent are dropped): `group`, `line`, `type` ("allow" or
 #   "disallow"), `value` (canonical, as parsed), `empty` and `key` (type and
-#   value with a trailing `*` run removed, NA when `empty`).
+#   value with a trailing `*` run removed, `/` for a value of only `*` or
+#   `/` then only `*`, NA when `empty`).
 validation_groups <- function(parsed) {
   kept <- parsed[parsed$type %in% c("user-agent", "allow", "disallow"),
                  c("line", "type", "value"), drop = FALSE]
@@ -653,7 +656,6 @@ validation_groups <- function(parsed) {
     run <- if (length(outside) == 0L) length(bytes) else outside[[1L]] - 1L
     rawToChar(bytes[seq_len(run)])
   }, character(1L))
-  agent_token[agent_global] <- ""
   agents <- data.frame(
     group = as.integer(agent_rows$group),
     line = as.integer(agent_rows$line),
@@ -673,10 +675,11 @@ validation_groups <- function(parsed) {
 
   rule_rows <- kept[!is_agent, , drop = FALSE]
   empty <- !nzchar(rule_rows$value)
-  # `/x` and `/x*` match the same paths; `*` and `**` stay `*`, never the
-  # empty no-op value. `$` is significant and kept.
+  # `/x` and `/x*` match the same paths, and `*`, `**` and `/*` match every
+  # path as `/` does; the empty no-op value stays apart (NA). `$` is
+  # significant and kept.
   stripped <- sub("\\*+$", "", rule_rows$value, useBytes = TRUE)
-  stripped[!nzchar(stripped)] <- "*"
+  stripped[!nzchar(stripped)] <- "/"
   key <- paste(rule_rows$type, stripped)
   key[empty] <- NA_character_
   rules <- data.frame(
@@ -697,18 +700,20 @@ validation_groups <- function(parsed) {
 # message): `line` is the first User-agent line of the first group naming
 # the agents, `agents` their tokens as first spelled, `missing` the lines of
 # every missing `*` rule (uncapped) and `message` the capped text. An agent
-# whose rules are all explicit allow-all (empty Disallow, `Allow: /`) is
-# exempt; one with no rules is not.
+# whose rules are all explicit allow-all (an empty Disallow, or an Allow
+# keyed `/`) is exempt; an empty Allow is a no-op and is not counted, so an
+# agent with no other rule is not exempt. Rows come in anchor-line order:
+# agents are visited in the order they are first named.
 wildcard_inheritance_diagnostics <- function(groups) {
   rules <- groups$rules
+  # An empty key (a global line, or one led by a byte outside [A-Za-z_-])
+  # names no crawler.
   agents <- groups$agents[nzchar(groups$agents$key), , drop = FALSE]
   global <- rules[!rules$empty &
                     rules$group %in% groups$groups$group[groups$groups$global],
                   , drop = FALSE]
   global <- global[!duplicated(global$key), , drop = FALSE]
-  if (nrow(global) == 0L || nrow(agents) == 0L) {
-    return(list())
-  }
+  no_op <- rules$type == "allow" & rules$empty
   allow_all <- (rules$type == "disallow" & rules$empty) |
     (!rules$empty & rules$key == "allow /")
 
@@ -716,11 +721,11 @@ wildcard_inheritance_diagnostics <- function(groups) {
   for (key in unique(agents$key)) {
     agent_groups <- unique(agents$group[agents$key == key])
     in_effect <- rules$group %in% agent_groups
-    if (any(in_effect) && all(allow_all[in_effect])) {
+    judged <- in_effect & !no_op
+    if (any(judged) && all(allow_all[judged])) {
       next
     }
-    effective_keys <- rules$key[in_effect & !rules$empty]
-    missing <- which(!global$key %in% effective_keys)
+    missing <- which(!global$key %in% rules$key[in_effect])
     if (length(missing) == 0L) {
       next
     }
@@ -731,17 +736,12 @@ wildcard_inheritance_diagnostics <- function(groups) {
       missing = missing
     )
   }
-  if (length(losers) == 0L) {
-    return(list())
-  }
 
-  first_group <- vapply(losers, `[[`, integer(1L), "first_group")
   signature <- paste(
-    first_group,
+    vapply(losers, `[[`, integer(1L), "first_group"),
     vapply(losers, function(x) paste(x$missing, collapse = ","), "")
   )
   sets <- split(seq_along(losers), factor(signature, unique(signature)))
-  sets <- sets[order(vapply(sets, function(i) first_group[[i[[1L]]]], 1L))]
   lapply(unname(sets), function(i) {
     members <- losers[i]
     missing <- members[[1L]]$missing
@@ -754,13 +754,13 @@ wildcard_inheritance_diagnostics <- function(groups) {
       missing = global$line[missing],
       message = wildcard_inheritance_message(
         tokens, all(vapply(members, `[[`, TRUE, "one_group")),
-        global[missing, , drop = FALSE], nrow(global)
+        global[missing, , drop = FALSE]
       )
     )
   })
 }
 
-wildcard_inheritance_message <- function(tokens, one_group, missing, n_global,
+wildcard_inheritance_message <- function(tokens, one_group, missing,
                                          cap = 10L) {
   several <- length(tokens) > 1L
   named <- if (several) {
@@ -792,13 +792,13 @@ wildcard_inheritance_message <- function(tokens, one_group, missing, n_global,
   }
   sprintf(
     paste0(
-      "%s %s only %s, so %d of the %d `User-agent: *` rule%s %s not apply ",
-      "to %s: %s. A crawler follows the one group that names it; groups do ",
-      "not combine, and `User-agent: *` applies only to crawlers with no ",
-      "group of their own."
+      "%s %s only %s, so %s `User-agent: *` %s not apply to %s: %s. ",
+      "A crawler obeys only the groups that name it and ignores ",
+      "`User-agent: *` once any group does; `User-agent: *` applies only to ",
+      "crawlers no group names."
     ),
-    named, if (several) "obey" else "obeys", where, k, n_global,
-    if (n_global == 1L) "" else "s", if (k == 1L) "does" else "do",
+    named, if (several) "obey" else "obeys", where,
+    if (k == 1L) "this" else "these", if (k == 1L) "rule does" else "rules do",
     if (several) "them" else "it", listed
   )
 }

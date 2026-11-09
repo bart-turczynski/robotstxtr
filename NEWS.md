@@ -1,6 +1,6 @@
 # robotstxtr (development version)
 
-* `robots_validate_text()` reports, as the `wildcard_rules_not_inherited` info, a named User-agent group that silently drops `User-agent: *` rules; groups do not combine (RFC 9309 §2.2.1) (ROBO-gfjotdrr).
+* `robots_validate_text()` and `robots_validate_url()` report the `wildcard_rules_not_inherited` info for a named User-agent group lacking `User-agent: *` rules, which its crawler then ignores (RFC 9309 §2.2.1) (ROBO-gfjotdrr).
 
 * An empty, comment-only or Sitemap-only robots.txt now validates with the `no_rules` info, not the `missing_user_agent` error; that error now needs rules without a User-agent (RFC 9309 §2.2.1) (ROBO-vxrzcqpe).
 

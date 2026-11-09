@@ -52,11 +52,11 @@ Such an invalid row is detached from the supplied body: its \code{source_id},
 \code{"input_invalid"}. When both the URL and the user agent of a row are invalid,
 the URL error is reported (URL validity is checked first).
 
-A crawler obeys one group: the one whose User-agent best matches its name
-(groups naming the same crawler merge), or else \verb{User-agent: *}. Groups do
-not combine, so a crawler with a group of its own ignores every
-\verb{User-agent: *} rule (RFC 9309 section 2.2.1; Bing documents the same).
-\code{\link[=robots_validate_text]{robots_validate_text()}} reports such a group as
+A crawler obeys the groups whose User-agent product token equals the
+crawler's (ASCII case-insensitive), combined when several do, and then
+ignores every \verb{User-agent: *} rule; \verb{User-agent: *} applies only to a
+crawler no group names (RFC 9309 section 2.2.1). \code{\link[=robots_validate_text]{robots_validate_text()}}
+reports a named group that lacks \verb{User-agent: *} rules as
 \code{wildcard_rules_not_inherited}.
 
 Match metadata is fully populated on the text path. \code{matched_line} carries

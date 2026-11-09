@@ -22,11 +22,11 @@
 #' `"input_invalid"`. When both the URL and the user agent of a row are invalid,
 #' the URL error is reported (URL validity is checked first).
 #'
-#' A crawler obeys one group: the one whose User-agent best matches its name
-#' (groups naming the same crawler merge), or else `User-agent: *`. Groups do
-#' not combine, so a crawler with a group of its own ignores every
-#' `User-agent: *` rule (RFC 9309 section 2.2.1; Bing documents the same).
-#' [robots_validate_text()] reports such a group as
+#' A crawler obeys the groups whose User-agent product token equals the
+#' crawler's (ASCII case-insensitive), combined when several do, and then
+#' ignores every `User-agent: *` rule; `User-agent: *` applies only to a
+#' crawler no group names (RFC 9309 section 2.2.1). [robots_validate_text()]
+#' reports a named group that lacks `User-agent: *` rules as
 #' `wildcard_rules_not_inherited`.
 #'
 #' Match metadata is fully populated on the text path. `matched_line` carries

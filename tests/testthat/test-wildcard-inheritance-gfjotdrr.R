@@ -1,5 +1,5 @@
 # ROBO-gfjotdrr: a named User-agent group does not inherit the
-# `User-agent: *` rules. A crawler obeys only the group that names it.
+# `User-agent: *` rules. A crawler obeys only the groups that name it.
 
 wi_tidio <- paste0(
   "User-agent: *\n",
@@ -14,8 +14,9 @@ wi_tidio <- paste0(
 )
 
 wi_tail <- paste0(
-  " A crawler follows the one group that names it; groups do not combine, ",
-  "and `User-agent: *` applies only to crawlers with no group of their own."
+  " A crawler obeys only the groups that name it and ignores ",
+  "`User-agent: *` once any group does; `User-agent: *` applies only to ",
+  "crawlers no group names."
 )
 
 # The wildcard_rules_not_inherited rows of a document's validation.
@@ -55,7 +56,7 @@ test_that("a named group dropping the * rules gets one info", {
   expect_identical(x$diagnostics$directive, "user-agent")
   expect_identical(x$diagnostics$raw_text, "User-agent: Bingbot")
   expect_identical(x$diagnostics$message, paste0(
-    "Bingbot obeys only this group, so 5 of the 5 `User-agent: *` rules ",
+    "Bingbot obeys only this group, so these `User-agent: *` rules ",
     "do not apply to it: Disallow: /wp-admin/* (line 2), ",
     "Disallow: /tickets/satisfaction/* (line 3), ",
     "Disallow: /conversations/satisfaction/* (line 4), ",
@@ -68,7 +69,7 @@ test_that("a rule-free named group lists every * rule", {
   rows <- wi_rows("User-agent: *\nDisallow: /x\nUser-agent: Bingbot\n")
   expect_identical(rows$line, 3L)
   expect_identical(rows$message, paste0(
-    "Bingbot obeys only this group, so 1 of the 1 `User-agent: *` rule ",
+    "Bingbot obeys only this group, so this `User-agent: *` rule ",
     "does not apply to it: Disallow: /x (line 2).", wi_tail
   ))
   # Directly before `User-agent: *` it is a mixed group, not a rule-free one.
@@ -95,9 +96,10 @@ test_that("a missing Allow is listed", {
     "User-agent: *", "Disallow: /a", "Allow: /a/b",
     "User-agent: Bingbot", "Disallow: /a"
   ))
-  expect_match(rows$message, "1 of the 2 `User-agent: *` rules does not ",
-               fixed = TRUE)
-  expect_match(rows$message, "to it: Allow: /a/b (line 3).", fixed = TRUE)
+  expect_match(rows$message, paste0(
+    "so this `User-agent: *` rule does not apply to it: Allow: /a/b ",
+    "(line 3)."
+  ), fixed = TRUE)
 })
 
 test_that("agents of one group with the same loss share one row", {
@@ -132,8 +134,8 @@ test_that("groups naming the same agent merge", {
   ))
   expect_identical(partial$line, 5L)
   expect_identical(partial$message, paste0(
-    "Bingbot obeys only the groups that name it, so 1 of the 3 ",
-    "`User-agent: *` rules does not apply to it: Disallow: /c (line 4).",
+    "Bingbot obeys only the groups that name it, so this ",
+    "`User-agent: *` rule does not apply to it: Disallow: /c (line 4).",
     wi_tail
   ))
 })
@@ -158,9 +160,10 @@ test_that("a mixed group gives its rules to the named agent too", {
   ))
   expect_identical(rows$line, 1L)
   expect_identical(rows$raw_text, "User-agent: *")
-  expect_match(rows$message, "1 of the 2 `User-agent: *` rules does not ",
-               fixed = TRUE)
-  expect_match(rows$message, "to it: Disallow: /b (line 5).", fixed = TRUE)
+  expect_match(rows$message, paste0(
+    "so this `User-agent: *` rule does not apply to it: Disallow: /b ",
+    "(line 5)."
+  ), fixed = TRUE)
 })
 
 test_that("global and named lines follow the Google matcher", {
@@ -173,7 +176,44 @@ test_that("global and named lines follow the Google matcher", {
   ))
   expect_identical(rows$line, 5L)
   expect_match(rows$message, "^Googlebot obeys only the groups that name it")
-  expect_match(rows$message, "1 of the 1 `User-agent: *` rule does not ",
+  expect_match(rows$message, "this `User-agent: *` rule does not ",
+               fixed = TRUE)
+})
+
+test_that("`*` followed by any isspace byte is global, as in the matcher", {
+  for (space in c("\t", "\v", "\f")) {
+    body <- wi_lines(paste0("User-agent: *", space, "foo"), "Disallow: /q",
+                     "User-agent: Bingbot", "Disallow: /x")
+    rows <- wi_rows(body)
+    expect_identical(rows$line, 3L, label = body)
+    expect_match(rows$message, "to it: Disallow: /q (line 2).", fixed = TRUE,
+                 label = body)
+    x <- allowed_by_robots_text(body, "https://x.com/q", "foo")
+    expect_false(x$results$allowed, label = body)
+  }
+})
+
+test_that("agents named together in several groups are named as them", {
+  rows <- wi_rows(wi_lines(
+    "User-agent: *", "Disallow: /a", "Disallow: /b",
+    "User-agent: Bingbot", "User-agent: msnbot", "Disallow: /x",
+    "User-agent: msnbot", "User-agent: Bingbot", "Disallow: /a"
+  ))
+  expect_identical(rows$line, 4L)
+  expect_identical(rows$message, paste0(
+    "Bingbot and msnbot obey only the groups that name them, so this ",
+    "`User-agent: *` rule does not apply to them: Disallow: /b (line 3).",
+    wi_tail
+  ))
+})
+
+test_that("rule values in the message show control bytes escaped", {
+  body <- c(charToRaw("User-agent: *\nDisallow: /a"), as.raw(c(0x01, 0x1b)),
+            charToRaw("[31mb\tc\nUser-agent: Bingbot\nDisallow: /x\n"))
+  rows <- robots_validate_text(body)$diagnostics
+  expect_identical(rows$code, "wildcard_rules_not_inherited")
+  expect_match(rows$message, "^[ -~]*$")
+  expect_match(rows$message, "Disallow: /a\\x01\\x1B[31mb\\tc (line 2)",
                fixed = TRUE)
 })
 
@@ -209,12 +249,14 @@ test_that("a latin1 agent name is cut where the matcher cuts it", {
 
 test_that("an explicit allow-all group is exempt", {
   for (rules in list("Disallow:", "Allow: /", c("Disallow:", "Allow: /"),
-                     "Allow: /*")) {
+                     "Allow: /*", "Allow: /**", "Allow: *", "Allow: **",
+                     c("Disallow:", "Allow:"))) {
     body <- wi_lines("User-agent: *", "Disallow: /a", "User-agent: Bingbot",
                      rules)
     expect_identical(nrow(wi_rows(body)), 0L, label = body)
   }
-  for (rules in list("Allow:", "Allow: /$", "Allow: *")) {
+  for (rules in list("Allow:", "Allow: /$", "Allow: *$", "Allow: /*$",
+                     c("Allow:", "Disallow: /z"))) {
     body <- wi_lines("User-agent: *", "Disallow: /a", "User-agent: Bingbot",
                      rules)
     expect_identical(nrow(wi_rows(body)), 1L, label = body)
@@ -246,9 +288,14 @@ test_that("a trailing * is ignored in the comparison and $ is not", {
                            "User-agent: Bingbot", "Disallow:",
                            "Disallow: /y"))
   expect_match(rows$message, "Disallow: * (line 2).", fixed = TRUE)
-  expect_identical(nrow(wi_rows(wi_lines(
-    "User-agent: *", "Disallow: *", "User-agent: Bingbot", "Disallow: **"
-  ))), 0L)
+  for (value in c("**", "/", "/*")) {
+    body <- wi_lines("User-agent: *", "Disallow: *", "User-agent: Bingbot",
+                     paste("Disallow:", value))
+    expect_identical(nrow(wi_rows(body)), 0L, label = body)
+  }
+  rows <- wi_rows(wi_lines("User-agent: *", "Disallow: *$",
+                           "User-agent: Bingbot", "Disallow: /"))
+  expect_match(rows$message, "Disallow: *$ (line 2).", fixed = TRUE)
 })
 
 test_that("excluded rules are never listed", {
@@ -256,9 +303,10 @@ test_that("excluded rules are never listed", {
     "Disallow: /before", "User-agent: *", "Disallow:", "Disallow: /a",
     "Disallow: /a*", "User-agent: Bingbot", "Disallow: /x"
   ))
-  expect_match(rows$message, "1 of the 1 `User-agent: *` rule does not ",
-               fixed = TRUE)
-  expect_match(rows$message, "to it: Disallow: /a (line 4).", fixed = TRUE)
+  expect_match(rows$message, paste0(
+    "so this `User-agent: *` rule does not apply to it: Disallow: /a ",
+    "(line 4)."
+  ), fixed = TRUE)
   # A * group with only empty rules has nothing to lose.
   expect_identical(nrow(wi_rows(wi_lines(
     "User-agent: *", "Disallow:", "User-agent: Bingbot", "Disallow: /x"
@@ -274,11 +322,28 @@ test_that("at most ten rules are listed", {
   expect_identical(found[[1L]]$agents, "Bingbot")
   expect_identical(found[[1L]]$line, 14L)
   expect_identical(found[[1L]]$message, paste0(
-    "Bingbot obeys only this group, so 12 of the 12 `User-agent: *` rules ",
+    "Bingbot obeys only this group, so these `User-agent: *` rules ",
     "do not apply to it: ",
     toString(sprintf("Disallow: /r%02d (line %d)", 1:10, 2:11)),
     ", and 2 more.", wi_tail
   ))
+})
+
+test_that("validation_groups() keeps the rules contract", {
+  rules <- validation_groups(as.data.frame(
+    robotstxtr_validation_parse_(charToRaw(wi_lines(
+      "Disallow: /before", "User-agent: *", "Disallow:", "Allow: *",
+      "Disallow: /**", "Disallow: /x*", "Disallow: /x*$", "Allow: /y"
+    ))),
+    stringsAsFactors = FALSE
+  ))$rules
+  expect_identical(rules$group, rep(1L, 6L))
+  expect_identical(rules$line, 3:8)
+  expect_identical(rules$empty, c(TRUE, rep(FALSE, 5L)))
+  expect_identical(rules$key, c(
+    NA, "allow /", "disallow /", "disallow /x", "disallow /x*$", "allow /y"
+  ))
+  expect_identical(rules$value[2:3], c("*", "/**"))
 })
 
 test_that("a body cut at max_bytes is not checked", {
