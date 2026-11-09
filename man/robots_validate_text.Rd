@@ -97,6 +97,10 @@ User-agent line. Not reported for a body cut at \code{max_bytes}. \cr
 A Disallow never takes effect: an Allow with the identical pattern
 applies to the same crawlers and wins the tie. Anchored on the
 Disallow line; the message names the Allow line. \cr
+\code{duplicate_rule} \tab info \tab
+An Allow or Disallow repeats an earlier rule of the same type and
+pattern for the same crawlers, so it has no effect. Anchored on the
+repeat; the message names the earlier line. \cr
 \code{missing_user_agent} \tab error \tab
 Allow or Disallow rules exist but no line names a non-empty
 User-agent. \cr
@@ -141,9 +145,19 @@ never cancels a named crawler's Disallow, and a Disallow is reported only
 when every crawler its group names has the identical Allow. Bing and
 Yandex also let Allow win an identical-pattern tie. The check also runs
 on a body cut at \code{max_bytes}: lines past the cut cannot revive the
-Disallow. A document holding a NUL byte gets neither this check nor
-\code{wildcard_rules_not_inherited}, because the parser stops a value at the
-NUL while the matchers drop it and read on.
+Disallow.
+
+For \code{duplicate_rule}, two rules are the same when type and canonical
+value are byte-identical, as for \code{disallow_tied_by_allow}, so \verb{/x} and
+\verb{/x*} are not duplicates. Groups that name the same crawler are combined,
+\code{*} and named crawlers are kept apart, and a rule is reported only when
+every crawler its group names already has it from an earlier line. Empty
+values and patterns that never match are skipped, and a body cut at
+\code{max_bytes} is checked too.
+
+A document holding a NUL byte gets none of \code{wildcard_rules_not_inherited},
+\code{disallow_tied_by_allow} or \code{duplicate_rule}, because the parser stops a
+value at the NUL while the matchers drop it and read on.
 }
 
 \examples{
