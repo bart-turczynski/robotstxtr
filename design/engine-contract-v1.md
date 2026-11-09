@@ -371,20 +371,55 @@ only from the robotstxtr package version.
 ## Registering another matcher backend
 
 Backend dispatch and revision/capability metadata live together in
-`R/engine-contract-v1.R`. To add Yandex or Bing without changing the core result
-schema:
+`R/engine-contract-v1.R`. `evaluate_rows_v1()` dispatches on the registry
+entry alone, never on a backend's name (ROBO-bukqpjli): it collects the rows
+that need a matcher, calls each backend's adapter once with all of its rows,
+and scatters the decision frame back. Google, Yandex and Bing all sit behind
+the same interface.
+
+A **matcher adapter** is `callable(bodies, urls, product_tokens)`: a list of
+raw bodies and two character vectors, one element per row. It returns a
+**decision frame**, a data frame with one row per input row, in input order,
+carrying `matcher_status`, `url_decision`, `reason`, `matched_line`,
+`matched_rule_type`, `matched_rule_value`, `matcher_input_bytes`,
+`matcher_body_truncated`, `error_stage`, `error_class`, `error_message` and
+the list column `matched_rule_value_raw` (`matcher_decision_columns_v1()`).
+Extra columns (`native_*`) and attributes (`n_parse_calls`) are allowed and
+ignored. Every per-row outcome, an unsupported profile included, is a row;
+an adapter aborts only on an internal invariant violation, and the evaluator
+does not catch that abort. The evaluator checks each frame's row count and
+columns (`check_matcher_output_v1()`) and fails with
+`robotstxtr_matcher_output_invariant` when either is wrong, as it fails on a
+status outside the published set.
+
+The evaluator hands an adapter the readable body: a body cut at `max_bytes`
+(read only under the `google` ruleset with the `google` backend) has its
+partial last line dropped first, and each row's own cut is OR-ed into the
+frame's `matcher_body_truncated`. The Google adapter still matches row by
+row; each row's body is cut to Google's 512,000-byte window before any
+grouping, and its `matched_rule_value_raw` is `NULL`.
+
+To add a backend without changing the core result schema:
 
 1. complete the engine-profile gate: released contract, deterministic corpus,
    ABI and version review, provenance, and compatible licensing;
-2. add a backend-specific matcher function that returns the existing internal
-   fields (`url_decision`, reason, matched rule metadata, input bytes, and
-   truncation flag);
-3. atomically register that callable, its exact revision, and its `available`
+2. write its matcher adapter, returning the decision frame above;
+3. atomically register that adapter, its exact revision, and its `available`
    capability in `engine_matcher_registry_v1()` under the explicit backend
-   name; the registry invariants reject partial or inconsistent activation;
-4. add its conformance corpus and end-to-end facade tests; and
+   name; the registry invariants reject partial or inconsistent activation.
+   A backend name the registry does not have yet must also be added to
+   `engine_matchers_v1()` and to `engine_backend_capability_v1()`; the
+   evaluator itself needs no change;
+4. add its conformance corpus and end-to-end facade tests, and run it through
+   the shared adapter-output test helper
+   (`tests/testthat/helper-matcher-registry-bukqpjli.R`); and
 5. issue a new schema revision if any enum or column must change. Adding a
    backend implementation alone does not change the v1 result columns.
+
+Tests swap an engine by swapping its registry entry (a fake registry passed
+as `evaluate_rows_v1()`'s internal `matcher_registry` argument, or installed
+for the public entry points with `local_matcher_registry()`), not by mocking
+a matcher function. The public entry points take no registry.
 
 Never route an unavailable backend to Google and never relabel Google matching
 as RFC, Yandex, or Bing behavior.
