@@ -130,8 +130,28 @@ A 1xx or a status outside 100 to 599. \cr
 A 3xx body exceeded \code{max_bytes} and was refused whole. \cr
 \code{acquisition_partial_response} \tab error \tab
 A partial HTTP response was rejected. \cr
+\code{acquisition_redirect_over_budget} \tab error \tab
+The redirect chain went past five redirects; \code{message} says what
+Google, Yandex and Bing may do. \cr
+\code{acquisition_redirect_no_location} \tab error \tab
+A 3xx named no target to follow; no engine documents what it does. \cr
+\code{acquisition_redirect_loop} \tab error \tab
+A redirect led back to a URL already requested; no engine documents
+what it does. \cr
+\code{acquisition_redirect_downgrade} \tab error \tab
+An \code{https} to \code{http} redirect was refused for safety, which
+no engine documents doing. \cr
+\code{acquisition_redirect_non_http} \tab error \tab
+A redirect to a scheme other than \code{http} or \code{https} was
+refused for safety. \cr
+\code{acquisition_transport_failed} \tab error \tab
+A timeout, TLS or network failure, with each engine's reading in
+\code{message}. \cr
+\code{acquisition_safety_refused} \tab error \tab
+The guard refused the origin or a redirect target; \code{message}
+names the \code{safety_block_reason}. \cr
 \code{acquisition_failed} \tab error \tab
-A refusal, transport failure or redirect error; the reason is in
+Any other outcome that left no body; the reason is in
 \code{message}.
 }
 

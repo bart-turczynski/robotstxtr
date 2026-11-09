@@ -78,6 +78,17 @@ behind it is in \code{\link[=robots_engine_contract_v1]{robots_engine_contract_v
 \code{"not_validated"}, so an \code{acquisition_http_4xx} row (a 4xx other than 404,
 410 and 429) has \code{warning_count} 1 and \code{error_count} 0.
 
+A redirect, transport or safety outcome gets a code of its own too, read
+from the source row's \code{terminal_redirect_reason} and \code{safety_block_reason}
+(see \code{\link[=robots_fetch]{robots_fetch()}}): \code{acquisition_redirect_over_budget},
+\code{acquisition_redirect_no_location}, \code{acquisition_redirect_loop},
+\code{acquisition_redirect_downgrade}, \code{acquisition_redirect_non_http},
+\code{acquisition_transport_failed} (a timeout, TLS or network failure) and
+\code{acquisition_safety_refused}. The message names the outcome and what
+Google, Yandex and Bing may do, or says that an engine's behavior is not
+documented. A refusal is robotstxtr's own safety choice, so its message
+gives no engine verdict for it.
+
 This function validates the acquired robots.txt document. It does not answer
 whether any target URL is allowed; use \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} for that
 separate question. It also does not infer webmaster intent or check whether
