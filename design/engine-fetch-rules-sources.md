@@ -111,7 +111,12 @@ Findings:
   (KiB)." `[documented]` G3's 15 MB (and "for example, 2MB") limits are for crawled files in
   general, not for robots.txt.
 - **Over the limit.** G1: "Content which is after the maximum file size is ignored."
-  `[documented]` Google parses the prefix up to 500 KiB.
+  `[documented]` Google parses the prefix up to 500 KiB. A 2xx over the acquisition ceiling is
+  kept as its prefix (ROBO-ldpahknv), and its v1 evidence is `incomplete`. The ADR's slice 9
+  (ROBO-ptibdnvy) lets a cut prefix of at least 512,000 bytes past that `incomplete`: it holds
+  the whole 500 KiB window, so it is matched as G1 says, on its first 512,000 bytes. G1 does
+  not say how a line the limit splits is parsed; robotstxtr drops it `[application_choice]`
+  (engine-profiles.md §7). A smaller cut stays `incomplete`.
 - **The open-source code.** G5 is the parser and matcher only. It has no fetcher, so it holds
   no redirect logic, and no 500 KiB limit (grep of `src/robots.cc` for redirect and byte
   constants finds only the per-line buffer, `kMaxLineLen = kBrowserMaxLineLen * 8` with

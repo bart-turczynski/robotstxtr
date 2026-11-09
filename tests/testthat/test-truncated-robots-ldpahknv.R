@@ -154,7 +154,9 @@ test_that("ROBO-ldpahknv: an oversized 404 or 503 over the wire", {
 
 test_that("ROBO-ldpahknv: the v1 evidence of an oversized 200 is incomplete", {
   # The prefix is kept and flagged, but the v1 evidence status of a body over
-  # the ceiling stays `incomplete`: no v1 decision is made from a prefix.
+  # the ceiling stays `incomplete`: no v1 decision is made from this prefix,
+  # which is under the 512,000 bytes google needs to read a cut
+  # (ROBO-ptibdnvy).
   local_fake_ssrfr(function(req) fake_response(200L, body = tr_body()))
   x <- robots_evaluate_url_v1(
     "http://a/before", "Googlebot", "google", "google", max_bytes = tr_limit

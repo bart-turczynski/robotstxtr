@@ -890,13 +890,17 @@ http_status_category_v1 <- function(status) {
 # what it means). Yandex ignores a file over 500 KB; a cut that stored
 # 512,000 bytes or more is over it under either reading of "500 KB", so it
 # goes on to the policy table and the yandex size branch (ROBO-arrtietl).
+# Google parses the first 512,000 bytes; a cut that stored at least that
+# many holds the whole window, so it goes on to the policy table and is
+# matched on its complete lines inside the window (ROBO-ptibdnvy).
 # A body_too_large row is not cut (`body_truncated` FALSE) and stays
-# incomplete. Every other ruleset keeps a cut incomplete.
+# incomplete. rfc9309, assumed_rfc9309 and bing keep a cut incomplete, as
+# do yandex and google below 512,000 stored bytes.
 ceiling_cut_readable_v1 <- function(evidence, ruleset) {
   if (!isTRUE(evidence$body_truncated)) {
     return(FALSE)
   }
-  if (identical(ruleset, "yandex")) {
+  if (identical(ruleset, "yandex") || identical(ruleset, "google")) {
     return(evidence$stored_bytes >= 512000L)
   }
   FALSE
@@ -1361,9 +1365,13 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
       bing_bodies[[length(bing_bodies) + 1L]] <- ev$body
       next
     }
+    # A cut body reaches here only under google (ceiling_cut_readable_v1()).
+    # Its partial last line is dropped before the window, so a cut of
+    # exactly 512,000 bytes is read like a longer one; uncut bodies pass
+    # through unchanged (ROBO-ptibdnvy).
     matched <- match_backend_v1(
-      matcher_backend[[i]], ev$body, url[[i]], product_token[[i]],
-      matcher_registry
+      matcher_backend[[i]], readable_body(ev$body, ev$body_truncated),
+      url[[i]], product_token[[i]], matcher_registry
     )
     matcher_status[[i]] <- "evaluated"
     url_decision[[i]] <- matched$url_decision
@@ -1372,7 +1380,10 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
     matched_rule_type[[i]] <- matched$matched_rule_type
     matched_rule_value[[i]] <- matched$matched_rule_value
     matcher_input_bytes[[i]] <- matched$matcher_input_bytes
-    matcher_body_truncated[[i]] <- matched$matcher_body_truncated
+    # A cut of at least 512,000 bytes proves the file exceeded the window,
+    # even when its complete lines fit inside it.
+    matcher_body_truncated[[i]] <- matched$matcher_body_truncated ||
+      isTRUE(ev$body_truncated)
   }
 
   # Batch Yandex dispatch: one parse-once call over every collected row. `res`
@@ -1683,12 +1694,16 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
 #' unknown exactly as in the original API.
 #'
 #' A source whose 2xx body was cut at `max_bytes` has
-#' `fetch_outcome = "fetched"` and `body_truncated = TRUE`, yet its rows are
-#' `allowed = NA` / `decision_source = "fetch_unknown"` with `NA` error
-#' fields: the v1 evidence of a cut body is `incomplete` and never matched,
-#' and the legacy `error_class` set has no class for a cut body (the v1
-#' result's `reason` is `"incomplete_evidence"`). [allowed_by_robots_url()]
-#' matches the same prefix instead.
+#' `fetch_outcome = "fetched"` and `body_truncated = TRUE`. When it stored
+#' fewer than 512,000 bytes, its rows are `allowed = NA` /
+#' `decision_source = "fetch_unknown"` with `NA` error fields: the v1 evidence
+#' of a cut body is `incomplete`, the Google ruleset does not match a cut
+#' that misses part of its 512,000-byte window, and the legacy `error_class`
+#' set has no class for a cut body (the v1 result's `reason` is
+#' `"incomplete_evidence"`). When it stored 512,000 bytes or more, its rows
+#' are matched on the complete lines of the first 512,000 bytes and carry the
+#' match as `allowed` and `decision_source`, unlike [allowed_by_robots_url()],
+#' which matches the complete lines of the whole stored prefix.
 #'
 #' @param x A `robots_engine_decisions_v1` object using the Google policy and
 #'   Google matcher backend for every row.

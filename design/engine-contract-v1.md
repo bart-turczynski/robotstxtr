@@ -81,7 +81,9 @@ policy, partial response, or unavailable matcher never fabricates a URL
 decision. The one reading of incomplete acquisition is a ruleset's documented
 meaning of a 2xx cut at `max_bytes` (`engine-profiles.md` §7): under `yandex`,
 a cut that stored at least 512,000 bytes is a file over Yandex's 500 KB limit,
-which is `allow_all` (ROBO-arrtietl).
+which is `allow_all` (ROBO-arrtietl); under `google`, a cut that stored at
+least 512,000 bytes holds the whole window Google parses, so it is matched on
+the complete lines inside that window (ROBO-ptibdnvy).
 
 ## Backend and policy revisions
 
@@ -95,10 +97,13 @@ within them: a line the window cuts is dropped, as for a body cut at
 rules. `matcher_input_bytes` is the bytes fed to the matcher, after that drop;
 `matcher_body_truncated` is `TRUE` whenever the body exceeded the window. A fetched 2xx body over the
 acquisition limit is retained as its first `max_bytes` bytes, marked
-`body_truncated` and `incomplete`, and not matched by the v1 engines (under
-`yandex`, a cut of at least 512,000 bytes resolves `allow_all` with no
-matcher; ROBO-arrtietl); the legacy path matches it, up to its last complete line (see "A robots.txt over
-`max_bytes`" below).
+`body_truncated` and `incomplete`, and not matched by the v1 engines, with
+two exceptions for a cut of at least 512,000 bytes: under `yandex` it resolves
+`allow_all` with no matcher (ROBO-arrtietl), and under `google` it is matched
+on the complete lines of its first 512,000 bytes, with
+`matcher_body_truncated` `TRUE` (ROBO-ptibdnvy). The legacy path matches every
+cut, up to its last complete line (see "A robots.txt over `max_bytes`"
+below).
 
 The Yandex matcher backend is `available` (as of schema revision
 `2026-07-18.2`). It is bounded to its supported Yandex vendor profiles
@@ -257,7 +262,7 @@ split a character.
 | v1 `body_truncated` | `TRUE`; `FALSE` on every other row |
 | v1 `observed_bytes` | ssrfr's count of the decoded bytes reached, past the limit by up to one delivery; not the file's size, which is never read |
 | v1 `termination_reason` | `ceiling` |
-| v1 `evidence_status` | `incomplete`, as before: no v1 policy verdict or URL decision is made from a prefix, except the `yandex` ruleset's `allow_all` for a cut of at least 512,000 bytes (ROBO-arrtietl) |
+| v1 `evidence_status` | `incomplete`, as before: no v1 policy verdict or URL decision is made from a prefix, except for a cut of at least 512,000 bytes: the `yandex` ruleset's `allow_all` (ROBO-arrtietl) and the `google` ruleset's match of the complete lines in its first 512,000 bytes (ROBO-ptibdnvy) |
 
 A 3xx body over `max_bytes` is still `body_too_large` with no body, and a 4xx
 or 5xx still keeps its status outcome with no body: ssrfr truncates only a 2xx.
@@ -290,6 +295,21 @@ Decisions:
   form does. The evidence row is unchanged, the schema revision does
   not move, and the yandex policy revision moves to
   `yandex-robots-policy-2026-11-09`.
+- Under `google` (ADR 0001 §5, slice 9; ROBO-ptibdnvy), a cut that stored
+  at least 512,000 bytes holds the whole window Google parses, so
+  `resolve_policy_v1()` lets it past the `incomplete` return to the policy
+  table cell of its uncut form: a cut 200 resolves `use_rules` /
+  `http_200_use_rules` `[documented]` and a cut non-200 2xx `use_rules` /
+  `http_2xx_use_rules` `[documented]`, with no new reason. The row is
+  matched on the cut body's complete lines (the bullet on matching below),
+  then on Google's 512,000-byte window, so a cut of exactly 512,000 bytes
+  loses its partial last line as a longer cut does. `matcher_body_truncated`
+  is `TRUE` for every such row, since the cut proves the file exceeded the
+  window. A smaller cut stays `incomplete_evidence`, and `rfc9309`,
+  `assumed_rfc9309` and `bing` keep every cut incomplete. The evidence row
+  and the schema revision do not move. The google policy revision
+  `google-robots-policy-2026-11-09`, not yet released, covers both the
+  512,000-byte window (ROBO-phfbpfiy) and this reading of the cut.
 - Every legacy `robots` frame gains a logical `body_truncated` column,
   between `content_flag` and `body`, under the one-schema rule of the
   Retry-After and Content-Type columns above: `robots_fetch()` and
@@ -302,9 +322,13 @@ Decisions:
   everything. Dropping it is the cautious reading; the stored `body`,
   `body_size` and v1 `stored_bytes` keep every byte ssrfr returned.
 - `as_legacy_robots_decisions_v1()` leaves `error_class` `NA` on a cut
-  source's rows (`fetched`, `allowed = NA`, `fetch_unknown`): the legacy
-  `error_class` set has no class for a cut body, and the v1 `reason`
-  `incomplete_evidence` is not a legacy class. Its documentation says so.
+  source's rows. Under 512,000 stored bytes they are `fetched`,
+  `allowed = NA`, `fetch_unknown`: the legacy `error_class` set has no class
+  for a cut body, and the v1 `reason` `incomplete_evidence` is not a legacy
+  class. At or above it the rows are matched (ROBO-ptibdnvy) and carry
+  `allowed` and the match `reason` as `decision_source`, read from the first
+  512,000 bytes, where `allowed_by_robots_url()` reads the whole stored
+  prefix. Its documentation says so.
   `observed_bytes` stays in the v1 evidence only.
 - `robots_validate_url()` validates a cut prefix and reports the cut in its
   documents frame. A body refused whole (a 3xx over `max_bytes`) is still
