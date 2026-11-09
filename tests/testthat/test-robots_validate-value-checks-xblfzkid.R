@@ -109,11 +109,15 @@ test_that("an inner '$' is rule_inner_dollar", {
 
 test_that("well-formed patterns stay clean of the value checks", {
   for (line in c(
-    "Disallow: *.pdf", "Disallow: /*.pdf$", "Disallow: /", "Allow: /$"
+    "Disallow: *.pdf", "Disallow: /*.pdf$", "Allow: /$"
   )) {
     x <- vc_validate(line)
     expect_identical(nrow(x$diagnostics), 0L, label = line)
   }
+  # The fixture's own `allow: /` ties `Disallow: /` (ROBO-fdhmlvwm).
+  x <- vc_validate("Disallow: /")
+  expect_identical(x$diagnostics$code, "disallow_tied_by_allow")
+  expect_identical(x$diagnostics$line, 2L)
   x <- vc_validate("Disallow:")
   expect_identical(x$diagnostics$code, "empty_rule_value")
 })

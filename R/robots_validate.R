@@ -84,6 +84,10 @@ validation_unsupported <- c(
 #'     A named User-agent group lacks some \code{User-agent: *} rules, which
 #'     its crawlers therefore do not obey. Anchored on the group's first
 #'     User-agent line. Not reported for a body cut at \code{max_bytes}. \cr
+#'   \code{disallow_tied_by_allow} \tab warning \tab
+#'     A Disallow never takes effect: an Allow with the identical pattern
+#'     applies to the same crawlers and wins the tie. Anchored on the
+#'     Disallow line; the message names the Allow line. \cr
 #'   \code{missing_user_agent} \tab error \tab
 #'     Allow or Disallow rules exist but no line names a non-empty
 #'     User-agent. \cr
@@ -116,6 +120,21 @@ validation_unsupported <- c(
 #' `Disallow:`, `Allow: /`, `Allow: /*` or `Allow: *`) is not reported; an
 #' empty `Allow:` is ignored, and a crawler whose groups have no other rule
 #' is reported.
+#'
+#' For `disallow_tied_by_allow`, an Allow and a Disallow with the same
+#' pattern match the same paths with the same priority, and Allow wins the
+#' tie (RFC 9309 section 2.2.2), so the Disallow never applies; with
+#' `Allow: /`, a `Disallow: /` blocks nothing. The comparison runs on the
+#' Google parser's canonical form of each value (`%aa` equals `%AA`, and a
+#' raw non-ASCII byte equals its `%XX` escape), with no `*` or `$` stripping.
+#' Groups that name the same crawler are combined, a `User-agent: *` Allow
+#' never cancels a named crawler's Disallow, and a Disallow is reported only
+#' when every crawler its group names has the identical Allow. Bing and
+#' Yandex also let Allow win an identical-pattern tie. The check also runs
+#' on a body cut at `max_bytes`: lines past the cut cannot revive the
+#' Disallow. A document holding a NUL byte gets neither this check nor
+#' `wildcard_rules_not_inherited`, because the parser stops a value at the
+#' NUL while the matchers drop it and read on.
 #'
 #' @param robots_txt A single non-missing character string or a raw vector.
 #' @param source_id A single non-empty character string identifying the supplied
@@ -504,13 +523,28 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     }
   }
 
-  # A named group drops the `*` rules for its crawlers (ROBO-gfjotdrr). On a
-  # cut body a group's rules may lie past the cut, so the check is skipped.
-  if (!body_truncated) {
-    inheritance <- wildcard_inheritance_diagnostics(validation_groups(parsed))
-    for (found in inheritance) {
+  # The group checks need the values the matchers read. The parser stops a
+  # value at a NUL, but every matcher drops the NULs and reads on, so a
+  # document with any NUL (already a `nul_byte` error) gets neither check.
+  if (length(nul_lines) == 0L) {
+    groups <- validation_groups(parsed)
+    # A named group drops the `*` rules for its crawlers (ROBO-gfjotdrr). On
+    # a cut body a group's rules may lie past the cut, so it is skipped.
+    if (!body_truncated) {
+      inheritance <- wildcard_inheritance_diagnostics(groups)
+      for (found in inheritance) {
+        add_diagnostic(
+          found$line, "info", "wildcard_rules_not_inherited", "user-agent",
+          found$message
+        )
+      }
+    }
+    # A Disallow an identical Allow ties never applies (ROBO-fdhmlvwm).
+    # Lines past a cut can only add Allows or groups, which cannot revive
+    # it, so a cut body is checked too.
+    for (found in tied_disallow_diagnostics(groups)) {
       add_diagnostic(
-        found$line, "info", "wildcard_rules_not_inherited", "user-agent",
+        found$line, "warning", "disallow_tied_by_allow", "disallow",
         found$message
       )
     }
@@ -758,6 +792,93 @@ wildcard_inheritance_diagnostics <- function(groups) {
       )
     )
   })
+}
+
+# Allow wins a tie in priority (src/robots.cc, RobotsMatcher::disallow() uses
+# a strict `>`), so a Disallow whose canonical value an Allow repeats, in the
+# rules a crawler obeys, never decides a URL (ROBO-fdhmlvwm). A crawler token
+# is `*` for a global User-agent line and the merge key otherwise; groups
+# naming the same token merge, and a `*` Allow never reaches a named token.
+# A Disallow is reported only when, for every token its group names, a group
+# naming that token holds an Allow with the byte-identical value (no `*` or
+# `$` stripping: `rules$key` is not used). Empty values, patterns not led by
+# `/` or `*` (they never match) and groups naming no token are skipped.
+# Returns a list of list(line, allow_line, message) in Disallow line order;
+# `allow_line` is the smallest line among each token's first identical Allow.
+# The work is vectorized: files of hundreds of groups and rules are in scope.
+tied_disallow_diagnostics <- function(groups) {
+  agents <- groups$agents
+  token <- ifelse(agents$global, "*", agents$key)
+  group <- agents$group[nzchar(token)]
+  token <- token[nzchar(token)]
+  # Tokens named by the same set of groups are interchangeable here, so one
+  # class stands for each such set (a group of 6,000 agents is one class).
+  # Rows stay in group order, as agent lines are in file order.
+  signature <- vapply(split(group, token), function(g) {
+    paste(unique(g), collapse = " ")
+  }, "")
+  class <- match(signature, unique(signature))[match(token, names(signature))]
+  pair <- !duplicated(paste(group, class))
+  class_group <- group[pair]
+  class_id <- class[pair]
+  group_ids <- unique(class_group)
+  start <- match(group_ids, class_group)
+  count <- tabulate(match(class_group, group_ids), length(group_ids))
+  # Each rule crossed with the token classes of its group.
+  expand <- function(rule_group) {
+    k <- match(rule_group, group_ids)
+    n <- count[k]
+    n[is.na(k)] <- 0L
+    owner <- rep(seq_along(rule_group), n)
+    list(owner = owner, class = class_id[start[k[owner]] + sequence(n) - 1L])
+  }
+
+  rules <- groups$rules
+  rules <- rules[substr(rules$value, 1L, 1L) %in% c("/", "*"), , drop = FALSE]
+  disallows <- rules[rules$type == "disallow", , drop = FALSE]
+  allows <- rules[rules$type == "allow" & rules$value %in% disallows$value, ,
+                  drop = FALSE]
+  # Rules are in file order, so the first of each key has the smallest line.
+  allows <- allows[!duplicated(paste(allows$group, allows$value, sep = "\n")),
+                   , drop = FALSE]
+  by_allow <- expand(allows$group)
+  allow_key <- paste(by_allow$class, allows$value[by_allow$owner], sep = "\n")
+  allow_line <- allows$line[by_allow$owner]
+  first <- !duplicated(allow_key)
+  allow_key <- allow_key[first]
+  allow_line <- allow_line[first]
+
+  by_disallow <- expand(disallows$group)
+  hit <- allow_line[match(
+    paste(by_disallow$class, disallows$value[by_disallow$owner], sep = "\n"),
+    allow_key
+  )]
+  untied <- unique(by_disallow$owner[is.na(hit)])
+  tied <- !by_disallow$owner %in% untied
+  owner <- by_disallow$owner[tied]
+  hit <- hit[tied]
+  order_by <- order(owner, hit)
+  owner <- owner[order_by]
+  hit <- hit[order_by]
+  first <- !duplicated(owner)
+  owner <- owner[first]
+  hit <- hit[first]
+
+  value <- disallows$value[owner]
+  message <- sprintf(
+    paste0(
+      "Disallow never takes effect: the Allow on line %d has the ",
+      "identical pattern, and Allow wins ties (RFC 9309 section 2.2.2)."
+    ),
+    hit
+  )
+  root <- value == "/"
+  message[root] <- paste(
+    message[root], "With Allow: / this Disallow: / blocks nothing."
+  )
+  Map(function(line, allow_line, message) {
+    list(line = line, allow_line = allow_line, message = message)
+  }, disallows$line[owner], hit, message, USE.NAMES = FALSE)
 }
 
 wildcard_inheritance_message <- function(tokens, one_group, missing,
