@@ -106,7 +106,7 @@ test_that("map and robots carry the full contract schema and types", {
     "fetch_outcome", "redirect_count", "body_size", "timeout", "max_bytes",
     "error_stage", "error_class", "error_message", "retry_after",
     "retry_after_seconds", "content_type", "content_flag", "body_truncated",
-    "body"
+    "terminal_redirect_reason", "safety_block_reason", "body"
   ))
   expect_type(x$map$input_id, "integer")
   expect_type(x$map$http_status, "integer")

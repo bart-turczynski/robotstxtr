@@ -300,16 +300,17 @@ test_that("a 5xx acquisition is one acquisition_http_5xx error", {
   expect_false(failed$documents$limit_exceeded)
 })
 
-test_that("an acquisition error message is reported verbatim", {
+test_that("an acquisition error message opens the diagnostic", {
   # The SSRF guard rejects before any request is issued, so this is offline.
   blocked <- robots_validate_url("http://127.0.0.1/x")
 
   expect_identical(blocked$documents$fetch_outcome, "ssrf_blocked")
   expect_identical(blocked$documents$validation_status, "not_validated")
-  expect_identical(blocked$diagnostics$code, "acquisition_failed")
-  expect_identical(
-    blocked$diagnostics$message, "Blocked by SSRF guard (loopback)."
-  )
+  # Its own code since ROBO-bsloeclp.
+  expect_identical(blocked$diagnostics$code, "acquisition_safety_refused")
+  expect_true(startsWith(
+    blocked$diagnostics$message, "Blocked by SSRF guard (loopback): "
+  ))
   expect_identical(blocked$documents$error_count, 1L)
 })
 

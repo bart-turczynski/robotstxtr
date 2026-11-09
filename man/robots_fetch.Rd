@@ -54,8 +54,9 @@ components, \code{map} (one row per input URL, in input order) and \code{robots}
 row per fetched source, with the fetched body stored once as a raw vector
 in \code{robots$body}, and the final response's \code{Retry-After} as the character
 \code{retry_after} and the double \code{retry_after_seconds}, its \code{Content-Type} as
-the character \code{content_type}, the character \code{content_flag}, and the
-logical \code{body_truncated}).
+the character \code{content_type}, the character \code{content_flag}, the logical
+\code{body_truncated}, and the character \code{terminal_redirect_reason} and
+\code{safety_block_reason}).
 }
 \description{
 Performs the grouped robots.txt fetch stage for one or more target URLs and
@@ -163,6 +164,19 @@ with \verb{<!doctype html}, \verb{<html}, \verb{<head} or \verb{<body}, possibly
 with \code{<}), \code{"json"} (the body starts with a JSON object or array), or \code{NA}.
 The flag comes from the body alone, never from \code{content_type}, and changes
 nothing: the body is matched as it is either way.
+
+Each source row also says why a redirect chain ended without a final
+response, as \code{terminal_redirect_reason}: \code{"over_budget"} (a sixth
+redirect), \code{"no_location"} (a 3xx that names no target: not a 301, 302,
+303, 307 or 308, or an empty or repeated \code{Location}), \code{"loop"} (a target
+already requested), \code{"downgrade"} (an \code{https} to \code{http} redirect, refused),
+\code{"non_http_target"} (a redirect to a scheme other than \code{http} or \code{https},
+refused), or \code{"none"} for every other outcome, a redirect followed to its
+end included. A refusal by the guard sets \code{safety_block_reason} to its
+reason code, the same value the v1 evidence of \code{\link[=robots_evaluate_url_v1]{robots_evaluate_url_v1()}}
+carries (such as \code{"loopback"}, \code{"private"} or \code{"cloud-metadata"}, and
+\code{"https_downgrade"} or \code{"scheme"} for the two refused redirects); it is
+\code{NA} when nothing was refused.
 
 \code{timeout} is one budget for the whole chain of one origin, redirects
 included, rounded up to whole seconds; each connection attempt also gets at
