@@ -153,7 +153,7 @@ test_that("ROBO-mxermwed: the validator's diagnostics on every body", {
 
 # --- Known gaps, restated -----------------------------------------------
 # Each block pins the current behavior of manifest rows whose `known_gap` is
-# set (and one open question). Fixing a gap turns its block red on purpose.
+# set. Fixing a gap turns its block red on purpose.
 
 edge_case <- function(id) {
   m <- edge_manifest()
@@ -161,12 +161,12 @@ edge_case <- function(id) {
 }
 
 test_that("ROBO-mxermwed: a BOM inside the file is only an unknown line", {
-  # known gap: a BOM mid-file gets no BOM diagnostic, only unknown_directive
+  # known gap (ROBO-atkmqcov): a BOM mid-file gets no BOM diagnostic, only unknown_directive
   x <- robots_validate_text(edge_case("enc-bom-mid-file"))
   expect_false("byte_order_mark" %in% x$diagnostics$code)
   expect_identical(edge_decision(edge_case("enc-bom-mid-file"), "/a",
                                  "FooBot"), "allow")
-  # known gap: a BOM before a User-agent line drops that group silently;
+  # known gap (ROBO-atkmqcov): a BOM before a User-agent line drops that group silently;
   # its rules join the group before it
   bytes <- edge_case("enc-bom-before-user-agent")
   expect_identical(edge_codes(bytes), "unknown_directive@4")
@@ -174,7 +174,7 @@ test_that("ROBO-mxermwed: a BOM inside the file is only an unknown line", {
 })
 
 test_that("ROBO-mxermwed: UTF-16 without a BOM matches what no_rules denies", {
-  # known gap: the matcher drops the NULs and enforces Disallow: /a, while the
+  # known gap (ROBO-igrkabdb): the matcher drops the NULs and enforces Disallow: /a, while the
   # validator reports no_rules ("places no restrictions") for the same bytes
   bytes <- edge_case("enc-utf16le-no-bom")
   expect_identical(edge_decision(bytes, "/a", "FooBot"), "disallow")
@@ -182,7 +182,7 @@ test_that("ROBO-mxermwed: UTF-16 without a BOM matches what no_rules denies", {
 })
 
 test_that("ROBO-mxermwed: a Latin-1 byte in a comment is a lineless error", {
-  # known gap: invalid_utf8 has no line and is an error although only a
+  # known gap (ROBO-sniltuap): invalid_utf8 has no line and is an error although only a
   # comment holds the byte and the decision is unchanged
   x <- robots_validate_text(edge_case("enc-latin1-comment"))
   expect_identical(x$diagnostics$code, "invalid_utf8")
@@ -191,7 +191,7 @@ test_that("ROBO-mxermwed: a Latin-1 byte in a comment is a lineless error", {
 })
 
 test_that("ROBO-mxermwed: an escaped unreserved character goes unflagged", {
-  # known gap: Disallow: /%7Ejoe never matches /~joe under Google (RFC 9309
+  # known gap (ROBO-gaczsrgj): Disallow: /%7Ejoe never matches /~joe under Google (RFC 9309
   # section 2.2.2 would decode %7E), and nothing says so
   bytes <- edge_case("esc-pct7e-rule-tilde-url")
   expect_identical(edge_codes(bytes), "")
@@ -199,14 +199,14 @@ test_that("ROBO-mxermwed: an escaped unreserved character goes unflagged", {
 })
 
 test_that("ROBO-mxermwed: a raw space inside a rule goes unflagged", {
-  # known gap: Disallow: /a b matches no percent-encoded URL; no diagnostic
+  # known gap (ROBO-dlgeqluf): Disallow: /a b matches no percent-encoded URL; no diagnostic
   bytes <- edge_case("esc-space-in-rule")
   expect_identical(edge_codes(bytes), "")
   expect_identical(edge_decision(bytes, "/a%20b", "FooBot"), "allow")
 })
 
 test_that("ROBO-mxermwed: a # inside a rule widens it, unflagged", {
-  # known gap: Disallow: /a#b is read as Disallow: /a and blocks /abc;
+  # known gap (ROBO-gjhpykcj): Disallow: /a#b is read as Disallow: /a and blocks /abc;
   # no diagnostic
   bytes <- edge_case("cmt-hash-in-rule")
   expect_identical(edge_codes(bytes), "")
@@ -214,26 +214,28 @@ test_that("ROBO-mxermwed: a # inside a rule widens it, unflagged", {
 })
 
 test_that("ROBO-mxermwed: Googlebot-Image does not fall back to Googlebot", {
-  # Not a known gap yet: whether Google's crawler falls back to a Googlebot
-  # group is ROBO-mxsphtoo's open research. The matcher compares the token
-  # whole and falls through to `*`; this pins that.
+  # known gap (ROBO-fbbmvbob, a maintainer decision): Google's common-crawlers
+  # page lists Googlebot as Googlebot-Image's second token, so Google's crawler
+  # would follow the Googlebot group (design/engine-profiles.md section 5a).
+  # The binding compares the one token whole and falls through to `*`; this
+  # pins that.
   bytes <- edge_case("grp-googlebot-image-fallback")
   expect_identical(edge_decision(bytes, "/x", "Googlebot-Image"), "allow")
   expect_identical(edge_decision(bytes, "/y", "Googlebot-Image"), "disallow")
 })
 
 test_that("ROBO-mxermwed: a User-agent value is cut to its token, unflagged", {
-  # known gap: User-agent: Foo Bot names Foo, not FooBot; no diagnostic
+  # known gap (ROBO-zvhrayhx): User-agent: Foo Bot names Foo, not FooBot; no diagnostic
   bytes <- edge_case("grp-user-agent-with-space")
   expect_identical(edge_codes(bytes), "")
   expect_identical(edge_decision(bytes, "/x", "Foo"), "disallow")
   expect_identical(edge_decision(bytes, "/x", "FooBot"), "allow")
-  # known gap: User-agent: Bot2 names Bot, not Bot2; no diagnostic
+  # known gap (ROBO-zvhrayhx): User-agent: Bot2 names Bot, not Bot2; no diagnostic
   bytes <- edge_case("grp-digit-in-token")
   expect_identical(edge_codes(bytes), "")
   expect_identical(edge_decision(bytes, "/x", "Bot2"), "allow")
   expect_identical(edge_decision(bytes, "/x", "Bot"), "disallow")
-  # known gap: User-agent: *bot names no crawler; no diagnostic
+  # known gap (ROBO-zvhrayhx): User-agent: *bot names no crawler; no diagnostic
   bytes <- edge_case("grp-star-prefixed-token")
   expect_identical(edge_codes(bytes), "")
   expect_identical(edge_decision(bytes, "/x", "FooBot"), "allow")
@@ -246,12 +248,13 @@ test_that("ROBO-mxermwed: every known_gap row is restated above", {
     c("enc-bom-mid-file", "enc-bom-before-user-agent", "enc-utf16le-no-bom",
       "enc-latin1-comment", "esc-pct7e-rule-tilde-url", "esc-space-in-rule",
       "cmt-hash-in-rule", "grp-user-agent-with-space", "grp-digit-in-token",
-      "grp-star-prefixed-token", "content-spam-html")
+      "grp-star-prefixed-token", "content-spam-html",
+      "grp-googlebot-image-fallback")
   )
 })
 
 test_that("ROBO-mxermwed: a spam HTML page served as robots.txt", {
-  # known gap: no validator diagnostic says the body is HTML; it shows only
+  # known gap (ROBO-ccfsanhq): no validator diagnostic says the body is HTML; it shows only
   # as malformed_line and unknown_directive rows plus no_rules, and the
   # matcher allows everything
   bytes <- edge_case("content-spam-html")

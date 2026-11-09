@@ -80,8 +80,9 @@ binding. Google's own C++ reads the NULs instead; see `enc-utf16le-no-bom`.
   for rules" (longest path wins; least restrictive on a conflict).
 - **Google common crawlers** —
   https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers :
-  lists `Googlebot-Image` as that crawler's token; "you need to match only
-  one crawler token for a rule to apply".
+  lists `Googlebot-Image` and `Googlebot` as that crawler's tokens; "you
+  need to match only one crawler token for a rule to apply" (read from the
+  page's HTML; design/engine-profiles.md §5a).
 - **Vendored matcher** — `src/robots.cc`: `ParseRobotsTxt` skips one leading
   UTF-8 BOM (`utf_bom`) and cuts a line at `kMaxLineLen`
   (`kBrowserMaxLineLen * 8`, so 16,663 bytes of content);
@@ -200,7 +201,7 @@ the matcher decision for the comparison work.
 | `grp-rule-before-user-agent` | a rule outside a group is not valid syntax | invalid lines ignored | `/x` allow, `/y` disallow | `rule_without_user_agent@1` | no |
 | `grp-token-version-in-file` — `User-agent: Googlebot/2.1` | `/` is not allowed in a token; unspecified | `googlebot/1.2` equals `googlebot` | `/x` as `Googlebot` disallow | none | no |
 | `grp-token-letter-case-in-file` — `User-agent: GOOGLEBOT`, token `googlebot` | case-insensitive | case-insensitive | disallow | none | no |
-| `grp-googlebot-image-fallback` — a `Googlebot` group and a `*` group, token `Googlebot-Image` | `*` applies (no group names the token) | the spec gives one group per crawler and `*` to the unmatched; whether Google's crawler also uses a `Googlebot` group is ROBO-mxsphtoo's open question | `/x` allow, `/y` disallow (the `*` group) | `wildcard_rules_not_inherited@1` | yes; pinned as is, see ROBO-mxsphtoo |
+| `grp-googlebot-image-fallback` — a `Googlebot` group and a `*` group, token `Googlebot-Image` | `*` applies (no group names the token) | the common-crawlers page lists `Googlebot` as Googlebot-Image's second token, so Google's crawler follows the `Googlebot` group (engine-profiles.md §5a) | `/x` allow, `/y` disallow (the `*` group): the binding reads the one token only | `wildcard_rules_not_inherited@1` | yes; **known gap**, a maintainer decision: ROBO-fbbmvbob |
 | `grp-user-agent-with-space` — `User-agent: Foo Bot` | not a valid token; unspecified | not documented | as `Foo` disallow, as `FooBot` allow: the value is cut at the space | none | yes; **known gap**: a cut User-agent value is not flagged |
 | `grp-digit-in-token` — `User-agent: Bot2` | digits are not allowed in a token (§2.2.1); unspecified | not documented | as `Bot2` allow, as `Bot` disallow: the value is cut at the digit | none | yes; **known gap**: same |
 | `grp-star-prefixed-token` — `User-agent: *bot` | not a valid token; unspecified | not documented | allow: `*bot` is neither global nor a token | none | yes; **known gap**: same |
@@ -238,25 +239,26 @@ fetch-layer values are pinned in the test file, not in the manifest.
 
 ## Known gaps found
 
-Listed for filing; none is fixed here. Each is pinned in the test file with a
+Filed 2026-11-09; none is fixed here. Each is pinned in the test file with a
 `# known gap:` comment, so a fix turns its block red.
 
-1. `enc-bom-mid-file`, `enc-bom-before-user-agent`: a BOM after the start is
+1. ROBO-atkmqcov — `enc-bom-mid-file`, `enc-bom-before-user-agent`: a BOM after the start is
    only an `unknown_directive`; a lost User-agent group is not called out.
-2. `enc-utf16le-no-bom`: `no_rules` says the file restricts nothing while the
+2. ROBO-igrkabdb — `enc-utf16le-no-bom`: `no_rules` says the file restricts nothing while the
    NUL-dropping matcher enforces its rules.
-3. `enc-latin1-comment`: `invalid_utf8` has no line and is an error even when
+3. ROBO-sniltuap — `enc-latin1-comment`: `invalid_utf8` has no line and is an error even when
    only a comment holds the byte.
-4. `esc-pct7e-rule-tilde-url`: no diagnostic for an escaped unreserved
+4. ROBO-gaczsrgj — `esc-pct7e-rule-tilde-url`: no diagnostic for an escaped unreserved
    character, which Google never matches against the raw form.
-5. `esc-space-in-rule`: no diagnostic for a raw space inside a rule.
-6. `cmt-hash-in-rule`: no diagnostic for a `#` that cuts a rule into a wider
+5. ROBO-dlgeqluf — `esc-space-in-rule`: no diagnostic for a raw space inside a rule.
+6. ROBO-gjhpykcj — `cmt-hash-in-rule`: no diagnostic for a `#` that cuts a rule into a wider
    prefix.
-7. `grp-user-agent-with-space`, `grp-digit-in-token`,
+7. ROBO-zvhrayhx — `grp-user-agent-with-space`, `grp-digit-in-token`,
    `grp-star-prefixed-token`: a User-agent value the matcher cuts or never
    matches is not flagged.
-8. `content-spam-html`: no validator diagnostic names an HTML body.
+8. ROBO-ccfsanhq — `content-spam-html`: no validator diagnostic names an HTML body.
+9. ROBO-fbbmvbob (maintainer decision) — `grp-googlebot-image-fallback`: the
+   binding ignores Googlebot-Image's documented parent token `Googlebot`.
 
-Open questions with an existing issue: Googlebot-Image fallback
-(ROBO-mxsphtoo); a diagnostic for a successful cross-host redirect
-(ROBO-gokbvzcb).
+Open question with an existing issue: a diagnostic for a successful
+cross-host redirect (ROBO-gokbvzcb).
