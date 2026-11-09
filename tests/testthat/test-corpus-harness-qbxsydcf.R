@@ -688,6 +688,12 @@ test_that("a shard only one full run holds makes the runs different", {
   expect_false(
     h$mode_compare(compare_ctx(out, "short", "part-extra"))$identical
   )
+  # Two partial runs that share no shard compare nothing: refused.
+  fake_run(out, "part-a", chunks = 1L, params = list(subset = "0/2"))
+  fake_run(out, "part-b", chunks = 2L, params = list(subset = "0/2"))
+  expect_refusal(
+    h$mode_compare(compare_ctx(out, "part-a", "part-b")), "share no shard"
+  )
 })
 
 # ---------------------------------------------------------------------------
@@ -797,9 +803,8 @@ test_that("--manifest must name a finished run with a manifest", {
 
 test_that("run.R checks --manifest before it creates a run directory", {
   skip_on_os("windows")
-  run_r <- harness_file("run.R")
-  skip_if_not(file.exists(run_r), "corpus harness dev/ not present")
   h <- load_harness()
+  run_r <- harness_file("run.R")
   root <- local_test_dir()
   corpus <- local_corpus()
   out <- file.path(root, "out")

@@ -535,6 +535,11 @@ mode_compare <- function(ctx, detail_cap = 1000L) {
   key_a <- paste(ia$table, ia$chunk)
   key_b <- paste(ib$table, ib$chunk)
   both <- intersect(key_a, key_b)
+  # Two partial runs can share no chunk at all; a verdict over zero shards
+  # would read as IDENTICAL without having compared anything.
+  if (length(both) == 0L) {
+    harness_refuse("The runs share no shard, so there is nothing to compare.")
+  }
   summary <- list()
   details <- list()
   tables <- setdiff(unique(c(ia$table, ib$table)), nondeterministic_tables())
