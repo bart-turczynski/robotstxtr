@@ -63,10 +63,10 @@ chunk_failures <- function(chunks, results) {
       "its worker died without a result (killed, or out of memory)"
     } else if (inherits(r, "try-error")) {
       paste0("its worker failed: ", trimws(as.character(r)))
-    } else if (!is.list(r)) {
-      paste0("its worker returned a ", class(r)[[1L]], ", not a list")
-    } else {
+    } else if (is.list(r)) {
       NA_character_
+    } else {
+      paste0("its worker returned a ", class(r)[[1L]], ", not a list")
     }
   }, character(1))
   bad <- !is.na(causes)
@@ -262,6 +262,7 @@ mode_evaluate <- function(ctx) {
         path_set(record$body, ctx$opts$max_rule_paths, ctx$random)
       }
       paths$tier <- if (large) "large" else "full"
+      paths$evaluated_bytes <- evaluated_bytes(record$body)
       res <- evaluate_body(
         record$body, paths, if (large) narrow else combos, fns
       )
@@ -297,7 +298,8 @@ size_tables <- function(body, origin, file_id, ctx) {
     b <- variants[[name]]
     vrows[[name]] <- data.frame(
       origin = origin, file_id = file_id, variant = name,
-      bytes = length(b), body_sha256 = tools::sha256sum(bytes = b),
+      bytes = length(b), evaluated_bytes = evaluated_bytes(b),
+      body_sha256 = tools::sha256sum(bytes = b),
       stringsAsFactors = FALSE
     )
     v <- validate_body(b, ctx$fns)

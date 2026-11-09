@@ -144,6 +144,7 @@ test_that("synthetic size bodies straddle the 512,000-byte boundary", {
   expect_identical(tail_of(pct$cut_512001, 512001L, 4L), "/a%2")
   expect_named(h$size_variants(as.raw(rep(65L, 512000L))),
                c("cut_511999", "cut_512000"))
+  expect_named(h$size_variants(body_of("short")), "full")
 })
 
 test_that("the narrow grid keeps each backend's first named token", {
@@ -687,6 +688,70 @@ test_that("a shard only one full run holds makes the runs different", {
   expect_false(
     h$mode_compare(compare_ctx(out, "short", "part-extra"))$identical
   )
+})
+
+# ---------------------------------------------------------------------------
+# Evaluated bytes: NULs stripped for evaluation, kept for validation.
+
+# Stand-ins for the package functions: validate sees the raw body, evaluate
+# the text, and each records what it was given in `seen`.
+fake_fns <- function(seen) {
+  list(
+    validate = function(body) {
+      seen$validated <- c(seen$validated, length(body))
+      list(
+        documents = data.frame(source_id = 1L, source_type = "x", ok = TRUE),
+        diagnostics = data.frame(source_id = integer(), input_id = integer())
+      )
+    },
+    evaluate = function(txt, urls, tokens, rulesets, backends) {
+      seen$evaluated <- c(seen$evaluated, nchar(txt, type = "bytes"))
+      n <- length(urls)
+      res <- data.frame(
+        input_id = seq_len(n), url = urls, robots_product_token = tokens,
+        robots_policy_ruleset = rulesets, matcher_backend = backends,
+        allowed = rep(TRUE, n), stringsAsFactors = FALSE
+      )
+      res$matched_rule_value_raw <- vector("list", n)
+      list(results = res)
+    }
+  )
+}
+
+test_that("evaluated bytes are recorded without the NULs evaluation drops", {
+  h <- load_harness()
+  body <- c(body_of("Disallow: /a"), as.raw(c(0, 0)), body_of("\n"))
+  expect_identical(h$evaluated_bytes(body), length(body) - 2L)
+  expect_identical(nchar(h$evaluated_text(body), type = "bytes"),
+                   length(body) - 2L)
+  combos <- data.frame(combo_id = 1L, ruleset = "r", backend = "b",
+                       token = "x", stringsAsFactors = FALSE)
+  seen <- new.env()
+  ctx <- list(opts = list(size_rule_paths = 2L), combos = combos,
+              fns = fake_fns(seen))
+  t <- h$size_tables(body, "corpus", 1L, ctx)
+  expect_identical(t$variants$bytes, length(body))
+  expect_identical(t$variants$evaluated_bytes, length(body) - 2L)
+  expect_identical(seen$validated, length(body))
+  expect_identical(seen$evaluated, length(body) - 2L)
+
+  # Evaluate mode records it per file, on every paths row.
+  corpus <- local_corpus(hosts = character(), empty = character())
+  dir.create(file.path(corpus, "a.test"))
+  saveRDS(list(body = body), file.path(corpus, "a.test", "robots.rds"))
+  run_dir <- file.path(local_test_dir(), "run")
+  dir.create(file.path(run_dir, "shards"), recursive = TRUE)
+  hosts <- h$list_host_dirs(corpus)
+  ctx <- list(
+    opts = list(workers = 1L, large_bytes = 1000L, max_rule_paths = 2L,
+                size_rule_paths = 2L),
+    corpus = corpus, run_dir = run_dir, hosts = hosts,
+    chunks = h$plan_chunks(hosts, plan_opts()), combos = combos,
+    random = "/r", fns = fake_fns(new.env())
+  )
+  h$mode_evaluate(ctx)
+  paths <- readRDS(file.path(run_dir, "shards", "paths-00001.rds"))
+  expect_true(all(paths$evaluated_bytes == length(body) - 2L))
 })
 
 # ---------------------------------------------------------------------------

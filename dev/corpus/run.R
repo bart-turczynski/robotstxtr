@@ -8,7 +8,10 @@
 #   Rscript dev/corpus/run.R compare --a <run-id> --b <run-id> [--run-id ID]
 #
 # Needs ROBOTSTXTR_CORPUS (read-only input) and ROBOTSTXTR_CORPUS_OUT (outside
-# any git work tree); writes only under ROBOTSTXTR_CORPUS_OUT/<run-id>/.
+# any git work tree); writes its outputs only under
+# ROBOTSTXTR_CORPUS_OUT/<run-id>/. The one write outside it: validate,
+# evaluate and size load --pkg with pkgload::load_all(), which compiles src/
+# inside that package tree (its object files and shared library).
 
 script_dir <- local({
   file_arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)

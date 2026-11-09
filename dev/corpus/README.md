@@ -16,8 +16,9 @@ writes, belongs in this repository.
   `robots.rds` is skipped, counted in the run's files table and listed in its
   manifest (`has_rds = FALSE`): file ids and chunks come from the whole
   listing, so an empty directory is part of the input set.
-- `ROBOTSTXTR_CORPUS_OUT`: the private store. A run writes only under
-  `ROBOTSTXTR_CORPUS_OUT/<run-id>/`.
+- `ROBOTSTXTR_CORPUS_OUT`: the private store. A run writes its outputs only
+  under `ROBOTSTXTR_CORPUS_OUT/<run-id>/`; the one write outside it is the
+  compiled code `--pkg` loading leaves in the package tree (below).
 
 The harness refuses to run when either variable is unset, when the corpus
 directory does not exist, when the output directory lies inside a git work
@@ -36,7 +37,8 @@ env ROBOTSTXTR_CORPUS_OUT=<store> \
 `--pkg` names the package source tree to evaluate; the harness loads it with
 `pkgload::load_all()`, so the same harness can run against `main` and against
 a refactor branch checked out in another worktree. Loading compiles `src/`
-inside that tree.
+inside that tree (object files and the shared library, which the package's
+`.gitignore` covers): the one write a run makes outside its run directory.
 
 Options: `--run-id ID` (default `<mode>-<UTC time>`), `--seed N` (the random
 path set), `--workers 1|2`, `--chunk-size N` (host directories per shard),
@@ -77,6 +79,10 @@ chunk plan all refuse before the run directory is created.
   (`size_combos`, same combo ids) over up to `--size-rule-paths` rule paths
   and a short fixed probe list. The `paths` table's `tier` column says which
   a file got.
+  The body is evaluated with its NUL bytes removed (an R string cannot hold
+  one), while `validate` sees the raw bytes, NULs included; the files table's
+  `nul_bytes` counts them, and the `paths` table's `evaluated_bytes` (the
+  `variants` table's, in size mode) gives the length actually evaluated.
 - `size`: every stored body of at least 511,999 bytes cut to 511,999,
   512,000 and 512,001 bytes, plus the whole body, and two synthetic bodies
   whose cut falls through a rule line and through a percent-escape; each

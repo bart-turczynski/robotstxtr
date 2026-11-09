@@ -84,9 +84,10 @@ corpus_env_config <- function(getenv = Sys.getenv, need_corpus = TRUE) {
   }
   if (need_corpus && !(is.na(corpus) || !nzchar(corpus)) &&
         path_is_within(out, corpus)) {
-    harness_refuse(
-      "ROBOTSTXTR_CORPUS_OUT lies inside ROBOTSTXTR_CORPUS: the corpus is read-only."
-    )
+    harness_refuse(paste0(
+      "ROBOTSTXTR_CORPUS_OUT lies inside ROBOTSTXTR_CORPUS: ",
+      "the corpus is read-only."
+    ))
   }
   list(
     corpus = if (need_corpus) existing_ancestor(corpus) else NA_character_,
@@ -188,7 +189,7 @@ harness_defaults <- function() {
 parse_harness_args <- function(args) {
   if (length(args) == 0L || !(args[[1L]] %in% harness_modes())) {
     harness_refuse(paste0(
-      "First argument is the mode: ", paste(harness_modes(), collapse = ", ")
+      "First argument is the mode: ", toString(harness_modes())
     ))
   }
   opts <- harness_defaults()
@@ -269,7 +270,7 @@ encode_path_bytes <- function(bytes) {
   ints <- as.integer(bytes)
   enc <- ints <= 0x20L | ints >= 0x7fL | ints == 0x23L
   out <- character(length(ints))
-  if (any(!enc)) {
+  if (!all(enc)) {
     out[!enc] <- strsplit(rawToChar(bytes[!enc]), "", fixed = TRUE)[[1L]]
   }
   out[enc] <- sprintf("%%%02X", ints[enc])
@@ -287,7 +288,10 @@ rule_values <- function(body) {
   Encoding(txt) <- "bytes"
   lines <- strsplit(txt, "\r\n|\r|\n", useBytes = TRUE)[[1L]]
   lines <- sub("#.*$", "", lines, useBytes = TRUE)
-  pattern <- "^[ \t]*([Aa][Ll][Ll][Oo][Ww]|[Dd][Ii][Ss][Aa][Ll][Ll][Oo][Ww])[ \t]*:[ \t]*(.*?)[ \t]*$"
+  pattern <- paste0(
+    "^[ \t]*([Aa][Ll][Ll][Oo][Ww]|[Dd][Ii][Ss][Aa][Ll][Ll][Oo][Ww])",
+    "[ \t]*:[ \t]*(.*?)[ \t]*$"
+  )
   hit <- grepl(pattern, lines, perl = TRUE, useBytes = TRUE)
   values <- sub(pattern, "\\2", lines[hit], perl = TRUE, useBytes = TRUE)
   lapply(values, charToRaw)
@@ -441,7 +445,7 @@ size_variants <- function(body) {
   targets <- size_targets()
   targets <- targets[targets <= n]
   out <- lapply(targets, function(t) body[seq_len(t)])
-  names(out) <- paste0("cut_", targets)
+  names(out) <- sprintf("cut_%d", targets)
   if (!(n %in% targets)) {
     out[["full"]] <- body
   }
@@ -607,7 +611,7 @@ check_chunk_plans <- function(manifest_a, manifest_b) {
   same <- vapply(shared, function(k) identical(a[[k]], b[[k]]), logical(1))
   if (!all(same)) {
     harness_refuse(paste0(
-      "The two runs planned chunk ", paste(shared[!same], collapse = ", "),
+      "The two runs planned chunk ", toString(shared[!same]),
       " over different host directories (a different listing, or a ",
       "--max-hosts cut mid-chunk)."
     ))
@@ -902,10 +906,23 @@ compact_results <- function(res, paths, combos, n_paths) {
   )
 }
 
-# Evaluate one body over its path set and every combination.
-evaluate_body <- function(body, paths, combos, fns) {
+# The text the package evaluates: the body with its NUL bytes removed, since
+# an R string cannot hold one. Validation sees the raw bytes, NULs included,
+# so the two can disagree on a body with NULs; evaluated_bytes() is recorded
+# per file (evaluate) and per variant (size) to show it.
+evaluated_text <- function(body) {
   txt <- rawToChar(body[body != as.raw(0L)])
   Encoding(txt) <- "bytes"
+  txt
+}
+
+evaluated_bytes <- function(body) {
+  as.integer(sum(body != as.raw(0L)))
+}
+
+# Evaluate one body over its path set and every combination.
+evaluate_body <- function(body, paths, combos, fns) {
+  txt <- evaluated_text(body)
   n_paths <- nrow(paths)
   urls <- paste0(probe_origin(), paths$path)
   res <- fns$evaluate(
