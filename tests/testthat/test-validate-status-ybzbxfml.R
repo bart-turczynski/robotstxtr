@@ -265,24 +265,29 @@ test_that("ROBO-ybzbxfml: a past HTTP-date Retry-After is zero seconds", {
 
 # --- outcomes that are not a status class -----------------------------------
 
-test_that("ROBO-ybzbxfml: transport failures keep their verbatim message", {
+# Each of these has its own code since ROBO-bsloeclp
+# (test-redirect-reason-bsloeclp.R); the fetch's message still opens it.
+test_that("ROBO-ybzbxfml: transport failures open with their message", {
   timeout <- ybz_validate(function(req) fake_failure("timeout"))
-  expect_identical(timeout$diagnostics$code, "acquisition_failed")
-  expect_identical(timeout$diagnostics$message, "Fetch failed (timeout).")
+  expect_identical(timeout$diagnostics$code, "acquisition_transport_failed")
+  expect_true(startsWith(timeout$diagnostics$message,
+                         "Fetch failed (timeout): "))
 
   dns <- ybz_validate(function(req) fake_failure("unresolvable"))
   expect_identical(dns$documents$fetch_outcome, "network_error")
-  expect_identical(dns$diagnostics$code, "acquisition_failed")
-  expect_identical(dns$diagnostics$message, "Fetch failed (unresolvable).")
+  expect_identical(dns$diagnostics$code, "acquisition_transport_failed")
+  expect_true(startsWith(dns$diagnostics$message,
+                         "Fetch failed (unresolvable): "))
 })
 
-test_that("ROBO-ybzbxfml: redirect errors keep their verbatim message", {
+test_that("ROBO-ybzbxfml: redirect errors open with their message", {
   loop <- ybz_validate(function(req) {
     fake_response(301L, url = req$url, headers = list(Location = req$url))
   })
   expect_identical(loop$documents$fetch_outcome, "redirect_error")
-  expect_identical(loop$diagnostics$code, "acquisition_failed")
-  expect_identical(loop$diagnostics$message, "Redirect loop detected.")
+  expect_identical(loop$diagnostics$code, "acquisition_redirect_loop")
+  expect_true(startsWith(loop$diagnostics$message,
+                         "Redirect loop detected: "))
 
   budget <- ybz_validate(function(req) {
     hop <- suppressWarnings(as.integer(sub("^http://a/r", "", req$url)))
@@ -291,10 +296,10 @@ test_that("ROBO-ybzbxfml: redirect errors keep their verbatim message", {
                   headers = list(Location = paste0("http://a/r", hop)))
   })
   expect_identical(budget$documents$fetch_outcome, "redirect_error")
-  expect_identical(budget$diagnostics$code, "acquisition_failed")
-  expect_identical(
-    budget$diagnostics$message, "Exceeded the maximum of five redirects."
-  )
+  expect_identical(budget$diagnostics$code, "acquisition_redirect_over_budget")
+  expect_true(startsWith(
+    budget$diagnostics$message, "Exceeded the maximum of five redirects: "
+  ))
 })
 
 test_that("ROBO-ybzbxfml: a 206 and an oversized 3xx keep their codes", {

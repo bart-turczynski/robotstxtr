@@ -221,6 +221,10 @@ allowed_by_robots_text <- function(robots_txt, url, user_agent,
     content_flag = NA_character_,
     # The caller supplied the whole text (ROBO-ldpahknv).
     body_truncated = FALSE,
+    # No fetch, so no redirect and no refusal (ROBO-bsloeclp), as in the v1
+    # evidence of a supplied body.
+    terminal_redirect_reason = "none",
+    safety_block_reason = NA_character_,
     stringsAsFactors = FALSE
   )
   # `body` is a list-of-raw column: the supplied body stored exactly once.

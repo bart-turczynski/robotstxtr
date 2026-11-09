@@ -121,8 +121,28 @@ validation_unsupported <- c(
 #'     A 3xx body exceeded \code{max_bytes} and was refused whole. \cr
 #'   \code{acquisition_partial_response} \tab error \tab
 #'     A partial HTTP response was rejected. \cr
+#'   \code{acquisition_redirect_over_budget} \tab error \tab
+#'     The redirect chain went past five redirects; \code{message} says what
+#'     Google, Yandex and Bing may do. \cr
+#'   \code{acquisition_redirect_no_location} \tab error \tab
+#'     A 3xx named no target to follow; no engine documents what it does. \cr
+#'   \code{acquisition_redirect_loop} \tab error \tab
+#'     A redirect led back to a URL already requested; no engine documents
+#'     what it does. \cr
+#'   \code{acquisition_redirect_downgrade} \tab error \tab
+#'     An \code{https} to \code{http} redirect was refused for safety, which
+#'     no engine documents doing. \cr
+#'   \code{acquisition_redirect_non_http} \tab error \tab
+#'     A redirect to a scheme other than \code{http} or \code{https} was
+#'     refused for safety. \cr
+#'   \code{acquisition_transport_failed} \tab error \tab
+#'     A timeout, TLS or network failure, with each engine's reading in
+#'     \code{message}. \cr
+#'   \code{acquisition_safety_refused} \tab error \tab
+#'     The guard refused the origin or a redirect target; \code{message}
+#'     names the \code{safety_block_reason}. \cr
 #'   \code{acquisition_failed} \tab error \tab
-#'     A refusal, transport failure or redirect error; the reason is in
+#'     Any other outcome that left no body; the reason is in
 #'     \code{message}.
 #' }
 #'
@@ -234,6 +254,17 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' behind it is in [robots_engine_contract_v1()]. The document stays
 #' `"not_validated"`, so an `acquisition_http_4xx` row (a 4xx other than 404,
 #' 410 and 429) has `warning_count` 1 and `error_count` 0.
+#'
+#' A redirect, transport or safety outcome gets a code of its own too, read
+#' from the source row's `terminal_redirect_reason` and `safety_block_reason`
+#' (see [robots_fetch()]): `acquisition_redirect_over_budget`,
+#' `acquisition_redirect_no_location`, `acquisition_redirect_loop`,
+#' `acquisition_redirect_downgrade`, `acquisition_redirect_non_http`,
+#' `acquisition_transport_failed` (a timeout, TLS or network failure) and
+#' `acquisition_safety_refused`. The message names the outcome and what
+#' Google, Yandex and Bing may do, or says that an engine's behavior is not
+#' documented. A refusal is robotstxtr's own safety choice, so its message
+#' gives no engine verdict for it.
 #'
 #' This function validates the acquired robots.txt document. It does not answer
 #' whether any target URL is allowed; use [allowed_by_robots_url()] for that
@@ -1265,11 +1296,17 @@ unavailable_validation <- function(source) {
     message <- "Partial HTTP response was rejected; no body was validated."
   } else {
     severity <- "error"
-    code <- "acquisition_failed"
-    message <- if (is.na(source$error_message)) {
-      sprintf("Acquisition outcome '%s' supplied no document body.", outcome)
+    diagnosis <- acquisition_diagnosis(source)
+    if (!is.null(diagnosis)) {
+      code <- diagnosis$code
+      message <- diagnosis$message
     } else {
-      source$error_message
+      code <- "acquisition_failed"
+      message <- if (is.na(source$error_message)) {
+        sprintf("Acquisition outcome '%s' supplied no document body.", outcome)
+      } else {
+        source$error_message
+      }
     }
   }
   diagnostic <- validation_diagnostic(
@@ -1336,6 +1373,80 @@ status_diagnosis <- function(status, retry_after_seconds) {
   list(severity = severity, code = code, message = message)
 }
 
+# The code and message for a redirect, transport or safety outcome that left
+# no body (ROBO-bsloeclp), or NULL for any other outcome. It reads the robots
+# frame's `terminal_redirect_reason` and `safety_block_reason`, never the
+# wording of `error_message`, which only opens the message.
+#
+# - over_budget, no_location, loop and a transport failure have a policy-table
+#   category (the one resolve_policy_v1() reads for their evidence status), so
+#   each engine's reading comes from engine_policy_table_v1(), as for a status
+#   class: `redirect_over_budget`, `protocol_error` (no engine documents a
+#   malformed redirect; design/engine-profiles.md#redirect-handling) and
+#   `transport` (design/engine-profiles.md#status-policy, network row).
+# - A downgrade, a non-HTTP(S) target and any other guard refusal are
+#   decided by the safety level, never by a ruleset
+#   (design/engine-profiles.md#redirect-handling and section 3a), so their
+#   message says so instead of giving an engine verdict.
+acquisition_diagnosis <- function(source) {
+  terminal <- source$terminal_redirect_reason
+  safety <- source$safety_block_reason
+  outcome <- source$fetch_outcome
+  opening <- sub("\\.$", "", source$error_message)
+  readings <- function(category) {
+    paste0(status_engine_readings(category), ".")
+  }
+  if (identical(terminal, "over_budget")) {
+    code <- "acquisition_redirect_over_budget"
+    detail <- readings("redirect_over_budget")
+  } else if (identical(terminal, "no_location")) {
+    code <- "acquisition_redirect_no_location"
+    detail <- readings("protocol_error")
+  } else if (identical(terminal, "loop")) {
+    code <- "acquisition_redirect_loop"
+    detail <- readings("protocol_error")
+  } else if (identical(terminal, "downgrade")) {
+    # No engine documents refusing an https-to-http robots.txt redirect;
+    # Google, Yandex and RFC 9309 place no scheme condition on one
+    # [inferred], Bing states nothing [documentation_gap]
+    # (design/engine-fetch-rules-sources.md, Summary, `https` -> `http`).
+    code <- "acquisition_redirect_downgrade"
+    detail <- paste(
+      "robotstxtr's safety refusal under safety_level \"strict\",",
+      "not an engine reading; Google: no source says it refuses one",
+      "(inferred to follow it); Yandex: no source says it refuses one",
+      "(inferred to follow it); Bing: not documented."
+    )
+  } else if (identical(terminal, "non_http_target")) {
+    code <- "acquisition_redirect_non_http"
+    detail <- paste(
+      "robotstxtr's safety refusal (safety_block_reason \"scheme\"),",
+      "not an engine reading; Google: not documented; Yandex: not",
+      "documented; Bing: not documented."
+    )
+  } else if (identical(outcome, "ssrf_blocked") && !is.na(safety)) {
+    code <- "acquisition_safety_refused"
+    detail <- sprintf(paste(
+      "robotstxtr's safety refusal (safety_block_reason \"%s\"); nothing",
+      "was requested there, so no engine reading applies."
+    ), safety)
+  } else if (outcome %in% c("timeout", "tls_error", "network_error")) {
+    code <- "acquisition_transport_failed"
+    detail <- readings("transport")
+  } else {
+    return(NULL)
+  }
+  if (is.na(opening) || !nzchar(opening)) {
+    opening <- sprintf("Acquisition outcome '%s'", outcome)
+  }
+  list(
+    code = code,
+    message = paste0(
+      opening, ": ", detail, " See robots_engine_contract_v1()."
+    )
+  )
+}
+
 # "Google: ...; Yandex: ...; Bing: ..." for one policy-table category.
 status_engine_readings <- function(category) {
   table <- engine_policy_table_v1()
@@ -1355,7 +1466,12 @@ status_engine_readings <- function(category) {
 
 status_policy_phrase <- function(ruleset, category, status, action) {
   if (identical(status, "evaluated") && identical(action, "allow_all")) {
-    if (identical(ruleset, "yandex")) {
+    if (identical(ruleset, "google") &&
+          identical(category, "redirect_over_budget")) {
+      # Google's robots.txt spec, 3xx: it "stops and treats it as a 404"
+      # (design/engine-fetch-rules-sources.md, Google, "After the last hop").
+      "may stop and treat it as a 404, which places no restrictions on crawling"
+    } else if (identical(ruleset, "yandex")) {
       "places no restrictions on crawling"
     } else {
       "may treat it as no robots.txt, which places no restrictions on crawling"

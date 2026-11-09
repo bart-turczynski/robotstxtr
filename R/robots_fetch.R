@@ -105,6 +105,19 @@
 #' The flag comes from the body alone, never from `content_type`, and changes
 #' nothing: the body is matched as it is either way.
 #'
+#' Each source row also says why a redirect chain ended without a final
+#' response, as `terminal_redirect_reason`: `"over_budget"` (a sixth
+#' redirect), `"no_location"` (a 3xx that names no target: not a 301, 302,
+#' 303, 307 or 308, or an empty or repeated `Location`), `"loop"` (a target
+#' already requested), `"downgrade"` (an `https` to `http` redirect, refused),
+#' `"non_http_target"` (a redirect to a scheme other than `http` or `https`,
+#' refused), or `"none"` for every other outcome, a redirect followed to its
+#' end included. A refusal by the guard sets `safety_block_reason` to its
+#' reason code, the same value the v1 evidence of [robots_evaluate_url_v1()]
+#' carries (such as `"loopback"`, `"private"` or `"cloud-metadata"`, and
+#' `"https_downgrade"` or `"scheme"` for the two refused redirects); it is
+#' `NA` when nothing was refused.
+#'
 #' `timeout` is one budget for the whole chain of one origin, redirects
 #' included, rounded up to whole seconds; each connection attempt also gets at
 #' most three seconds. Two things can make a fetch overrun it: the time spent
@@ -146,8 +159,9 @@
 #'   row per fetched source, with the fetched body stored once as a raw vector
 #'   in `robots$body`, and the final response's `Retry-After` as the character
 #'   `retry_after` and the double `retry_after_seconds`, its `Content-Type` as
-#'   the character `content_type`, the character `content_flag`, and the
-#'   logical `body_truncated`).
+#'   the character `content_type`, the character `content_flag`, the logical
+#'   `body_truncated`, and the character `terminal_redirect_reason` and
+#'   `safety_block_reason`).
 #'
 #' @examples
 #' # A refused origin is decided before any request, so this runs offline.
@@ -229,6 +243,14 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
     content_flag = vapply(results, function(r) r$content_flag, character(1L)),
     body_truncated = vapply(
       results, function(r) r$body_truncated, logical(1L)
+    ),
+    # Why a redirect chain ended, and the guard's refusal code
+    # (ROBO-bsloeclp; design/engine-profiles.md section 2).
+    terminal_redirect_reason = vapply(
+      results, function(r) r$terminal_redirect_reason, character(1L)
+    ),
+    safety_block_reason = vapply(
+      results, function(r) r$safety_block_reason, character(1L)
     ),
     stringsAsFactors = FALSE
   )

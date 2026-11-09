@@ -1833,6 +1833,10 @@ as_legacy_robots_decisions_v1 <- function(x) {
     # A cut 2xx body (ROBO-ldpahknv); FALSE where the evidence has no value.
     body_truncated = !is.na(evidence$body_truncated) &
       evidence$body_truncated,
+    # The evidence keeps both, so the legacy frame carries them as
+    # robots_fetch() does (ROBO-bsloeclp).
+    terminal_redirect_reason = evidence$terminal_redirect_reason,
+    safety_block_reason = evidence$safety_block_reason,
     stringsAsFactors = FALSE
   )
   robots$body <- evidence$body
