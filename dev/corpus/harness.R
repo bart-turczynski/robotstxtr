@@ -400,21 +400,26 @@ list_host_dirs <- function(corpus) {
 }
 
 # Read one robots.rds: its sha256 and the record, from one read of the file.
+# A file that does not decompress or unserialize gives `record = NULL`, which
+# the files table records as readable = FALSE; it never stops the run.
 read_corpus_record <- function(path) {
   bytes <- readBin(path, "raw", n = file.size(path))
   sha <- tools::sha256sum(bytes = bytes)
   magic <- bytes[seq_len(min(3L, length(bytes)))]
-  data <- if (length(magic) >= 2L && magic[[1L]] == as.raw(0x1f) &&
+  type <- if (length(magic) >= 2L && magic[[1L]] == as.raw(0x1f) &&
                 magic[[2L]] == as.raw(0x8b)) {
-    memDecompress(bytes, "gzip")
+    "gzip"
   } else if (length(magic) == 3L && rawToChar(magic) == "BZh") {
-    memDecompress(bytes, "bzip2")
+    "bzip2"
   } else if (length(magic) >= 2L && magic[[1L]] == as.raw(0xfd)) {
-    memDecompress(bytes, "xz")
+    "xz"
   } else {
-    bytes
+    "none"
   }
-  record <- tryCatch(unserialize(data), error = function(e) NULL)
+  record <- tryCatch({
+    data <- if (type == "none") bytes else memDecompress(bytes, type)
+    unserialize(data)
+  }, error = function(e) NULL)
   list(sha256 = sha, bytes = length(bytes), record = record)
 }
 

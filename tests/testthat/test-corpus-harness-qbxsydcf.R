@@ -323,6 +323,30 @@ test_that("a file changed or vanished mid-run makes the run invalid", {
   expect_identical(mid$changes$host, "b.test")
 })
 
+test_that("a corrupt compressed robots.rds is recorded unreadable", {
+  h <- load_harness()
+  corpus <- local_corpus()
+  junk <- list(
+    gzip = as.raw(c(0x1f, 0x8b, 1:20)),
+    bzip2 = c(charToRaw("BZh"), as.raw(1:20)),
+    xz = as.raw(c(0xfd, 1:20)),
+    plain = as.raw(1:20)
+  )
+  for (kind in names(junk)) {
+    path <- file.path(corpus, "a.test", "robots.rds")
+    writeBin(junk[[kind]], path)
+    read <- h$read_corpus_record(path)
+    expect_null(read$record, info = kind)
+    expect_identical(read$bytes, length(junk[[kind]]), info = kind)
+    # The chunk walk carries on past it.
+    tables <- h$walk_chunk(
+      corpus, h$list_host_dirs(corpus), list(chunk = 1L, ids = 1:3)
+    )
+    expect_identical(tables$files$readable, c(FALSE, TRUE, NA), info = kind)
+    expect_identical(tables$files$has_rds, c(TRUE, TRUE, FALSE), info = kind)
+  }
+})
+
 test_that("comparing runs with different input sets fails before diffing", {
   h <- load_harness()
   m <- data.frame(
