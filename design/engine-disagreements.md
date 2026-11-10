@@ -386,9 +386,9 @@ Bing: field names "must exactly equal" a known name, and the grammar
 tester case `ydx-parser-directive-suffix` (`inst/yandex-corpus/`: a
 `Disallow-extra:` line is ignored, the candidate path is allowed; observed
 2026-07-15 and 2026-07-17), which the vendored lexer implements by comparing a
-field name whole (`ClassifyField`, `AsciiCaseEqual`). That such a file validates clean while it
-blocks everything for Google is the validator's gap, ROBO-xglcoagv, not a
-matcher change.
+field name whole (`ClassifyField`, `AsciiCaseEqual`). The matchers stay as
+they are; the validator warns on such a key with `accepted_directive_prefix`
+(ROBO-xglcoagv), naming the key and Google's reading of it.
 
 ### 14. A key that starts with `user-agent` (yandex, bing)
 

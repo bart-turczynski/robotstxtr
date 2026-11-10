@@ -67,6 +67,10 @@ validation_unsupported <- c(
 #'     A directive without a colon, which the parser accepts. \cr
 #'   \code{accepted_directive_typo} \tab warning \tab
 #'     A directive name in an accepted typo spelling. \cr
+#'   \code{accepted_directive_prefix} \tab warning \tab
+#'     A key such as \code{DisallowAITraining} that only starts with
+#'     \code{allow} or \code{disallow}, which the parser reads as that rule.
+#'     \cr
 #'   \code{unsupported_directive} \tab warning \tab
 #'     A known directive this profile ignores, such as \code{crawl-delay}. \cr
 #'   \code{unknown_directive} \tab warning \tab
@@ -161,6 +165,17 @@ validation_unsupported <- c(
 #'     Any other outcome that left no body; the reason is in
 #'     \code{message}.
 #' }
+#'
+#' For `accepted_directive_prefix`, Google's parser accepts any key that
+#' starts with `allow` or `disallow`, ignoring ASCII case, so
+#' `DisallowAITraining: /` is read as `Disallow: /` and blocks the group's
+#' crawlers. The Bing and Yandex matchers compare the whole field name and
+#' ignore the line, and RFC 9309's grammar (section 2.2) has only `allow` and
+#' `disallow` rule records, leaving other records to the crawler (section
+#' 2.2.4). The message names the key as written; for a Disallow key it points
+#' to a `User-agent: __usage_ai-training` group as the AI-training opt-out.
+#' An accepted typo such as `Dissallow` is reported as
+#' `accepted_directive_typo` only.
 #'
 #' For `wildcard_rules_not_inherited`, a crawler obeys only the groups that
 #' name it (combined when several do) and ignores the `User-agent: *` group,
@@ -552,6 +567,17 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         line, "warning", "accepted_directive_typo", action,
         "Directive spelling is an accepted Google-parser typo variant."
       )
+    }
+    if (type %in% c("allow", "disallow") && !parsed$is_typo[[i]]) {
+      prefix_key <- validation_prefix_key(
+        raw_lines[[line]], line, type, parsed$missing_colon[[i]]
+      )
+      if (!is.null(prefix_key)) {
+        add_diagnostic(
+          line, "warning", "accepted_directive_prefix", action,
+          validation_prefix_key_message(prefix_key, type)
+        )
+      }
     }
 
     if (identical(type, "unknown")) {
@@ -1307,6 +1333,63 @@ validation_ascii_action <- function(action, type) {
     return("unknown")
   }
   ascii_lower(action)
+}
+
+# The key of an Allow or Disallow line as the Google parser cut it
+# (GetKeyAndValueFrom, src/robots.cc), rendered for a message, when it is
+# not exactly `allow` or `disallow`; NULL when it is (ROBO-xglcoagv). The
+# parser hands R only the type of a known key, so the key is derived again
+# from the line's bytes: the BOM prefix Parse() skips on line 1, the C-string
+# end at the first NUL, the comment cut at `#`, ASCII whitespace stripped,
+# and the separator (the first `:`, or the first SP or HT without a colon).
+validation_prefix_key <- function(bytes, line, type, missing_colon) {
+  if (identical(line, 1L)) {
+    bom <- as.raw(c(0xef, 0xbb, 0xbf))
+    skip <- 0L
+    while (skip < min(3L, length(bytes)) &&
+             bytes[[skip + 1L]] == bom[[skip + 1L]]) {
+      skip <- skip + 1L
+    }
+    bytes <- bytes[seq_len(length(bytes) - skip) + skip]
+  }
+  cut_at <- function(bytes, stops) {
+    hit <- which(bytes %in% as.raw(stops))
+    if (length(hit) == 0L) bytes else bytes[seq_len(hit[[1L]] - 1L)]
+  }
+  bytes <- cut_at(bytes, 0x00)
+  bytes <- cut_at(bytes, 0x23)
+  space <- as.raw(c(0x20, 0x09, 0x0a, 0x0b, 0x0c, 0x0d))
+  lead <- which(!bytes %in% space)
+  if (length(lead) == 0L) {
+    return(NULL)
+  }
+  bytes <- bytes[lead[[1L]]:length(bytes)]
+  key <- cut_at(bytes, if (missing_colon) c(0x20, 0x09) else 0x3a)
+  kept <- which(!key %in% space)
+  key <- key[seq_len(if (length(kept) == 0L) 0L else max(kept))]
+  folded <- as.integer(key)
+  upper <- folded >= 0x41 & folded <= 0x5a
+  folded[upper] <- folded[upper] + 32L
+  if (identical(folded, as.integer(charToRaw(type)))) {
+    return(NULL)
+  }
+  render_validation_line(key)
+}
+
+validation_prefix_key_message <- function(key, type) {
+  name <- if (identical(type, "disallow")) "Disallow" else "Allow"
+  message <- paste0(
+    "Key `", key, "` is read by Google as ", name, " (prefix match), so ",
+    "the rule applies to the group's crawlers. Bing and Yandex ignore the ",
+    "line, and RFC 9309 defines no such record."
+  )
+  if (identical(type, "disallow")) {
+    message <- paste0(
+      message, " For an AI-training opt-out, use a ",
+      "`User-agent: __usage_ai-training` group instead."
+    )
+  }
+  message
 }
 
 split_validation_lines <- function(bytes) {
