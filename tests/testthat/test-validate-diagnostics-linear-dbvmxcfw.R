@@ -81,10 +81,12 @@ linear_body_clean <- function() {
 }
 
 # The frame's row names and attribute names, as seam_digest()'s extra lines.
+# identical() compares attributes as a set, so their names are sorted: the
+# stored order is an implementation detail, not part of the frame's value.
 linear_frame_extra <- function(frame) {
   c(
     paste("row.names", paste(.row_names_info(frame, 0L), collapse = ",")),
-    paste("attributes", paste(names(attributes(frame)), collapse = ","))
+    paste("attributes", paste(sort(names(attributes(frame))), collapse = ","))
   )
 }
 
@@ -165,7 +167,7 @@ test_that("the frame of a body on every emission path is pinned", {
   )
   expect_identical(
     seam_digest(d, linear_frame_extra(d)),
-    "380182c8c90d264239c28cd319256ee5"
+    "40b363f5ac46c8fd5b7ac1964ebbcf46"
   )
 })
 
@@ -178,7 +180,7 @@ test_that("the frame of a NUL-bearing UTF-16 body is pinned", {
   )
   expect_identical(
     seam_digest(d, linear_frame_extra(d)),
-    "681085d553350c7f48eddde12a55101f"
+    "dda782b02dd558144cf0f2deeede8357"
   )
 })
 
@@ -192,7 +194,7 @@ test_that("an HTML page with rules and no User-agent is pinned", {
   )
   expect_identical(
     seam_digest(d, linear_frame_extra(d)),
-    "091fcb80c5442ce1ca384dcde100d87c"
+    "0e6edea3cb111180a2ab31dffb2b50c9"
   )
 })
 
@@ -206,7 +208,7 @@ test_that("an empty body's no_rules row is pinned", {
   expect_identical(linear_rows(d), "no_rules@NA")
   expect_identical(
     seam_digest(d, linear_frame_extra(d)),
-    "b87027a7f039f7ece78b927469f40ece"
+    "145d3aa3cfa14341c11f1443547549ab"
   )
 })
 
@@ -219,7 +221,7 @@ test_that("a fetch through a redirect keeps its redirect row in place", {
   )
   expect_identical(
     seam_digest(d, linear_frame_extra(d)),
-    "3ef41956e83080671d92cf117fae22ed"
+    "b1e0c1214cbe05efa668d3abed1ddf65"
   )
 })
 
@@ -234,7 +236,7 @@ test_that("a 2xx body cut at max_bytes keeps its document-level row", {
   )
   expect_identical(
     seam_digest(d, linear_frame_extra(d)),
-    "06bdf3de2651d8c53a7aed000440c650"
+    "17723d812fc2e10f628654abd81a8c3d"
   )
 })
 
@@ -249,7 +251,7 @@ test_that("a 203 robots.txt keeps its info row beside its rules", {
   )
   expect_identical(
     seam_digest(d, linear_frame_extra(d)),
-    "bf067c52aa2d02e673554f6dcf4c08d6"
+    "e9e6e8c5bd82e28745f2f861b9c1742d"
   )
 })
 
@@ -262,6 +264,6 @@ test_that("a non-ASCII directive name keeps its UTF-8 encoding mark", {
   expect_identical(Encoding(d$directive), c("UTF-8", "unknown"))
   expect_identical(
     seam_digest(d, linear_frame_extra(d)),
-    "33c52d397e23a2760bd8dcd10c44b258"
+    "29b7356bf39d00ceaff21bf1903a32b4"
   )
 })
