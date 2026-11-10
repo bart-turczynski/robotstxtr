@@ -134,7 +134,9 @@ the file in R. The vendored matcher reads the file, and robotstxtr reports
 which rule decided each URL:
 
 ```{r}
-m <- allowed_by_robots_text(robots, "https://example.com/private/report", "FooBot")
+m <- allowed_by_robots_text(
+  robots, "https://example.com/private/report", "FooBot"
+)
 m$results[c("matched_line", "matched_rule_type", "matched_rule_value")]
 ```
 
@@ -320,7 +322,7 @@ can leave a shorter rule that matches more:
 ```{r}
 long_path <- paste0("/", strrep("a", 16700))
 long_body <- paste0("User-agent: *\nDisallow: ", long_path, "/secret\n")
-decide(long_body, paste0(long_path, "/public"))$allowed
+decide(long_body, sprintf("%s/public", long_path))$allowed
 ```
 
 `robotstxt` 0.7.15 allows this URL, since it reads the whole rule. The
