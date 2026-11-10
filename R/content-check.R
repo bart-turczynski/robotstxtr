@@ -5,7 +5,9 @@
 # as before, and no allow or disallow decision depends on the flag.
 #
 # The flag comes from the body alone. The response's Content-Type is reported
-# beside it, unread here, so a caller can compare the two.
+# beside it, unread here, so a caller can compare the two. The flag is read on
+# fetch rows and by the validator, whose `html_body` warning is its "html"
+# answer (ROBO-ccfsanhq).
 #
 # The closed vocabulary, first match wins:
 #

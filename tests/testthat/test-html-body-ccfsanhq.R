@@ -62,3 +62,87 @@ test_that("HTML past the sniffer's window draws no html_body", {
   expect_true(is.na(robots_content_flag(charToRaw(body))))
   expect_false("html_body" %in% html_codes(body))
 })
+
+# --- Bodies that are HTML --------------------------------------------------
+
+spam_path <- test_path("fixtures", "edge-cases", "content-spam-html.txt")
+spam_html <- readBin(spam_path, "raw", file.info(spam_path)$size)
+
+# The per-line rows of a validation, as `code@line`, without html_body.
+line_rows <- function(d) {
+  keep <- d$code != "html_body"
+  paste0(d$code[keep], "@", d$line[keep])
+}
+
+expect_one_html_body <- function(x, label = NULL) {
+  d <- x$diagnostics[x$diagnostics$code == "html_body", , drop = FALSE]
+  expect_identical(nrow(d), 1L, label = label)
+  expect_identical(d$severity, "warning", label = label)
+  expect_identical(d$line, NA_integer_, label = label)
+  expect_identical(d$directive, NA_character_, label = label)
+}
+
+test_that("a spam HTML page draws one html_body and keeps its line rows", {
+  x <- robots_validate_text(spam_html)
+  expect_one_html_body(x)
+  expect_identical(x$documents$validation_status, "error")
+  # The summary adds a row; it replaces none. These are the rows the page
+  # drew before html_body existed (ROBO-mxermwed's manifest, as pinned then).
+  before <- c(
+    paste0("malformed_line@", c(3, 5, 8, 9, 10, 14, 15)),
+    paste0(c("accepted_missing_colon", "unknown_directive"), "@",
+           rep(c(1, 2, 4), each = 2L)),
+    paste0("unknown_directive@", c(6, 7, 11, 12, 13)),
+    "no_rules@NA"
+  )
+  expect_identical(line_rows(x$diagnostics), before)
+  expect_identical(x$documents$malformed_lines, 7L)
+})
+
+test_that("a minimal HTML page draws html_body beside its line codes", {
+  x <- robots_validate_text("<!DOCTYPE html>\n<html></html>\n")
+  expect_one_html_body(x)
+  # `<html></html>` reads as a colon-less `html` directive.
+  expect_identical(
+    x$diagnostics$code,
+    c("malformed_line", "accepted_missing_colon", "unknown_directive",
+      "html_body", "no_rules")
+  )
+})
+
+test_that("a BOM before HTML draws byte_order_mark and html_body", {
+  bytes <- c(as.raw(c(0xef, 0xbb, 0xbf)), charToRaw("<html>\n<body></body>\n"))
+  x <- robots_validate_text(bytes)
+  expect_one_html_body(x)
+  expect_true("byte_order_mark" %in% x$diagnostics$code)
+})
+
+test_that("a short Latin-1 byte in an HTML page still draws html_body", {
+  bytes <- c(charToRaw("<!DOCTYPE html>\n<html><body>caf"), as.raw(0xe9),
+             charToRaw("</body></html>\n"))
+  expect_identical(robots_content_flag(bytes), "html")
+  x <- robots_validate_text(bytes)
+  expect_one_html_body(x)
+  expect_true("invalid_utf8" %in% x$diagnostics$code)
+})
+
+test_that("robots_validate_url() draws html_body on an HTML 200", {
+  local_fake_ssrfr(function(req) {
+    fake_response(200L, headers = list(`Content-Type` = "text/html"),
+                  body = spam_html)
+  })
+  x <- robots_validate_url("https://example.com/")
+  expect_one_html_body(x)
+  expect_identical(x$documents$validation_status, "error")
+})
+
+test_that("an HTML body cut at max_bytes draws html_body, not no_rules", {
+  local_fake_ssrfr(function(req) {
+    fake_response(200L, headers = list(`Content-Type` = "text/html"),
+                  body = spam_html)
+  })
+  x <- robots_validate_url("https://example.com/", max_bytes = 100L)
+  expect_one_html_body(x)
+  expect_true("body_truncated" %in% x$diagnostics$code)
+  expect_false("no_rules" %in% x$diagnostics$code)
+})

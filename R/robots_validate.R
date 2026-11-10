@@ -98,6 +98,9 @@ validation_unsupported <- c(
 #'   \code{missing_user_agent} \tab error \tab
 #'     Allow or Disallow rules exist but no line names a non-empty
 #'     User-agent. \cr
+#'   \code{html_body} \tab warning \tab
+#'     The body looks like an HTML page, not a robots.txt; its lines are still
+#'     read and reported one by one. \cr
 #'   \code{no_rules} \tab info \tab
 #'     The parser read no Allow or Disallow rule, so the document restricts
 #'     nothing.
@@ -642,6 +645,18 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     add_diagnostic(
       NA_integer_, "error", "missing_user_agent", "user-agent",
       "Document has no non-empty User-agent directive."
+    )
+  }
+  # A body that looks like an HTML page gets one document-level warning
+  # (ROBO-ccfsanhq), from the fetch row's sniffer (ROBO-nhuirvrd) read on the
+  # validated bytes. Its per-line rows stay: a real rule inside the page is
+  # still enforced. A NUL or mostly invalid UTF-8 makes the flag "binary",
+  # which nul_byte and invalid_utf8 already report.
+  if (identical(robots_content_flag(bytes), "html")) {
+    add_diagnostic(
+      NA_integer_, "warning", "html_body", NA_character_,
+      paste0("The body looks like an HTML page, not a robots.txt; its lines ",
+             "were read as directives anyway.")
     )
   }
   if (rule_count == 0L && !body_truncated) {

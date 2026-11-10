@@ -240,8 +240,8 @@ The 500 KiB boundaries are pinned elsewhere (table above).
 
 | id | RFC 9309 | Google doc | Matcher | Validator | Surprise |
 |---|---|---|---|---|---|
-| `content-spam-html` — a casino/popunder page with scripts, links and an iframe served as robots.txt | no valid records: no rules | an HTML download is parsed for rules and everything else ignored | `/`, `/private/` allow | `accepted_missing_colon`, `unknown_directive` and `malformed_line` rows, `no_rules`; `validation_status = "error"` | yes; **known gap**: no diagnostic names the body as HTML (the content flag exists only on fetch rows, ROBO-nhuirvrd) |
-| `redirect-cross-host-html` — `http://a.example/robots.txt` answers 301 to `https://b.example/landing`, an HTML page | redirects followed, reached rules applied to the first authority (§2.3.1.2) | redirects followed | the fetch follows (`redirect_count = 1`, `effective_url` the landing page, `content_type = "text/html"`, `content_flag = "html"`, v1 `usable_body` / `http_200_use_rules`), and every URL is allowed | the landing page's lines (`malformed_line`, `accepted_missing_colon`, `unknown_directive`, `no_rules`); nothing about the redirect | yes; **known gap**: ROBO-gokbvzcb |
+| `content-spam-html` — a casino/popunder page with scripts, links and an iframe served as robots.txt | no valid records: no rules | an HTML download is parsed for rules and everything else ignored | `/`, `/private/` allow | `accepted_missing_colon`, `unknown_directive` and `malformed_line` rows, `html_body` (the body looks like HTML, from the ROBO-nhuirvrd content flag), `no_rules`; `validation_status = "error"` | yes; covered by `html_body` |
+| `redirect-cross-host-html` — `http://a.example/robots.txt` answers 301 to `https://b.example/landing`, an HTML page | redirects followed, reached rules applied to the first authority (§2.3.1.2) | redirects followed | the fetch follows (`redirect_count = 1`, `effective_url` the landing page, `content_type = "text/html"`, `content_flag = "html"`, v1 `usable_body` / `http_200_use_rules`), and every URL is allowed | the landing page's lines (`malformed_line`, `accepted_missing_colon`, `unknown_directive`, `html_body`, `no_rules`); nothing about the redirect | yes; **known gap**: ROBO-gokbvzcb |
 
 The redirect case runs through the ssrfr fake (`helper-fake-ssrfr.R`); its
 fetch-layer values are pinned in the test file, not in the manifest.
@@ -275,6 +275,7 @@ a fix turns its block red.
    `grp-star-prefixed-token`: a User-agent value the matcher cuts or never
    matches is not flagged.
 8. ROBO-ccfsanhq — `content-spam-html`: no validator diagnostic names an HTML body.
+   Fixed by ROBO-ccfsanhq: the `html_body` warning.
 9. ROBO-fbbmvbob (maintainer decision) — `grp-googlebot-image-fallback`: the
    binding ignores Googlebot-Image's documented parent token `Googlebot`.
 10. ROBO-kormmfyg — `esc-lower-hex-rule`: the matcher upper-cases a rule's
