@@ -85,6 +85,22 @@ test_that("several bad lines get one row each, in line order", {
   expect_identical(d$severity, c("warning", "error", "error"))
 })
 
+test_that("thousands of bad lines give one row each, in line order", {
+  n <- 30000L
+  rules <- unlist(lapply(seq_len(n), function(i) {
+    c(charToRaw(sprintf("Disallow: /p%05d", i)), as.raw(c(0xe9, 0x0a)))
+  }), use.names = FALSE)
+  d <- iu_rows(c(charToRaw("User-agent: *\n# "), as.raw(0xff),
+                 charToRaw("\n"), rules))
+  bad <- d[d$code %in% c("invalid_utf8", "invalid_utf8_comment"), ]
+  expect_identical(nrow(bad), n + 1L)
+  expect_identical(bad$line, seq_len(n + 1L) + 1L)
+  expect_identical(bad$code, c("invalid_utf8_comment",
+                               rep("invalid_utf8", n)))
+  expect_identical(bad$raw_text[c(2L, n + 1L)],
+                   c("Disallow: /p00001\\xE9", "Disallow: /p30000\\xE9"))
+})
+
 test_that("line numbers follow CR, CRLF and LF separators alike", {
   for (sep in c("\n", "\r", "\r\n")) {
     body <- iu_bytes("User-agent: *", sep, "Disallow: /a", sep, "# ", 0xe9,

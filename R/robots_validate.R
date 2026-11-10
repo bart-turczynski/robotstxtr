@@ -58,8 +58,8 @@ validation_unsupported <- c(
 #'   \code{nul_byte} \tab error \tab
 #'     A line holds NUL bytes, which can truncate parsing. \cr
 #'   \code{invalid_utf8} \tab error \tab
-#'     A line holds bytes that are not well-formed UTF-8 before any
-#'     \code{#}, in a key or value. \cr
+#'     A line holds bytes that are not well-formed UTF-8 before the line's
+#'     first \code{#}. \cr
 #'   \code{invalid_utf8_comment} \tab warning \tab
 #'     A line's bytes that are not well-formed UTF-8 all sit in its comment,
 #'     after the first \code{#}; no rule changes. \cr
@@ -545,31 +545,31 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # without its NUL bytes, as the matchers read it. The parser cuts a line at
   # its first `#` (GetKeyAndValueFrom), and `#` is never part of a multi-byte
   # sequence, so bad bytes only after it change no rule (ROBO-sniltuap).
-  encoding_valid <- TRUE
-  for (line in seq_len(line_count)) {
-    line_bytes <- nul_free_bytes(raw_lines[[line]])
-    if (validUTF8(rawToChar(line_bytes))) {
-      next
-    }
-    encoding_valid <- FALSE
-    hash <- match(as.raw(0x23), line_bytes)
-    before_comment <- if (is.na(hash)) {
-      line_bytes
-    } else {
-      validation_raw_slice(line_bytes, 1L, hash - 1L)
-    }
-    if (validUTF8(rawToChar(before_comment))) {
-      add_diagnostic(
-        line, "warning", "invalid_utf8_comment", NA_character_,
+  # Its rows go in as one frame: a file can hold thousands of bad lines.
+  nul_free_lines <- lapply(raw_lines, nul_free_bytes)
+  bad_lines <- which(!vapply(nul_free_lines, function(line_bytes) {
+    validUTF8(rawToChar(line_bytes))
+  }, logical(1L)))
+  encoding_valid <- length(bad_lines) == 0L
+  if (!encoding_valid) {
+    in_comment <- vapply(nul_free_lines[bad_lines], function(line_bytes) {
+      hash <- match(as.raw(0x23), line_bytes)
+      !is.na(hash) &&
+        validUTF8(rawToChar(validation_raw_slice(line_bytes, 1L, hash - 1L)))
+    }, logical(1L))
+    diag_env$items[[length(diag_env$items) + 1L]] <- validation_diagnostic(
+      source_id, bad_lines, ifelse(in_comment, "warning", "error"),
+      ifelse(in_comment, "invalid_utf8_comment", "invalid_utf8"),
+      NA_character_,
+      vapply(raw_lines[bad_lines], render_validation_line, "",
+             USE.NAMES = FALSE),
+      ifelse(
+        in_comment,
         paste0("Only a comment holds bytes that are not well-formed UTF-8; ",
-               "no rule changes.")
-      )
-    } else {
-      add_diagnostic(
-        line, "error", "invalid_utf8", NA_character_,
+               "no rule changes."),
         "Line bytes are not well-formed UTF-8."
       )
-    }
+    )
   }
   encoding <- if (encoding_valid) "utf-8" else "invalid-utf-8"
 
