@@ -1,10 +1,10 @@
-# The shared batch module behind the Yandex and Bing matcher adapters
-# (ROBO-iwmtdutk).
+# The shared batch module behind the Yandex, Bing and Google matcher adapters
+# (ROBO-iwmtdutk; Google since ROBO-iooslxvj).
 #
-# Both adapters have slice A's batch interface `callable(bodies, urls,
-# product_tokens)` -> a decision frame (ROBO-bukqpjli), and both native
-# bindings parse each DISTINCT body exactly once. What the two adapters
-# shared is batching and result transport, and that is all this module
+# The adapters have slice A's batch interface `callable(bodies, urls,
+# product_tokens)` -> a decision frame (ROBO-bukqpjli), and each native
+# binding parses each DISTINCT body exactly once. What the adapters
+# share is batching and result transport, and that is all this module
 # holds: the argument check, recycling, the request-target bytes, the
 # distinct-body grouping, the allow/disallow decision, the empty frame and
 # the frame assembly. Everything an engine decides stays with its adapter:

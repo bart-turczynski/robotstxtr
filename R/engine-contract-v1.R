@@ -1091,12 +1091,23 @@ row_matcher_frame_v1 <- function(row_match, bodies, urls, product_tokens) {
   out
 }
 
-# The Google matcher adapter. It still matches row by row: each row's body
-# is cut to Google's 512,000-byte window by match_google_v1() itself, before
-# any grouping, and each row keeps its own `matcher_body_truncated`. Google
-# rows carry no raw rule value yet (`matched_rule_value_raw` NULL).
+# The Google matcher adapter. It parses each distinct body once, through the
+# shared batch module (R/matcher-batch-v1.R) like the Yandex and Bing
+# adapters; its extractor, native batch and status mapping live in
+# R/google-batch-v1.R (ROBO-iooslxvj). Each distinct body is cut to Google's
+# 512,000-byte window there, and each row keeps its body's
+# `matcher_body_truncated`. Row for row it gives what match_google_v1(), the
+# reference row matcher, gives. Google rows carry no raw rule value yet
+# (`matched_rule_value_raw` NULL).
 match_google_batch_v1 <- function(bodies, urls, product_tokens) {
-  row_matcher_frame_v1(match_google_v1, bodies, urls, product_tokens)
+  run_batch_matcher_v1(
+    bodies, urls, product_tokens,
+    bodies_class = "robotstxtr_invalid_google_bodies",
+    extract_target = google_request_target_v1,
+    native_eval = google_evaluate_batch_v1,
+    map_status = google_map_native_v1,
+    native_columns = character()
+  )
 }
 
 # The frozen identity of the vendored robotstxtyandex payload. These six fields
@@ -1484,7 +1495,7 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 
   # One adapter call per backend over all of its rows, in row order; the
   # decision frame's row k scatters back to the backend's k-th row. Adapters
-  # that parse once per distinct body (yandex, bing) dedupe inside.
+  # that parse once per distinct body (google, yandex, bing) dedupe inside.
   matched_rule_value_raw <- vector("list", n)
   matcher_rows <- which(needs_matcher)
   matcher_sources <- source_of[matcher_rows]

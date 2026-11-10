@@ -28,6 +28,10 @@ robotstxtr_matching_line_text_ <- function(body, url, user_agent) {
   .Call(`_robotstxtr_robotstxtr_matching_line_text_`, body, url, user_agent)
 }
 
+robotstxtr_google_eval_batch_ <- function(bodies, ids, agents, targets) {
+  .Call(`_robotstxtr_robotstxtr_google_eval_batch_`, bodies, ids, agents, targets)
+}
+
 robotstxtr_checked_batch_ <- function(bodies, ids, agents, targets) {
   .Call(`_robotstxtr_robotstxtr_checked_batch_`, bodies, ids, agents, targets)
 }
