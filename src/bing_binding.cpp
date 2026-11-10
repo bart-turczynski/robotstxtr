@@ -7,14 +7,14 @@
 // declared under vendor/robotstxtbing/include (reached via the -Ivendor/... path
 // in src/Makevars). It is engine-pure: it never calls the Google engine
 // (robots.cc), the robotstxtyandex engine, or their URL behavior, and it shares
-// no parser/matcher/URL-normalizer with them.
+// no parser/matcher/URL-normalizer with them. It shares only the byte transport
+// in binding_bytes.h (ROBO-iwmtdutk).
 //
 // The three registered routines are Bing-named (there is no "no bing native
 // entry point" grep invariant; the Yandex one existed only because Yandex reused
-// a single engine-neutral routine name). Registering them does NOT activate the
-// backend: nothing in the public facade calls them, they are not user-exported,
-// and engine_matcher_availability_v1()[["bing"]] stays capability_unavailable
-// until the atomic activation slice (BI5).
+// a single engine-neutral routine name). They are not user-exported; the Bing
+// matcher adapter (match_bing_v1(), R/match-bing-v1.R) calls them through
+// R/bing-native.R.
 //
 // Lifetime & batching (spec section 8): the robots body is accepted as a
 // length-bearing RAW value so embedded NUL and invalid UTF-8 reach
@@ -49,81 +49,15 @@
 #include "robotstxtbing/result.h"
 #include "robotstxtbing/version.h"
 
+#include "binding_bytes.h"
+
 namespace {
 
-// Minimal, self-contained UTF-8 well-formedness check (rejects overlong forms,
-// UTF-16 surrogates, and code points above U+10FFFF). Used only to decide
-// whether the exact rule-value bytes can also be surfaced as a UTF-8 character
-// scalar; the exact bytes are always preserved separately as a raw element.
-// (Package glue, intentionally independent of the Yandex binding's copy -- these
-// translation units share no code.)
-bool is_valid_utf8(const std::string& s) {
-  const unsigned char* b = reinterpret_cast<const unsigned char*>(s.data());
-  const std::size_t n = s.size();
-  std::size_t i = 0;
-  while (i < n) {
-    const unsigned char c = b[i];
-    if (c < 0x80) {
-      i += 1;
-    } else if ((c >> 5) == 0x6) {  // 110xxxxx: 2-byte sequence
-      if (c < 0xC2) return false;  // overlong
-      if (i + 1 >= n || (b[i + 1] & 0xC0) != 0x80) return false;
-      i += 2;
-    } else if ((c >> 4) == 0xE) {  // 1110xxxx: 3-byte sequence
-      if (i + 2 >= n || (b[i + 1] & 0xC0) != 0x80 ||
-          (b[i + 2] & 0xC0) != 0x80) {
-        return false;
-      }
-      if (c == 0xE0 && b[i + 1] < 0xA0) return false;  // overlong
-      if (c == 0xED && b[i + 1] > 0x9F) return false;  // surrogate
-      i += 3;
-    } else if ((c >> 3) == 0x1E) {  // 11110xxx: 4-byte sequence
-      if (i + 3 >= n || (b[i + 1] & 0xC0) != 0x80 ||
-          (b[i + 2] & 0xC0) != 0x80 || (b[i + 3] & 0xC0) != 0x80) {
-        return false;
-      }
-      if (c == 0xF0 && b[i + 1] < 0x90) return false;               // overlong
-      if (c > 0xF4 || (c == 0xF4 && b[i + 1] > 0x8F)) return false;  // >U+10FFFF
-      i += 4;
-    } else {
-      return false;
-    }
-  }
-  return true;
-}
-
-// Copy a RAWSXP's bytes into an owning std::string verbatim -- preserving
-// embedded NUL and invalid UTF-8 with no translation or NUL termination.
-std::string raw_sexp_to_bytes(SEXP x) {
-  if (TYPEOF(x) != RAWSXP) {
-    cpp11::stop("expected a raw vector");
-  }
-  const R_xlen_t n = Rf_xlength(x);
-  const Rbyte* p = RAW(x);
-  return std::string(reinterpret_cast<const char*>(p),
-                     static_cast<std::size_t>(n));
-}
-
-// Build an owning R raw vector carrying the exact bytes (raw(0) for empty).
-cpp11::writable::raws bytes_to_raws(const std::string& s) {
-  cpp11::writable::raws out(static_cast<R_xlen_t>(s.size()));
-  for (std::size_t i = 0; i < s.size(); ++i) {
-    out[static_cast<R_xlen_t>(i)] = static_cast<uint8_t>(s[i]);
-  }
-  return out;
-}
-
-// Exact rule-value bytes as a convenience UTF-8 character scalar -- but only
-// when the bytes are valid UTF-8 with no embedded NUL; otherwise NA_character_
-// (the exact bytes remain available via the raw column). An empty value is a
-// valid UTF-8 empty string "".
-cpp11::r_string value_utf8_or_na(const std::string& s) {
-  if (is_valid_utf8(s) && s.find('\0') == std::string::npos) {
-    return cpp11::r_string(
-        Rf_mkCharLenCE(s.data(), static_cast<int>(s.size()), CE_UTF8));
-  }
-  return cpp11::r_string(NA_STRING);
-}
+// Byte transport shared with the other package bindings (binding_bytes.h);
+// no engine logic is shared.
+using robotstxtr_binding::bytes_to_raws;
+using robotstxtr_binding::raw_sexp_to_bytes;
+using robotstxtr_binding::value_utf8_or_na;
 
 const char* parse_status_name(robotstxtbing::ParseStatus status) {
   switch (status) {

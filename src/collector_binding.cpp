@@ -29,48 +29,15 @@
 #include <cpp11.hpp>
 
 #include "robots.h"
+#include "binding_bytes.h"
 
 namespace {
 
-// Minimal, self-contained UTF-8 well-formedness check. Used only to decide the
-// R string encoding mark (CE_UTF8 vs CE_BYTES) for a collected callback value,
-// so that a non-UTF-8 value is surfaced verbatim as an `Encoding = "bytes"`
-// string instead of triggering a translation error. Rejects overlong forms,
-// UTF-16 surrogates, and code points above U+10FFFF.
-bool is_valid_utf8(const std::string& s) {
-  const unsigned char* b = reinterpret_cast<const unsigned char*>(s.data());
-  const size_t n = s.size();
-  size_t i = 0;
-  while (i < n) {
-    const unsigned char c = b[i];
-    if (c < 0x80) {
-      i += 1;
-    } else if ((c >> 5) == 0x6) {  // 110xxxxx: 2-byte sequence
-      if (c < 0xC2) return false;  // overlong
-      if (i + 1 >= n || (b[i + 1] & 0xC0) != 0x80) return false;
-      i += 2;
-    } else if ((c >> 4) == 0xE) {  // 1110xxxx: 3-byte sequence
-      if (i + 2 >= n || (b[i + 1] & 0xC0) != 0x80 ||
-          (b[i + 2] & 0xC0) != 0x80) {
-        return false;
-      }
-      if (c == 0xE0 && b[i + 1] < 0xA0) return false;  // overlong
-      if (c == 0xED && b[i + 1] > 0x9F) return false;  // surrogate
-      i += 3;
-    } else if ((c >> 3) == 0x1E) {  // 11110xxx: 4-byte sequence
-      if (i + 3 >= n || (b[i + 1] & 0xC0) != 0x80 ||
-          (b[i + 2] & 0xC0) != 0x80 || (b[i + 3] & 0xC0) != 0x80) {
-        return false;
-      }
-      if (c == 0xF0 && b[i + 1] < 0x90) return false;         // overlong
-      if (c > 0xF4 || (c == 0xF4 && b[i + 1] > 0x8F)) return false;  // > U+10FFFF
-      i += 4;
-    } else {
-      return false;
-    }
-  }
-  return true;
-}
+// The shared UTF-8 check (binding_bytes.h) decides the R string encoding mark
+// (CE_UTF8 vs CE_BYTES) for a collected callback value, so that a non-UTF-8
+// value is surfaced verbatim as an `Encoding = "bytes"` string instead of
+// triggering a translation error.
+using robotstxtr_binding::is_valid_utf8;
 
 // Read-only parse handler that records what each directive callback delivered:
 // the one-based line number, a stable lowercase type string, and the exact
