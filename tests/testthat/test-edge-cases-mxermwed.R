@@ -267,12 +267,12 @@ test_that("ROBO-mxermwed: a User-agent value cut to its token is flagged", {
   expect_identical(edge_decision(bytes, "/x", "FooBot"), "allow")
 })
 
-test_that("ROBO-mxermwed: a lower-case escape in a rule misses its own path", {
-  # known gap (ROBO-kormmfyg): Disallow: /a%3cb is stored as /a%3Cb, so the
-  # exact path the owner wrote, /a%3cb, is allowed (RFC 9309 section 2.2.2
-  # keeps %3c encoded and matches it octet for octet); no diagnostic
+test_that("ROBO-mxermwed: a lower-case escape in a rule is flagged", {
+  # Fixed (ROBO-kormmfyg): Disallow: /a%3cb is stored as /a%3Cb, so the exact
+  # path the owner wrote, /a%3cb, is allowed (RFC 9309 section 2.2.2 keeps %3c
+  # encoded and matches it octet for octet); rule_lowercase_escape now says so
   bytes <- edge_case("esc-lower-hex-rule")
-  expect_identical(edge_codes(bytes), "")
+  expect_identical(edge_codes(bytes), "rule_lowercase_escape@2")
   expect_identical(edge_decision(bytes, "/a%3cb", "FooBot"), "allow")
   expect_identical(edge_decision(bytes, "/a%3Cb", "FooBot"), "disallow")
 })
@@ -281,8 +281,7 @@ test_that("ROBO-mxermwed: every known_gap row is restated above", {
   m <- edge_manifest
   expect_setequal(
     unique(m$id[nzchar(m$known_gap)]),
-    c("esc-lower-hex-rule",
-      "grp-googlebot-image-fallback")
+    c("grp-googlebot-image-fallback")
   )
 })
 
@@ -304,6 +303,7 @@ edge_covering_code <- c(
   "cmt-hash-in-rule" = "rule_cut_by_comment",
   "esc-pct7e-rule-tilde-url" = "rule_escaped_unreserved",
   "esc-space-in-rule" = "rule_inner_whitespace",
+  "esc-lower-hex-rule" = "rule_lowercase_escape",
   "size-long-line" = "line_too_long",
   "content-spam-html" = "html_body",
   "grp-user-agent-with-space" = "user_agent_cut",

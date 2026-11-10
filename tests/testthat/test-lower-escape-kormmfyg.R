@@ -18,21 +18,73 @@ lc_flagged <- c(
   "/a%3cb", "/a%c3", "/a%aB", "/a%Ab", "/%%3c", "/café%3c", "/a%3cb%3C"
 )
 
-test_that("known gap (ROBO-kormmfyg): a lower-case escape is unflagged", {
+test_that("a lower-case escape in a rule is one rule_lowercase_escape", {
   for (value in lc_flagged) {
     for (directive in c("disallow", "allow")) {
       line <- paste0(directive, ": ", value)
-      expect_identical(nrow(lc_found(lc_validate(line))), 0L, label = line)
+      x <- lc_validate(line)
+      found <- lc_found(x)
+      expect_identical(nrow(found), 1L, label = line)
+      expect_identical(found$severity, "warning", label = line)
+      expect_identical(found$line, 2L, label = line)
+      expect_identical(found$directive, directive, label = line)
+      expect_identical(x$documents$validation_status, "warning", label = line)
     }
-  }
-  for (line in c(
-    "Disallow /a%3cb", "Dissallow: /a%3cb", "Allow /a%3cb"
-  )) {
-    expect_identical(nrow(lc_found(lc_validate(line))), 0L, label = line)
   }
 })
 
-test_that("a known gap (ROBO-kormmfyg) holds for a rule's line-ending forms", {
+test_that("the rule_lowercase_escape message names the escape and its form", {
+  x <- lc_validate("Disallow: /a%3cb")
+  expect_identical(
+    lc_found(x)$message,
+    paste0(
+      "Google upper-cases the escape '%3c' in a pattern but not in the URL, ",
+      "so a URL written with '%3c' does not match this rule; write it as ",
+      "'%3C'."
+    )
+  )
+  # One escape, however often it repeats, is named once.
+  expect_match(
+    lc_found(lc_validate("Disallow: /a%3c%3cb"))$message,
+    "^Google upper-cases the escape '%3c' in a pattern"
+  )
+})
+
+test_that("several lower-case escapes on one line are one finding", {
+  x <- lc_validate("Disallow: /a%3cb%aa%3C")
+  found <- lc_found(x)
+  expect_identical(nrow(found), 1L)
+  expect_identical(
+    found$message,
+    paste0(
+      "These escapes are lower-case: '%3c' for '%3C', '%aa' for '%AA'. ",
+      "Google upper-cases each escape in a pattern but not in the URL, so a ",
+      "URL written with a lower-case escape does not match this rule; write ",
+      "them in upper case."
+    )
+  )
+  # Twelve distinct escapes: the first ten are named, the other two counted.
+  escapes <- sprintf("%%a%x", 0:11)
+  value <- paste(escapes, collapse = "")
+  found <- lc_found(lc_validate(paste0("Disallow: /", value)))
+  expect_identical(nrow(found), 1L)
+  expect_match(found$message, "'%a9' for '%A9', and 2 more", fixed = TRUE)
+  expect_false(grepl("%aa", found$message, fixed = TRUE))
+})
+
+test_that("a missing colon or a typo key still carries the finding", {
+  for (line in c("Disallow /a%3cb", "Dissallow: /a%3cb", "Allow /a%3cb")) {
+    x <- lc_validate(line)
+    found <- lc_found(x)
+    expect_identical(nrow(found), 1L, label = line)
+    expect_identical(found$line, 2L, label = line)
+  }
+  expect_identical(
+    lc_found(lc_validate("Dissallow: /a%3cb"))$directive, "disallow"
+  )
+})
+
+test_that("the rule's line-ending, BOM and encoding forms each carry it", {
   bom <- as.raw(c(0xef, 0xbb, 0xbf))
   bodies <- list(
     crlf = charToRaw("User-agent: *\r\nDisallow: /a%3cb\r\n"),
@@ -43,16 +95,21 @@ test_that("a known gap (ROBO-kormmfyg) holds for a rule's line-ending forms", {
                   charToRaw("\n"))
   )
   for (name in names(bodies)) {
-    x <- robots_validate_text(bodies[[name]])
-    expect_identical(nrow(lc_found(x)), 0L, label = name)
+    found <- lc_found(robots_validate_text(bodies[[name]]))
+    expect_identical(nrow(found), 1L, label = name)
+    expect_identical(found$line, 2L, label = name)
   }
 })
 
-test_that("a known gap (ROBO-kormmfyg) holds across the parser's line buffer", {
-  # The parser keeps 16,663 bytes of a line. The escape here ends exactly at
-  # byte 16,663, so it is in the value: known gap, no finding yet.
-  inside <- paste0("User-agent: *\nDisallow: /", strrep("a", 16649L), "%3c\n")
-  expect_identical(nrow(lc_found(robots_validate_text(inside))), 0L)
+test_that("an escape inside the parser's 16,663-byte line buffer is flagged", {
+  # The escape ends at byte 16,663, the last one the parser keeps; the 'b'
+  # after it is cut, so the line is also line_too_long.
+  body <- paste0("User-agent: *\nDisallow: /", strrep("a", 16649L), "%3cb\n")
+  x <- robots_validate_text(body)
+  found <- lc_found(x)
+  expect_identical(nrow(found), 1L)
+  expect_identical(found$line, 2L)
+  expect_true("line_too_long" %in% x$diagnostics$code)
 })
 
 test_that("an escape outside a rule's value draws no finding", {
@@ -89,4 +146,13 @@ test_that("a key escape with a missing colon is no finding", {
   expect_identical(nrow(lc_found(robots_validate_text(body))), 0L)
   body <- charToRaw("User-agent: *\n  Disallow%3c /x\n")
   expect_identical(nrow(lc_found(robots_validate_text(body))), 0L)
+})
+
+test_that("a rule with an escape and a rule_escaped_unreserved both report", {
+  # Both are value warnings on the line, in the order the value checks run.
+  x <- lc_validate("Disallow: /%7ejoe%3c")
+  expect_identical(
+    x$diagnostics$code[x$diagnostics$line == 2L],
+    c("rule_escaped_unreserved", "rule_lowercase_escape")
+  )
 })

@@ -112,6 +112,11 @@ validation_unsupported <- c(
 #'     A pattern percent-escapes an unreserved character, such as \code{\%7E}
 #'     for \code{~}. Google matches only the escape, never the character,
 #'     though RFC 9309 section 2.2.2 decodes it. One per rule line. \cr
+#'   \code{rule_lowercase_escape} \tab warning \tab
+#'     A pattern holds a lower-case percent-escape, such as \code{\%3c}.
+#'     Google upper-cases the escape in a pattern but not in the URL, so a URL
+#'     written with it never matches the rule; Bing upper-cases it too, and
+#'     Yandex compares the pattern as written. One per rule line. \cr
 #'   \code{empty_sitemap_value} \tab warning \tab
 #'     A Sitemap line with an empty value. \cr
 #'   \code{invalid_sitemap_url} \tab warning \tab
@@ -746,6 +751,20 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     }
     for (found in directive_value_diagnostics(type, value)) {
       add_diagnostic(line, "warning", found$code, type, found$message)
+    }
+    # Google upper-cases a rule's escapes but never the URL's, so a
+    # lower-case one misses the path written (ROBO-kormmfyg). The parser's
+    # value is already upper-cased, so the check reads the raw line.
+    if (type %in% c("allow", "disallow") && nzchar(value)) {
+      escapes <- rule_lowercase_escapes(
+        raw_lines[[line]], line == 1L, parsed$missing_colon[[i]]
+      )
+      if (length(escapes) > 0L) {
+        add_diagnostic(
+          line, "warning", "rule_lowercase_escape", type,
+          rule_lowercase_escape_message(escapes)
+        )
+      }
     }
   }
 
@@ -1467,6 +1486,91 @@ rule_escaped_unreserved_diagnostic <- function(value) {
     )
   }
   list(code = "rule_escaped_unreserved", message = message)
+}
+
+# The parser keeps 16,663 bytes of a line: its read buffer holds kMaxLineLen - 1
+# bytes (src/robots.cc, RobotsTxtParser::Parse). A byte-order mark on line 1 is
+# skipped before that count.
+validation_line_bytes <- 16663L
+
+# The lower-case percent-escapes of an Allow or Disallow line's value, as the
+# parser keeps it, read from the raw line bytes (ROBO-kormmfyg). The parser
+# upper-cases the escapes it keeps (MaybeEscapePattern, src/robots.cc), so the
+# canonical value cannot show the case. The line is cut at its first NUL, its
+# first `#` and at 16,663 bytes. The key ends at the first `:`, or, when the
+# colon is missing, at the first space or tab after the leading blanks. A `%`
+# followed by two hex digits is an escape; one with a digit in a-f is
+# lower-case. Returns the distinct escapes as written, or character(0).
+rule_lowercase_escapes <- function(line_bytes, first_line, missing_colon) {
+  bytes <- line_bytes
+  if (first_line) {
+    skip <- 0L
+    while (skip < min(3L, length(bytes)) &&
+             bytes[[skip + 1L]] == validation_bom[[skip + 1L]]) {
+      skip <- skip + 1L
+    }
+    bytes <- validation_raw_slice(bytes, skip + 1L, length(bytes))
+  }
+  nul <- match(as.raw(0x00), bytes)
+  if (!is.na(nul)) {
+    bytes <- bytes[seq_len(nul - 1L)]
+  }
+  bytes <- bytes[seq_len(min(length(bytes), validation_line_bytes))]
+  hash <- match(as.raw(0x23), bytes)
+  if (!is.na(hash)) {
+    bytes <- bytes[seq_len(hash - 1L)]
+  }
+  if (missing_colon) {
+    blank <- as.raw(c(0x20, 0x09, 0x0a, 0x0b, 0x0c, 0x0d))
+    lead <- which(!bytes %in% blank)
+    if (length(lead) == 0L) {
+      return(character())
+    }
+    bytes <- bytes[lead[[1L]]:length(bytes)]
+    stop_at <- which(bytes %in% as.raw(c(0x20, 0x09)))
+  } else {
+    stop_at <- which(bytes == as.raw(0x3a))
+  }
+  if (length(stop_at) == 0L) {
+    return(character())
+  }
+  value <- bytes[-seq_len(stop_at[[1L]])]
+  pct <- which(value == as.raw(0x25))
+  pct <- pct[pct + 2L <= length(value)]
+  hex <- as.raw(c(0x30:0x39, 0x41:0x46, 0x61:0x66))
+  pct <- pct[value[pct + 1L] %in% hex & value[pct + 2L] %in% hex]
+  lower <- as.raw(0x61:0x66)
+  pct <- pct[value[pct + 1L] %in% lower | value[pct + 2L] %in% lower]
+  if (length(pct) == 0L) {
+    return(character())
+  }
+  unique(vapply(pct, function(i) rawToChar(value[i:(i + 2L)]), character(1L)))
+}
+
+# At most one finding per rule line, naming up to ten lower-case escapes with
+# the upper-case form Google matches (ROBO-kormmfyg).
+rule_lowercase_escape_message <- function(escapes) {
+  upper <- chartr("abcdef", "ABCDEF", escapes)
+  if (length(escapes) == 1L) {
+    return(sprintf(
+      paste0("Google upper-cases the escape '%s' in a pattern but not in the ",
+             "URL, so a URL written with '%s' does not match this rule; write ",
+             "it as '%s'."),
+      escapes, escapes, upper
+    ))
+  }
+  cap <- 10L
+  k <- length(escapes)
+  items <- sprintf("'%s' for '%s'", escapes, upper)[seq_len(min(k, cap))]
+  listed <- toString(items)
+  if (k > cap) {
+    listed <- sprintf("%s, and %d more", listed, k - cap)
+  }
+  paste0(
+    "These escapes are lower-case: ", listed, ". Google upper-cases each ",
+    "escape in a pattern but not in the URL, so a URL written with a ",
+    "lower-case escape does not match this rule; write them in upper case."
+  )
 }
 
 # A syntax-only check of a Sitemap value: an absolute http, https or ftp URL
