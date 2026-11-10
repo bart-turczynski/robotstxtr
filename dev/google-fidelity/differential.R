@@ -12,13 +12,16 @@
 #
 # The binary reads a manifest of TAB-separated `<body_file> <agent> <url>`
 # lines and writes `<allowed 0|1> <matching_line> <ever_seen 0|1>` per line.
-# `out_dir` (default: a fresh temporary directory) receives the bodies, the
-# manifest, the reference output and `differences.tsv`.
+# `ever_seen` (the matcher's ever_seen_specific_agent()) is not read:
+# robotstxtr exposes no equivalent on any path, so there is nothing to
+# compare it with. `out_dir` (default: a fresh temporary directory) receives
+# the bodies, the manifest, the reference output and `differences.tsv`.
 #
-# Exit status: 1 when the reference's live answers drift from the answers
+# Exit status 1 when the reference's live answers drift from the answers
 # recorded in cases.R (the pinned tests would then state the wrong
-# reference); 0 otherwise. Differences between robotstxtr and the reference
-# are reported, not failed: test-google-fidelity-deehqhlc.R pins each class.
+# reference), or when a row differs from the reference in a way
+# gf_expected_difference() in cases.R does not list (a difference outside the
+# classes of design/engine-profiles.md §5b); 0 otherwise.
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 1L) {
@@ -60,13 +63,15 @@ ref_file <- file.path(out_dir, "reference.tsv")
 con <- file(manifest_file, open = "wb")
 writeLines(enc2utf8(manifest), con, sep = "\n", useBytes = TRUE)
 close(con)
-status <- system2(binary, c(manifest_file, ref_file))
+# system2() quotes `command` itself; `args` go to the shell as given.
+status <- system2(binary, shQuote(c(manifest_file, ref_file)))
 if (!identical(status, 0L)) {
   stop("the reference binary failed with status ", status, call. = FALSE)
 }
+# The third column, ever_seen, is skipped (see the header).
 ref <- utils::read.delim(
   ref_file, header = FALSE, col.names = c("allowed", "line", "ever_seen"),
-  colClasses = "integer"
+  colClasses = c("integer", "integer", "NULL")
 )
 stopifnot(nrow(ref) == length(cases))
 
@@ -95,29 +100,46 @@ all <- do.call(rbind, rows)
 our_line <- ifelse(is.na(all$line), 0L, all$line)
 all$decision_differs <- is.na(all$allowed) | all$allowed != all$ref_allowed
 all$line_differs <- !all$decision_differs & our_line != all$ref_line
-diff <- all[all$decision_differs | all$line_differs, c(
-  "id", "family", "path", "ref_allowed", "ref_line", "allowed", "line",
-  "reason", "decision_differs", "line_differs"
+all$class <- vapply(seq_len(nrow(all)), function(k) {
+  want <- env$gf_expected_difference(all$id[[k]], all$path[[k]])
+  if (is.null(want)) NA_integer_ else want$class
+}, integer(1L))
+differs <- all$decision_differs | all$line_differs
+diff <- all[differs, c(
+  "id", "family", "path", "class", "ref_allowed", "ref_line", "allowed",
+  "line", "reason", "decision_differs", "line_differs"
 )]
 utils::write.table(
   diff, file.path(out_dir, "differences.tsv"),
   sep = "\t", quote = FALSE, row.names = FALSE
 )
+unexpected <- diff[is.na(diff$class), , drop = FALSE]
 
 cat(sprintf(
   paste0(
     "cases: %d; robotstxtr rows: %d; differing rows: %d ",
-    "(decision %d, line only %d)\n"
+    "(decision %d, line only %d; unexpected %d)\n"
   ),
   length(cases), nrow(all), nrow(diff), sum(all$decision_differs),
-  sum(all$line_differs)
+  sum(all$line_differs), nrow(unexpected)
 ))
 if (nrow(diff) > 0L) {
-  print(diff[c("id", "path", "ref_allowed", "ref_line", "allowed", "line",
-               "reason")], row.names = FALSE)
+  print(diff[c("id", "path", "class", "ref_allowed", "ref_line", "allowed",
+               "line", "reason")], row.names = FALSE)
 }
 cat("output in", out_dir, "\n")
+failed <- FALSE
 if (length(drift) > 0L) {
   cat("recorded reference answers drifted:\n", paste0("  ", drift, "\n"))
+  failed <- TRUE
+}
+if (nrow(unexpected) > 0L) {
+  cat(
+    "rows differing outside the expected classes:\n",
+    paste0("  ", unexpected$id, " ", unexpected$path, "\n")
+  )
+  failed <- TRUE
+}
+if (failed) {
   quit(status = 1L)
 }
