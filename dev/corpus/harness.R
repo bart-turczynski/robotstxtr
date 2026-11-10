@@ -160,6 +160,25 @@ frozen_manifest_hash <- function(out, run_id) {
   hash
 }
 
+# The run --manifest names, read before any work: its start-manifest hash,
+# its start manifest (manifest.rds) and its parameters, so a partial run can
+# be checked against it on the host directories both cover.
+frozen_run <- function(out, run_id) {
+  hash <- frozen_manifest_hash(out, run_id)
+  rec <- readRDS(file.path(out, run_id, "record.rds"))
+  manifest <- tryCatch(
+    suppressWarnings(readRDS(file.path(out, run_id, "manifest.rds"))),
+    error = function(e) NULL
+  )
+  if (!is.data.frame(manifest) ||
+        !all(c("host", "rds_sha256") %in% names(manifest))) {
+    harness_refuse(paste0(
+      "--manifest names a run without a readable manifest.rds: ", run_id
+    ))
+  }
+  list(run_id = run_id, hash = hash, manifest = manifest, params = rec$params)
+}
+
 # ---------------------------------------------------------------------------
 # Arguments
 
@@ -283,9 +302,7 @@ rule_values <- function(body) {
   if (!length(body)) {
     return(list())
   }
-  body <- body[body != as.raw(0L)]
-  txt <- rawToChar(body)
-  Encoding(txt) <- "bytes"
+  txt <- evaluated_text(body)
   lines <- strsplit(txt, "\r\n|\r|\n", useBytes = TRUE)[[1L]]
   lines <- sub("#.*$", "", lines, useBytes = TRUE)
   pattern <- paste0(
@@ -462,15 +479,29 @@ list_host_dirs <- function(corpus) {
 
 # Read one robots.rds: its sha256 and the record, from one read of the file.
 # A file that does not decompress or unserialize gives `record = NULL`, which
-# the files table records as readable = FALSE; it never stops the run.
+# the files table records as readable = FALSE; it never stops the run. A file
+# that is gone when the read fails (it vanished after the caller saw it)
+# gives `vanished = TRUE`, and the caller records it as absent. Any other
+# read failure (no permission, a directory in its place) is an error: the
+# file is there, so recording it absent would hide it from the input checks.
 read_corpus_record <- function(path) {
-  bytes <- readBin(path, "raw", n = file.size(path))
+  bytes <- tryCatch(
+    suppressWarnings(readBin(path, "raw", n = file.size(path))),
+    error = function(e) {
+      if (file.exists(path)) stop(e)
+      NULL
+    }
+  )
+  if (is.null(bytes)) {
+    return(list(sha256 = NA_character_, bytes = NA_integer_, record = NULL,
+                vanished = TRUE))
+  }
   sha <- tools::sha256sum(bytes = bytes)
   magic <- bytes[seq_len(min(3L, length(bytes)))]
   type <- if (length(magic) >= 2L && magic[[1L]] == as.raw(0x1f) &&
                 magic[[2L]] == as.raw(0x8b)) {
     "gzip"
-  } else if (length(magic) == 3L && rawToChar(magic) == "BZh") {
+  } else if (identical(magic, charToRaw("BZh"))) {
     "bzip2"
   } else if (length(magic) >= 2L && magic[[1L]] == as.raw(0xfd)) {
     "xz"
@@ -481,7 +512,7 @@ read_corpus_record <- function(path) {
     data <- if (type == "none") bytes else memDecompress(bytes, type)
     unserialize(data)
   }, error = function(e) NULL)
-  list(sha256 = sha, bytes = length(bytes), record = record)
+  list(sha256 = sha, bytes = length(bytes), record = record, vanished = FALSE)
 }
 
 # The manifest of the planned host directories: one row per directory, with
@@ -490,7 +521,8 @@ read_corpus_record <- function(path) {
 # file ids and chunk membership come from the whole listing, so two listings
 # that differ only in an empty directory are different input sets. `plan` is
 # a frame with a `host` column (plan_frame() adds `file_id` and `chunk`), or
-# a character vector of host directories.
+# a character vector of host directories. `dir_exists` tells a planned
+# directory that is gone from one that only lacks a robots.rds.
 corpus_manifest <- function(corpus, plan) {
   if (is.character(plan)) {
     plan <- data.frame(host = plan, stringsAsFactors = FALSE)
@@ -504,6 +536,7 @@ corpus_manifest <- function(corpus, plan) {
     sha[has] <- unname(tools::sha256sum(paths[has]))
     bytes[has] <- as.integer(file.size(paths[has]))
   }
+  plan$dir_exists <- dir.exists(file.path(corpus, plan$host))
   plan$has_rds <- has
   plan$rds_sha256 <- sha
   plan$rds_bytes <- bytes
@@ -520,13 +553,22 @@ manifest_hash <- function(manifest) {
 
 # How `after` differs from `before`: one row per host directory that
 # vanished, appeared or changed (its robots.rds bytes, or whether it has
-# one). Zero rows when the two name the same snapshot.
+# one). Zero rows when the two name the same snapshot. When both carry
+# `dir_exists` (the files shards do not), a listed directory that is gone on
+# one side vanished or appeared, even when neither side has a robots.rds.
 manifest_diff <- function(before, after) {
   b <- stats::setNames(before$rds_sha256, before$host)
   a <- stats::setNames(after$rds_sha256, after$host)
   vanished <- setdiff(names(b), names(a))
   appeared <- setdiff(names(a), names(b))
   common <- intersect(names(b), names(a))
+  if (!is.null(before$dir_exists) && !is.null(after$dir_exists)) {
+    db <- stats::setNames(before$dir_exists, before$host)[common]
+    da <- stats::setNames(after$dir_exists, after$host)[common]
+    vanished <- c(vanished, common[db & !da])
+    appeared <- c(appeared, common[!db & da])
+    common <- common[db == da]
+  }
   x <- b[common]
   y <- a[common]
   same <- (is.na(x) & is.na(y)) | (!is.na(x) & !is.na(y) & x == y)
@@ -544,37 +586,47 @@ manifest_diff <- function(before, after) {
 # The two input checks of a run: the manifest taken at the start against the
 # hashes of the bytes the run actually processed, and against a fresh
 # manifest taken at the end. Any vanished, appeared or changed file (a
-# quarantine, a resync) makes the run invalid.
+# quarantine, a resync) makes the run invalid. So does a planned host
+# directory already gone when the start manifest was taken (a partial run
+# would otherwise read it as one without a robots.rds on all three sides);
+# a manifest without `dir_exists`, from an older run, has none gone.
 verify_run_inputs <- function(start, during, end) {
+  gone <- if (is.null(start$dir_exists)) character() else {
+    start$host[!start$dir_exists]
+  }
+  d_start <- data.frame(
+    host = gone, change = rep("vanished", length(gone)),
+    stringsAsFactors = FALSE
+  )
   d_during <- manifest_diff(start, during)
   d_end <- manifest_diff(start, end)
   list(
     start_hash = manifest_hash(start),
     during_hash = manifest_hash(during),
     end_hash = manifest_hash(end),
+    start_ok = nrow(d_start) == 0L,
     during_ok = nrow(d_during) == 0L,
     end_ok = nrow(d_end) == 0L,
-    valid = nrow(d_during) == 0L && nrow(d_end) == 0L,
+    valid = nrow(d_start) == 0L && nrow(d_during) == 0L && nrow(d_end) == 0L,
     changes = rbind(
+      if (nrow(d_start)) cbind(check = "start", d_start),
       if (nrow(d_during)) cbind(check = "during", d_during),
       if (nrow(d_end)) cbind(check = "end", d_end)
     )
   )
 }
 
-# Refuse to compare two runs whose inputs differ. Full runs must name the same
+# Whether two manifests name the same input set. Full runs must name the same
 # snapshot; when either run covered only part of the corpus, every file the
-# partial run read must appear, byte-identical, in the other run's manifest.
-check_input_sets <- function(manifest_a, manifest_b, partial_a, partial_b) {
+# partial run planned must appear, byte-identical, in the other's manifest
+# (two partial runs: on the host directories both planned). `rows` is how
+# many host directories both manifests hold; zero compared is not a match.
+same_input_set <- function(manifest_a, manifest_b, partial_a, partial_b) {
   if (!partial_a && !partial_b) {
     same <- identical(manifest_hash(manifest_a), manifest_hash(manifest_b)) &&
       !nrow(manifest_diff(manifest_a, manifest_b))
-    if (!same) {
-      harness_refuse(
-        "The two runs read different input sets: their manifests differ."
-      )
-    }
-    return(invisible(TRUE))
+    rows <- length(intersect(manifest_a$host, manifest_b$host))
+    return(list(same = same && rows > 0L, rows = rows))
   }
   small <- if (partial_b) manifest_b else manifest_a
   big <- if (partial_b) manifest_a else manifest_b
@@ -583,10 +635,18 @@ check_input_sets <- function(manifest_a, manifest_b, partial_a, partial_b) {
     small <- small[small$host %in% big$host, , drop = FALSE]
   }
   d <- manifest_diff(small, big[big$host %in% small$host, , drop = FALSE])
-  if (nrow(d) || !nrow(small)) {
-    harness_refuse(
+  rows <- sum(small$host %in% big$host)
+  list(same = !nrow(d) && rows > 0L, rows = rows)
+}
+
+# Refuse to compare two runs whose inputs differ (same_input_set()).
+check_input_sets <- function(manifest_a, manifest_b, partial_a, partial_b) {
+  if (!same_input_set(manifest_a, manifest_b, partial_a, partial_b)$same) {
+    harness_refuse(if (!partial_a && !partial_b) {
+      "The two runs read different input sets: their manifests differ."
+    } else {
       "The two runs read different input sets on the files they share."
-    )
+    })
   }
   invisible(TRUE)
 }
@@ -643,6 +703,9 @@ file_row <- function(file_id, host, read) {
     body_present = is.raw(body),
     body_bytes = if (is.raw(body)) length(body) else NA_integer_,
     nul_bytes = if (is.raw(body)) sum(body == as.raw(0L)) else NA_integer_,
+    evaluated_bytes = if (is.raw(body)) evaluated_bytes(body) else {
+      NA_integer_
+    },
     error = NA_character_,
     stringsAsFactors = FALSE
   )
@@ -655,7 +718,8 @@ skipped_file_row <- function(file_id, host) {
     fetch_outcome = NA_character_, http_status = NA_integer_,
     content_type = NA_character_, content_flag = NA_character_,
     body_truncated = NA, body_present = FALSE, body_bytes = NA_integer_,
-    nul_bytes = NA_integer_, error = NA_character_,
+    nul_bytes = NA_integer_, evaluated_bytes = NA_integer_,
+    error = NA_character_,
     stringsAsFactors = FALSE
   )
 }
@@ -909,7 +973,7 @@ compact_results <- function(res, paths, combos, n_paths) {
 # The text the package evaluates: the body with its NUL bytes removed, since
 # an R string cannot hold one. Validation sees the raw bytes, NULs included,
 # so the two can disagree on a body with NULs; evaluated_bytes() is recorded
-# per file (evaluate) and per variant (size) to show it.
+# per file (the files table) and per variant (size) to show it.
 evaluated_text <- function(body) {
   txt <- rawToChar(body[body != as.raw(0L)])
   Encoding(txt) <- "bytes"
