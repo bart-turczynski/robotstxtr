@@ -172,6 +172,9 @@ A 429 Too Many Requests, with each engine's reading in
 A 5xx, with each engine's reading in \code{message}. \cr
 \code{acquisition_http_protocol} \tab error \tab
 A 1xx or a status outside 100 to 599. \cr
+\code{acquisition_http_other_2xx} \tab info \tab
+A 2xx other than 200, such as 203 or 204; the body is still validated.
+\code{message} names how Google, Yandex and Bing read the status. \cr
 \code{acquisition_limit_exceeded} \tab error \tab
 A 3xx body exceeded \code{max_bytes} and was refused whole. \cr
 \code{acquisition_partial_response} \tab error \tab

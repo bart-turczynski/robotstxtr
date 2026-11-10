@@ -76,7 +76,11 @@ A status that leaves no body gets a code for its class (404 and 410
 Yandex and Bing may do with it, and any \code{Retry-After} delay; the policy
 behind it is in \code{\link[=robots_engine_contract_v1]{robots_engine_contract_v1()}}. The document stays
 \code{"not_validated"}, so an \code{acquisition_http_4xx} row (a 4xx other than 404,
-410 and 429) has \code{warning_count} 1 and \code{error_count} 0.
+410 and 429) has \code{warning_count} 1 and \code{error_count} 0. A 2xx other than 200
+(203 or 204, say) keeps its body, which is validated as a 200's is, and also
+gets \code{acquisition_http_other_2xx}, an info whose message names how Google,
+Yandex and Bing read that status. A 206 is a partial response with no body,
+so it keeps \code{acquisition_partial_response}.
 
 A redirect, transport or safety outcome gets a code of its own too, read
 from the source row's \code{terminal_redirect_reason} and \code{safety_block_reason}
