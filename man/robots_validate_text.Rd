@@ -148,7 +148,8 @@ exactly, such as \code{__usage_ai_training} or
 \code{ai_training_group_extra_line} \tab warning \tab
 A directive such as \code{Crawl-delay} in a group that names only the
 policy token, before its last rule or anywhere in the file's last
-group; file-level Sitemap, Host and \code{Clean-param} lines are left out.
+group; file-level Sitemap, Host and \code{Clean-param} lines are left
+out.
 \cr
 \code{ai_training_token_stacked} \tab warning \tab
 A policy-token User-agent line (\code{__usage_}, or a near miss)
