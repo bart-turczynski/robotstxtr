@@ -606,6 +606,10 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   diag_env$n_chunks <- 0L
   add_chunk <- function(line, severity, code, directive, raw_text, message) {
     n <- length(line)
+    # Each column is one value per row or one value for the whole chunk;
+    # rep_len() would silently cut or pad any other length.
+    stopifnot(all(lengths(list(severity, code, directive, raw_text, message))
+                  %in% c(1L, n)))
     diag_env$n_chunks <- diag_env$n_chunks + 1L
     assign(as.character(diag_env$n_chunks), list(
       line = rep_len(as.integer(line), n),

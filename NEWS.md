@@ -1,6 +1,6 @@
 # robotstxtr (development version)
 
-* `robots_validate_text()` and `robots_validate_url()` now take time linear in the number of diagnostics.
+* `robots_validate_text()` and `robots_validate_url()` now take time linear in the number of diagnostics (ROBO-dbvmxcfw).
 
 * The v1 `google` matcher parses each distinct robots.txt once per call, not once per URL (ROBO-iooslxvj).
 
