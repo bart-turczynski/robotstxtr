@@ -81,7 +81,7 @@ example below).
 
 | `robotstxt` 0.7.15 | robotstxtr |
 |---|---|
-| `get_robotstxt(domain)` | `robots_fetch(url)`, whose `robots$body` holds the raw bytes; or `robots_body()` on the result of `allowed_by_robots_url()` |
+| `get_robotstxt(domain)` | `robots_fetch(url)`, whose `robots$body` holds the raw bytes; or `robots_body()` on the result of `allowed_by_robots_url()`. robotstxtr takes a full `http://` or `https://` URL, not a bare domain: `"example.com"` gives an `input_invalid` row with no body, not an error |
 | `get_robotstxts(domain)` | `robots_fetch(url)`, which is vectorized and fetches each distinct origin once |
 | `get_robotstxt_http_get(domain)` | no public equivalent; `robots_fetch()` is the fetch stage |
 | `rt_last_http` | the `robots` table that `robots_fetch()` returns: `http_status`, `fetch_outcome`, `content_type` and the stored body per origin |
@@ -91,7 +91,8 @@ example below).
 # Not evaluated: these calls make network requests.
 fetched <- robots_fetch(c("https://example.com/", "https://example.com/private"))
 fetched$robots[c("robots_url", "fetch_outcome", "http_status")]
-rawToChar(fetched$robots$body[[1]])
+# The stored body keeps any NUL bytes, so rawToChar() can fail on it;
+# robots_body() on an allowed_by_robots_url() result prints it safely.
 
 decisions <- allowed_by_robots_url("https://example.com/", "FooBot")
 robots_body(decisions, n = Inf)
@@ -124,8 +125,8 @@ its `content_flag` column.
 |---|---|
 | `parse_robotstxt(txt)` | no equivalent; robotstxtr does not return a parsed rule table |
 | `robotstxt()$bots`, `$permissions`, `$sitemap`, `$host`, `$other` | no equivalent; `robots_validate_text()` reports counts and per-line diagnostics |
-| `is_valid_robotstxt(text)` | `robots_validate_text(robots_txt)`, its `documents$validation_status` |
-| `print()` and `as.list()` methods | `print()` methods for each result object; the results are plain lists of data frames |
+| `is_valid_robotstxt(text)` | `robots_validate_text(robots_txt)`, its `documents$validation_status`: `"valid"`, `"warning"` or `"error"` (and `"not_validated"` on the URL path). A file robotstxt calls valid can come back `"warning"`, so test for `!= "error"` rather than `== "valid"` if you want the yes/no answer robotstxt gives |
+| `print()` and `as.list()` methods | `print()` methods for each result object; the results are lists of data frames, plus a `contract` list on the v1 results |
 | `%>%` (re-exported from `magrittr`) | not re-exported; use the base pipe `|>` |
 
 robotstxtr does not expose a parsed rule table because it does not parse
@@ -223,8 +224,9 @@ disallows `/` under `Disallow: $`, reading the rule as `/$` (class 8).
 decide("User-agent: *\nDisallow: /\nAllow: /index.html\n", c("/", "/x"))
 ```
 
-Google treats an allowed `index.html` or `index.htm` as allowing its
-directory too, so `/` is allowed. `robotstxt` 0.7.15 disallows `/`. RFC
+Google treats an allowed `index.html` or `index.htm` as also allowing the
+directory URL itself (`/` here), not the rest of the directory: `/` is
+allowed and `/x` stays disallowed. `robotstxt` 0.7.15 disallows `/`. RFC
 9309 has no such rule. (Class 22.)
 
 ### A rule before the first `User-agent`
@@ -297,7 +299,10 @@ decide("User-agent: *\nDisallow: /caf%C3%A9\n", c("/café", "/caf%C3%A9"))
 
 `robotstxt` 0.7.15 escapes the URL first and disallows the raw form too
 (class 15). If your paths hold raw non-ASCII characters, percent-encode
-them before calling robotstxtr; `utils::URLencode()` is one way.
+them before calling robotstxtr. `utils::URLencode()` is not a safe way to do
+it: with its default `repeated = FALSE` it leaves a URL that already holds an
+escape unchanged, raw characters included, and with `repeated = TRUE` it
+re-escapes the existing `%` signs. Encode the non-ASCII bytes themselves.
 
 A raw space in a rule stays a raw space, so it does not match `%20`:
 
@@ -418,7 +423,10 @@ Every request from `allowed_by_robots_url()`, `robots_fetch()`,
 `ssrfr` guard against server-side request forgery, for the first request
 and for every redirect. A host that is, or resolves to, a loopback,
 private, link-local or cloud-metadata address is refused before any
-connection. The fetch also follows at most five redirects, refuses an
+connection. (The deprecated `ssrf_guard = FALSE` warns and reopens the
+private and loopback ranges; only exact cloud-provider metadata endpoints and
+some embedded address forms stay refused.)
+The fetch also follows at most five redirects, refuses an
 `https` to `http` redirect, sends no cookies or credentials, caps the body
 at `max_bytes` (512 KiB by default) and has one `timeout` per origin.
 
