@@ -17,8 +17,9 @@
 #
 # ENGINE-PURE. This adapter shares no parser, group selector, access matcher, or
 # URL normalizer with Google or Yandex (spec SS4): what it shares is only that
-# package-owned batching and result transport. The request-target extractor,
-# the native call and the status mapping below are Bing's own.
+# package-owned batching and result transport. The status mapping below is
+# Bing's own; its request-target extractor and native call live in
+# R/bing-native.R.
 
 # Map the native Bing columns onto SS10 matcher_status, reason and the error
 # columns.
