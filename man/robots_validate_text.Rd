@@ -82,6 +82,10 @@ A key such as \code{DisallowAITraining} that only starts with
 \cr
 \code{unsupported_directive} \tab warning \tab
 A known directive this profile ignores, such as \code{crawl-delay}. \cr
+\code{content_signal_directive} \tab warning \tab
+A \code{Content-Signal} line, from an expired Internet-Draft that no
+crawler operator documents honoring; it counts as an unsupported
+directive. \cr
 \code{unknown_directive} \tab warning \tab
 A directive this profile does not recognize. \cr
 \code{empty_user_agent} \tab error \tab
