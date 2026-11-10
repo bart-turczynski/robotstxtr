@@ -240,11 +240,11 @@ test_that("ROBO-mxermwed: a raw space inside a rule goes unflagged", {
   expect_identical(edge_decision(bytes, "/a%20b", "FooBot"), "allow")
 })
 
-test_that("ROBO-mxermwed: a # inside a rule widens it, unflagged", {
-  # known gap (ROBO-gjhpykcj): Disallow: /a#b is read as Disallow: /a and
-  # blocks /abc; no diagnostic
+test_that("ROBO-mxermwed: a # inside a rule widens it, flagged", {
+  # fixed (ROBO-gjhpykcj): Disallow: /a#b is still read as Disallow: /a and
+  # blocks /abc, and rule_cut_by_comment now says so
   bytes <- edge_case("cmt-hash-in-rule")
-  expect_identical(edge_codes(bytes), "")
+  expect_identical(edge_codes(bytes), "rule_cut_by_comment@2")
   expect_identical(edge_decision(bytes, "/abc", "FooBot"), "disallow")
 })
 
@@ -294,7 +294,7 @@ test_that("ROBO-mxermwed: every known_gap row is restated above", {
     unique(m$id[nzchar(m$known_gap)]),
     c("enc-utf16le-no-bom",
       "enc-latin1-comment", "esc-space-in-rule",
-      "esc-lower-hex-rule", "cmt-hash-in-rule",
+      "esc-lower-hex-rule",
       "grp-googlebot-image-fallback", "redirect-cross-host-html")
   )
 })
@@ -313,6 +313,7 @@ edge_covering_code <- c(
   "enc-latin1-rule" = "invalid_utf8",
   "esc-dollar-then-star" = "rule_inner_dollar",
   "esc-lone-dollar" = "rule_missing_leading_slash",
+  "cmt-hash-in-rule" = "rule_cut_by_comment",
   "esc-pct7e-rule-tilde-url" = "rule_escaped_unreserved",
   "size-long-line" = "line_too_long",
   "content-spam-html" = "html_body",

@@ -90,6 +90,9 @@ validation_unsupported <- c(
 #'     An empty Allow or Disallow value, which the matcher ignores. \cr
 #'   \code{rule_missing_leading_slash} \tab warning \tab
 #'     A pattern not led by \code{/} or \code{*}; it never matches. \cr
+#'   \code{rule_cut_by_comment} \tab warning \tab
+#'     A \code{#} with no space or tab before it starts a comment inside an
+#'     Allow or Disallow value, cutting the rule to a wider prefix. \cr
 #'   \code{rule_inner_dollar} \tab warning \tab
 #'     A \code{$} before a pattern's end; it matches a literal \code{$}. \cr
 #'   \code{rule_escaped_unreserved} \tab warning \tab
@@ -631,6 +634,17 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         add_diagnostic(
           line, "warning", "empty_rule_value", type,
           "Empty Allow or Disallow value is ignored by the matcher."
+        )
+      }
+      # The parser cuts the line at its first `#` (ROBO-gjhpykcj), so
+      # `Disallow: /a#b` is the wider rule `/a`. Gated on has_comment: the
+      # parser never sees a `#` after a NUL or past its line buffer.
+      if (parsed$has_comment[[i]] && nzchar(value) &&
+            rule_cut_by_comment(raw_lines[[line]])) {
+        add_diagnostic(
+          line, "warning", "rule_cut_by_comment", type,
+          paste0("A '#' with no space before it starts a comment, so the ",
+                 "rule is cut to the wider prefix before it.")
         )
       }
     } else if (identical(type, "sitemap") && !nzchar(value)) {
@@ -1452,6 +1466,15 @@ split_validation_lines <- function(bytes) {
 
 validation_raw_slice <- function(bytes, first, last) {
   if (first > last) raw() else bytes[first:last]
+}
+
+# TRUE when the first `#` of a raw line follows a byte other than a space or
+# tab: a comment glued to the rule value, not one set apart from it.
+# Works on bytes, so invalid UTF-8 or Latin-1 in the value is no error.
+rule_cut_by_comment <- function(raw_line) {
+  hash <- match(as.raw(0x23), raw_line)
+  !is.na(hash) && hash > 1L &&
+    !(raw_line[[hash - 1L]] %in% as.raw(c(0x20, 0x09)))
 }
 
 render_validation_line <- function(bytes) {
