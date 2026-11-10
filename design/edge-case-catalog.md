@@ -256,9 +256,9 @@ fetch-layer values are pinned in the test file, not in the manifest.
 
 ## Known gaps found
 
-Filed 2026-11-09 unless marked; none is fixed here. Each is pinned in the
-test file with a `# known gap (ROBO-xxxxxxxx):` comment naming its issue, so
-a fix turns its block red.
+Filed 2026-11-09 unless marked. Each open gap is pinned in the test file with
+a `# known gap (ROBO-xxxxxxxx):` comment naming its issue, so a fix turns its
+block red. An item marked fixed names the diagnostic that now covers it.
 
 1. ROBO-atkmqcov — `enc-bom-mid-file`, `enc-bom-before-user-agent`: a BOM after the start is
    only an `unknown_directive`; a lost User-agent group is not called out.
