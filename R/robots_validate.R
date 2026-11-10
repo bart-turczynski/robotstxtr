@@ -50,6 +50,11 @@ validation_unsupported <- c(
 #'   \code{byte_order_mark} \tab warning \tab
 #'     The document starts with a UTF-8 byte-order mark; the parser skips it.
 #'     \cr
+#'   \code{misplaced_byte_order_mark} \tab warning \tab
+#'     A UTF-8 byte-order mark after the start of the file begins a line, so
+#'     the parser reads it as part of the key and ignores that line's
+#'     directive. A hidden User-agent line starts no group: the lines after
+#'     it stay with the group before it until the next User-agent line. \cr
 #'   \code{nul_byte} \tab error \tab
 #'     A line holds NUL bytes, which can truncate parsing. \cr
 #'   \code{invalid_utf8} \tab error \tab
@@ -469,14 +474,21 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     )
   }
 
-  has_bom <- length(bytes) >= 3L && identical(
-    bytes[1:3], as.raw(c(0xef, 0xbb, 0xbf))
-  )
+  has_bom <- length(bytes) >= 3L && identical(bytes[1:3], validation_bom)
   if (has_bom) {
     add_diagnostic(
       1L, "warning", "byte_order_mark", NA_character_,
       paste0("A UTF-8 byte-order mark is present; the Google-compatible ",
              "parser skips it.")
+    )
+  }
+  # ROBO-atkmqcov: only the BOM at byte 0 is skipped; one that starts a
+  # line's content anywhere else stays at the front of the key.
+  for (line in misplaced_bom_lines(raw_lines, has_bom)) {
+    hidden <- misplaced_bom_hidden(raw_lines[[line]], line == 1L && has_bom)
+    add_diagnostic(
+      line, "warning", "misplaced_byte_order_mark", hidden$directive,
+      hidden$message
     )
   }
 
@@ -1089,6 +1101,64 @@ validation_invisible_prefixes <- c(
   "U+200B" = "%E2%80%8B",
   "U+FEFF" = "%EF%BB%BF"
 )
+
+validation_bom <- as.raw(c(0xef, 0xbb, 0xbf))
+
+# Where a BOM starts a line's content, after the ASCII blanks the parser
+# strips (SP, HT, VT, FF), or 0 when none does. `skip_start` passes over the
+# byte-0 BOM the parser itself skips.
+misplaced_bom_offset <- function(line, skip_start) {
+  first <- if (skip_start) 4L else 1L
+  n <- length(line)
+  while (first <= n &&
+           line[[first]] %in% as.raw(c(0x20, 0x09, 0x0b, 0x0c))) {
+    first <- first + 1L
+  }
+  # Indexing past the end of a raw vector gives 00, so a short tail never
+  # equals the BOM.
+  if (identical(line[first:(first + 2L)], validation_bom)) first else 0L
+}
+
+misplaced_bom_lines <- function(raw_lines, has_bom) {
+  found <- vapply(seq_along(raw_lines), function(i) {
+    misplaced_bom_offset(raw_lines[[i]], i == 1L && has_bom) > 0L
+  }, logical(1L))
+  which(found)
+}
+
+# The directive a misplaced BOM hides, learned by parsing the line again
+# without it.
+misplaced_bom_hidden <- function(line, skip_start) {
+  at <- misplaced_bom_offset(line, skip_start)
+  rest <- validation_raw_slice(line, at + 3L, length(line))
+  # The binding reports at least one line, even for an empty `rest`.
+  parsed <- robotstxtr_validation_parse_(rest)
+  type <- parsed$type[[1L]]
+  labels <- c(
+    "user-agent" = "User-agent", allow = "Allow", disallow = "Disallow",
+    sitemap = "Sitemap"
+  )
+  message <- paste0(
+    "A UTF-8 byte-order mark starts this line; the Google-compatible parser ",
+    "skips one only at the start of the file, so here it is part of the key."
+  )
+  if (!type %in% names(labels)) {
+    if (isTRUE(parsed$is_comment[1L])) {
+      message <- paste0(message, " This comment line is read as an active ",
+                        "line.")
+    }
+    return(list(directive = NA_character_, message = message))
+  }
+  hidden <- sprintf(" This %s line is not read", labels[[type]])
+  tail <- if (identical(type, "user-agent")) {
+    paste0(": the parser starts no group here, so the lines after it stay ",
+           "with the group before it, or with no group, until the next ",
+           "User-agent line.")
+  } else {
+    "."
+  }
+  list(directive = type, message = paste0(message, hidden, tail))
+}
 
 rule_value_diagnostics <- function(value) {
   bytes <- charToRaw(value)

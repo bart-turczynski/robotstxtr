@@ -187,17 +187,21 @@ edge_case <- function(id) {
   edge_body(m$body_file[m$id == id][[1L]])
 }
 
-test_that("ROBO-mxermwed: a BOM inside the file is only an unknown line", {
-  # known gap (ROBO-atkmqcov): a BOM mid-file gets no BOM diagnostic, only
-  # unknown_directive
-  x <- robots_validate_text(edge_case("enc-bom-mid-file"))
-  expect_false("byte_order_mark" %in% x$diagnostics$code)
-  expect_identical(edge_decision(edge_case("enc-bom-mid-file"), "/a",
-                                 "FooBot"), "allow")
-  # known gap (ROBO-atkmqcov): a BOM before a User-agent line drops that group
-  # silently; its rules join the group before it
+test_that("ROBO-mxermwed: a BOM inside the file is named on its line", {
+  # Fixed by ROBO-atkmqcov: misplaced_byte_order_mark names the BOM and the
+  # directive it hides; the matcher still reads the line as unknown.
+  bytes <- edge_case("enc-bom-mid-file")
+  expect_identical(
+    edge_codes(bytes),
+    "misplaced_byte_order_mark@2;unknown_directive@2;no_rules@NA"
+  )
+  expect_identical(edge_decision(bytes, "/a", "FooBot"), "allow")
   bytes <- edge_case("enc-bom-before-user-agent")
-  expect_identical(edge_codes(bytes), "unknown_directive@4")
+  expect_identical(edge_codes(bytes),
+                   "misplaced_byte_order_mark@4;unknown_directive@4")
+  x <- robots_validate_text(bytes)$diagnostics
+  expect_match(x$message[x$code == "misplaced_byte_order_mark"],
+               "User-agent line is not read")
   expect_identical(edge_decision(bytes, "/a", "FooBot"), "disallow")
 })
 
@@ -288,7 +292,7 @@ test_that("ROBO-mxermwed: every known_gap row is restated above", {
   m <- edge_manifest
   expect_setequal(
     unique(m$id[nzchar(m$known_gap)]),
-    c("enc-bom-mid-file", "enc-bom-before-user-agent", "enc-utf16le-no-bom",
+    c("enc-utf16le-no-bom",
       "enc-latin1-comment", "esc-space-in-rule",
       "esc-lower-hex-rule", "cmt-hash-in-rule", "grp-user-agent-with-space",
       "grp-digit-in-token", "grp-star-prefixed-token",
@@ -302,7 +306,9 @@ test_that("ROBO-mxermwed: every known_gap row is restated above", {
 # is a URL-side difference, which the caller owns: allowed_by_robots_text()
 # matches the URL unchanged.
 edge_covering_code <- c(
-  "enc-bom-doubled" = "rule_without_user_agent",
+  "enc-bom-mid-file" = "misplaced_byte_order_mark",
+  "enc-bom-before-user-agent" = "misplaced_byte_order_mark",
+  "enc-bom-doubled" = "misplaced_byte_order_mark",
   "enc-utf16le-bom" = "nul_byte",
   "enc-utf16be-bom" = "nul_byte",
   "enc-latin1-rule" = "invalid_utf8",
