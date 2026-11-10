@@ -62,10 +62,10 @@ extern "C" SEXP _robotstxtr_robotstxtr_google_request_target_(SEXP url) {
   END_CPP11
 }
 // matcher_binding.cpp
-cpp11::writable::list robotstxtr_google_eval_batch_(cpp11::strings bodies, cpp11::integers ids, cpp11::strings agents, cpp11::list targets);
-extern "C" SEXP _robotstxtr_robotstxtr_google_eval_batch_(SEXP bodies, SEXP ids, SEXP agents, SEXP targets) {
+cpp11::writable::list robotstxtr_google_eval_batch_(cpp11::strings bodies, cpp11::integers ids, cpp11::strings agents, cpp11::list urls);
+extern "C" SEXP _robotstxtr_robotstxtr_google_eval_batch_(SEXP bodies, SEXP ids, SEXP agents, SEXP urls) {
   BEGIN_CPP11
-    return cpp11::as_sexp(robotstxtr_google_eval_batch_(cpp11::as_cpp<cpp11::decay_t<cpp11::strings>>(bodies), cpp11::as_cpp<cpp11::decay_t<cpp11::integers>>(ids), cpp11::as_cpp<cpp11::decay_t<cpp11::strings>>(agents), cpp11::as_cpp<cpp11::decay_t<cpp11::list>>(targets)));
+    return cpp11::as_sexp(robotstxtr_google_eval_batch_(cpp11::as_cpp<cpp11::decay_t<cpp11::strings>>(bodies), cpp11::as_cpp<cpp11::decay_t<cpp11::integers>>(ids), cpp11::as_cpp<cpp11::decay_t<cpp11::strings>>(agents), cpp11::as_cpp<cpp11::decay_t<cpp11::list>>(urls)));
   END_CPP11
 }
 // matcher_binding.cpp

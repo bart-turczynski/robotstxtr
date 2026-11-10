@@ -56,7 +56,7 @@ google_evaluate_batch_v1 <- function(bodies, body_index, product_tokens,
 
   native <- robotstxtr_google_eval_batch_(
     bodies = strings, ids = body_index,
-    agents = product_tokens, targets = targets
+    agents = product_tokens, urls = targets
   )
   allowed <- native$allowed
   line <- native$matching_line

@@ -159,7 +159,7 @@ cpp11::writable::strings robotstxtr_google_request_target_(
 // `bodies` are the distinct matcher strings (already cut to Google's window
 // and decoded by R: the strings the row path hands robotstxtr_allowed_text_);
 // `ids` is the 1-based body per row; `agents` the product token per row;
-// `targets` the full URL per row as raw bytes (raw(0) for none), from which
+// `urls` the full URL per row as raw bytes (raw(0) for none), from which
 // the matcher's own GetPathParamsQuery() takes the path. Each row gets its own
 // RobotsMatcher, set up as AllowedByRobots() sets it up, and one
 // ParseRobotsTxt() per body drives all of that body's matchers through the
@@ -170,10 +170,10 @@ cpp11::writable::strings robotstxtr_google_request_target_(
 cpp11::writable::list robotstxtr_google_eval_batch_(cpp11::strings bodies,
                                                     cpp11::integers ids,
                                                     cpp11::strings agents,
-                                                    cpp11::list targets) {
+                                                    cpp11::list urls) {
   const R_xlen_t n = ids.size();
-  if (agents.size() != n || targets.size() != n) {
-    cpp11::stop("`ids`, `agents` and `targets` need one element per row");
+  if (agents.size() != n || urls.size() != n) {
+    cpp11::stop("`ids`, `agents` and `urls` need one element per row");
   }
   const R_xlen_t n_bodies = bodies.size();
   std::vector<std::vector<R_xlen_t>> rows_by_body(
@@ -204,7 +204,7 @@ cpp11::writable::list robotstxtr_google_eval_batch_(cpp11::strings bodies,
     for (std::size_t j = 0; j < k; ++j) {
       const R_xlen_t i = rows[j];
       const std::string url =
-          robotstxtr_binding::raw_sexp_to_bytes(targets[i]);
+          robotstxtr_binding::raw_sexp_to_bytes(urls[i]);
       paths[j] = googlebot::GetPathParamsQuery(url);
       row_agents[j].push_back(std::string(agents[i]));
       owned[j] = std::make_unique<RowMatcher>();

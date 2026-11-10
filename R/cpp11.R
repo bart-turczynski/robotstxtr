@@ -32,8 +32,8 @@ robotstxtr_google_request_target_ <- function(url) {
   .Call(`_robotstxtr_robotstxtr_google_request_target_`, url)
 }
 
-robotstxtr_google_eval_batch_ <- function(bodies, ids, agents, targets) {
-  .Call(`_robotstxtr_robotstxtr_google_eval_batch_`, bodies, ids, agents, targets)
+robotstxtr_google_eval_batch_ <- function(bodies, ids, agents, urls) {
+  .Call(`_robotstxtr_robotstxtr_google_eval_batch_`, bodies, ids, agents, urls)
 }
 
 robotstxtr_batch_body_groups_ <- function(bodies) {
