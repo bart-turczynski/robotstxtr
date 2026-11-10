@@ -187,6 +187,26 @@ test_that("ROBO-qquftxcx: a minified page cut mid-line keeps its lines", {
   )
 })
 
+test_that("ROBO-qquftxcx: binary bytes past the cut keep html_body", {
+  # The NUL lies in the partial last line the cut drops, so the stored bytes
+  # sniff "binary" and nul_byte never fires; the readable lines still sniff
+  # "html", and that is enough.
+  body <- c(charToRaw("<!DOCTYPE html>\n<html><body>x</body>\n<p>abc"),
+            as.raw(0), charToRaw(strrep("a", 200L)))
+  expect_identical(robots_content_flag(body), "binary")
+  local_fake_ssrfr(function(req) {
+    fake_response(200L, body = body)
+  })
+  x <- robots_validate_url("https://example.com/", max_bytes = 60L)
+  expect_one_html_body(x)
+  expect_false("nul_byte" %in% x$diagnostics$code)
+  expect_identical(
+    paste0(x$diagnostics$code, "@", x$diagnostics$line),
+    c("malformed_line@2", "accepted_missing_colon@1", "unknown_directive@1",
+      "html_body@NA", "body_truncated@NA")
+  )
+})
+
 test_that("ROBO-qquftxcx: a minified page opening with script or style", {
   script <- paste0("<script>var a={b:1};</script><!DOCTYPE html><html>",
                    "<body>x</body></html>\n")
