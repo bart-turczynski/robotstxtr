@@ -830,9 +830,9 @@ test_that("ROBO-etlkvljs: the validator's code, severity and message", {
   }
 })
 
-test_that("ROBO-etlkvljs: a non-200 2xx body is validated, no status code", {
-  # Yandex reads a non-200 2xx as allow_all (section 4), but the validator
-  # validates its body like a 200's and names no status.
+test_that("ROBO-etlkvljs: a non-200 2xx body is validated, with its code", {
+  # Yandex reads a non-200 2xx as allow_all (section 4). The validator validates
+  # the body like a 200's and names the status class (ROBO-yvhqvthd).
   for (status in c(203L, 204L)) {
     local_fake_ssrfr(function(req) {
       fake_response(status, body = ss_rules_body)
@@ -844,7 +844,8 @@ test_that("ROBO-etlkvljs: a non-200 2xx body is validated, no status code", {
     expect_identical(d$fetch_outcome, "fetched")
     expect_identical(d$validation_status, "valid", label = status_label)
     expect_identical(d$disallow_directives, 1L, label = status_label)
-    expect_false(any(startsWith(x$diagnostics$code, "acquisition_")))
+    expect_identical(x$diagnostics$code, "acquisition_http_other_2xx",
+                     label = status_label)
   }
 })
 

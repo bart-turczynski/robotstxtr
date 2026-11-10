@@ -163,6 +163,9 @@ validation_unsupported <- c(
 #'     A 5xx, with each engine's reading in \code{message}. \cr
 #'   \code{acquisition_http_protocol} \tab error \tab
 #'     A 1xx or a status outside 100 to 599. \cr
+#'   \code{acquisition_http_other_2xx} \tab info \tab
+#'     A 2xx other than 200, such as 203 or 204; the body is still validated.
+#'     \code{message} names how Google, Yandex and Bing read the status. \cr
 #'   \code{acquisition_limit_exceeded} \tab error \tab
 #'     A 3xx body exceeded \code{max_bytes} and was refused whole. \cr
 #'   \code{acquisition_partial_response} \tab error \tab
@@ -325,7 +328,11 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' Yandex and Bing may do with it, and any `Retry-After` delay; the policy
 #' behind it is in [robots_engine_contract_v1()]. The document stays
 #' `"not_validated"`, so an `acquisition_http_4xx` row (a 4xx other than 404,
-#' 410 and 429) has `warning_count` 1 and `error_count` 0.
+#' 410 and 429) has `warning_count` 1 and `error_count` 0. A 2xx other than 200
+#' (203 or 204, say) keeps its body, which is validated as a 200's is, and also
+#' gets `acquisition_http_other_2xx`, an info whose message names how Google,
+#' Yandex and Bing read that status. A 206 is a partial response with no body,
+#' so it keeps `acquisition_partial_response`.
 #'
 #' A redirect, transport or safety outcome gets a code of its own too, read
 #' from the source row's `terminal_redirect_reason` and `safety_block_reason`
@@ -864,6 +871,23 @@ validate_document_bytes <- function(bytes, source_id, source_type,
           "up to the last complete line were validated."
         ),
         as.integer(max_bytes), length(bytes)
+      )
+    )
+  }
+  # A fetched 2xx other than 200 keeps its body, which is validated as a 200's
+  # is; the code says how each ruleset reads the status (ROBO-yvhqvthd). A 206
+  # never comes here fetched: classify_status() gives it partial_response with
+  # no body. http_status_category_v1() still counts 206 as 2xx other, and a
+  # missing status is protocol_error, so the category test drops that too.
+  other_2xx <- identical(fetch_outcome, "fetched") &&
+    identical(http_status_category_v1(http_status), "status_other_2xx")
+  if (other_2xx) {
+    add_diagnostic(
+      NA_integer_, "info", "acquisition_http_other_2xx", NA_character_,
+      paste(
+        paste0("HTTP ", http_status, ": ",
+               status_engine_readings("status_other_2xx"), "."),
+        "See robots_engine_contract_v1()."
       )
     )
   }
@@ -2008,6 +2032,14 @@ status_policy_phrase <- function(ruleset, category, status, action) {
     } else {
       "may treat it as no robots.txt, which places no restrictions on crawling"
     }
+  } else if (identical(status, "evaluated") &&
+               identical(action, "use_rules") &&
+               identical(category, "status_other_2xx")) {
+    # A 2xx other than 200 whose body a ruleset reads (ROBO-yvhqvthd). Google
+    # documents it (design/engine-profiles.md section 4, other 2xx row); the
+    # wording follows the cell's action, so a table edit that gives another
+    # engine `use_rules` here still gets a phrase.
+    "reads the body's rules as for a 200"
   } else if (identical(status, "context_required")) {
     "context-dependent (may pause crawling or use its last cached copy)"
   } else if (identical(status, "documentation_gap")) {
