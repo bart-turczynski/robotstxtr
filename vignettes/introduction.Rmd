@@ -196,10 +196,11 @@ covers it: its group gets an info, `ai_training_preference`, listing the
 group's own rules, and warnings flag a near-miss spelling
 (`ai_training_token_near_miss`), a line such as `Crawl-delay` in a group that
 names only the token (`ai_training_group_extra_line`), and a token line that
-shares a group with `User-agent: *`, or with a crawler a non-rule line
-separates it from (`ai_training_token_stacked`). A key such as `DisallowAITraining`, which
-Google reads as `Disallow`, is `accepted_directive_prefix`. A
-warning, `disallow_tied_by_allow`, flags a Disallow that an Allow with the
+shares a group with `User-agent: *`, or with a crawler a directive line
+separates it from (`ai_training_token_stacked`). A key such as
+`DisallowAITraining`, which Google reads as `Disallow`, is
+`accepted_directive_prefix`. A warning, `disallow_tied_by_allow`, flags a
+Disallow that an Allow with the
 identical pattern cancels, since Allow wins the tie. An info,
 `duplicate_rule`, notes an Allow or Disallow that repeats an earlier rule for
 the same crawlers, so it has no effect. A warning, `html_body`, says the body
