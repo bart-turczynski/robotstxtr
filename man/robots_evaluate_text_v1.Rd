@@ -81,8 +81,8 @@ selected rule is an \verb{Allow:} or \verb{Disallow:} with nothing after the col
 the row reports \code{url_decision = "allow"} with \code{reason = "default_allow"},
 \code{matched_rule_type = "none"}, \code{NA} \code{matched_line} and \code{matched_rule_value},
 and a \code{NULL} \code{matched_rule_value_raw}; the legacy functions report the
-same decision source, type, line and value (PRD section 6.6, "Match
-metadata rules"). When a Yandex row's selected rule is an empty
+same decision source, type, line and value (\code{design/PRD.md} section 6.6,
+"Match metadata rules"). When a Yandex row's selected rule is an empty
 \code{Disallow}, it instead reports \code{effective_empty_disallow} with that line.
 }
 \examples{

@@ -1581,8 +1581,8 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' the row reports `url_decision = "allow"` with `reason = "default_allow"`,
 #' `matched_rule_type = "none"`, `NA` `matched_line` and `matched_rule_value`,
 #' and a `NULL` `matched_rule_value_raw`; the legacy functions report the
-#' same decision source, type, line and value (PRD section 6.6, "Match
-#' metadata rules"). When a Yandex row's selected rule is an empty
+#' same decision source, type, line and value (`design/PRD.md` section 6.6,
+#' "Match metadata rules"). When a Yandex row's selected rule is an empty
 #' `Disallow`, it instead reports `effective_empty_disallow` with that line.
 #'
 #' @param robots_txt A single, non-missing character value containing the
