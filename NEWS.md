@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* `robots_validate_text()` reports a `Content-Signal` line as `content_signal_directive`, not `unsupported_directive`: an expired draft no crawler documents honoring (ROBO-fqkgreev).
+
 * `robots_validate_text()` warns `rule_cut_by_comment` when a `#` with no space or tab before it starts a comment inside an Allow or Disallow value, cutting the rule there (ROBO-gjhpykcj).
 
 * `robots_validate_text()` and `robots_validate_url()` warn `user_agent_cut` when a non-global User-agent value holds a character outside letters, `_` and `-`, naming the token Google's matcher reads (RFC 9309 §2.2.1) (ROBO-zvhrayhx).
