@@ -3,7 +3,8 @@
 - Status: comparison record, 2026-11-10
 - Pins: `tests/testthat/test-library-comparison-dqqkvwts.R`
 - Runner: `dev/library-comparison/run.R`; class fixtures:
-  `dev/library-comparison/fixtures/` (`manifest.csv` records every answer)
+  `tests/testthat/fixtures/library-comparison-dqqkvwts/` (`manifest.csv`
+  records every answer)
 - Related: `design/edge-case-catalog.md` (whose fixtures are the first
   input), `design/engine-profiles.md` §5b (Google fidelity),
   `design/engine-disagreements.md` (the Bing and Yandex backends);
@@ -52,7 +53,10 @@ agree on every row but one, an error `rtx` raises in its own parser
 Every row of the edge-case catalog's manifest
 (`tests/testthat/fixtures/edge-cases/manifest.csv`, its URLs and tokens),
 plus one synthesized fixture or more per candidate class
-(`dev/library-comparison/fixtures/`). The same body, URL and token go to
+(`tests/testthat/fixtures/library-comparison-dqqkvwts/`; `stack-named`,
+`rule-before-agent` and `q-star` reuse the catalog bodies
+`grp-unknown-between-agents`, `grp-rule-before-user-agent` and
+`esc-query-wildcard`). The same body, URL and token go to
 every library, to the reference and to two robotstxtr paths:
 `robots_evaluate_text_v1()` with the `google` ruleset and backend, and
 `allowed_by_robots_text()`. A body with a NUL byte reaches robotstxtr as
@@ -64,10 +68,11 @@ where nothing is shipped, the entry says "no documented intent found".
 ### Result
 
 robotstxtr agrees with the reference on every row, on both paths, except
-the NUL-bearing `enc-utf16le-no-bom`: upstream ends a line at its first
-NUL, robotstxtr drops every NUL. That split is deliberate
-(`design/engine-profiles.md` §5b, class 5). No class below is a robotstxtr
-bug.
+the NUL-bearing `enc-utf16le-no-bom` on `/a`: upstream ends a line at its
+first NUL, robotstxtr drops every NUL. That split is deliberate
+(`design/engine-profiles.md` §5b, class 5), and it is the one row the
+runner's expected-split list names; the two other UTF-16 bodies bear NULs
+too and must agree. No class below is a robotstxtr bug.
 
 ## Hypotheses
 
@@ -286,9 +291,10 @@ token `Googlebot-Image`: the reference reads `*`; `py`, `pro`, `go` take the
 Documented intent:
 
 - `pro`: protego 0.7.0 `METADATA` (`can_fetch`): "a group applies when its
-  product token appears in *user_agent* at a token boundary", a boundary
-  being a start or a character outside letters, digits, `-` and `_`. The
-  intent is matching a whole `User-Agent` header.
+  product token appears in *user_agent* at a token boundary". The boundary
+  is defined in `protego/_ruleset.py`: a start or a character outside
+  letters, digits, `-` and `_`. The intent is matching a whole
+  `User-Agent` header.
 - `go`: temoto/robotstxt v1.1.2 `robotstxt.go` `FindGroup` quotes Google's
   spec ("the most specific user-agent that still matches") and implements
   it as the longest group name that prefixes the agent.
@@ -503,5 +509,9 @@ Rscript dev/library-comparison/run.R <libcmp> [out_dir]
 `<libcmp>` is the one-command-per-library runner (its interface is in the
 script's header). The script rebuilds the manifests from the committed
 fixtures, writes `matrix.tsv`, and exits 1 when a class fixture's live
-answer drifts from the answer recorded in its `manifest.csv`, or when
-robotstxtr differs from the reference outside the NUL split.
+answer drifts from the answer recorded in its `manifest.csv`, when
+robotstxtr differs from the reference on a row its expected-split list does
+not name, or when a named row stops differing. It stops with a message
+when `google-ref` gives no answers. The pinned test reads the same fixtures
+and checks robotstxtr's recorded answer on every class row, with no
+runner.

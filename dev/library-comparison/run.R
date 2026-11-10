@@ -7,9 +7,11 @@
 #
 # The cases are every row of the edge-case catalog
 # (tests/testthat/fixtures/edge-cases/manifest.csv, on https://example.com)
-# plus the synthesized class fixtures in dev/library-comparison/fixtures/
-# (manifest.csv there, same body-file rules: `<id>.txt` verbatim, `<id>.hex`
-# lowercase hexadecimal).
+# plus the synthesized class fixtures in
+# tests/testthat/fixtures/library-comparison-dqqkvwts/ (manifest.csv there,
+# same body-file rules: `<file>.txt` verbatim, `<file>.hex` lowercase
+# hexadecimal; a `body_file` is relative to that directory, so a class row
+# can reuse a catalog body as `../edge-cases/<id>.txt`).
 #
 # Usage:
 #   Rscript dev/library-comparison/run.R <libcmp> [out_dir]
@@ -23,9 +25,11 @@
 # library's raw output and `matrix.tsv`.
 #
 # Exit status 1 when a class fixture's live answer drifts from the answer its
-# manifest row records (the doc and the pinned test would then be stale), or
-# when robotstxtr differs from the reference on any row other than a
-# NUL-bearing body (a deliberate split, below); 0 otherwise.
+# manifest row records (the doc and the pinned test would then be stale), when
+# robotstxtr differs from the reference on a row `expected_split` does not
+# name, or when a row it names no longer differs (the documented split policy
+# changed, so the list, the pinned test and the doc must change with it);
+# 0 otherwise.
 
 options(width = 160L)
 args <- commandArgs(trailingOnly = TRUE)
@@ -87,16 +91,22 @@ edge <- read_cases(
   file.path(root, "tests", "testthat", "fixtures", "edge-cases"), "catalog"
 )
 own <- read_cases(
-  file.path(root, "dev", "library-comparison", "fixtures"), "dqqkvwts"
+  file.path(root, "tests", "testthat", "fixtures",
+            "library-comparison-dqqkvwts"),
+  "dqqkvwts"
 )
 keep <- c("source", "class", "id", "dir", "body_file", "path", "token")
 cases <- rbind(edge[keep], own[keep])
 cases$url <- paste0("https://example.com", cases$path)
 Encoding(cases$url) <- "UTF-8"
 
-cases$body_key <- paste(cases$source, cases$body_file, sep = "-")
-cases$body_path <- file.path(out_dir, "bodies",
-                             paste0(cases$body_key, ".bin"))
+# One body per source file: a class row that reuses a catalog body shares it.
+cases$body_key <- normalizePath(file.path(cases$dir, cases$body_file),
+                                mustWork = TRUE)
+body_n <- match(cases$body_key, unique(cases$body_key))
+cases$body_path <- file.path(out_dir, "bodies", sprintf(
+  "%03d-%s.bin", body_n, basename(cases$body_file)
+))
 bodies <- list()
 for (k in which(!duplicated(cases$body_key))) {
   bodies[[cases$body_key[[k]]]] <- read_body(cases$dir[[k]],
@@ -122,6 +132,9 @@ write_lines(paste(cases$body_path, cases$token, cases$url, sep = "\t"),
 
 run_lib <- function(id, input) {
   out <- file.path(out_dir, paste0("out-", id, ".txt"))
+  # A runner that exits 0 without writing must not leave an earlier run's
+  # answers to be read as this one's.
+  unlink(out)
   # system2() quotes `command` itself; `args` go to the shell as given.
   status <- system2(libcmp, shQuote(c(id, input, out)), stdout = FALSE)
   if (!identical(status, 0L) || !file.exists(out)) {
@@ -136,7 +149,15 @@ run_lib <- function(id, input) {
 }
 
 ref <- run_lib("google-ref", ref_manifest)
+# Every check below compares against the reference, so without it there is
+# nothing to report.
 ref_cols <- strsplit(ref, "\t", fixed = TRUE)
+# strsplit() drops a trailing empty field, and only fields 1 and 2 are read.
+ref_bad <- lengths(ref_cols) < 2L | startsWith(ref, "ERR")
+if (any(ref_bad)) {
+  stop("google-ref gave no answer on ", sum(ref_bad), " of ", length(ref),
+       " cases (first: ", ref[ref_bad][[1L]], ")", call. = FALSE)
+}
 cases$google_ref <- vapply(ref_cols, `[[`, character(1L), 1L)
 cases$google_ref_line <- vapply(ref_cols, `[[`, character(1L), 2L)
 for (id in libs) {
@@ -224,18 +245,44 @@ if (any(unanimous)) {
 cat("output in", out_dir, "\n")
 
 failed <- FALSE
-# A NUL-bearing body is the one deliberate split from the reference: upstream
-# ends a line at its first NUL, robotstxtr drops every NUL
-# (design/engine-profiles.md section 5b, class 5).
-has_nul <- vapply(seq_len(nrow(cases)), function(k) {
-  any(body_of(k) == as.raw(0))
-}, logical(1L))
-ours <- (cases$robotstxtr_v1 != cases$google_ref |
-           cases$robotstxtr_text != cases$google_ref) & !has_nul
-if (any(ours)) {
+# The rows where robotstxtr deliberately differs from the reference, as
+# (id, path). The NUL-bearing UTF-16LE body without a BOM: upstream ends a
+# line at its first NUL, robotstxtr drops every NUL, so it reads the rules
+# upstream never sees (design/engine-profiles.md section 5b, class 5). The
+# two UTF-16 bodies with a BOM bear NULs too but must agree.
+expected_split <- data.frame(
+  id = "enc-utf16le-no-bom",
+  path = "/a"
+)
+splits <- cases$robotstxtr_v1 != cases$google_ref |
+  cases$robotstxtr_text != cases$google_ref
+expected <- paste(cases$id, cases$path) %in%
+  paste(expected_split$id, expected_split$path)
+unexpected <- splits & !expected
+if (any(unexpected)) {
   cat("robotstxtr differs from the reference:\n",
-      paste0("  ", cases$id[ours], " ", cases$path[ours], "\n"), sep = "")
+      paste0("  ", cases$id[unexpected], " ", cases$path[unexpected], "\n"),
+      sep = "")
   failed <- TRUE
+}
+gone <- expected & !splits
+if (any(gone)) {
+  cat("an expected split no longer differs from the reference:\n",
+      paste0("  ", cases$id[gone], " ", cases$path[gone], "\n"), sep = "")
+  failed <- TRUE
+}
+unmatched <- !paste(expected_split$id, expected_split$path) %in%
+  paste(cases$id, cases$path)
+if (any(unmatched)) {
+  cat("an expected split names no case:\n",
+      paste0("  ", expected_split$id[unmatched], " ",
+             expected_split$path[unmatched], "\n"), sep = "")
+  failed <- TRUE
+}
+if (any(splits & expected)) {
+  cat("expected splits from the reference:\n",
+      paste0("  ", cases$id[splits & expected], " ",
+             cases$path[splits & expected], "\n"), sep = "")
 }
 recorded <- intersect(c("google_ref", "robotstxtr", col_of(libs)), names(own))
 own_rows <- which(cases$source == "dqqkvwts")
