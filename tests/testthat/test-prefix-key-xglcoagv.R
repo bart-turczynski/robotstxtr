@@ -119,10 +119,12 @@ test_that("a leading BOM is not part of the first key", {
   # The parser also skips a partial BOM prefix at the body's start.
   x <- robots_validate_text(c(bom[1:2], charToRaw("Allow: /\n")))
   expect_false("accepted_directive_prefix" %in% x$diagnostics$code)
-  # A BOM on a later line stays in the key, which is then unknown.
+  # A BOM on a later line stays in the key, which is then unknown; the BOM
+  # itself is reported too (misplaced_byte_order_mark, ROBO-atkmqcov).
   body <- c(charToRaw("User-agent: *\n"), bom, charToRaw("Disallow: /\n"))
   expect_identical(robots_validate_text(body)$diagnostics$code,
-                   c("unknown_directive", "no_rules"))
+                   c("misplaced_byte_order_mark", "unknown_directive",
+                     "no_rules"))
   # A BOM on line 1 before a prefix key still lets the key warn.
   d <- pk_rows(c(bom, charToRaw("Disallowx: /\nUser-agent: *\n")))
   expect_identical(d$line, 1L)
