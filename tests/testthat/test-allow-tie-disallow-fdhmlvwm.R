@@ -215,8 +215,8 @@ test_that("a tie on an inner-dollar pattern keeps both warnings", {
   )
 })
 
-# The parser stops a value at a NUL; the matchers drop the NUL and read on,
-# so the group checks are skipped on any NUL.
+# The parser stops a value at a NUL; Google's matcher drops the NUL and reads
+# on, so the group checks are skipped on any NUL.
 at_nul <- function(...) {
   parts <- list(...)
   out <- charToRaw(parts[[1L]])

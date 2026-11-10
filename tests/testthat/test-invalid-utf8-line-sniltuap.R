@@ -66,8 +66,8 @@ test_that("NUL bytes are dropped before the line is checked", {
   d <- iu_rows(iu_bytes("User-agent: *\nDisallow: /x", 0x00, 0xff, "\n"))
   expect_identical(d$code, c("nul_byte", "invalid_utf8"))
   expect_identical(d$line, c(2L, 2L))
-  # A NUL between a lead and a continuation byte: the matchers drop it and
-  # read a well-formed character.
+  # A NUL between a lead and a continuation byte: Google's matcher drops it
+  # and reads a well-formed character.
   d <- iu_rows(iu_bytes("User-agent: *\nDisallow: /", 0xc3, 0x00, 0xa9,
                         "\n"))
   expect_identical(d$code, "nul_byte")

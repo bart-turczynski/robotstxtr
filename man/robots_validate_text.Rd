@@ -175,10 +175,14 @@ The parser read no Allow or Disallow rule, so the document restricts
 nothing (see \code{rules_after_nul_removal}).
 Not reported for a body cut at \code{max_bytes}. \cr
 \code{rules_after_nul_removal} \tab warning \tab
-The parser read no Allow or Disallow rule, but with the NUL bytes
-removed, as Google's matcher reads the body, it holds some; UTF-16
-text does this, and should be re-saved as UTF-8. Reported in place
-of \code{no_rules}, even for a body cut at \code{max_bytes}. \cr
+With the NUL bytes removed, as Google's matcher reads the body, it
+holds Allow or Disallow rules the parser, which ends a line at its
+first NUL, does not read. When the parser read no rule, every
+NUL-free rule is counted; UTF-16 text does this, and should be
+re-saved as UTF-8; reported in place of \code{no_rules}. Otherwise
+only rules on lines the parser does not read as rules, or in a group
+the NUL changes, are counted; a value the NUL only shortens is not.
+Reported even for a body cut at \code{max_bytes}. \cr
 \code{body_truncated} \tab warning \tab
 The body exceeded \code{max_bytes}; only lines before the cut were read.
 \cr
@@ -322,7 +326,7 @@ User-agent line from joining its group.
 
 A document holding a NUL byte gets none of \code{wildcard_rules_not_inherited},
 \code{disallow_tied_by_allow} or \code{duplicate_rule}, because the parser stops a
-value at the NUL while the matchers drop it and read on.
+value at the NUL while Google's matcher drops it and reads on.
 }
 
 \examples{

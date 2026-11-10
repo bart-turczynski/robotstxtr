@@ -36,18 +36,100 @@ ch_line_start <- c(charToRaw("User-agent: *\nDisallow: /private\n"), ch_nul,
 ch_agent_key <- c(charToRaw("User-"), ch_nul,
                   charToRaw("agent: *\nDisallow: /x\n"))
 
-test_that("a NUL at line start behind a parsed rule: today's rows", {
+ch_hidden_message <- function(n) {
+  sprintf(
+    paste0(
+      "With its NUL bytes removed, as Google's matcher reads it, the ",
+      "document has %d Allow or Disallow rule(s) that the parser, which ",
+      "ends a line at its first NUL, does not read or reads in another ",
+      "group; remove the NUL bytes."
+    ),
+    n
+  )
+}
+
+# The one rules_after_nul_removal row of `x`: a lineless warning naming `n`
+# hidden rules, and no no_rules.
+expect_hidden_rules <- function(x, n, label = NULL) {
+  d <- x$diagnostics
+  found <- d[d$code == "rules_after_nul_removal", , drop = FALSE]
+  expect_identical(nrow(found), 1L, label = label)
+  expect_identical(found$severity, "warning", label = label)
+  expect_identical(found$line, NA_integer_, label = label)
+  expect_identical(found$directive, NA_character_, label = label)
+  expect_identical(found$raw_text, NA_character_, label = label)
+  expect_identical(found$message, ch_hidden_message(n), label = label)
+  expect_false("no_rules" %in% d$code, label = label)
+}
+
+test_that("a NUL at line start behind a parsed rule is reported", {
   expect_false(ch_allowed(ch_line_start, "/"))
-  expect_identical(ch_rows(robots_validate_text(ch_line_start)), "nul_byte@3")
+  x <- robots_validate_text(ch_line_start)
+  expect_identical(ch_rows(x), c("nul_byte@3", "rules_after_nul_removal@NA"))
+  expect_hidden_rules(x, 1L)
 })
 
-test_that("a NUL in the User-agent key: today's rows", {
+test_that("a NUL in the User-agent key is reported beside the raw rows", {
   expect_false(ch_allowed(ch_agent_key, "/x"))
+  x <- robots_validate_text(ch_agent_key)
+  # The raw reading stays: Bing and Yandex read the bytes as written.
   expect_identical(
-    ch_rows(robots_validate_text(ch_agent_key)),
+    ch_rows(x),
     c("nul_byte@1", "malformed_line@1", "rule_without_user_agent@2",
-      "missing_user_agent@NA")
+      "missing_user_agent@NA", "rules_after_nul_removal@NA")
   )
+  expect_hidden_rules(x, 1L)
+})
+
+test_that("the new message names Google's matcher alone", {
+  d <- robots_validate_text(ch_line_start)$diagnostics
+  message <- d$message[d$code == "rules_after_nul_removal"]
+  expect_match(message, "Google's matcher", fixed = TRUE)
+  expect_no_match(message, "Bing|Yandex|matchers")
+})
+
+test_that("a NUL mid-directive or in a User-agent value is counted", {
+  # `Dis\0allow` is no directive to the parser.
+  mid_key <- c(charToRaw("User-agent: *\nDisallow: /a\nDis"), ch_nul,
+               charToRaw("allow: /b\n"))
+  expect_false(ch_allowed(mid_key, "/b"))
+  expect_hidden_rules(robots_validate_text(mid_key), 1L, "mid-directive")
+
+  # `Foo\0Bot` names FooBot only NUL-free, so the group changes.
+  agent_value <- c(charToRaw("User-agent: *\nDisallow: /a\nUser-agent: Foo"),
+                   ch_nul, charToRaw("Bot\nDisallow: /b\n"))
+  expect_false(ch_allowed(agent_value, "/b"))
+  expect_hidden_rules(robots_validate_text(agent_value), 1L, "agent value")
+
+  # Two hidden lines in one body are counted together.
+  two <- c(ch_line_start, ch_nul, charToRaw("Allow: /private/x\n"))
+  expect_hidden_rules(robots_validate_text(two), 2L, "two lines")
+})
+
+test_that("a hidden rule after a long NUL line keeps its line", {
+  # The NUL line is longer than the parser's line buffer; the next line
+  # numbers the same in both reads.
+  long <- c(charToRaw("User-agent: *\nDisallow: /a\n# "), ch_nul,
+            charToRaw(strrep("x", 20000L)), charToRaw("\n"), ch_nul,
+            charToRaw("Disallow: /\n"))
+  expect_hidden_rules(robots_validate_text(long), 1L, "long line")
+})
+
+test_that("a body cut after a hidden rule still reports it", {
+  body <- c(ch_line_start, charToRaw(paste0("# ", strrep("x", 200L), "\n")))
+  local_fake_ssrfr(function(req) fake_response(200L, body = body))
+  x <- robots_validate_url("http://example.com/", max_bytes = 60L)
+  expect_true(x$documents$body_truncated)
+  expect_hidden_rules(x, 1L, "cut body")
+})
+
+test_that("invalid UTF-8 beside a hidden rule keeps its row", {
+  bytes <- c(ch_line_start, charToRaw("Disallow: /"), as.raw(0xff),
+             charToRaw("\n"))
+  x <- robots_validate_text(bytes)
+  expect_identical(x$diagnostics$line[x$diagnostics$code == "invalid_utf8"],
+                   4L)
+  expect_hidden_rules(x, 1L, "invalid UTF-8")
 })
 
 test_that("a raw-rule-free body keeps today's count, grouped or not", {
