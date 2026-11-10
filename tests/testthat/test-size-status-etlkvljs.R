@@ -18,13 +18,17 @@ ss_grid <- expand.grid(
 )
 ss_google <- ss_grid[ss_grid$ruleset == "google" &
                        ss_grid$backend == "google", ]
-# The pairs a cut of 512,000 stored bytes or more can resolve
-# (ceiling_cut_readable_v1()): the yandex ruleset under every backend, and
-# google with the google backend. Every other pair stays incomplete at any
-# size, so the sizes past 512,000 run these alone.
-ss_size_pairs <- ss_grid[ss_grid$ruleset == "yandex" |
-                           (ss_grid$ruleset == "google" &
-                              ss_grid$backend == "google"), ]
+# The pairs a cut of `stored` bytes resolves (ceiling_cut_readable_v1()). Past
+# 512,000, that is the yandex ruleset under every backend, and google with the
+# google backend. Every other pair stays incomplete at any size, so the sizes
+# past 512,000 run the readable pairs alone.
+ss_readable_pairs <- function(stored, grid = ss_grid) {
+  evidence <- list(body_truncated = TRUE, stored_bytes = stored)
+  readable <- mapply(function(ruleset, backend) {
+    ceiling_cut_readable_v1(evidence, ruleset, backend)
+  }, grid$ruleset, grid$backend)
+  grid[unname(readable), ]
+}
 # A supplied body is use_rules under every ruleset, so only the backend
 # reads its size: one ruleset per backend.
 ss_diagonal <- ss_grid[ss_grid$ruleset == ss_grid$backend, ]
@@ -242,11 +246,12 @@ ss_expect_cut_rows <- function(x, stored, status) {
 
 test_that("ROBO-etlkvljs: a cut 200 or 203 at each size, ruleset x backend", {
   # Every pair at 511,999 and 512,000, where the readable pairs turn; past
-  # 512,000 the pairs whose reading can still change (ss_size_pairs).
+  # 512,000 the pairs ceiling_cut_readable_v1() resolves at that size.
   body <- ss_split_body(ss_tails$rule)
   sizes <- list(
     list(511999L, ss_grid), list(512000L, ss_grid),
-    list(512001L, ss_size_pairs), list(524288L, ss_size_pairs)
+    list(512001L, ss_readable_pairs(512001L)),
+    list(524288L, ss_readable_pairs(524288L))
   )
   for (status in c(200L, 203L)) {
     for (size in sizes) {
@@ -254,6 +259,18 @@ test_that("ROBO-etlkvljs: a cut 200 or 203 at each size, ruleset x backend", {
       x <- ss_eval_url(names(ss_tails$rule$probes), size[[1L]], size[[2L]])
       ss_expect_cut_rows(x, size[[1L]], status)
     }
+  }
+})
+
+test_that("ROBO-etlkvljs: the pairs read past 512,000 are named", {
+  # engine-profiles.md section 7: the yandex ruleset under every backend, and
+  # google with the google backend. A pair that starts to resolve here shows
+  # up as a new row of ss_readable_pairs(), and this fails by name.
+  named <- ss_grid[ss_grid$ruleset == "yandex" |
+                     (ss_grid$ruleset == "google" &
+                        ss_grid$backend == "google"), ]
+  for (size in c(512001L, 524288L)) {
+    expect_identical(ss_readable_pairs(size), named, label = paste(size))
   }
 })
 
@@ -521,8 +538,10 @@ test_that("ROBO-etlkvljs: the validator reads a supplied body past 512,000", {
 # --- Status classes: the v1 policy -------------------------------------------
 
 # engine-profiles.md sections 3 and 4, transcribed by hand (status, action)
-# per ruleset. assumed_rfc9309 is the RFC reading as an application choice
-# (section 1), so it takes the rfc9309 cell.
+# per ruleset, and checked cell for cell against engine_policy_table_v1() by
+# the test after the status-class test, so a drift in either fails by name.
+# assumed_rfc9309 is the RFC reading as an application choice (section 1), so
+# it takes the rfc9309 cell.
 ss_cell <- function(status, action = NA_character_) list(status, action)
 ss_gap <- ss_cell("documentation_gap")
 ss_open <- ss_cell("evaluated", "allow_all")
@@ -545,6 +564,20 @@ ss_status_policy <- list(
   redirect_over_budget = ss_row(ss_open, ss_open, ss_gap),
   protocol_error = ss_row(ss_gap, ss_gap, ss_gap)
 )
+
+# The table's cells in the shape of ss_status_policy: (status, action) per
+# category and ruleset.
+ss_table_policy <- function(policy) {
+  by_category <- function(category) {
+    rows <- policy[policy$category == category, ]
+    cell <- function(ruleset) {
+      row <- rows[rows$ruleset == ruleset, ]
+      list(row$policy_status, row$policy_action)
+    }
+    lapply(stats::setNames(nm = names(ss_status_policy[[category]])), cell)
+  }
+  lapply(stats::setNames(nm = names(ss_status_policy)), by_category)
+}
 
 ss_over_budget <- function(req) {
   hop <- suppressWarnings(as.integer(sub("^.*/r", "", req$url)))
@@ -660,6 +693,12 @@ test_that("ROBO-etlkvljs: each status class resolves as section 4 documents", {
     })
     ss_expect_rows(r, want, case_label)
   }
+})
+
+test_that("ROBO-etlkvljs: the status policy equals engine_policy_table_v1()", {
+  expect_identical(
+    ss_table_policy(engine_policy_table_v1()), ss_status_policy
+  )
 })
 
 test_that("ROBO-etlkvljs: a 4xx or 5xx over max_bytes keeps its status class", {
