@@ -57,7 +57,8 @@ checks that `robots_evaluate_text_v1()` with the `google` ruleset and backend
 agrees on every NUL-free body. R strings cannot carry a NUL, so a NUL-bearing
 body (the UTF-16 cases) is decoded as the fetch path decodes it: NUL bytes
 dropped (`R/body-decode.R`, `nul_free_bytes()`), then handed to the same
-binding. Google's own C++ reads the NULs instead; see `enc-utf16le-no-bom`.
+binding. Google's own C++ reads each line only up to its first NUL instead; see
+`enc-utf16le-no-bom`.
 
 ## Sources
 
@@ -147,7 +148,7 @@ vendored matcher's decision today; "Validator" lists the codes.
 | `enc-bom-before-user-agent` — BOM before a second group's `User-agent: FooBot` | unspecified | not documented | `/a` disallow, `/b` disallow: the FooBot line is unknown, so FooBot falls to `*`, and its `Disallow: /b` joins the `*` group | `unknown_directive@4` | yes; **known gap**: the lost group is not reported as a BOM |
 | `enc-bom-doubled` — two BOMs, then the rules | unspecified | only one leading BOM is documented as ignored | `/a` allow: the second BOM hides `User-agent`, so the rule has no group | `byte_order_mark@1`, `unknown_directive@1`, `rule_without_user_agent@2`, `missing_user_agent` | yes; covered by `rule_without_user_agent` (`byte_order_mark` alone would say the BOM is skipped) |
 | `enc-utf16le-bom` — UTF-16LE with BOM | not UTF-8 (§2.3, MUST); MAY bridge (§2.2.2): unspecified | must be UTF-8 | `/a` allow (NULs dropped, the `FF FE` prefix spoils line 1, the rule has no group) | `nul_byte@1..3`, `invalid_utf8`, `malformed_line@1`, `no_rules` | yes; covered by `nul_byte` (errors) |
-| `enc-utf16le-no-bom` — UTF-16LE, no BOM | as above | must be UTF-8 | `/a` **disallow**: with the NULs dropped the file is plain ASCII. Google's C++ reads the NULs and would ignore the lines (allow); robotstxtr's drop is deliberate (`R/body-decode.R`) | `nul_byte@1..3`, `malformed_line@1`, `no_rules` | yes; **known gap**: `no_rules` ("places no restrictions") while the matcher enforces `Disallow: /a` |
+| `enc-utf16le-no-bom` — UTF-16LE, no BOM | as above | must be UTF-8 | `/a` **disallow**: with the NULs dropped the file is plain ASCII. Google's C++ reads each line only up to its first NUL, so no line holds a directive (allow); robotstxtr's drop is deliberate (`R/body-decode.R`) | `nul_byte@1..3`, `malformed_line@1`, `no_rules` | yes; **known gap**: `no_rules` ("places no restrictions") while the matcher enforces `Disallow: /a` |
 | `enc-utf16be-bom` — UTF-16BE with BOM | as above | must be UTF-8 | `/a` allow | `nul_byte@1..2`, `invalid_utf8`, `malformed_line@1`, `no_rules` | yes; covered by `nul_byte` (errors) |
 | `enc-latin1-rule` — `Disallow: /caf` + Latin-1 `é` (`E9`) | non-UTF-8 file (§2.3); unspecified | non-UTF-8 characters may be ignored, rules may become invalid | `/caf%E9` disallow (the byte is escaped to `%E9`), `/caf%C3%A9` allow | `invalid_utf8` (no line) | yes: the UTF-8 URL a browser sends is not blocked; covered by `invalid_utf8` (error) |
 | `enc-latin1-comment` — Latin-1 byte inside a comment only | the file is not UTF-8 (§2.3), though only a comment holds the byte: unspecified | as above | `/a` disallow, unaffected | `invalid_utf8` (error, no line) | no; **known gap**: a lineless error for a byte that changes nothing |

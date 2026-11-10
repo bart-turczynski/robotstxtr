@@ -290,7 +290,7 @@ calls `RobotsMatcher::OneAgentAllowedByRobots()` on the raw body bytes and repor
 `matching_line()`. The same body, token and URL go to each robotstxtr Google path:
 `robots_evaluate_text_v1()` with the `google` backend under every ruleset (`google`, `rfc9309`,
 `assumed_rfc9309`, `bing`, `yandex`: each reads a supplied body as `use_rules` at any size, so every
-row reaches the matcher); `allowed_by_robots_text()`; and `allowed_by_robots_url()` and `robots_evaluate_url_v1()`
+row that passes input screening reaches the matcher); `allowed_by_robots_text()`; and `allowed_by_robots_url()` and `robots_evaluate_url_v1()`
 (`google`/`google`), which take no body argument, so the body is served at the ssrfr boundary
 (`tests/testthat/helper-fake-ssrfr.R`), with no network. The decision and the matched line are
 compared. The inputs are synthesized: empty-value rules; the window (a rule after byte 512,000, a

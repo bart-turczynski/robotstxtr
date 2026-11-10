@@ -574,9 +574,10 @@ R string — for the matcher, for the parse collector, and for the `robots_body(
 preview. The document must not be truncated at the NUL and no other byte may be
 rewritten; `robots$body` keeps the acquired bytes verbatim, NUL included, so
 `raw = TRUE` still round-trips them. This is a deliberate, documented divergence
-from the reference matcher, which is byte-transparent and would read
-`"\0Disallow: /x"` as the unknown directive `"\0disallow"` and ignore that line:
-byte transparency is unreachable through R's character type, and of the two
+from the reference matcher, which parses each line as a NUL-terminated C string:
+it reads `"\0Disallow: /x"` as an empty line and ignores it, and cuts
+`"Disallow: /a\0b"` to the rule `/a` (design/engine-profiles.md §5b, class 5).
+Neither reading is reachable through R's character type, and of the two
 representable rules, removal preserves every directive the document spells out
 where truncation would silently discard the rest of the file. Such a document is
 malformed, and `robots_validate_text()` reports it as a `nul_byte` error
