@@ -76,6 +76,10 @@ A line exceeds the parser's 16,663-byte buffer and is truncated. \cr
 A directive without a colon, which the parser accepts. \cr
 \code{accepted_directive_typo} \tab warning \tab
 A directive name in an accepted typo spelling. \cr
+\code{accepted_directive_prefix} \tab warning \tab
+A key such as \code{DisallowAITraining} that only starts with
+\code{allow} or \code{disallow}, which the parser reads as that rule.
+\cr
 \code{unsupported_directive} \tab warning \tab
 A known directive this profile ignores, such as \code{crawl-delay}. \cr
 \code{unknown_directive} \tab warning \tab
@@ -170,6 +174,18 @@ names the \code{safety_block_reason}. \cr
 Any other outcome that left no body; the reason is in
 \code{message}.
 }
+
+For \code{accepted_directive_prefix}, Google's parser accepts any key that
+starts with \code{allow} or \code{disallow}, ignoring ASCII case, so
+\verb{DisallowAITraining: /} is read as \verb{Disallow: /} and blocks the group's
+crawlers. The Bing and Yandex matchers compare the whole field name and
+ignore the line, and RFC 9309's grammar (section 2.2) has only \code{allow} and
+\code{disallow} rule records, leaving other records to the crawler (section
+2.2.4). The message names the key as written; for a Disallow key it points
+to a separate \verb{User-agent: __usage_ai-training} group, not stacked under
+another User-agent line, as the AI-training opt-out.
+An accepted typo such as \code{Dissallow} is reported as
+\code{accepted_directive_typo} only.
 
 For \code{wildcard_rules_not_inherited}, a crawler obeys only the groups that
 name it (combined when several do) and ignores the \verb{User-agent: *} group,
