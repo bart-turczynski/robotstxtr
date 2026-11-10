@@ -3,9 +3,9 @@
 # Introduced by ROBO-novczgii (YI6a). This unit ships a compact, byte-pinned,
 # provenance-recorded copy of the 140 accepted Yandex conformance cases (and
 # the 26 body files they reference) under inst/yandex-corpus/, plus a
-# fail-closed offline validator. It adds test data and a validator only: the
-# Yandex matcher backend stays `capability_unavailable` and the public engine
-# schema revision is unchanged.
+# fail-closed offline validator. It adds test data and a validator only, and
+# changes neither the Yandex matcher backend nor the public engine schema
+# revision.
 #
 # Everything here is fully offline. No sibling checkout and no network access
 # are required at build, test, or install time; the corpus files are consumed

@@ -1,8 +1,8 @@
-# Internal wrappers over the hidden native robotstxtbing bindings
-# (ROBO-yhfjsbzo, BI4). Not exported and not wired into the public facade; Bing
-# remains capability_unavailable until the atomic activation slice (BI5). These
-# give the terse-named native routines readable, self-documenting signatures
-# for tests and for the later engine-aware adapter (BI5) to compose with.
+# Internal wrappers over the native robotstxtbing bindings (ROBO-yhfjsbzo,
+# BI4). Not exported. They give the terse-named native routines readable,
+# self-documenting signatures for tests and for the Bing matcher adapter
+# (match_bing_v1(), R/match-bing-v1.R), which the `bing` backend is registered
+# with since the activation slice (BI5, ROBO-qetsyvwv).
 #
 # Each distinct body is parsed exactly once. `bodies` is a list of raw vectors
 # (the DISTINCT robots bodies, bytes preserved verbatim); `body_index` is a

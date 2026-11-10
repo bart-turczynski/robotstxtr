@@ -1,8 +1,9 @@
-# Internal wrapper over the hidden native checked robotstxtyandex batch binding
-# (ROBO-jbhtvilo, YI4b). Not exported and not wired into the public facade;
-# Yandex remains capability_unavailable. This gives the terse-named native
-# routine `robotstxtr_checked_batch_()` a readable, self-documenting signature
-# for tests and for the later engine-aware adapter (YI4c) to compose with.
+# Internal wrapper over the native checked robotstxtyandex batch binding
+# (ROBO-jbhtvilo, YI4b). Not exported. It gives the terse-named native routine
+# `robotstxtr_checked_batch_()` a readable, self-documenting signature for
+# tests and for the Yandex matcher adapter (match_yandex_v1(),
+# R/match-yandex-v1.R), which the `yandex` backend is registered with since
+# YI5.
 #
 # Each distinct body is parsed exactly once. `bodies` is a list of raw vectors
 # (the DISTINCT robots bodies, bytes preserved verbatim); `body_index` is a
