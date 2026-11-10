@@ -73,6 +73,10 @@ validation_unsupported <- c(
 #'     \cr
 #'   \code{unsupported_directive} \tab warning \tab
 #'     A known directive this profile ignores, such as \code{crawl-delay}. \cr
+#'   \code{content_signal_directive} \tab warning \tab
+#'     A \code{Content-Signal} line, from an expired Internet-Draft that no
+#'     crawler operator documents honoring; it counts as an unsupported
+#'     directive. \cr
 #'   \code{unknown_directive} \tab warning \tab
 #'     A directive this profile does not recognize. \cr
 #'   \code{empty_user_agent} \tab error \tab
@@ -594,7 +598,15 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     if (identical(type, "unknown")) {
       unsupported[[i]] <- !is.na(action) &&
         action %in% validation_unsupported
-      if (unsupported[[i]]) {
+      if (identical(action, "content-signal")) {
+        add_diagnostic(
+          line, "warning", "content_signal_directive", action,
+          paste0("Content-Signal comes from an expired Internet-Draft and ",
+                 "no crawler operator documents honoring it; for an ",
+                 "AI-training preference use a ",
+                 "`User-Agent: __usage_ai-training` group.")
+        )
+      } else if (unsupported[[i]]) {
         add_diagnostic(
           line, "warning", "unsupported_directive", action,
           paste0("Directive is known but ignored by this validation profile; ",
