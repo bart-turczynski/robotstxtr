@@ -29,7 +29,8 @@ blank line, other directives, other suffixes, the inverse URL form) until the
 cause is isolated, and the decision, reason and matched line are recorded for
 each row. Every live class is pinned. Some refuted candidates are pinned too:
 the Yandex form of class 1 (its own stacking test), the Bing form of class 4,
-and the `*%*` shape of class 9 (pinned in class 10). Class 5 and class 9's
+the `*%*` shape of class 9 (pinned in class 10), and class 14's stacked Yandex
+form and `sitemap`-prefix control. Class 5 and class 9's
 other forms are listed, not pinned.
 
 Verdicts:
@@ -67,12 +68,14 @@ Outcomes below read `decision reason line`; `default` means
 | 11 | A lower-case escape in a rule | yandex | UNEVIDENCED |
 | 12 | An empty `User-agent` value | yandex | UNEVIDENCED |
 | 13 | A key that starts with `disallow` or `allow` | yandex, bing | EXPECTED-SOURCED |
+| 14 | A key that starts with `user-agent` (or a `User-agent` typo); `sitemap` refuted | yandex, bing | EXPECTED-SOURCED |
 
 No class is OUR BUG: every backend does what its contract says. Most rows have
 Google disallowing where the other engine allows. The rows where Google allows
 and the other engine disallows are class 10's `/page` shape, class 11's
 `/a%3cb` path, class 6's raw `/café` path, class 1's later-`bingbot`
-`Disallow` shape and class 13's `Allow`-prefixed key (below).
+`Disallow` shape, class 13's `Allow`-prefixed key and class 14's after-a-rule
+shape (below).
 
 ## Classes
 
@@ -387,13 +390,76 @@ field name whole (`ClassifyField`, `AsciiCaseEqual`). That such a file validates
 blocks everything for Google is the validator's gap, ROBO-xglcoagv, not a
 matcher change.
 
+### 14. A key that starts with `user-agent` (yandex, bing)
+
+Keys: `User-agentfoo`, `User-agent-x`, `USER-AGENTS`, and the typo forms
+`Useragent`, `Useragents` and `User agent`. Fixtures, path `/private`, with
+`<key>` each of those:
+
+- bare: `<key>: *` / `Disallow: /private`;
+- stacked: `User-agent: bingbot` / `<key>: x` / `User-agent: *` /
+  `Disallow: /private`;
+- after a rule: `User-agent: Yandex` / `User-agent: bingbot` / `Disallow: /a` /
+  `<key>: Other` / `Disallow: /private`.
+
+| Row | Bare | Stacked | After a rule |
+|---|---|---|---|
+| `google_yandex` | `disallow rule_disallow 2` | `disallow rule_disallow 4` | default |
+| `yandex` | default | `disallow rule_disallow 4` | `disallow rule_disallow 5` |
+| `google_bingbot` | `disallow rule_disallow 2` | `disallow rule_disallow 4` | default |
+| `bing` | default | default | `disallow rule_disallow 5` |
+
+Google's `KeyIsUserAgent` (`src/robots.cc`) accepts any key that starts with
+`user-agent`, ignoring case, and, with `kAllowFrequentTypos` on, any that
+starts with `useragent` or `user agent`. Each key is a `User-agent` line to
+Google and an unknown field to the Yandex and Bing backends. Bare, the
+following rule has a group on Google and is an orphan elsewhere. Stacked, Bing
+seals `bingbot`'s run at the unknown field (class 1, rule 2a); Yandex reaches
+`*` with the Yandex token on both rows. After a rule, the key starts an `Other`
+group on Google, so line 5 leaves the Yandex and `bingbot` group; both other
+engines keep it there. That last shape is one where Google allows and the other
+engines disallow.
+
+The Yandex form of the stacked shape is refuted: `User-agent: Yandex` /
+`<key>: x` / `User-agent: Other` / `Disallow: /private` is
+`disallow rule_disallow 4` for the Yandex token on both `google_yandex` and
+`yandex`, since Yandex keeps a run across an unknown field (class 1's Yandex
+form). It is pinned.
+
+The `sitemap` prefix is refuted and pinned as a control. `KeyIsSitemap` also
+matches by prefix, and the typo `site-map` too, so `Sitemapx`, `Sitemaps` and
+`Site-map` are `Sitemap` lines to Google and unknown fields to Yandex and Bing.
+No backend's access answer tells the two apart: Google ignores both, Yandex
+keeps a run across both, and Bing seals a run at both. Between stacked
+`User-agent` lines each key answers as `Sitemap:` does in class 1 (`bingbot`
+then `*`: Bing default, the other rows `disallow rule_disallow 4`; `Yandex`
+then `Other`: `disallow rule_disallow 4` for the Yandex token), and inside a
+`*` group all four rows are `disallow rule_disallow 3`.
+`robots_evaluate_text_v1()` returns access decisions only, no sitemap list, so
+a difference in which sitemaps an engine collects cannot show here. The control
+would turn red only if Bing stopped sealing, or Yandex started sealing, a run
+at an unknown field, and then together with class 1.
+
+Verdict: EXPECTED-SOURCED, on class 13's sources. Google's side is the upstream
+engine itself, which `design/engine-profiles.md` §5b checks against the pinned
+upstream: the prefix match is `StartsWithIgnoreCase` in `KeyIsUserAgent` and
+`KeyIsSitemap`. No Google page documents the prefix reading; the typo forms
+fall under Google's documented typo tolerance (`design/engine-profiles.md` §8),
+which upstream applies by prefix too. Bing: field names "must exactly equal" a
+known name, with no prefix/suffix field-name matching
+(`design/robotstxtbing-v2-spec.md` §9.2, project grammar). Yandex: the vendored
+lexer compares a field name whole (`ClassifyField`, `AsciiCaseEqual`), as the
+accepted case `ydx-parser-directive-suffix` shows for `Disallow`; for this
+class the accepted case `ydx-parser-user-agent-space` (`inst/yandex-corpus/`:
+a `User agent: Other` line after a Yandex rule leaves the next rule in the
+Yandex group; observed 2026-07-15 and 2026-07-17) is the after-a-rule shape
+itself.
+
 ## Adjacent findings
 
 - **Other prefix-matched keys.** Google's `KeyIsUserAgent` and `KeyIsSitemap`
-  also match by prefix, so a line such as `User-agentfoo: bingbot` is a
-  `User-agent` line to Google and an unknown field to Bing and Yandex, which on
-  Bing also seals a stacked run (class 1). Not probed or pinned here; filed as
-  ROBO-fslaxaep.
+  also match by prefix. The `User-agent` forms are class 14; the `Sitemap`
+  forms are refuted there and pinned as a control (ROBO-fslaxaep).
 
 - **A Yandex stacked-run claim our Yandex backend does not follow.**
   `design/robotstxtbing-v2-spec.md` §9.3 says the split "is corroborated

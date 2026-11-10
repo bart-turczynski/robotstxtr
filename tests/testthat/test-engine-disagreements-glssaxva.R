@@ -307,3 +307,92 @@ test_that("class 13: google reads a key starting with disallow as Disallow", {
               dg_disallow(2))
   )
 })
+
+# Class 14 (ROBO-fslaxaep): Google's KeyIsUserAgent accepts any key that
+# starts with `user-agent`, or with the typos `useragent` and `user agent`;
+# yandex and bing compare the whole field name, so each is an unknown field.
+dg_ua_keys <- c("User-agentfoo", "User-agent-x", "USER-AGENTS", "Useragent",
+                "Useragents", "User agent")
+
+test_that("class 14: google reads a user-agent-prefixed key as User-agent", {
+  for (key in dg_ua_keys) {
+    body <- dg_lines(paste0(key, ": *"), "Disallow: /private")
+    expect_identical(
+      dg_outcome(body, "/private"),
+      dg_expect(dg_disallow(2), dg_default, dg_disallow(2), dg_default),
+      info = key
+    )
+  }
+})
+
+test_that("class 14: the prefixed key seals bingbot's stacked run on bing", {
+  # An unknown field to bing, so rule 2a seals the run (class 1); google
+  # stacks it as a User-agent line, and yandex keeps the run across it.
+  for (key in dg_ua_keys) {
+    body <- dg_lines("User-agent: bingbot", paste0(key, ": x"),
+                     "User-agent: *", "Disallow: /private")
+    expect_identical(
+      dg_outcome(body, "/private"),
+      dg_expect(dg_disallow(4), dg_disallow(4), dg_disallow(4), dg_default),
+      info = key
+    )
+  }
+})
+
+test_that("class 14: after a rule the prefixed key starts a group on google", {
+  # The ydx-parser-user-agent-space shape: google starts an `Other` group, so
+  # line 5 leaves the Yandex and bingbot group; yandex and bing keep it there.
+  for (key in dg_ua_keys) {
+    body <- dg_lines("User-agent: Yandex", "User-agent: bingbot",
+                     "Disallow: /a", paste0(key, ": Other"),
+                     "Disallow: /private")
+    expect_identical(
+      dg_outcome(body, "/private"),
+      dg_expect(dg_default, dg_disallow(5), dg_default, dg_disallow(5)),
+      info = key
+    )
+  }
+})
+
+test_that("class 14: the prefixed key in a stacked Yandex run agrees", {
+  # Refuted for the Yandex token: google stacks it, yandex keeps the run.
+  for (key in dg_ua_keys) {
+    body <- dg_lines("User-agent: Yandex", paste0(key, ": x"),
+                     "User-agent: Other", "Disallow: /private")
+    expect_identical(
+      dg_outcome(body, "/private"),
+      dg_expect(dg_disallow(4), dg_disallow(4), dg_default, dg_default),
+      info = key
+    )
+  }
+})
+
+test_that("class 14 control: a key starting with sitemap reads as Sitemap", {
+  # Refuted: KeyIsSitemap also matches by prefix (and `site-map`), but a
+  # Sitemap line and an unknown field read alike on every backend, so each
+  # prefixed key answers as the exact `Sitemap` key does in class 1.
+  for (key in c("Sitemap", "Sitemapx", "Sitemaps", "Site-map")) {
+    value <- paste0(key, ": https://example.com/s.xml")
+    body <- dg_lines("User-agent: bingbot", value, "User-agent: *",
+                     "Disallow: /private")
+    expect_identical(
+      dg_outcome(body, "/private"),
+      dg_expect(dg_disallow(4), dg_disallow(4), dg_disallow(4), dg_default),
+      info = key
+    )
+    body <- dg_lines("User-agent: Yandex", value, "User-agent: Other",
+                     "Disallow: /private")
+    expect_identical(
+      dg_outcome(body, "/private"),
+      dg_expect(dg_disallow(4), dg_disallow(4), dg_default, dg_default),
+      info = key
+    )
+    body <- dg_lines("User-agent: *", value, "Disallow: /private")
+    expect_identical(
+      dg_outcome(body, "/private"),
+      dg_expect(dg_disallow(3), dg_disallow(3), dg_disallow(3),
+                dg_disallow(3)),
+      info = key
+    )
+  }
+})
