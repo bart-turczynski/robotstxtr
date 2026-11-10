@@ -43,9 +43,12 @@
 #' `input_unknown`).
 #'
 #' @param robots_txt A single, non-missing character scalar holding the
-#'   robots.txt body. An empty body is valid. It is converted to UTF-8 once and
-#'   the exact bytes are stored in the returned `robots$body` and passed to the
-#'   matcher; a body already carrying `Encoding = "bytes"` is used verbatim.
+#'   robots.txt body. An empty body is valid. A body marked UTF-8, or unmarked
+#'   (as `rawToChar()` gives), is taken as UTF-8 bytes as written, in any
+#'   locale; one marked `"latin1"` is converted to UTF-8, and one marked
+#'   `Encoding = "bytes"` is used verbatim. In a Latin-1 native locale an
+#'   unmarked body is read as native text and converted. Those exact bytes are
+#'   stored in the returned `robots$body` and passed to the matcher.
 #' @param url A character vector of URL strings to match, passed to the matcher
 #'   unchanged. May have length zero.
 #' @param user_agent A matcher user-agent string, length one or `length(url)`,
@@ -73,16 +76,12 @@ allowed_by_robots_text <- function(robots_txt, url, user_agent,
   n <- length(url)
   user_agent <- expand_user_agent(user_agent, n)
 
-  # --- Body: convert to UTF-8 once, store those exact bytes, and pass the same
-  # byte sequence to C++ (§6.6 body handling). A body already flagged as
-  # `Encoding = "bytes"` is used verbatim (it cannot be UTF-8-translated). The
-  # matcher input is rebuilt from the raw bytes and marked UTF-8 so cpp11
-  # forwards the exact bytes without a translation error or re-encoding.
-  if (identical(Encoding(robots_txt), "bytes")) {
-    raw_body <- charToRaw(robots_txt)
-  } else {
-    raw_body <- charToRaw(enc2utf8(robots_txt))
-  }
+  # --- Body: take the supplied bytes once (text_body_bytes_v1(), shared with
+  # the other text entry points), store those exact bytes, and pass the same
+  # byte sequence to C++ (§6.6 body handling). The matcher input is rebuilt
+  # from the raw bytes and marked UTF-8 so cpp11 forwards the exact bytes
+  # without a translation error or re-encoding.
+  raw_body <- text_body_bytes_v1(robots_txt)
   body_utf8 <- decode_matcher_body(raw_body)
 
   # --- Per-element validity (§6.6, text path): a URL or user agent is invalid

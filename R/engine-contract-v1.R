@@ -649,12 +649,23 @@ expand_product_token_v1 <- function(token, n) {
   )
 }
 
+# The bytes of a supplied robots.txt string, shared by every text entry point
+# (ROBO-tipzbglv). A string marked "bytes" is used verbatim, and one marked
+# UTF-8 is already UTF-8. An unmarked ("unknown") string is taken as UTF-8
+# bytes as written: enc2utf8() would re-encode it as native-locale text, and
+# under LC_CTYPE C, whose charset is ASCII, that escapes each non-ASCII byte as
+# "<xx>". Only a Latin-1 native locale keeps the conversion, since there an
+# unmarked string is native latin1 text. A string marked "latin1" is
+# converted.
 text_body_bytes_v1 <- function(robots_txt) {
-  if (identical(Encoding(robots_txt), "bytes")) {
-    charToRaw(robots_txt)
-  } else {
-    charToRaw(enc2utf8(robots_txt))
+  encoding <- Encoding(robots_txt)
+  if (identical(encoding, "bytes")) {
+    return(charToRaw(robots_txt))
   }
+  if (identical(encoding, "unknown") && !isTRUE(l10n_info()[["Latin-1"]])) {
+    return(charToRaw(robots_txt))
+  }
+  charToRaw(enc2utf8(robots_txt))
 }
 
 matcher_string_v1 <- function(body) {
@@ -1586,7 +1597,11 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' `Disallow`, it instead reports `effective_empty_disallow` with that line.
 #'
 #' @param robots_txt A single, non-missing character value containing the
-#'   robots.txt body.
+#'   robots.txt body. A body marked UTF-8, or unmarked (as `rawToChar()`
+#'   gives), is taken as UTF-8 bytes as written, in any locale; one marked
+#'   `"latin1"` is converted to UTF-8, and one marked `Encoding = "bytes"` is
+#'   used verbatim. In a Latin-1 native locale an unmarked body is read as
+#'   native text and converted.
 #' @param url A character vector of URLs to evaluate.
 #' @param robots_product_token A matcher-profile selector: a robots.txt
 #'   `User-agent:` group label, NOT an HTTP `User-Agent` crawler identity. It is

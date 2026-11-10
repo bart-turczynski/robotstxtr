@@ -67,7 +67,6 @@ test_that("the reproduction body is unmarked", {
 })
 
 test_that("robots_evaluate_text_v1() keeps unmarked bytes under LC_CTYPE C", {
-  skip("ROBO-tipzbglv: known gap, enc2utf8() escapes the bytes under C")
   te_with_ctype("C", {
     x <- robots_evaluate_text_v1(te_body(), te_url, "bot", "google", "google")
     expect_identical(x$evidence$stored_bytes, length(te_raw))
@@ -76,7 +75,6 @@ test_that("robots_evaluate_text_v1() keeps unmarked bytes under LC_CTYPE C", {
 })
 
 test_that("allowed_by_robots_text() keeps unmarked bytes under LC_CTYPE C", {
-  skip("ROBO-tipzbglv: known gap, enc2utf8() escapes the bytes under C")
   te_with_ctype("C", {
     x <- allowed_by_robots_text(te_body(), te_url, "bot")
     expect_identical(x$robots$body[[1L]], te_raw)
@@ -85,7 +83,6 @@ test_that("allowed_by_robots_text() keeps unmarked bytes under LC_CTYPE C", {
 })
 
 test_that("robots_validate_text() keeps unmarked bytes under LC_CTYPE C", {
-  skip("ROBO-tipzbglv: known gap, enc2utf8() escapes the bytes under C")
   te_with_ctype("C", {
     x <- robots_validate_text(te_body())
     expect_identical(x$documents$byte_size, length(te_raw))
@@ -106,7 +103,6 @@ test_that("a UTF-8 locale reads the reproduction as written", {
 })
 
 test_that("unmarked bodies store identical bytes under C and UTF-8", {
-  skip("ROBO-tipzbglv: known gap, enc2utf8() escapes the bytes under C")
   for (name in names(te_unmarked_raws)) {
     raw_body <- te_unmarked_raws[[name]]
     body <- rawToChar(raw_body)
