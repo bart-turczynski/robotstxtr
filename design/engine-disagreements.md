@@ -27,10 +27,10 @@ A supplied body is `use_rules` under every ruleset (`design/engine-profiles.md`
 difference is the backend's. Each fixture is then varied (with and without a
 blank line, other directives, other suffixes, the inverse URL form) until the
 cause is isolated, and the decision, reason and matched line are recorded for
-each row. Every live class is pinned. A refuted candidate is pinned only where
-its fixture is already part of a live class's test: the Yandex form of class 1,
-the Bing form of class 4 and the `*%*` shape of class 9 (pinned in class 10).
-Class 5 and class 9's other forms are listed, not pinned.
+each row. Every live class is pinned. Some refuted candidates are pinned too:
+the Yandex form of class 1 (its own stacking test), the Bing form of class 4,
+and the `*%*` shape of class 9 (pinned in class 10). Class 5 and class 9's
+other forms are listed, not pinned.
 
 Verdicts:
 
@@ -54,6 +54,7 @@ Outcomes below read `decision reason line`; `default` means
 | # | Class | Differs on | Verdict |
 |---|---|---|---|
 | 1 | A non-rule line ends a stacked `User-agent` run | bing | EXPECTED-SOURCED |
+| 1b | An unknown field (`Content-Signal:`) ends a stacked `*` run before a `__usage_ai-training` group | bing | EXPECTED-SOURCED |
 | 2 | A leading UTF-8 BOM | yandex, bing | UNEVIDENCED |
 | 3 | A `User-agent` value with a suffix | yandex, bing | Yandex space form EXPECTED-SOURCED; the rest UNEVIDENCED |
 | 4 | Whitespace before the colon | yandex | UNEVIDENCED |
@@ -309,7 +310,8 @@ Fixtures: `Disallow: /page` / `Allow: /pag*`, path `/page`; `Allow: /p` /
 
 Google and Bing rank a match by the rule's byte length, `*` and `$` included.
 Yandex counts neither `*` nor a final `$`; Allow still wins an equal count. This
-is the source of the rows where Google allows and Yandex disallows.
+is one source of the rows where Google allows and Yandex disallows; the
+summary lists the others.
 
 Verdict: EXPECTED-SOURCED. The accepted Yandex corpus:
 `ydx-wildcard-specificity-matrix-v1` (`Disallow: /spec/literal/ab*` beats
@@ -369,21 +371,29 @@ is a `Disallow` and `AllowAITraining` an `Allow`. The Yandex and Bing backends
 compare the whole field name, so both keys are unknown fields with no access
 effect.
 
-Verdict: EXPECTED-SOURCED for the upstream Google engine. The prefix reading is
-the vendored matcher's, which `design/engine-profiles.md` §5b checks against
-the pinned upstream. It is the same `StartsWithIgnoreCase` test that carries
-the typo tolerance Google documents (`design/engine-profiles.md` §8, "Google
-constrained typo tolerance `[documented]`"; `kAllowFrequentTypos` in
-`src/robots.cc`), though no Google page describes the prefix reading itself.
+Verdict: EXPECTED-SOURCED. Google's side is the upstream engine itself, which
+`design/engine-profiles.md` §5b checks against the pinned upstream: the prefix
+match is `StartsWithIgnoreCase` in `KeyIsAllow` and `KeyIsDisallow`, and it
+does not depend on `kAllowFrequentTypos` (Allow takes no typo at all). No
+Google page documents the prefix reading, and Google's documented typo
+tolerance (`design/engine-profiles.md` §8) does not cover it.
 Bing: field names "must exactly equal" a known name, and the grammar
 "deliberately does not accept prefix/suffix field-name matching"
-(`design/robotstxtbing-v2-spec.md` §9.2, project grammar). Yandex: the vendored
-lexer compares a field name whole against its known-field table
-(`ClassifyField`, `AsciiCaseEqual`). That such a file validates clean while it
+(`design/robotstxtbing-v2-spec.md` §9.2, project grammar). Yandex: the accepted
+tester case `ydx-parser-directive-suffix` (`inst/yandex-corpus/`: a
+`Disallow-extra:` line is ignored, the candidate path is allowed; observed
+2026-07-15 and 2026-07-17), which the vendored lexer implements by comparing a
+field name whole (`ClassifyField`, `AsciiCaseEqual`). That such a file validates clean while it
 blocks everything for Google is the validator's gap, ROBO-xglcoagv, not a
 matcher change.
 
 ## Adjacent findings
+
+- **Other prefix-matched keys.** Google's `KeyIsUserAgent` and `KeyIsSitemap`
+  also match by prefix, so a line such as `User-agentfoo: bingbot` is a
+  `User-agent` line to Google and an unknown field to Bing and Yandex, which on
+  Bing also seals a stacked run (class 1). Not probed or pinned here; filed as
+  ROBO-fslaxaep.
 
 - **A Yandex stacked-run claim our Yandex backend does not follow.**
   `design/robotstxtbing-v2-spec.md` §9.3 says the split "is corroborated
