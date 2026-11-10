@@ -97,6 +97,8 @@ allowed_skips:
     why: NR-VENDOR reads src/vendor/robotstxtyandex, absent from an installed check; the cheap gate dev/verify-yandex-vendor.R checks that tree against its manifest
   - reason: corpus harness dev/ not present (built package)
     why: test-corpus-harness-qbxsydcf.R sources dev/corpus/, which .Rbuildignore keeps out of the tarball; it runs from the source tree (ROBO-qbxsydcf)
+  - reason: no 8-bit native locale installed
+    why: the fleet image has no ISO-8859 locale; test-text-encoding-tipzbglv.R checks the native-encoding predicate on stand-ins everywhere and runs the entry points in a real 8-bit locale where one exists (ROBO-tipzbglv)
 
 # No allowed_notes: R CMD check NOTEs don't fail the gate, as they did not
 # fail the former pre-push hook or CI (rcmdcheck error_on = "warning", no

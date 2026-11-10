@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* Text entry points no longer alter an unmarked non-ASCII `robots_txt` under `LC_ALL=C`; it is read as UTF-8, as in a UTF-8 locale (ROBO-tipzbglv).
+
 * The `robots` frame of `robots_fetch()` and `allowed_by_robots_*()` gains `terminal_redirect_reason` and `safety_block_reason`; `robots_validate_url()` explains redirect, transport and safety outcomes per engine with their own codes instead of `acquisition_failed` (ROBO-bsloeclp).
 
 * Under the v1 `google` ruleset and matcher backend, a robots.txt cut at `max_bytes` with at least 512,000 bytes stored is now matched on its first 512,000 bytes instead of resolving `incomplete_evidence` (ROBO-ptibdnvy).
