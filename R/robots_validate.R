@@ -53,8 +53,8 @@ validation_unsupported <- c(
 #'   \code{misplaced_byte_order_mark} \tab warning \tab
 #'     A UTF-8 byte-order mark after the start of the file begins a line, so
 #'     the parser reads it as part of the key and ignores that line's
-#'     directive. A hidden User-agent line merges its rules into the group
-#'     before it. \cr
+#'     directive. A hidden User-agent line starts no group: the lines after
+#'     it stay with the group before it until the next User-agent line. \cr
 #'   \code{nul_byte} \tab error \tab
 #'     A line holds NUL bytes, which can truncate parsing. \cr
 #'   \code{invalid_utf8} \tab error \tab
@@ -1156,8 +1156,9 @@ misplaced_bom_hidden <- function(line, skip_start) {
   }
   hidden <- sprintf(" This %s line is not read", labels[[type]])
   tail <- if (identical(type, "user-agent")) {
-    paste0(": the rules after it join the group before it, or have no ",
-           "group.")
+    paste0(": the parser starts no group here, so the lines after it stay ",
+           "with the group before it, or with no group, until the next ",
+           "User-agent line.")
   } else {
     "."
   }

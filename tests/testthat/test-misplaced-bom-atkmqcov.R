@@ -53,7 +53,27 @@ test_that("ROBO-atkmqcov: the message names the directive the BOM hides", {
   expect_identical(hit$severity, "warning")
   expect_identical(hit$directive, "user-agent")
   expect_match(hit$message, "This User-agent line is not read")
-  expect_match(hit$message, "join the group before it")
+  expect_match(hit$message, "stay with the group before it")
+
+  # A visible User-agent after the hidden one starts the next group: the
+  # message says the lines stay only until then. Here /y belongs to c.
+  bytes <- c(charToRaw("User-agent: a\nDisallow: /x\n"), bom,
+             charToRaw("User-agent: b\nUser-agent: c\nDisallow: /y\n"))
+  hit <- bom_hits(bytes)
+  expect_identical(hit$line, 3L)
+  expect_match(
+    hit$message,
+    paste0("the parser starts no group here, so the lines after it stay ",
+           "with the group before it, or with no group, until the next ",
+           "User-agent line."),
+    fixed = TRUE
+  )
+  allowed <- function(token) {
+    allowed_by_robots_text(rawToChar(bytes), "https://example.com/y",
+                           token)$results$allowed
+  }
+  expect_false(allowed("c"))
+  expect_true(allowed("a"))
 
   hit <- bom_hits(bom_fixture("enc-bom-mid-file"))
   expect_identical(hit$directive, "disallow")
