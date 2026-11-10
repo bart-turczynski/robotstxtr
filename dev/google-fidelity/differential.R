@@ -19,9 +19,12 @@
 #
 # Exit status 1 when the reference's live answers drift from the answers
 # recorded in cases.R (the pinned tests would then state the wrong
-# reference), or when a row differs from the reference in a way
-# gf_expected_difference() in cases.R does not list (a difference outside the
-# classes of design/engine-profiles.md §5b); 0 otherwise.
+# reference), or when gf_check_rows() in cases.R reports a row against the
+# live answers: one that differs from the reference where the gf_expected
+# table lists nothing (a difference outside the classes of
+# design/engine-profiles.md §5b), one that differs but not with the allowed,
+# line and reason the table lists, or one the table lists that agrees with
+# the reference (a stale entry); 0 otherwise.
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 1L) {
@@ -96,14 +99,13 @@ rows <- lapply(seq_along(cases), function(k) {
   ours$ref_line <- ref$line[[k]]
   ours
 })
+# The same checks the pinned test runs on the recorded answers, here on the
+# live ones: a difference the table does not list, a listed row whose
+# allowed, line or reason is not the listed one, a listed row that agrees.
+# The differing rows, their counts and their classes all come from it.
 all <- do.call(rbind, rows)
-our_line <- ifelse(is.na(all$line), 0L, all$line)
-all$decision_differs <- is.na(all$allowed) | all$allowed != all$ref_allowed
-all$line_differs <- !all$decision_differs & our_line != all$ref_line
-all$class <- vapply(seq_len(nrow(all)), function(k) {
-  want <- env$gf_expected_difference(all$id[[k]], all$path[[k]])
-  if (is.null(want)) NA_integer_ else want$class
-}, integer(1L))
+check <- env$gf_check_rows(all, all$ref_allowed, all$ref_line)
+all <- check$rows
 differs <- all$decision_differs | all$line_differs
 diff <- all[differs, c(
   "id", "family", "path", "class", "ref_allowed", "ref_line", "allowed",
@@ -113,15 +115,15 @@ utils::write.table(
   diff, file.path(out_dir, "differences.tsv"),
   sep = "\t", quote = FALSE, row.names = FALSE
 )
-unexpected <- diff[is.na(diff$class), , drop = FALSE]
 
 cat(sprintf(
   paste0(
     "cases: %d; robotstxtr rows: %d; differing rows: %d ",
-    "(decision %d, line only %d; unexpected %d)\n"
+    "(decision %d, line only %d; unexpected %d, mismatched %d, stale %d)\n"
   ),
   length(cases), nrow(all), nrow(diff), sum(all$decision_differs),
-  sum(all$line_differs), nrow(unexpected)
+  sum(all$line_differs), nrow(check$unexpected), nrow(check$mismatched),
+  nrow(check$stale)
 ))
 if (nrow(diff) > 0L) {
   print(diff[c("id", "path", "class", "ref_allowed", "ref_line", "allowed",
@@ -133,12 +135,20 @@ if (length(drift) > 0L) {
   cat("recorded reference answers drifted:\n", paste0("  ", drift, "\n"))
   failed <- TRUE
 }
-if (nrow(unexpected) > 0L) {
-  cat(
-    "rows differing outside the expected classes:\n",
-    paste0("  ", unexpected$id, " ", unexpected$path, "\n")
-  )
-  failed <- TRUE
+report <- c(
+  unexpected = "rows differing outside the expected classes:\n",
+  mismatched = "rows differing, but not with the answer gf_expected lists:\n",
+  stale = "rows gf_expected lists that agree with the reference:\n"
+)
+for (kind in names(report)) {
+  bad <- check[[kind]]
+  if (nrow(bad) > 0L) {
+    cat(report[[kind]], paste0(
+      "  ", bad$id, " ", bad$path, ": allowed ", bad$allowed, ", line ",
+      bad$line, ", reason ", bad$reason, "\n"
+    ))
+    failed <- TRUE
+  }
 }
 if (failed) {
   quit(status = 1L)

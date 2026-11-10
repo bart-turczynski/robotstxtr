@@ -9,8 +9,10 @@
 # (`RobotsMatcher::OneAgentAllowedByRobots()` on the raw body bytes, then
 # `matching_line()`): `ref_allowed` and `ref_line`, 0 when no rule matched.
 # The differential re-derives both from the reference binary and fails on any
-# drift, so the recorded answers stay the reference's, not robotstxtr's, and on
-# any difference gf_expected_difference() below does not list.
+# drift, so the recorded answers stay the reference's, not robotstxtr's. It
+# also fails where gf_check_rows() below finds a row that differs outside the
+# gf_expected table, differs from the answer the table lists, or agrees with
+# the reference where the table lists a difference.
 #
 # `paths` names the robotstxtr entry points a case can reach: a body with a
 # NUL byte cannot be an R string, so it reaches only the fetched paths.
@@ -369,46 +371,95 @@ gf_cases <- function() {
 
 gf_v1_path <- function(path) startsWith(path, "v1_")
 
-# What robotstxtr returns where it differs from the reference, by case and
-# path: list(class, allowed, line, reason), or NULL where it must agree. The
-# classes are design/engine-profiles.md §5b's. The pinned test and the
-# differential both read this table.
-gf_expected_difference <- function(id, path) {
-  empty_value <- c(
-    "ev-disallow", "ev-allow", "ev-both", "ev-comment", "ev-beside-rule-miss"
+# The entry point of a row's path: "v1_text:bing" -> "v1_text".
+gf_entry_point <- function(path) sub(":.*$", "", path)
+
+gf_expect <- function(class, ids, paths, allowed, line, reason,
+                      v1_reason = reason) {
+  list(
+    class = class, ids = ids, paths = paths, allowed = allowed,
+    line = as.integer(line), reason = reason, v1_reason = v1_reason
   )
-  invalid_reason <- if (gf_v1_path(path)) "input_invalid" else "input_unknown"
-  if (id %in% empty_value) {
-    return(list(class = 1L, allowed = TRUE, line = NA_integer_,
-                reason = "default_allow"))
-  }
-  if (id %in% c("win-after", "win-after-ceiling", "win-straddle") &&
-        gf_v1_path(path)) {
-    return(list(class = 2L, allowed = TRUE, line = NA_integer_,
-                reason = "default_allow"))
-  }
-  if (identical(id, "win-after-ceiling") && identical(path, "url")) {
-    return(list(class = 3L, allowed = TRUE, line = NA_integer_,
-                reason = "default_allow"))
-  }
-  if (id %in% c("in-empty-url", "in-empty-token")) {
-    return(list(class = 4L, allowed = NA, line = NA_integer_,
-                reason = invalid_reason))
-  }
-  if (id %in% c("in-schemeless-url", "in-ftp-url") &&
-        path %in% c("url", "v1_url:google")) {
-    return(list(class = 4L, allowed = NA, line = NA_integer_,
-                reason = invalid_reason))
-  }
-  if (identical(id, "nul-before-key")) {
-    return(list(class = 5L, allowed = FALSE, line = 2L,
-                reason = "rule_disallow"))
-  }
-  if (id %in% c("nul-in-rule-prefix", "nul-in-rule-other")) {
-    return(list(class = 5L, allowed = TRUE, line = NA_integer_,
-                reason = "default_allow"))
+}
+
+# What robotstxtr returns where it differs from the reference: one entry per
+# set of cases, with the entry points (`paths`) where they differ and the
+# answer there. `reason` is the legacy paths' `decision_source`, `v1_reason`
+# the v1 paths' `reason`. The classes are design/engine-profiles.md §5b's.
+# The pinned test, gf_check_rows() and the differential all read this table;
+# it is the only list of the differing case ids.
+gf_expected <- list(
+  gf_expect(1L, c("ev-disallow", "ev-allow", "ev-both", "ev-comment",
+                  "ev-beside-rule-miss"),
+            gf_all_paths, TRUE, NA, "default_allow"),
+  gf_expect(2L, c("win-after", "win-after-ceiling", "win-straddle"),
+            c("v1_text", "v1_url"), TRUE, NA, "default_allow"),
+  gf_expect(3L, "win-after-ceiling", "url", TRUE, NA, "default_allow"),
+  gf_expect(4L, c("in-empty-url", "in-empty-token"), gf_all_paths,
+            NA, NA, "input_unknown", "input_invalid"),
+  gf_expect(4L, c("in-schemeless-url", "in-ftp-url"), gf_url_paths,
+            NA, NA, "input_unknown", "input_invalid"),
+  gf_expect(5L, "nul-before-key", gf_all_paths, FALSE, 2L, "rule_disallow"),
+  gf_expect(5L, c("nul-in-rule-prefix", "nul-in-rule-other"), gf_all_paths,
+            TRUE, NA, "default_allow")
+)
+
+# Every case id gf_expected lists.
+gf_expected_ids <- function() {
+  unique(unlist(lapply(gf_expected, `[[`, "ids")))
+}
+
+# robotstxtr's answer where it differs from the reference, by case and path:
+# list(class, allowed, line, reason), or NULL where it must agree.
+gf_expected_difference <- function(id, path) {
+  for (e in gf_expected) {
+    if (id %in% e$ids && gf_entry_point(path) %in% e$paths) {
+      reason <- if (gf_v1_path(path)) e$v1_reason else e$reason
+      return(list(class = e$class, allowed = e$allowed, line = e$line,
+                  reason = reason))
+    }
   }
   NULL
+}
+
+# Checks robotstxtr's rows (gf_run_case()) against the reference's answers,
+# `ref_allowed` (logical) and `ref_line` (integer, 0 for no line), one of each
+# per row. A row differs from the reference when its decision does, or its
+# line does (NA counts as 0). Returns `rows`, every row with the columns
+# `decision_differs`, `line_differs` (the decision agrees, the line does not)
+# and `class` (NA where gf_expected lists nothing), and three subsets of it:
+# - `unexpected`: differs, and gf_expected lists nothing for it;
+# - `mismatched`: differs, is listed, but its allowed, line or reason is not
+#   the listed one;
+# - `stale`: is listed, but agrees with the reference.
+# All three are empty when robotstxtr matches the reference and the table.
+gf_check_rows <- function(rows, ref_allowed, ref_line) {
+  n <- nrow(rows)
+  stopifnot(length(ref_allowed) == n, length(ref_line) == n)
+  our_line <- ifelse(is.na(rows$line), 0L, rows$line)
+  rows$decision_differs <- is.na(rows$allowed) | rows$allowed != ref_allowed
+  rows$line_differs <- !rows$decision_differs & our_line != ref_line
+  differs <- rows$decision_differs | rows$line_differs
+  wants <- lapply(seq_len(n), function(k) {
+    gf_expected_difference(rows$id[[k]], rows$path[[k]])
+  })
+  listed <- !vapply(wants, is.null, logical(1L))
+  matches_want <- vapply(seq_len(n), function(k) {
+    want <- wants[[k]]
+    !is.null(want) &&
+      identical(rows$allowed[[k]], want$allowed) &&
+      identical(rows$line[[k]], want$line) &&
+      identical(rows$reason[[k]], want$reason)
+  }, logical(1L))
+  rows$class <- vapply(wants, function(want) {
+    if (is.null(want)) NA_integer_ else want$class
+  }, integer(1L))
+  list(
+    rows = rows,
+    unexpected = rows[differs & !listed, , drop = FALSE],
+    mismatched = rows[differs & listed & !matches_want, , drop = FALSE],
+    stale = rows[!differs & listed, , drop = FALSE]
+  )
 }
 
 # --- robotstxtr's side --------------------------------------------------------
@@ -418,8 +469,17 @@ gf_expected_difference <- function(id, path) {
 # resolve_policy_v1() (R/engine-contract-v1.R) returns for a supplied source
 # before its yandex branch, which resolves a fetched 2xx over 500,000 bytes
 # `allow_all` (design/engine-profiles.md §7). So every row reaches the
-# matcher, the over-limit yandex rows included.
+# matcher, the over-limit yandex rows included. With the google backend each
+# ruleset's row therefore equals the google row by construction, so the
+# `window` family's 0.5 to 0.6 MB bodies run under `google` only
+# (ROBO-oxjmtaon). That a supplied body over 500,000 bytes keeps use_rules
+# under yandex is pinned in test-size-status-etlkvljs.R and
+# test-yandex-edge-matrices-qfytjxev.R.
 gf_v1_rulesets <- c("google", "rfc9309", "assumed_rfc9309", "bing", "yandex")
+
+gf_case_rulesets <- function(case) {
+  if (identical(case$family, "window")) "google" else gf_v1_rulesets
+}
 
 gf_body_string <- function(body) {
   out <- rawToChar(body)
@@ -427,20 +487,39 @@ gf_body_string <- function(body) {
   out
 }
 
-gf_row <- function(path, allowed, line, reason) {
+# `matcher_body_truncated` and `matcher_input_bytes` are the v1 rows' (NA on
+# the legacy paths), `body_truncated` the legacy paths' `robots` field (NA on
+# the v1 paths).
+gf_row <- function(path, allowed, line, reason,
+                   matcher_body_truncated = NA, matcher_input_bytes = NA,
+                   body_truncated = NA) {
   data.frame(
     path = path, allowed = as.logical(allowed), line = as.integer(line),
-    reason = as.character(reason), stringsAsFactors = FALSE
+    reason = as.character(reason),
+    matcher_body_truncated = as.logical(matcher_body_truncated),
+    matcher_input_bytes = as.integer(matcher_input_bytes),
+    body_truncated = as.logical(body_truncated), stringsAsFactors = FALSE
   )
 }
 
 gf_from_v1 <- function(path, r) {
   allowed <- c(allow = TRUE, disallow = FALSE)[r$url_decision]
-  gf_row(path, unname(allowed), r$matched_line, r$reason)
+  gf_row(
+    path, unname(allowed), r$matched_line, r$reason,
+    matcher_body_truncated = r$matcher_body_truncated,
+    matcher_input_bytes = r$matcher_input_bytes
+  )
 }
 
-gf_from_legacy <- function(path, r) {
-  gf_row(path, r$allowed, r$matched_line, r$decision_source)
+gf_from_legacy <- function(path, x) {
+  r <- x$results
+  # A URL refused before any fetch has no `robots` row.
+  truncated <- x$robots$body_truncated
+  if (length(truncated) != 1L) truncated <- NA
+  gf_row(
+    path, r$allowed, r$matched_line, r$decision_source,
+    body_truncated = truncated
+  )
 }
 
 # Serve `body` at the ssrfr boundary for the duration of `code`.
@@ -450,12 +529,13 @@ gf_with_body <- function(body, code) {
 }
 
 # One row per robotstxtr path the case reaches: `allowed` (NA when no
-# decision), `line` (NA when no rule is reported) and the reason.
+# decision), `line` (NA when no rule is reported), the reason, and the
+# truncation facts gf_row() names.
 gf_run_case <- function(case) {
   rows <- list()
   body <- case$body
   if ("v1_text" %in% case$paths) {
-    rulesets <- gf_v1_rulesets
+    rulesets <- gf_case_rulesets(case)
     x <- robots_evaluate_text_v1(
       gf_body_string(body), rep(case$url, length(rulesets)), case$token,
       rulesets, "google"
@@ -468,11 +548,11 @@ gf_run_case <- function(case) {
   }
   if ("text" %in% case$paths) {
     x <- allowed_by_robots_text(gf_body_string(body), case$url, case$token)
-    rows[[length(rows) + 1L]] <- gf_from_legacy("text", x$results)
+    rows[[length(rows) + 1L]] <- gf_from_legacy("text", x)
   }
   if ("url" %in% case$paths) {
     x <- gf_with_body(body, allowed_by_robots_url(case$url, case$token))
-    rows[[length(rows) + 1L]] <- gf_from_legacy("url", x$results)
+    rows[[length(rows) + 1L]] <- gf_from_legacy("url", x)
   }
   if ("v1_url" %in% case$paths) {
     x <- gf_with_body(

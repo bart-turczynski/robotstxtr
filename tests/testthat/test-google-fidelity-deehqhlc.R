@@ -7,7 +7,8 @@
 # re-derives those answers from a reference binary. These tests need no
 # binary: they pin what robotstxtr returns, and say in comments what the
 # reference returns. The paths: the v1 facade with the google backend under
-# every ruleset that reaches the matcher (`v1_text:<ruleset>`),
+# every ruleset that reaches the matcher (`v1_text:<ruleset>`; the window
+# bodies under `google` only, gf_case_rulesets()),
 # allowed_by_robots_text() (`text`), allowed_by_robots_url() with the body
 # served at the ssrfr boundary (`url`, helper-fake-ssrfr.R), and
 # robots_evaluate_url_v1() the same way (`v1_url:google`). No network.
@@ -26,11 +27,55 @@ source(
   test_path("fixtures", "google-fidelity-deehqhlc", "cases.R"), local = TRUE
 )
 
+# Every case runs once, here; the tests below read these rows. A case is keyed
+# by its id: a NUL body never becomes an R string. A case that errors keeps
+# its condition, which gf_rows() raises inside the test that reads it.
+gf_case_list <- gf_cases()
+names(gf_case_list) <- vapply(gf_case_list, `[[`, character(1L), "id")
+gf_results <- lapply(gf_case_list, function(case) {
+  tryCatch(gf_run_case(case), error = identity)
+})
+
+# One case's rows; an error naming the case if it failed to run.
+gf_rows <- function(id) {
+  got <- gf_results[[id]]
+  if (inherits(got, "error")) {
+    stop(sprintf("case %s failed: %s", id, conditionMessage(got)),
+         call. = FALSE)
+  }
+  got
+}
+
+# One case's row on one path.
+gf_result <- function(id, path) {
+  got <- gf_rows(id)
+  got[got$path == path, , drop = FALSE]
+}
+
+# All rows, with the reference's recorded answers beside them.
+gf_all_rows <- function() {
+  rows <- do.call(rbind, lapply(unname(names(gf_results)), gf_rows))
+  case <- gf_case_list[rows$id]
+  rows$ref_allowed <- vapply(case, `[[`, logical(1L), "ref_allowed")
+  rows$ref_line <- vapply(case, `[[`, integer(1L), "ref_line")
+  rows
+}
+
+test_that("ROBO-oxjmtaon: every fidelity case runs", {
+  for (id in names(gf_results)) {
+    expect_s3_class(gf_results[[id]], "data.frame", exact = TRUE)
+  }
+})
+
 test_that("ROBO-deehqhlc: every path agrees with the reference outside 1-5", {
   seen <- integer()
   differing <- character()
-  for (case in gf_cases()) {
-    got <- gf_run_case(case)
+  for (case in gf_case_list) {
+    got <- tryCatch(gf_rows(case$id), error = function(e) {
+      fail(conditionMessage(e))
+      NULL
+    })
+    if (is.null(got)) next
     for (k in seq_len(nrow(got))) {
       label <- paste(case$id, got$path[[k]])
       want <- gf_expected_difference(case$id, got$path[[k]])
@@ -52,17 +97,64 @@ test_that("ROBO-deehqhlc: every path agrees with the reference outside 1-5", {
     }
   }
   expect_setequal(seen, 1:5)
-  # Every case the table lists reaches a path where it differs.
-  expect_setequal(differing, c(
-    "ev-disallow", "ev-allow", "ev-both", "ev-comment", "ev-beside-rule-miss",
-    "win-after", "win-after-ceiling", "win-straddle",
-    "in-empty-url", "in-empty-token", "in-schemeless-url", "in-ftp-url",
-    "nul-before-key", "nul-in-rule-prefix", "nul-in-rule-other"
-  ))
+  # Every case the table lists names a case and reaches a path where it
+  # differs.
+  expect_setequal(differing, gf_expected_ids())
+})
+
+test_that("ROBO-oxjmtaon: gf_check_rows() checks each row's listed answer", {
+  rows <- gf_all_rows()
+  check <- function(rows) {
+    out <- gf_check_rows(rows, rows$ref_allowed, rows$ref_line)
+    vapply(out[c("unexpected", "mismatched", "stale")], nrow, integer(1L))
+  }
+  none <- c(unexpected = 0L, mismatched = 0L, stale = 0L)
+  expect_identical(check(rows), none)
+
+  # A class-5 row whose decision, line or reason moves is not the listed
+  # answer. Allowed with line 2 kept still differs from the reference
+  # (allowed, no line).
+  k <- which(rows$id == "nul-before-key" & rows$path == "url")
+  expect_length(k, 1L)
+  moved <- rows
+  moved$allowed[[k]] <- TRUE
+  expect_identical(check(moved), replace(none, "mismatched", 1L))
+  moved <- rows
+  moved$line[[k]] <- 3L
+  expect_identical(check(moved), replace(none, "mismatched", 1L))
+  moved <- rows
+  moved$reason[[k]] <- "rule_allow"
+  expect_identical(check(moved), replace(none, "mismatched", 1L))
+
+  # A listed row that now gives the reference's answer is a stale entry.
+  k <- which(rows$id == "nul-in-rule-prefix" & rows$path == "url")
+  expect_length(k, 1L)
+  agrees <- rows
+  agrees$allowed[[k]] <- rows$ref_allowed[[k]]
+  agrees$line[[k]] <- rows$ref_line[[k]]
+  agrees$reason[[k]] <- "rule_disallow"
+  out <- gf_check_rows(agrees, agrees$ref_allowed, agrees$ref_line)
+  expect_identical(out$stale$id, "nul-in-rule-prefix")
+  expect_identical(out$stale$class, 5L)
+  expect_identical(nrow(out$mismatched), 0L)
+
+  # A differing row the table does not list is unexpected.
+  k <- which(rows$id == "url-root" & rows$path == "text")
+  expect_length(k, 1L)
+  off <- rows
+  off$allowed[[k]] <- !rows$ref_allowed[[k]]
+  out <- gf_check_rows(off, off$ref_allowed, off$ref_line)
+  expect_identical(out$unexpected$id, "url-root")
+  expect_identical(out$unexpected$class, NA_integer_)
+  expect_identical(check(off), replace(none, "unexpected", 1L))
+  # So is a line-only difference.
+  off <- rows
+  off$line[[k]] <- rows$ref_line[[k]] + 1L
+  expect_identical(check(off), replace(none, "unexpected", 1L))
 })
 
 test_that("ROBO-deehqhlc: the fixtures reach every path and family", {
-  cases <- gf_cases()
+  cases <- gf_case_list
   families <- vapply(cases, `[[`, character(1L), "family")
   expect_setequal(families, c(
     "empty_value", "window", "target", "pattern", "agent", "eol", "utf8",
@@ -132,23 +224,62 @@ test_that("ROBO-deehqhlc class 1: a real rule beside an empty one still wins", {
 
 # --- Class 2: the 512,000-byte window -----------------------------------------
 
+# The window and max_bytes tests read the `window` rows gf_results already
+# holds, rather than rebuilding and rerunning their 0.5 to 0.6 MB bodies.
+
+test_that("ROBO-deehqhlc: the window bodies run once, under google only", {
+  window <- names(gf_case_list)[
+    vapply(gf_case_list, `[[`, character(1L), "family") == "window"
+  ]
+  expect_length(window, 6L)
+  for (id in window) {
+    expect_setequal(
+      gf_results[[id]]$path, c("v1_text:google", "text", "url", "v1_url:google")
+    )
+  }
+})
+
+test_that("ROBO-oxjmtaon: every ruleset equals google on a window body", {
+  # gf_case_rulesets() runs the window bodies under google only, because a
+  # supplied body is use_rules under every ruleset. One vectorized call on
+  # the win-after body (over 512,000 bytes) keeps that premise pinned.
+  case <- gf_case_list[["win-after"]]
+  n <- length(gf_v1_rulesets)
+  r <- robots_evaluate_text_v1(
+    gf_body_string(case$body), rep(case$url, n), case$token,
+    gf_v1_rulesets, "google"
+  )$results
+  cols <- c("url_decision", "reason", "matched_line",
+            "matcher_body_truncated", "matcher_input_bytes")
+  expect_identical(nrow(r), n)
+  google <- r[match("google", gf_v1_rulesets), cols, drop = FALSE]
+  # The window cut the body: the rule after it is not read.
+  expect_identical(google$url_decision, "allow")
+  expect_true(google$matcher_body_truncated)
+  for (k in seq_len(n)) {
+    expect_identical(
+      as.list(r[k, cols, drop = FALSE]), as.list(google),
+      label = gf_v1_rulesets[[k]]
+    )
+  }
+})
+
 test_that("ROBO-deehqhlc class 2: a rule after the window is not read", {
   # Reference (no window): disallowed on line 3. v1: Google reads the first
   # 512,000 bytes (design/engine-profiles.md §7, documented).
   # allowed_by_robots_text() reads the whole body, as the reference does.
-  body <- gf_edge_body("Disallow: /after\n", 520000L)
-  url <- "https://example.com/after"
-  r <- robots_evaluate_text_v1(
-    gf_body_string(body), url, "FooBot", "google", "google"
-  )$results
-  expect_identical(r$url_decision, "allow")
-  expect_identical(r$reason, "default_allow")
-  expect_true(r$matcher_body_truncated)
-  # The comment line crosses the window: only "User-agent: *\n" is read.
-  expect_identical(r$matcher_input_bytes, 14L)
-  legacy <- allowed_by_robots_text(gf_body_string(body), url, "FooBot")
-  expect_false(legacy$results$allowed)
-  expect_identical(legacy$results$matched_line, 3L)
+  for (path in c("v1_text:google", "v1_url:google")) {
+    r <- gf_result("win-after", path)
+    expect_true(r$allowed, label = path)
+    expect_identical(r$reason, "default_allow", label = path)
+    expect_true(r$matcher_body_truncated, label = path)
+    # The comment line crosses the window: only "User-agent: *\n" is read.
+    expect_identical(r$matcher_input_bytes, 14L, label = path)
+  }
+  legacy <- gf_result("win-after", "text")
+  expect_false(legacy$allowed)
+  expect_identical(legacy$line, 3L)
+  expect_false(legacy$body_truncated)
 })
 
 test_that("ROBO-deehqhlc class 2: a line the window cuts is dropped whole", {
@@ -156,31 +287,24 @@ test_that("ROBO-deehqhlc class 2: a line the window cuts is dropped whole", {
   # line. v1 drops the line the window cuts (§7, application_choice), so
   # neither "Disallow: /private-drafts/" nor its first 11 bytes,
   # "Disallow: /", is a rule.
-  body <- gf_edge_body("Disallow: /private-drafts/\n", 512000L - 11L)
-  r <- robots_evaluate_text_v1(
-    gf_body_string(body),
-    c("https://example.com/private-drafts/x", "https://example.com/public"),
-    "FooBot", "google", "google"
-  )$results
-  expect_identical(r$url_decision, c("allow", "allow"))
-  expect_identical(r$matched_line, c(NA_integer_, NA_integer_))
-  expect_identical(r$matcher_input_bytes, rep(512000L - 11L, 2L))
+  for (id in c("win-straddle", "win-straddle-prefix")) {
+    r <- gf_result(id, "v1_text:google")
+    expect_true(r$allowed, label = id)
+    expect_identical(r$line, NA_integer_, label = id)
+    expect_true(r$matcher_body_truncated, label = id)
+    expect_identical(r$matcher_input_bytes, 512000L - 11L, label = id)
+  }
 })
 
 test_that("ROBO-deehqhlc class 2: a rule ending at the window edge applies", {
   # Reference and v1 agree: disallowed on line 3, both when the rule ends at
   # byte 512,000 and its LF is byte 512,001 (past the window), and when the
   # LF itself is byte 512,000.
-  for (at in c(512000L - 18L, 512000L - 19L)) {
-    label <- sprintf("LF at byte %d", at + 19L)
-    body <- gf_edge_body("Disallow: /private\n", at, 600000L)
-    r <- robots_evaluate_text_v1(
-      gf_body_string(body), "https://example.com/private", "FooBot",
-      "google", "google"
-    )$results
-    expect_identical(r$url_decision, "disallow", label = label)
-    expect_identical(r$matched_line, 3L, label = label)
-    expect_identical(r$matcher_input_bytes, 512000L, label = label)
+  for (id in c("win-edge-lf-outside", "win-edge-lf-inside")) {
+    r <- gf_result(id, "v1_text:google")
+    expect_false(r$allowed, label = id)
+    expect_identical(r$line, 3L, label = id)
+    expect_identical(r$matcher_input_bytes, 512000L, label = id)
   }
 })
 
@@ -190,21 +314,16 @@ test_that("ROBO-deehqhlc class 3: a rule past max_bytes is not fetched", {
   # Reference (whole body): disallowed on line 3. allowed_by_robots_url()
   # keeps the first max_bytes (524,288) bytes of a 2xx and reads its complete
   # lines (its @param max_bytes; ROBO-ldpahknv); the rule starts at 530,001.
-  body <- gf_edge_body("Disallow: /after\n", 530000L)
-  gf_with_body(body, {
-    x <- allowed_by_robots_url("https://example.com/after", "FooBot")
-  })
-  expect_true(x$results$allowed)
-  expect_identical(x$results$decision_source, "default_allow")
-  expect_true(x$robots$body_truncated)
+  x <- gf_result("win-after-ceiling", "url")
+  expect_true(x$allowed)
+  expect_identical(x$reason, "default_allow")
+  expect_true(x$body_truncated)
   # Between the window and the cut, the legacy URL path still reads a rule
   # the v1 paths do not (class 2): the reference's answer.
-  body <- gf_edge_body("Disallow: /after\n", 520000L)
-  gf_with_body(body, {
-    x <- allowed_by_robots_url("https://example.com/after", "FooBot")
-  })
-  expect_false(x$results$allowed)
-  expect_identical(x$results$matched_line, 3L)
+  x <- gf_result("win-after", "url")
+  expect_false(x$allowed)
+  expect_identical(x$line, 3L)
+  expect_false(x$body_truncated)
 })
 
 # --- Class 4: input screening -------------------------------------------------
