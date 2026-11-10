@@ -201,7 +201,7 @@ Zero bytes and blank-only bodies are pinned elsewhere (table above).
 | `cmt-comments-and-sitemap` | as above | as above | `/a` allow | `no_rules` | no |
 | `cmt-user-agent-only` — `User-agent: *` and nothing else | an empty group | not documented | `/a` allow | `no_rules` | no |
 | `cmt-inline-comment` — `Disallow: /a # private` | comment stripped | everything after `#` ignored | `/a` and `/a%20` disallow | none | no |
-| `cmt-hash-in-rule` — `Disallow: /a#b` | `#` starts a comment, so the rule is `/a` | same | `/a` **and `/abc`** disallow | none | yes; **known gap**: nothing flags a `#` that shortens a rule into a wider prefix |
+| `cmt-hash-in-rule` — `Disallow: /a#b` | `#` starts a comment, so the rule is `/a` | same | `/a` **and `/abc`** disallow | `rule_cut_by_comment@2` | yes; covered by `rule_cut_by_comment` (ROBO-gjhpykcj) |
 
 The validator side of the rule-free cases is ROBO-vxrzcqpe's; these rows add
 the matcher decision for the comparison work.
@@ -271,8 +271,8 @@ block red. An item marked fixed names the diagnostic that now covers it.
    character, which Google never matches against the raw form. Fixed:
    `rule_escaped_unreserved`.
 5. ROBO-dlgeqluf — `esc-space-in-rule`: no diagnostic for a raw space inside a rule.
-6. ROBO-gjhpykcj — `cmt-hash-in-rule`: no diagnostic for a `#` that cuts a rule into a wider
-   prefix.
+6. Fixed: ROBO-gjhpykcj — `cmt-hash-in-rule`: a `#` that cuts a rule into a wider prefix
+   went unflagged; `rule_cut_by_comment` now reports it.
 7. ROBO-zvhrayhx — `grp-user-agent-with-space`, `grp-digit-in-token`,
    `grp-star-prefixed-token`: a User-agent value the matcher cuts or never
    matches is not flagged. Fixed: `user_agent_cut` (warning) names the token

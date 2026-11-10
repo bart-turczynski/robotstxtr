@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* `robots_validate_text()` warns `rule_cut_by_comment` when a `#` with no space or tab before it starts a comment inside an Allow or Disallow value, cutting the rule there (ROBO-gjhpykcj).
+
 * `robots_validate_text()` and `robots_validate_url()` warn `user_agent_cut` when a non-global User-agent value holds a character outside letters, `_` and `-`, naming the token Google's matcher reads (RFC 9309 §2.2.1) (ROBO-zvhrayhx).
 
 * `robots_validate_text()` and `robots_validate_url()` warn (`accepted_directive_prefix`) on a key such as `DisallowAITraining`, which Google reads as Disallow by prefix (ROBO-xglcoagv).
