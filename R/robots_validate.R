@@ -173,7 +173,9 @@ validation_unsupported <- c(
 #'     A 2xx other than 200, such as 203 or 204; the body is still validated.
 #'     \code{message} names how Google, Yandex and Bing read the status. \cr
 #'   \code{acquisition_limit_exceeded} \tab error \tab
-#'     A 3xx body exceeded \code{max_bytes} and was refused whole. \cr
+#'     A body with a 3xx status, an unknown status, or a 2xx whose libcurl and
+#'     status-line statuses disagree exceeded \code{max_bytes} and was refused
+#'     whole. \cr
 #'   \code{acquisition_partial_response} \tab error \tab
 #'     A partial HTTP response was rejected. \cr
 #'   \code{acquisition_redirect_over_budget} \tab error \tab
@@ -323,9 +325,10 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' the cut with `body_truncated` and `limit_exceeded` both `TRUE` and
 #' `final_newline = NA` (the file's end was never read), `byte_size` is the
 #' stored size, and a warning diagnostic with code `body_truncated` says most
-#' of the file may not have been validated. A 3xx body over
-#' `max_bytes` is refused whole and reported as `acquisition_limit_exceeded`,
-#' and a 4xx or 5xx keeps its status outcome whatever its body size.
+#' of the file may not have been validated. A body over `max_bytes` with a 3xx
+#' status, an unknown status, or a 2xx whose libcurl and status-line statuses
+#' disagree is refused whole and reported as `acquisition_limit_exceeded`, and a
+#' 4xx or 5xx keeps its status outcome whatever its body size.
 #'
 #' A status that leaves no body gets a code for its class (404 and 410
 #' `acquisition_missing`, another 4xx `acquisition_http_4xx`, 429

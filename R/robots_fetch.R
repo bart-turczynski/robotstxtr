@@ -68,8 +68,9 @@
 #' short is never read as a shorter rule. A cut body with no line break yields
 #' no rules. `body` and `body_size` keep every stored byte.
 #' A 4xx or 5xx keeps its status outcome whatever its body size, with no
-#' stored body. A 3xx whose body is over the limit ends as `body_too_large` and
-#' is not followed, because \pkg{ssrfr} keeps no `Location` for it.
+#' stored body. A body over the limit with a 3xx status, an unknown status, or a
+#' 2xx whose libcurl and status-line statuses disagree ends as `body_too_large`;
+#' a 3xx is not followed, because \pkg{ssrfr} keeps no `Location` for it.
 #'
 #' The response header may take up to 64 KiB and 256 fields per hop; a header
 #' over either limit is a `network_error`.

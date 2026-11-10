@@ -66,7 +66,8 @@ mapping from ssrfr's reason codes is data in `R/acquire-map.R`; ssrfr's `host-de
 `range-denied` are not admitted, since robotstxtr's policy states no deny rules. `body_truncated` is
 `TRUE` only for a 2xx body over the ceiling, which ssrfr's `truncate_body` returns as its first
 `max_bytes` bytes (`termination_reason = ceiling`, so `evidence_status = incomplete`; ROBO-ldpahknv); a
-3xx over it is `body_too_large`; a 4xx/5xx keeps its status outcome. A set `safety_block_reason` means
+3xx, an unknown status or a status mismatch (libcurl and the status line
+disagree) over it is `body_too_large`; a 4xx/5xx keeps its status outcome. A set `safety_block_reason` means
 `evidence_status = safety_refused`, except an address-class code under `safety_level = crawler`, which
 means `unreachable_local` (§3a). `fetch_outcome` stays `ssrf_blocked` at both levels.
 
