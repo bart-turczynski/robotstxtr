@@ -66,7 +66,7 @@ test_that("several lower-case escapes on one line are one finding", {
   # Twelve distinct escapes: the first ten are named, the other two counted.
   escapes <- sprintf("%%a%x", 0:11)
   value <- paste(escapes, collapse = "")
-  found <- lc_found(lc_validate(paste0("Disallow: /", value)))
+  found <- lc_found(lc_validate(sprintf("Disallow: /%s", value)))
   expect_identical(nrow(found), 1L)
   expect_match(found$message, "'%a9' for '%A9', and 2 more", fixed = TRUE)
   expect_false(grepl("%aa", found$message, fixed = TRUE))
