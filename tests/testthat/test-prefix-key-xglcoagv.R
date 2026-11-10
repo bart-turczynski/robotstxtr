@@ -3,7 +3,9 @@
 # `KeyIsAllow`, src/robots.cc), so `DisallowAITraining: /` blocks the group
 # for Google. The validator warns with `accepted_directive_prefix`, naming
 # the key as written. The key is derived from the line's bytes the way
-# GetKeyAndValueFrom cuts it (BOM on line 1, NUL, `#`, separator).
+# GetKeyAndValueFrom cuts it (BOM on line 1, whitespace, separator); the
+# parser's NUL and `#` cuts never fall before its separator, so the tests
+# below only confirm they change nothing.
 
 pk_lines <- function(...) paste0(paste(c(...), collapse = "\n"), "\n")
 
@@ -16,10 +18,11 @@ pk_rows <- function(body) {
 
 pk_disallow_message <- function(key) {
   paste0(
-    "Key `", key, "` is read by Google as Disallow (prefix match), so the ",
-    "rule applies to the group's crawlers. Bing and Yandex ignore the line, ",
-    "and RFC 9309 defines no such record. For an AI-training opt-out, use a ",
-    "`User-agent: __usage_ai-training` group instead."
+    "Google reads key `", key, "` as Disallow (prefix match), so for Google ",
+    "this line is a Disallow rule; Bing and Yandex ignore it, and RFC 9309 ",
+    "defines no such record. For an AI-training opt-out, use a separate ",
+    "`User-agent: __usage_ai-training` group, not stacked under another ",
+    "User-agent line."
   )
 }
 
@@ -42,14 +45,32 @@ test_that("a DisallowAITraining key warns and names the training token", {
   expect_identical(r$matched_line, 2L)
 })
 
+test_that("the message names no group for a key before any User-agent", {
+  d <- pk_rows(pk_lines("DisallowAITraining: /", "User-agent: *"))
+  expect_identical(d$line, 1L)
+  expect_identical(d$message, pk_disallow_message("DisallowAITraining"))
+  expect_no_match(d$message, "group's")
+})
+
+test_that("a training token stacked under User-agent: * still blocks Google", {
+  # Why the advice says a separate group: stacked, the Disallow is the `*`
+  # group's too.
+  body <- pk_lines("User-agent: *", "User-agent: __usage_ai-training",
+                   "Disallow: /")
+  r <- allowed_by_robots_text(body, "https://example.com/a",
+                              "Googlebot")$results
+  expect_false(r$allowed)
+  expect_identical(r$matched_line, 3L)
+})
+
 test_that("an Allow-prefixed key warns without the training sentence", {
   d <- pk_rows(pk_lines("User-agent: *", "Disallow: /", "AllowAITraining: /x"))
   expect_identical(d$line, 3L)
   expect_identical(d$directive, "allow")
   expect_identical(d$message, paste0(
-    "Key `AllowAITraining` is read by Google as Allow (prefix match), so the ",
-    "rule applies to the group's crawlers. Bing and Yandex ignore the line, ",
-    "and RFC 9309 defines no such record."
+    "Google reads key `AllowAITraining` as Allow (prefix match), so for ",
+    "Google this line is an Allow rule; Bing and Yandex ignore it, and ",
+    "RFC 9309 defines no such record."
   ))
 })
 
@@ -128,7 +149,7 @@ test_that("a latin1 key is converted once and its bytes escaped", {
   expect_true(validUTF8(d$message))
 })
 
-test_that("the key ends at a NUL, as the parser's C string does", {
+test_that("a NUL on the line leaves the key and the warning unchanged", {
   body <- c(charToRaw("User-agent: *\nDisallow-x: /a"), as.raw(0),
             charToRaw("b\n"))
   expect_identical(robots_validate_text(body)$diagnostics$code,

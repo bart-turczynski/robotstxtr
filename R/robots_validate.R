@@ -173,7 +173,8 @@ validation_unsupported <- c(
 #' ignore the line, and RFC 9309's grammar (section 2.2) has only `allow` and
 #' `disallow` rule records, leaving other records to the crawler (section
 #' 2.2.4). The message names the key as written; for a Disallow key it points
-#' to a `User-agent: __usage_ai-training` group as the AI-training opt-out.
+#' to a separate `User-agent: __usage_ai-training` group, not stacked under
+#' another User-agent line, as the AI-training opt-out.
 #' An accepted typo such as `Dissallow` is reported as
 #' `accepted_directive_typo` only.
 #'
@@ -1356,10 +1357,8 @@ validation_prefix_key <- function(bytes, line, type, missing_colon) {
     bytes <- bytes[seq_len(length(bytes) - skip) + skip]
   }
   space <- as.raw(c(0x20, 0x09, 0x0a, 0x0b, 0x0c, 0x0d))
+  # The parser found a non-empty key on this line, so `lead` is never empty.
   lead <- which(!bytes %in% space)
-  if (length(lead) == 0L) {
-    return(NULL)
-  }
   bytes <- bytes[lead[[1L]]:length(bytes)]
   separator <- as.raw(if (missing_colon) c(0x20, 0x09) else 0x3a)
   stop_at <- which(bytes %in% separator)
@@ -1382,14 +1381,16 @@ validation_prefix_key <- function(bytes, line, type, missing_colon) {
 validation_prefix_key_message <- function(key, type) {
   name <- if (identical(type, "disallow")) "Disallow" else "Allow"
   message <- paste0(
-    "Key `", key, "` is read by Google as ", name, " (prefix match), so ",
-    "the rule applies to the group's crawlers. Bing and Yandex ignore the ",
-    "line, and RFC 9309 defines no such record."
+    "Google reads key `", key, "` as ", name, " (prefix match), so for ",
+    "Google this line is ", if (identical(type, "allow")) "an " else "a ",
+    name, " rule; Bing and Yandex ignore it, and RFC 9309 defines no such ",
+    "record."
   )
   if (identical(type, "disallow")) {
     message <- paste0(
-      message, " For an AI-training opt-out, use a ",
-      "`User-agent: __usage_ai-training` group instead."
+      message, " For an AI-training opt-out, use a separate ",
+      "`User-agent: __usage_ai-training` group, not stacked under another ",
+      "User-agent line."
     )
   }
   message
