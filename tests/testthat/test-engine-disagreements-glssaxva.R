@@ -1,0 +1,220 @@
+# ROBO-glssaxva: the cross-engine disagreement classes. Each test pins, for
+# one synthesized body and path, what the google backend says (with the
+# Yandex token and with the bingbot token), what the yandex backend says
+# (token Yandex) and what the bing backend says (token bingbot). Every row
+# goes through robots_evaluate_text_v1() under the google ruleset: a supplied
+# body is `use_rules` under every ruleset, so any difference is the backend's.
+# Class numbers, verdicts and sources: design/engine-disagreements.md. These
+# pin current behavior; no class here is a known bug of ours.
+
+dg_lines <- function(...) paste0(paste(c(...), collapse = "\n"), "\n")
+
+# One "decision reason line" string per backend, for one path on example.com.
+dg_outcome <- function(body, path) {
+  url <- paste0("https://example.com", path)
+  run <- function(backend, token) {
+    r <- robots_evaluate_text_v1(body, url, token, "google", backend)$results
+    paste(r$url_decision, r$reason, r$matched_line)
+  }
+  c(
+    google_yandex = run("google", "Yandex"),
+    yandex = run("yandex", "Yandex"),
+    google_bingbot = run("google", "bingbot"),
+    bing = run("bing", "bingbot")
+  )
+}
+
+dg_expect <- function(google_yandex, yandex, google_bingbot, bing) {
+  c(
+    google_yandex = google_yandex, yandex = yandex,
+    google_bingbot = google_bingbot, bing = bing
+  )
+}
+
+dg_disallow <- function(line) paste("disallow rule_disallow", line)
+dg_allow_rule <- function(line) paste("allow rule_allow", line)
+dg_default <- "allow default_allow NA"
+
+test_that("class 1: a non-rule line ends bingbot's stacked group on bing", {
+  # Google reads every line that is not a rule as transparent and merges the
+  # next User-agent into bingbot's group; bing seals the group (BING-aosnpswm).
+  # yandex keeps stacking, as google does.
+  for (directive in c("Crawl-delay: 10", "Sitemap: https://example.com/s.xml",
+                      "Host: example.com", "Clean-param: ref /x")) {
+    for (gap in c("", "\n")) {
+      body <- paste0(
+        "User-agent: bingbot\n", directive, "\n", gap,
+        "User-agent: *\nDisallow: /private\n"
+      )
+      line <- if (nzchar(gap)) 5L else 4L
+      expect_identical(
+        dg_outcome(body, "/private"),
+        dg_expect(dg_disallow(line), dg_disallow(line), dg_disallow(line),
+                  dg_default),
+        info = paste(directive, if (nzchar(gap)) "with blank" else "")
+      )
+    }
+  }
+})
+
+test_that("class 1: a comment line does not end the stacked group", {
+  body <- dg_lines("User-agent: bingbot", "# note", "User-agent: *",
+                   "Disallow: /private")
+  expect_identical(
+    dg_outcome(body, "/private"),
+    dg_expect(dg_disallow(4), dg_disallow(4), dg_disallow(4), dg_disallow(4))
+  )
+})
+
+test_that("class 1: a later bingbot group then decides bing's answer", {
+  body <- dg_lines(
+    "User-agent: bingbot", "Crawl-delay: 1", "User-agent: *",
+    "Disallow: /private", "", "User-agent: bingbot", "Allow: /priv"
+  )
+  expect_identical(
+    dg_outcome(body, "/private"),
+    dg_expect(dg_disallow(4), dg_disallow(4), dg_disallow(4),
+              dg_allow_rule(7))
+  )
+})
+
+test_that("class 2: a leading BOM hides line 1 from yandex and bing", {
+  body <- paste0("﻿", dg_lines("User-agent: *", "Disallow: /private"))
+  expect_identical(
+    dg_outcome(body, "/private"),
+    dg_expect(dg_disallow(2), dg_default, dg_disallow(2), dg_default)
+  )
+  # The BOM costs a line only: before a comment, nothing is lost.
+  body <- paste0("﻿", dg_lines("# c", "User-agent: *",
+                                    "Disallow: /private"))
+  expect_identical(
+    dg_outcome(body, "/private"),
+    dg_expect(dg_disallow(3), dg_disallow(3), dg_disallow(3), dg_disallow(3))
+  )
+})
+
+test_that("class 3: a User-agent value with a suffix matches on google only", {
+  for (suffix in c("/2.0", " 2.0", "*")) {
+    body <- dg_lines(
+      paste0("User-agent: bingbot", suffix),
+      paste0("User-agent: Yandex", suffix),
+      "Disallow: /private"
+    )
+    expect_identical(
+      dg_outcome(body, "/private"),
+      dg_expect(dg_disallow(3), dg_default, dg_disallow(3), dg_default),
+      info = suffix
+    )
+  }
+  # Google reads the first token of a list; neither engine splits it.
+  body <- dg_lines("User-agent: bingbot, Yandex", "Disallow: /private")
+  expect_identical(
+    dg_outcome(body, "/private"),
+    dg_expect(dg_default, dg_default, dg_disallow(2), dg_default)
+  )
+})
+
+test_that("class 4: whitespace before the colon voids the line on yandex", {
+  for (line in c("Disallow : /private", "Disallow\t: /private")) {
+    body <- dg_lines("User-agent: *", line)
+    expect_identical(
+      dg_outcome(body, "/private"),
+      dg_expect(dg_disallow(2), dg_default, dg_disallow(2), dg_disallow(2)),
+      info = line
+    )
+  }
+  body <- dg_lines("User-agent : *", "Disallow: /private")
+  expect_identical(
+    dg_outcome(body, "/private"),
+    dg_expect(dg_disallow(2), dg_default, dg_disallow(2), dg_disallow(2))
+  )
+})
+
+test_that("class 6: a raw non-ASCII rule is escaped by google only", {
+  body <- dg_lines("User-agent: *", "Disallow: /café")
+  expect_identical(
+    dg_outcome(body, "/caf%C3%A9"),
+    dg_expect(dg_disallow(2), dg_default, dg_disallow(2), dg_default)
+  )
+  # The other way round with a raw URL, which google never escapes.
+  expect_identical(
+    dg_outcome(body, "/café"),
+    dg_expect(dg_default, dg_disallow(2), dg_default, dg_disallow(2))
+  )
+  # With an escaped Allow beside it, yandex and bing answer from the Allow.
+  body <- dg_lines("User-agent: *", "Disallow: /café/",
+                   "Allow: /caf%C3%A9")
+  expect_identical(
+    dg_outcome(body, "/caf%C3%A9/x"),
+    dg_expect(dg_disallow(2), dg_allow_rule(3), dg_disallow(2),
+              dg_allow_rule(3))
+  )
+})
+
+test_that("class 7: CR CR LF keeps a CR in every line on yandex and bing", {
+  body <- "User-agent: *\r\r\nDisallow: /private\r\r\n"
+  expect_identical(
+    dg_outcome(body, "/private"),
+    dg_expect(dg_disallow(3), dg_default, dg_disallow(3), dg_default)
+  )
+  body <- "User-agent: *\nDisallow: /private\r\r\n"
+  expect_identical(
+    dg_outcome(body, "/private"),
+    dg_expect(dg_disallow(2), dg_default, dg_disallow(2), dg_default)
+  )
+})
+
+test_that("class 8: lone CR line endings make one line on yandex and bing", {
+  body <- "User-agent: *\rDisallow: /private\r"
+  expect_identical(
+    dg_outcome(body, "/private"),
+    dg_expect(dg_disallow(2), dg_default, dg_disallow(2), dg_default)
+  )
+  body <- "User-agent: *\rDisallow: /a\nDisallow: /private\n"
+  expect_identical(
+    dg_outcome(body, "/private"),
+    dg_expect(dg_disallow(3), dg_default, dg_disallow(3), dg_default)
+  )
+})
+
+test_that("class 10: yandex does not count * or a final $ in rule length", {
+  body <- dg_lines("User-agent: *", "Disallow: /page", "Allow: /pag*")
+  expect_identical(
+    dg_outcome(body, "/page"),
+    dg_expect(dg_allow_rule(3), dg_disallow(2), dg_allow_rule(3),
+              dg_allow_rule(3))
+  )
+  body <- dg_lines("User-agent: *", "Allow: /p", "Disallow: /p$")
+  expect_identical(
+    dg_outcome(body, "/p"),
+    dg_expect(dg_disallow(3), dg_allow_rule(2), dg_disallow(3),
+              dg_disallow(3))
+  )
+  # The `*%*` shape: one counted byte ties `Allow: /`, and Allow wins a tie.
+  body <- dg_lines("User-agent: *", "Allow: /", "Disallow: *%*")
+  expect_identical(
+    dg_outcome(body, "/%24"),
+    dg_expect(dg_disallow(3), dg_allow_rule(2), dg_disallow(3),
+              dg_disallow(3))
+  )
+})
+
+test_that("class 11: yandex keeps a lower-case escape in a rule as written", {
+  body <- dg_lines("User-agent: *", "Disallow: /a%3cb")
+  expect_identical(
+    dg_outcome(body, "/a%3cb"),
+    dg_expect(dg_default, dg_disallow(2), dg_default, dg_default)
+  )
+  expect_identical(
+    dg_outcome(body, "/a%3Cb"),
+    dg_expect(dg_disallow(2), dg_default, dg_disallow(2), dg_disallow(2))
+  )
+})
+
+test_that("class 12: an empty User-agent value ends the group on yandex", {
+  body <- dg_lines("User-agent: *", "User-agent:", "Disallow: /private")
+  expect_identical(
+    dg_outcome(body, "/private"),
+    dg_expect(dg_disallow(3), dg_default, dg_disallow(3), dg_disallow(3))
+  )
+})
