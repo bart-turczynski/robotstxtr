@@ -480,7 +480,7 @@ the reference, robotstxtr siding with the reference. Each was investigated:
 | 12 | `User-agent: Bot2`, token `Bot2` | Deliberate. Upstream `ExtractUserAgent` keeps `[A-Za-z_-]` only, and RFC 9309 §2.2.1 allows only letters, `_` and `-` in a product token, so `Bot2` is not a valid token. The validator warns `user_agent_cut`, naming `Bot` (ROBO-zvhrayhx). |
 | 14 | `Disallow: /a%3cb`, path `/a%3cb` | Deliberate fidelity to upstream (`MaybeEscapePattern` upper-cases the rule's escape, never the URL's). The validator gap is ROBO-kormmfyg. |
 | 15 | `Disallow: /caf%C3%A9`, raw `é` in the URL | Deliberate: a caller contract. The matcher never escapes the URL, and `allowed_by_robots_text()` leaves supplying an escaped URL to the caller (`design/edge-case-catalog.md`, `enc-nonascii-rule-raw-url`). RFC 9309 §2.2.2 escapes both sides, as every library does. |
-| 16 | `Disallow: /a b`, path `/a%20b` | Deliberate fidelity to upstream (`MaybeEscapePattern` escapes non-ASCII bytes only). A space is not valid in an RFC 9309 path pattern (§2.2). The validator gap is ROBO-dlgeqluf. |
+| 16 | `Disallow: /a b`, path `/a%20b` | Deliberate fidelity to upstream (`MaybeEscapePattern` escapes non-ASCII bytes only). A space is not valid in an RFC 9309 path pattern (§2.2). The validator warns (`rule_inner_whitespace`). |
 | 17 | `size-long-line` | Deliberate: upstream's `kMaxLineLen` line buffer; the validator reports it (`line_too_long`). RFC 9309 sets no line limit. |
 
 Class 1 was handed over as a sixth such class; it is not one, since `jv`
