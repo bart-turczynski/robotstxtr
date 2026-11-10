@@ -120,6 +120,12 @@ test_that("ROBO-atkmqcov: a BOM after leading blanks or on a CRLF line", {
     bom_codes(c(ua_star, charToRaw("  \t"), bom, charToRaw("Allow: /a\n"))),
     "misplaced_byte_order_mark@3;unknown_directive@3"
   )
+  # VT and FF are blanks the parser strips too (AsciiIsSpace in robots.cc).
+  expect_identical(
+    bom_codes(c(ua_star, as.raw(c(0x0b, 0x0c)), bom,
+                charToRaw("Allow: /a\n"))),
+    "misplaced_byte_order_mark@3;unknown_directive@3"
+  )
   expect_identical(
     bom_codes(c(charToRaw("User-agent: *\r\nDisallow: /x\r\n"), bom,
                 charToRaw("Allow: /a\r\n"))),

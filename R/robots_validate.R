@@ -1106,12 +1106,14 @@ validation_invisible_prefixes <- c(
 
 validation_bom <- as.raw(c(0xef, 0xbb, 0xbf))
 
-# Where a BOM starts a line's content, after optional SP/HT, or 0 when none
-# does. `skip_start` passes over the byte-0 BOM the parser itself skips.
+# Where a BOM starts a line's content, after the ASCII blanks the parser
+# strips (SP, HT, VT, FF), or 0 when none does. `skip_start` passes over the
+# byte-0 BOM the parser itself skips.
 misplaced_bom_offset <- function(line, skip_start) {
   first <- if (skip_start) 4L else 1L
   n <- length(line)
-  while (first <= n && line[[first]] %in% as.raw(c(0x20, 0x09))) {
+  while (first <= n &&
+           line[[first]] %in% as.raw(c(0x20, 0x09, 0x0b, 0x0c))) {
     first <- first + 1L
   }
   if (first + 2L <= n &&
