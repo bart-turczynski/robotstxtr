@@ -621,6 +621,19 @@ test_that("comparing runs with different input sets fails before diffing", {
   saveRDS(m, file.path(out, "rb", "manifest.rds"))
   res <- h$mode_compare(ctx)
   expect_true(res$identical)
+  # A finished run that lost its manifest.rds is refused, not a bare error.
+  unlink(file.path(out, "rb", "manifest.rds"))
+  expect_refusal(h$prepare_compare(out, ctx$opts), "rb has no readable")
+
+  # The rows compared are the host directories both manifests hold.
+  extra <- rbind(m[1L, ], transform(m[1L, ], host = "z.test"))
+  s <- h$same_input_set(m, extra, FALSE, TRUE)
+  expect_identical(s$rows, 1L)
+  expect_false(s$same)
+  s <- h$same_input_set(m[1L, ], m[2L, ], TRUE, TRUE)
+  expect_identical(s$rows, 0L)
+  expect_false(s$same)
+  expect_identical(h$same_input_set(m, m, FALSE, FALSE)$rows, 2L)
 })
 
 test_that("compare refuses runs that are unfinished, invalid or unlike", {
@@ -918,13 +931,42 @@ test_that("a robots.rds that vanishes after the existence check", {
   expect_null(read$record)
   # The chunk walk sees the file as present, then it is gone: recorded as
   # absent, which the input check then flags as a change.
-  h$file.exists <- function(...) TRUE
+  # The stub answers TRUE to each path's first check only: the file was
+  # there for walk_chunk() and is gone when the failed read looks again.
+  checked <- new.env()
+  h$file.exists <- function(x) {
+    if (exists(x, envir = checked, inherits = FALSE)) {
+      return(base::file.exists(x))
+    }
+    assign(x, TRUE, envir = checked)
+    TRUE
+  }
   on.exit(rm("file.exists", envir = h), add = TRUE)
   tables <- h$walk_chunk(
     corpus, h$list_host_dirs(corpus), list(chunk = 1L, ids = 1:3)
   )
   expect_identical(tables$files$has_rds, c(TRUE, TRUE, FALSE))
   expect_identical(tables$files$readable, c(TRUE, TRUE, NA))
+})
+
+test_that("a robots.rds that is there but cannot be read fails its chunk", {
+  h <- load_harness()
+  corpus <- local_corpus()
+  walk <- function() {
+    h$walk_chunk(corpus, h$list_host_dirs(corpus), list(chunk = 1L, ids = 1:3))
+  }
+  # A directory in the file's place.
+  dir.create(file.path(corpus, "c.test", "robots.rds"))
+  expect_error(h$read_corpus_record(file.path(corpus, "c.test", "robots.rds")))
+  expect_error(walk())
+  unlink(file.path(corpus, "c.test", "robots.rds"), recursive = TRUE)
+  # A file without read permission (unless the process can read it anyway).
+  path <- file.path(corpus, "a.test", "robots.rds")
+  Sys.chmod(path, "000")
+  on.exit(Sys.chmod(path, "644"), add = TRUE)
+  skip_if(file.access(path, 4L) == 0L, "the process reads a mode-000 file")
+  expect_error(h$read_corpus_record(path))
+  expect_error(walk())
 })
 
 test_that("a runner that fails outside a chunk leaves the run invalid", {
@@ -993,6 +1035,20 @@ test_that("a partial run against a full frozen run matches on its rows", {
     0L
   )
   rec <- readRDS(file.path(out, "part2", "record.rds"))
+  expect_false(rec$manifest$matches_frozen)
+  # Two partial runs over disjoint chunks compare nothing.
+  expect_identical(
+    run("manifest", "--run-id", "even", "--chunk-size", "1",
+        "--subset", "0/2"),
+    0L
+  )
+  expect_identical(
+    run("manifest", "--run-id", "odd", "--chunk-size", "1",
+        "--subset", "1/2", "--manifest", "even"),
+    0L
+  )
+  rec <- readRDS(file.path(out, "odd", "record.rds"))
+  expect_identical(rec$manifest$frozen_rows_compared, 0L)
   expect_false(rec$manifest$matches_frozen)
   # A frozen run without a readable manifest.rds is refused up front.
   unlink(file.path(out, "full", "manifest.rds"))

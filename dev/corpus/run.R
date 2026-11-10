@@ -45,7 +45,7 @@ harness_main <- function(args) {
   frozen <- if (!is.na(opts$manifest)) {
     frozen_run(cfg$out, opts$manifest)
   }
-  package <- if (opts$mode %in% c("validate", "evaluate", "size")) {
+  if (opts$mode %in% c("validate", "evaluate", "size")) {
     package_git_facts(opts$pkg)
   }
   if (opts$mode == "compare") {
@@ -80,7 +80,9 @@ harness_main <- function(args) {
   ctx <- list(opts = opts, out = cfg$out, corpus = cfg$corpus,
               run_dir = run_dir)
   if (opts$mode %in% c("validate", "evaluate", "size")) {
-    record$package <- package
+    # Taken again here: the tree may have moved while the start manifest
+    # hashed the corpus, and these facts must name the code loaded next.
+    record$package <- package_git_facts(opts$pkg)
     pkgload::load_all(
       opts$pkg, quiet = TRUE, export_all = FALSE, helpers = FALSE,
       attach_testthat = FALSE
@@ -185,6 +187,11 @@ harness_main <- function(args) {
     message(if (record$compare$identical) "IDENTICAL" else "DIFFERENT")
   } else if (invalid) {
     message("INVALID RUN: ", record$invalid_cause, ".")
+  } else if (identical(record$manifest$frozen_rows_compared, 0L)) {
+    message(
+      "NOTE: this run and the frozen run share no host directory: ",
+      "nothing was compared."
+    )
   } else if (!is.null(record$manifest$matches_frozen) &&
                !record$manifest$matches_frozen) {
     message("WARNING: the corpus no longer matches the frozen manifest.")

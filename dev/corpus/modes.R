@@ -552,8 +552,16 @@ prepare_compare <- function(out, opts) {
   partial_b <- is_partial_run(rb$params)
   # Inputs first: no result is diffed across two different input sets, nor
   # across two chunks that name different host directories.
-  manifest_a <- readRDS(file.path(dir_a, "manifest.rds"))
-  manifest_b <- readRDS(file.path(dir_b, "manifest.rds"))
+  read_run_manifest <- function(d) {
+    m <- tryCatch(suppressWarnings(readRDS(file.path(d, "manifest.rds"))),
+                  error = function(e) NULL)
+    if (!is.data.frame(m)) {
+      harness_refuse(paste0("Run ", basename(d), " has no readable manifest."))
+    }
+    m
+  }
+  manifest_a <- read_run_manifest(dir_a)
+  manifest_b <- read_run_manifest(dir_b)
   check_input_sets(manifest_a, manifest_b, partial_a, partial_b)
   check_chunk_plans(manifest_a, manifest_b)
   ia <- shard_index(dir_a)

@@ -167,7 +167,8 @@ frozen_run <- function(out, run_id) {
   hash <- frozen_manifest_hash(out, run_id)
   rec <- readRDS(file.path(out, run_id, "record.rds"))
   manifest <- tryCatch(
-    readRDS(file.path(out, run_id, "manifest.rds")), error = function(e) NULL
+    suppressWarnings(readRDS(file.path(out, run_id, "manifest.rds"))),
+    error = function(e) NULL
   )
   if (!is.data.frame(manifest) ||
         !all(c("host", "rds_sha256") %in% names(manifest))) {
@@ -479,12 +480,17 @@ list_host_dirs <- function(corpus) {
 # Read one robots.rds: its sha256 and the record, from one read of the file.
 # A file that does not decompress or unserialize gives `record = NULL`, which
 # the files table records as readable = FALSE; it never stops the run. A file
-# that cannot be read at all (it vanished after the caller saw it) gives
-# `vanished = TRUE`, and the caller records it as absent.
+# that is gone when the read fails (it vanished after the caller saw it)
+# gives `vanished = TRUE`, and the caller records it as absent. Any other
+# read failure (no permission, a directory in its place) is an error: the
+# file is there, so recording it absent would hide it from the input checks.
 read_corpus_record <- function(path) {
   bytes <- tryCatch(
     suppressWarnings(readBin(path, "raw", n = file.size(path))),
-    error = function(e) NULL
+    error = function(e) {
+      if (file.exists(path)) stop(e)
+      NULL
+    }
   )
   if (is.null(bytes)) {
     return(list(sha256 = NA_character_, bytes = NA_integer_, record = NULL,
@@ -614,12 +620,13 @@ verify_run_inputs <- function(start, during, end) {
 # snapshot; when either run covered only part of the corpus, every file the
 # partial run planned must appear, byte-identical, in the other's manifest
 # (two partial runs: on the host directories both planned). `rows` is how
-# many host directories were compared; zero compared is not a match.
+# many host directories both manifests hold; zero compared is not a match.
 same_input_set <- function(manifest_a, manifest_b, partial_a, partial_b) {
   if (!partial_a && !partial_b) {
     same <- identical(manifest_hash(manifest_a), manifest_hash(manifest_b)) &&
       !nrow(manifest_diff(manifest_a, manifest_b))
-    return(list(same = same, rows = nrow(manifest_a)))
+    rows <- length(intersect(manifest_a$host, manifest_b$host))
+    return(list(same = same && rows > 0L, rows = rows))
   }
   small <- if (partial_b) manifest_b else manifest_a
   big <- if (partial_b) manifest_a else manifest_b
@@ -628,7 +635,8 @@ same_input_set <- function(manifest_a, manifest_b, partial_a, partial_b) {
     small <- small[small$host %in% big$host, , drop = FALSE]
   }
   d <- manifest_diff(small, big[big$host %in% small$host, , drop = FALSE])
-  list(same = !nrow(d) && nrow(small) > 0L, rows = nrow(small))
+  rows <- sum(small$host %in% big$host)
+  list(same = !nrow(d) && rows > 0L, rows = rows)
 }
 
 # Refuse to compare two runs whose inputs differ (same_input_set()).
