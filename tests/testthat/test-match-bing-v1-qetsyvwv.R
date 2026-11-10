@@ -391,11 +391,14 @@ test_that("a non-list `bodies` is a classed call error", {
 })
 
 test_that("an empty or missing URL becomes an empty request target", {
-  expect_identical(bing_target_bytes_v1(""), raw(0))
-  expect_identical(bing_target_bytes_v1(NA_character_), raw(0))
+  target_bytes <- function(url) {
+    matcher_target_bytes_v1(url, bing_extract_request_target)
+  }
+  expect_identical(target_bytes(""), raw(0))
+  expect_identical(target_bytes(NA_character_), raw(0))
   # A well-formed URL still yields its extracted target bytes.
   expect_identical(
-    bing_target_bytes_v1("https://example.test/a?b=c"), charToRaw("/a?b=c")
+    target_bytes("https://example.test/a?b=c"), charToRaw("/a?b=c")
   )
 
   # End to end: the empty target is rejected by the core, not pre-mapped here.

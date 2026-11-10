@@ -21,7 +21,7 @@ eval_one <- function(body, crawler, target) {
   res <- yandex_evaluate_checked_batch(
     bodies = list(body_raw),
     body_index = 1L,
-    crawlers = crawler,
+    product_tokens = crawler,
     targets = list(target_raw)
   )
   lapply(res, function(col) if (is.list(col)) col[[1]] else col[[1]])
@@ -36,7 +36,7 @@ test_that("a shared body parses exactly once across many rows", {
   res <- yandex_evaluate_checked_batch(
     bodies = list(body),
     body_index = c(1L, 1L, 1L, 1L),
-    crawlers = rep("Yandex", 4),
+    product_tokens = rep("Yandex", 4),
     targets = list(charToRaw("/private/a"), charToRaw("/public"),
                    charToRaw("/private/b"), charToRaw("/x"))
   )
@@ -51,7 +51,7 @@ test_that("distinct bodies each parse once", {
     bodies = list(charToRaw("User-agent: Yandex\nDisallow: /a"),
                   charToRaw("User-agent: Yandex\nDisallow: /b")),
     body_index = c(1L, 2L, 1L),
-    crawlers = rep("Yandex", 3),
+    product_tokens = rep("Yandex", 3),
     targets = list(charToRaw("/a"), charToRaw("/b"), charToRaw("/b"))
   )
   expect_identical(res$n_parse_calls, 2L)
@@ -187,7 +187,7 @@ test_that("returned values survive garbage collection (owning, no views)", {
   res <- yandex_evaluate_checked_batch(
     bodies = list(charToRaw("User-agent: Yandex\nDisallow: /private")),
     body_index = 1L,
-    crawlers = "Yandex",
+    product_tokens = "Yandex",
     targets = list(charToRaw("/private/x"))
   )
   gc()
