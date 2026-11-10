@@ -201,7 +201,9 @@ A 1xx or a status outside 100 to 599. \cr
 A 2xx other than 200, such as 203 or 204; the body is still validated.
 \code{message} names how Google, Yandex and Bing read the status. \cr
 \code{acquisition_limit_exceeded} \tab error \tab
-A 3xx body exceeded \code{max_bytes} and was refused whole. \cr
+A body with a 3xx status, an unknown status, or a 2xx whose libcurl and
+status-line statuses disagree exceeded \code{max_bytes} and was refused
+whole. \cr
 \code{acquisition_partial_response} \tab error \tab
 A partial HTTP response was rejected. \cr
 \code{acquisition_redirect_over_budget} \tab error \tab
