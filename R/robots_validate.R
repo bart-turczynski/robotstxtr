@@ -105,6 +105,9 @@ validation_unsupported <- c(
 #'     tab or form feed before the \code{#} still counts as no space. \cr
 #'   \code{rule_inner_dollar} \tab warning \tab
 #'     A \code{$} before a pattern's end; it matches a literal \code{$}. \cr
+#'   \code{rule_inner_whitespace} \tab warning \tab
+#'     A pattern holds a space, tab, vertical tab or form feed; crawlers
+#'     request URLs with it percent-encoded, so the rule never matches. \cr
 #'   \code{rule_escaped_unreserved} \tab warning \tab
 #'     A pattern percent-escapes an unreserved character, such as \code{\%7E}
 #'     for \code{~}. Google matches only the escape, never the character,
@@ -1343,6 +1346,19 @@ rule_value_diagnostics <- function(value) {
       message = paste0(
         "'$' marks the end of the URL only as the last character; here it ",
         "matches a literal '$'."
+      )
+    )
+  }
+  # The parser trims a value's edges, so a space, tab, VT or FF left here is
+  # interior (ROBO-dlgeqluf). Bytes, not a [[:space:]] class, so the locale
+  # cannot change the answer.
+  if (any(bytes %in% as.raw(c(0x20, 0x09, 0x0b, 0x0c)))) {
+    found[[length(found) + 1L]] <- list(
+      code = "rule_inner_whitespace",
+      message = paste0(
+        "Pattern holds a raw space or other whitespace; crawlers request it ",
+        "percent-encoded (a space is %20), so this rule matches no URL they ",
+        "send."
       )
     )
   }
