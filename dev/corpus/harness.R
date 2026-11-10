@@ -909,9 +909,10 @@ evaluation_combos <- function(contract, resolve) {
 
 # The narrow grid: every ruleset x available backend, each backend with the
 # first named token of the full grid it accepts, keeping the full grid's
-# combo ids. The package parses a body once per result row, so a row of a
-# body near the 512,000-byte window costs far more than a small body's; size
-# mode and the large tier of evaluate mode use this grid.
+# combo ids. The package parses each distinct body once per call, but every
+# result row still walks every rule of its body, so a row of a body near the
+# 512,000-byte window costs far more than a small body's; size mode and the
+# large tier of evaluate mode use this grid.
 size_combos <- function(combos) {
   named <- combos[combos$token != "*", , drop = FALSE]
   first <- named[!duplicated(named$backend), c("backend", "token")]

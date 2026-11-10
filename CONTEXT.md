@@ -31,8 +31,9 @@ evaluator reads it once per call and dispatches on its entries alone.
 
 **Matcher adapter.** A backend's one entry point,
 `callable(bodies, urls, product_tokens)`, called once per evaluation with
-every row that backend matches. It returns a decision frame. The Google,
-Yandex and Bing adapters each parse each distinct body once.
+every row that backend matches. It returns a decision frame. In the Google,
+Yandex and Bing adapters the matcher parses each distinct body once; Google's
+line collector reads each body that has a matched row once more.
 
 **Decision frame.** What an adapter returns: one row per input row, in input
 order, with the twelve columns of `matcher_decision_columns_v1()`. The

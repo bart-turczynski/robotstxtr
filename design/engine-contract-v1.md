@@ -409,9 +409,10 @@ status outside the published set.
 The evaluator hands an adapter the readable body: a body cut at `max_bytes`
 (read only under the `google` ruleset with the `google` backend) has its
 partial last line dropped first, and each row's own cut is OR-ed into the
-frame's `matcher_body_truncated`. The Google adapter parses each distinct
-body once, cut to Google's 512,000-byte window, and gives row for row what
-its reference row matcher `match_google_v1()` gives; its
+frame's `matcher_body_truncated`. In the Google adapter the matcher parses
+each distinct body once, cut to Google's 512,000-byte window, and the line
+collector reads each body that has a matched row once more; row for row it
+gives what its reference row matcher `match_google_v1()` gives, and its
 `matched_rule_value_raw` is `NULL`.
 
 To add a backend without changing the core result schema:
