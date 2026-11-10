@@ -147,8 +147,13 @@ The body looks like an HTML page, not a robots.txt; its lines are still
 read and reported one by one. \cr
 \code{no_rules} \tab info \tab
 The parser read no Allow or Disallow rule, so the document restricts
-nothing.
+nothing (see \code{rules_after_nul_removal}).
 Not reported for a body cut at \code{max_bytes}. \cr
+\code{rules_after_nul_removal} \tab warning \tab
+The parser read no Allow or Disallow rule, but with the NUL bytes
+removed, as Google's matcher reads the body, it holds some; UTF-16
+text does this, and should be re-saved as UTF-8. Reported in place
+of \code{no_rules}, even for a body cut at \code{max_bytes}. \cr
 \code{body_truncated} \tab warning \tab
 The body exceeded \code{max_bytes}; only lines before the cut were read.
 \cr
