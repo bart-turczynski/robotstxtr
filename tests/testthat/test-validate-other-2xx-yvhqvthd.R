@@ -85,8 +85,9 @@ test_that("ROBO-yvhqvthd: a 203 reached through a redirect is keyed on 203", {
   x <- robots_validate_url("http://example.com/")
   expect_identical(x$documents$http_status, 203L)
   expect_identical(x$documents$validation_status, "valid")
-  expect_identical(x$diagnostics$code, yv_code)
-  expect_true(startsWith(x$diagnostics$message, "HTTP 203: "))
+  # The redirect to /final also draws redirect_other_path (ROBO-gokbvzcb).
+  expect_identical(x$diagnostics$code, c(yv_code, "redirect_other_path"))
+  expect_true(startsWith(x$diagnostics$message[[1L]], "HTTP 203: "))
 })
 
 test_that("ROBO-yvhqvthd: a cut 203 gets body_truncated and the code", {
