@@ -577,11 +577,14 @@ tie rule.
 `User-agent: bingbot` and one pair: `Allow: /b6/a*` / `Disallow: /b6/ab`, path
 `/b6/ab`; `Allow: /b6/*b$` / `Disallow: /b6/xyb`, path `/b6/xyb`;
 `Allow: /b6/c$` / `Disallow: /b6/c*`, path `/b6/c`; `Allow: /b6/d$e` /
-`Disallow: /b6/d*ex`, path `/b6/d$ex`. Ours: the first three allowed (a tie
-when `*` and a final `$` count as bytes), the last disallowed (8 bytes against
-7). A disallowed tie path means Bing does not count `*` or `$` in a rule's
-length; an allowed `/b6/d$ex` means it does not count an inner `$` either.
-Record the target the tester displays for `/b6/d$ex`, since it may escape `$`.
+`Disallow: /b6/d*ex`, path `/b6/d$ex`. Ours: the first three allowed (a tie,
+since Bing ranks by the rule's raw byte length, `*` and `$` included), the last
+disallowed (8 bytes against 7). A disallowed `/b6/ab` means Bing drops `*`
+from the length. A disallowed `/b6/xyb` means it drops `*` or a final `$`. A
+disallowed `/b6/c` means it drops a final `$` but counts `*` (dropping both
+still ties). An allowed `/b6/d$ex` means it drops `*` but counts an inner `$`,
+as Yandex does (7 against 7). Record the target the tester displays for
+`/b6/d$ex`, since it may escape `$`.
 
 **B7, Bing, precedence ties: two groups.** Body: `User-agent: bingbot` /
 `Allow: /b7/` / blank / `User-agent: bingbot` / `Disallow: /b7/`; a second
@@ -621,9 +624,15 @@ equal count, then Allow, then the earlier line), Bing in `winner.cpp`
 fixtures are literal. These shapes tie only after normalization, through a
 wildcard, or across groups. Each runs on the four rows of "Method", in both
 source orders: the winner stays Allow and the matched line moves with it, so a
-winner taken by line order would show. Beside each tie, a Disallow one byte
-longer by the backend's own count wins on every row where it matches, which
-shows that the tie, not a non-match, decides the answer.
+winner taken by line order would show. Beside each shape a control runs, in one
+order, with a longer Disallow. On the Google rows it is one byte longer and
+wins, which shows that the tie, not a non-match, decides the Google answer. On
+the Yandex and Bing rows it is a control only where both rules match. For the
+raw `/é` shape, on `yandex` and `bing`, and for the escape-case shape, on
+`yandex`, the Allow does not match the control's path, so the Disallow wins
+for that reason. In the `/a*` and `/*b$` shapes the Yandex Disallow is longer
+by two (4 against 2). In the `/a$` shape the second `*` adds nothing on Yandex,
+so the tie stays and Allow wins there.
 
 | Shape | Path | `google_*` | `yandex` | `bing` |
 |---|---|---|---|---|
