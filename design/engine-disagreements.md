@@ -27,7 +27,10 @@ A supplied body is `use_rules` under every ruleset (`design/engine-profiles.md`
 difference is the backend's. Each fixture is then varied (with and without a
 blank line, other directives, other suffixes, the inverse URL form) until the
 cause is isolated, and the decision, reason and matched line are recorded for
-each row. A refuted candidate is listed, not pinned.
+each row. Every live class is pinned. A refuted candidate is pinned only where
+its fixture is already part of a live class's test: the Yandex form of class 1,
+the Bing form of class 4 and the `*%*` shape of class 9 (pinned in class 10).
+Class 5 and class 9's other forms are listed, not pinned.
 
 Verdicts:
 
@@ -62,10 +65,13 @@ Outcomes below read `decision reason line`; `default` means
 | 10 | Yandex rule length ignores `*` and a final `$` | yandex | EXPECTED-SOURCED |
 | 11 | A lower-case escape in a rule | yandex | UNEVIDENCED |
 | 12 | An empty `User-agent` value | yandex | UNEVIDENCED |
+| 13 | A key that starts with `disallow` or `allow` | yandex, bing | EXPECTED-SOURCED |
 
-No class is OUR BUG: every backend does what its contract says. Classes 10 and
-the Yandex space form of class 3 are the "Google allows, the other engine
-disallows" rows; classes 1 and 6 also produce them in some shapes (below).
+No class is OUR BUG: every backend does what its contract says. Most rows have
+Google disallowing where the other engine allows. The rows where Google allows
+and the other engine disallows are class 10's `/page` shape, class 11's
+`/a%3cb` path, class 6's raw `/café` path, class 1's later-`bingbot`
+`Disallow` shape and class 13's `Allow`-prefixed key (below).
 
 ## Classes
 
@@ -83,24 +89,65 @@ second `User-agent`, and with `Sitemap`, `Host` or `Clean-param` in place of
 
 Google reads every line that is not `User-agent`, `Allow` or `Disallow` as
 transparent, so `bingbot` and `*` share one group. Bing seals `bingbot`'s
-group at the `Crawl-delay`, `Sitemap` or unknown field (`Host`, `Clean-param`,
-`Request-rate` and `Noindex` are unknown fields to Bing); the group holds no
-rule, and Bing does not fall back to `*` for a tier that has a group. A comment
-line stays transparent on all four rows. With a later `User-agent: bingbot` /
-`Allow: /priv` group, Bing answers `allow rule_allow 7` where Google answers
-`disallow rule_disallow 4`.
+group at the `Crawl-delay`, `Sitemap` or unknown field; the group holds no
+rule, and Bing does not fall back to `*` for a tier that has a group. Bing
+knows only `User-agent`, `Allow`, `Disallow`, `Sitemap` and `Crawl-delay`
+(`design/robotstxtbing-v2-spec.md` §9.2), so `Host`, `Clean-param`,
+`Request-rate` and `Noindex` are unknown fields to it, and each seals the run
+(the last two pinned on their own). A comment line stays transparent on all
+four rows.
+
+A later `bingbot` group then decides Bing's answer, either way round. With
+`User-agent: bingbot` / `Allow: /priv` after the fixture, Bing answers
+`allow rule_allow 7` where Google answers `disallow rule_disallow 4`. With
+`User-agent: bingbot` / `Crawl-delay: 10` / `User-agent: *` /
+`Allow: /private` / blank / `User-agent: bingbot` / `Disallow: /private`, path
+`/private`, Google (and Yandex, through `*`) answers `allow rule_allow 4` and
+Bing answers `disallow rule_disallow 7`.
 
 Verdict: EXPECTED-SOURCED. Bing: `design/robotstxtbing-v2-spec.md` §9.3 rule 2a
 (`BING-aosnpswm`), from the tester's `crawl-delay-stacked` cell on two dates
 and the `stacked-ctl-v1` control (Crawl-delay, Sitemap and an unknown field
 end the run; a blank or comment line does not). Google: the spec's "Rules
 other than allow, disallow, and user-agent are ignored by the robots.txt
-parser", with its `sitemap` example. RFC 9309 §2.2.4 says a Sitemaps record
-MUST NOT terminate a group, which Bing's tester does not follow.
+parser", with its `sitemap` example. RFC 9309 is read two ways here (Adjacent
+findings).
 
-The Yandex form of this candidate is refuted: our Yandex backend keeps
-stacking across `Crawl-delay`, `Clean-param`, `Host`, `Sitemap`, unknown fields
-and comments, exactly as Google does (pinned in the same test).
+The Yandex form of this candidate is refuted. Our Yandex parser knows
+`User-agent`, `Allow`, `Disallow`, `Sitemap`, `Clean-param` and `Crawl-delay`
+(`Host` and any other name are unknown fields to it) and keeps a stacked run
+across every non-rule line: `User-agent: Yandex` / `<line>` /
+`User-agent: Other` / `Disallow: /private`, with `<line>` each of
+`Crawl-delay`, `Clean-param`, `Host`, `Sitemap`, `Foo: bar` and a comment, is
+`disallow rule_disallow 4` for the Yandex token on both `google_yandex` and
+`yandex`. Google knows neither `Host` nor `Clean-param`.
+
+#### 1b. An unknown field seals a `*` run before a policy token (bing)
+
+Fixture: `User-agent: *` / `Content-Signal: ai-train=no` /
+`Sitemap: https://example.com/sitemap.xml` / blank / blank /
+`User-agent: __usage_ai-training` / `Disallow: /`, path `/`; the same without
+the `Sitemap` line; and a control with neither line.
+
+| Row | With `Sitemap` | `Content-Signal` alone | Control |
+|---|---|---|---|
+| `google_yandex`, `yandex`, `google_bingbot` | `disallow rule_disallow 7` | `disallow rule_disallow 6` | `disallow rule_disallow 5` |
+| `bing` | default | default | `disallow rule_disallow 5` |
+
+Google and Yandex stack `__usage_ai-training` onto `*`, since nothing between
+the two `User-agent` lines is a rule, so the `Disallow: /` applies to every
+crawler. Bing seals the `*` run at `Content-Signal`, an unknown field, and the
+`*` group holds no rule. The blank lines alone seal nothing: the control
+stacks on all four rows.
+
+This shape decides how an aipref `__usage_ai-training` group
+(draft-kelley-aipref-training-preference-signal) reads under Google-style
+stacking: a training opt-out written after a `*` group that holds only
+non-rule lines becomes a full `Disallow` for every crawler. The validator side
+is ROBO-kzyfejcv.
+
+Verdict: EXPECTED-SOURCED, on class 1's sources
+(`design/robotstxtbing-v2-spec.md` §9.3 rule 2a).
 
 ### 2. A leading UTF-8 BOM (yandex, bing)
 
@@ -146,8 +193,11 @@ Verdict, split:
   case `ydx-parser-ua-trailing-token` (`User-agent: Yandex extra` does not
   select the Yandex group; observations 2026-07-15 and 2026-07-17).
 - Yandex `/`, `*` and list forms; every Bing form: UNEVIDENCED. Bing's
-  contract matches exact complete tokens (`design/robotstxtbing-v2-spec.md` §8)
-  and has tester evidence only for letter affixes on `adidxbot`
+  contract compares complete group tokens: each profile's group-selection
+  table lists the "accepted complete group tokens at each tier", with no
+  "substring matching" (`design/robotstxtbing-v2-spec.md` §8), and the table
+  itself is the §17 `BING-V2-BINGBOT-SELECTION` evidence slot. The tester
+  evidence covers only letter affixes on `adidxbot`
   (`body-sel-adidxbot-affix-*`), which Google would not reduce either.
 - Google: the spec's "Order of precedence for user agents" (`googlebot/1.2` and
   `googlebot*` are equivalent to `googlebot`).
@@ -197,11 +247,12 @@ Cyrillic rule against its escaped URL.
 
 Verdict: UNEVIDENCED. Bing: byte transparency is project behavior "where
 tester transport does not establish equivalence"
-(`design/robotstxtbing-v2-spec.md` §13; §9.1). Yandex: Yandex documents that
-robots.txt must not hold Cyrillic and that addresses use the site's encoding
-(`design/engine-profiles.md` §8 `[documented]`), which makes such a rule
-invalid, but not what the robot does with one. Google: "URL matching based on
-path values" (rules compared in percent-encoded form), `MaybeEscapePattern`.
+(`design/robotstxtbing-v2-spec.md` §13; §9.1). Yandex:
+`design/engine-profiles.md` §8 records "Yandex prohibits Cyrillic,
+Punycode/%-encoding `[documented]`", from the Yandex robots.txt page (§10,
+"Cyrillic"), which makes such a rule invalid, but no source says what the
+robot does with one. Google: "URL matching based on path values" (rules
+compared in percent-encoded form), `MaybeEscapePattern`.
 
 ### 7. CR CR LF line endings (yandex, bing)
 
@@ -282,7 +333,9 @@ given; Yandex compares the rule as written.
 
 Verdict: UNEVIDENCED for Yandex: the accepted corpus has no escape-case case.
 Bing is tester-observed (`body-sr2-bingbot-hexcase-*`). The Google side is the
-known gap ROBO-kormmfyg (`design/edge-case-catalog.md`, `esc-lower-hex-rule`).
+upstream matcher's behavior (`MaybeEscapePattern`), not a matcher bug; the gap
+is the validator's, which does not yet warn about such a rule: ROBO-kormmfyg
+(`design/edge-case-catalog.md`, `esc-lower-hex-rule`).
 
 ### 12. An empty `User-agent` value (yandex)
 
@@ -300,6 +353,36 @@ calls this a deterministic recovery that fails open.
 
 Verdict: UNEVIDENCED: no Yandex source or corpus case.
 
+### 13. A key that starts with `disallow` or `allow` (yandex, bing)
+
+Fixture: `User-agent: *` / `DisallowAITraining: /`, path `/x`; and
+`User-agent: *` / `Disallow: /` / `AllowAITraining: /x`, path `/x`.
+
+| Row | `DisallowAITraining` | `AllowAITraining` |
+|---|---|---|
+| `google_yandex`, `google_bingbot` | `disallow rule_disallow 2` | `allow rule_allow 3` |
+| `yandex`, `bing` | default | `disallow rule_disallow 2` |
+
+Google's `KeyIsDisallow` and `KeyIsAllow` (`src/robots.cc`) accept any key
+that starts with `disallow` or `allow`, ignoring case, so `DisallowAITraining`
+is a `Disallow` and `AllowAITraining` an `Allow`. The Yandex and Bing backends
+compare the whole field name, so both keys are unknown fields with no access
+effect.
+
+Verdict: EXPECTED-SOURCED for the upstream Google engine. The prefix reading is
+the vendored matcher's, which `design/engine-profiles.md` §5b checks against
+the pinned upstream. It is the same `StartsWithIgnoreCase` test that carries
+the typo tolerance Google documents (`design/engine-profiles.md` §8, "Google
+constrained typo tolerance `[documented]`"; `kAllowFrequentTypos` in
+`src/robots.cc`), though no Google page describes the prefix reading itself.
+Bing: field names "must exactly equal" a known name, and the grammar
+"deliberately does not accept prefix/suffix field-name matching"
+(`design/robotstxtbing-v2-spec.md` §9.2, project grammar). Yandex: the vendored
+lexer compares a field name whole against its known-field table
+(`ClassifyField`, `AsciiCaseEqual`). That such a file validates clean while it
+blocks everything for Google is the validator's gap, ROBO-xglcoagv, not a
+matcher change.
+
 ## Adjacent findings
 
 - **A Yandex stacked-run claim our Yandex backend does not follow.**
@@ -315,6 +398,16 @@ Verdict: UNEVIDENCED: no Yandex source or corpus case.
   then `User-agent: *` / `Allow: /` answers from `*`), as its contract's
   "remove unproved historical tiers" gate says. Google with `bingbot` agrees, so
   no disagreement follows, but the two documents disagree.
+- **Two readings of RFC 9309 for a line inside a stacked run.**
+  `design/robotstxtbing-v2-spec.md` §9.3 says rule 2a "aligns the contract
+  with the observed Bing tester and the RFC 9309 §2.2.1 literal reading": §2.2.1
+  "groups *consecutive* `user-agent` lines and begins the rule section at the
+  first non-`user-agent` line, so an intervening line ends the stack". RFC 9309
+  §2.2.4 says "a "Sitemaps" record MUST NOT terminate a group"
+  (`design/edge-case-catalog.md` "Sources"), and Google keeps the stack. The
+  two documents read the RFC against each other for the `Sitemap` case;
+  neither changes a verdict here, since class 1's Bing and Google sides are
+  each sourced to the engine's own contract or spec.
 
 ## Tester questions (for ROBO-bpywsjwv)
 
