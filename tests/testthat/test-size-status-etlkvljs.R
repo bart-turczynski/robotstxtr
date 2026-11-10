@@ -16,6 +16,18 @@ ss_tokens <- c(
 ss_grid <- expand.grid(
   ruleset = ss_rulesets, backend = ss_backends, stringsAsFactors = FALSE
 )
+ss_google <- ss_grid[ss_grid$ruleset == "google" &
+                       ss_grid$backend == "google", ]
+# The pairs a cut of 512,000 stored bytes or more can resolve
+# (ceiling_cut_readable_v1()): the yandex ruleset under every backend, and
+# google with the google backend. Every other pair stays incomplete at any
+# size, so the sizes past 512,000 run these alone.
+ss_size_pairs <- ss_grid[ss_grid$ruleset == "yandex" |
+                           (ss_grid$ruleset == "google" &
+                              ss_grid$backend == "google"), ]
+# A supplied body is use_rules under every ruleset, so only the backend
+# reads its size: one ruleset per backend.
+ss_diagonal <- ss_grid[ss_grid$ruleset == ss_grid$backend, ]
 
 # --- Fixtures -----------------------------------------------------------------
 
@@ -48,7 +60,10 @@ ss_body <- function(tail, at, size = 600000L) {
 # - rule: "Disallow: /" is all that is left of a longer rule.
 # - escape: the split falls between "%" and "2F".
 # - utf8: the split falls between the two bytes of "é" (C3 A9).
-# `probes` are paths and the decision each gets when the line is read whole.
+# `probes` are paths and the decision each gets from the google backend when
+# the line is read whole; `raw_probes`, where set, are the paths and
+# decisions the yandex and bing backends give the whole line (the utf8 line
+# is probed there with the raw "é" path, the form those two match).
 ss_tails <- list(
   rule = list(
     bytes = charToRaw("Disallow: /private-drafts/\n"), keep = 11L,
@@ -62,9 +77,21 @@ ss_tails <- list(
     bytes = c(charToRaw("Disallow: /caf"), as.raw(c(0xc3, 0xa9)),
               charToRaw("\n")),
     keep = 15L,
-    probes = c("/caf%C3%A9" = "disallow", "/cafe" = "allow")
+    probes = c("/caf%C3%A9" = "disallow", "/cafe" = "allow"),
+    raw_probes = stats::setNames(
+      c("disallow", "allow"), c("/caf\u00e9", "/cafe")
+    )
   )
 )
+
+# The probes a backend is asked: `raw_probes` for yandex and bing when the
+# tail has them, `probes` otherwise.
+ss_probes <- function(tail, backend) {
+  if (backend %in% c("yandex", "bing") && !is.null(tail$raw_probes)) {
+    return(tail$raw_probes)
+  }
+  tail$probes
+}
 
 # A body whose `tail` line is split at byte `split` (`keep` bytes before it).
 ss_split_body <- function(tail, split = ss_window, size = 600000L) {
@@ -105,10 +132,27 @@ ss_eval_text <- function(body, paths, grid = ss_grid) {
   )
 }
 
-ss_label <- function(r, i, ...) {
-  paste(
-    r$robots_policy_ruleset[[i]], r$matcher_backend[[i]], r$url[[i]], ...
+# The expected rows as one data frame: `want(i)` gives row i's expected
+# columns as a named list.
+ss_want_rows <- function(r, want) {
+  rows <- lapply(seq_len(nrow(r)), want)
+  cols <- stats::setNames(nm = names(rows[[1L]]))
+  data.frame(
+    lapply(cols, function(col) unlist(lapply(rows, `[[`, col))),
+    stringsAsFactors = FALSE
   )
+}
+
+# One expectation for a whole result: the columns of `want` (a data frame
+# with one row per result row, rows named by ruleset, backend and URL); a
+# failure's diff gives the row of `r`. One expectation per row and column
+# cost more than the evaluations they check.
+ss_expect_rows <- function(r, want, label) {
+  key <- paste(r$robots_policy_ruleset, r$matcher_backend, r$url)
+  got <- r[names(want)]
+  rownames(got) <- key
+  rownames(want) <- key
+  expect_identical(got, want, label = label)
 }
 
 # --- What the documents say a cut 2xx resolves to ----------------------------
@@ -117,36 +161,42 @@ ss_label <- function(r, i, ...) {
 # 512,000 stored bytes as a file over 500 KB (allow_all, whatever the
 # backend); google with the google backend reads it as its uncut form and
 # matches the window; everything else, and both below 512,000, stays
-# incomplete.
+# incomplete. The body is the rule tail split at byte 512,000, so the window
+# holds no complete rule and google allows every probe by default.
 ss_cut_expected <- function(ruleset, backend, stored, status) {
   incomplete <- list(
+    evidence_status = "incomplete",
     policy_status = "not_evaluated", policy_action = NA_character_,
     policy_reason = "incomplete_evidence", matcher_status = "not_evaluated",
-    reason = "incomplete_evidence"
+    reason = "incomplete_evidence", url_decision = NA_character_
   )
   if (stored < ss_window) {
     return(incomplete)
   }
   if (identical(ruleset, "yandex")) {
     return(list(
+      evidence_status = "incomplete",
       policy_status = "evaluated", policy_action = "allow_all",
       policy_reason = if (status == 200L) {
         "yandex_file_over_500000_bytes"
       } else {
         "non_200_allow_all"
       },
-      matcher_status = "not_needed", reason = "policy_allow_all"
+      matcher_status = "not_needed", reason = "policy_allow_all",
+      url_decision = "allow"
     ))
   }
   if (identical(ruleset, "google") && identical(backend, "google")) {
     return(list(
+      evidence_status = "incomplete",
       policy_status = "evaluated", policy_action = "use_rules",
       policy_reason = if (status == 200L) {
         "http_200_use_rules"
       } else {
         "http_2xx_use_rules"
       },
-      matcher_status = "evaluated", reason = NULL
+      matcher_status = "evaluated", reason = "default_allow",
+      url_decision = "allow"
     ))
   }
   incomplete
@@ -159,55 +209,48 @@ ss_expect_cut_rows <- function(x, stored, status) {
   expect_identical(e$termination_reason, "ceiling")
   expect_identical(e$stored_bytes, as.integer(stored))
   r <- x$results
-  for (i in seq_len(nrow(r))) {
-    want <- ss_cut_expected(
+  want <- ss_want_rows(r, function(i) {
+    ss_cut_expected(
       r$robots_policy_ruleset[[i]], r$matcher_backend[[i]], stored, status
     )
-    label <- ss_label(r, i, stored, status)
-    expect_identical(r$evidence_status[[i]], "incomplete", label = label)
-    expect_identical(r$policy_status[[i]], want$policy_status, label = label)
-    expect_identical(r$policy_action[[i]], want$policy_action, label = label)
-    expect_identical(r$policy_reason[[i]], want$policy_reason, label = label)
-    expect_identical(r$matcher_status[[i]], want$matcher_status,
-                     label = label)
-    if (!is.null(want$reason)) {
-      expect_identical(r$reason[[i]], want$reason, label = label)
-    }
-    if (identical(want$policy_action, "allow_all")) {
-      expect_identical(r$url_decision[[i]], "allow", label = label)
-    } else if (identical(want$matcher_status, "evaluated")) {
-      expect_true(r$matcher_body_truncated[[i]], label = label)
-    } else {
-      expect_identical(r$url_decision[[i]], NA_character_, label = label)
-    }
-  }
+  })
+  label <- paste("cut", stored, status)
+  ss_expect_rows(r, want, label)
+  matched <- want$matcher_status == "evaluated"
+  expect_identical(r$matcher_body_truncated[matched], rep(TRUE, sum(matched)),
+                   label = label)
 }
 
 # --- A fetched 2xx cut at max_bytes, every ruleset x backend ------------------
 
-test_that("etlkvljs: a cut 200 or 203 at each size, every ruleset x backend", {
+test_that("ROBO-etlkvljs: a cut 200 or 203 at each size, ruleset x backend", {
+  # Every pair at 511,999 and 512,000, where the readable pairs turn; past
+  # 512,000 the pairs whose reading can still change (ss_size_pairs).
   body <- ss_split_body(ss_tails$rule)
+  sizes <- list(
+    list(511999L, ss_grid), list(512000L, ss_grid),
+    list(512001L, ss_size_pairs), list(524288L, ss_size_pairs)
+  )
   for (status in c(200L, 203L)) {
-    for (max_bytes in c(511999L, 512000L, 512001L, 524288L)) {
+    for (size in sizes) {
       ss_serve(body, status)
-      x <- ss_eval_url(names(ss_tails$rule$probes), max_bytes)
-      ss_expect_cut_rows(x, max_bytes, status)
+      x <- ss_eval_url(names(ss_tails$rule$probes), size[[1L]], size[[2L]])
+      ss_expect_cut_rows(x, size[[1L]], status)
     }
   }
 })
 
-test_that("etlkvljs: a line split at byte 512,000 is never read in part", {
+test_that("ROBO-etlkvljs: a line split at 512,000 is never read in part", {
   # google with the google backend matches the complete lines of the first
   # 512,000 bytes; the split line, whether through a rule, a percent-escape
   # or a UTF-8 character, is dropped, so each probe is allowed.
-  google <- ss_grid[ss_grid$ruleset == "google" &
-                      ss_grid$backend == "google", ]
   for (name in names(ss_tails)) {
     tail <- ss_tails[[name]]
     paths <- names(tail$probes)
+    body <- ss_split_body(tail)
     for (max_bytes in c(512000L, 512001L, 524288L)) {
-      ss_serve(ss_split_body(tail))
-      r <- ss_eval_url(paths, max_bytes, google)$results
+      ss_serve(body)
+      r <- ss_eval_url(paths, max_bytes, ss_google)$results
       label <- paste(name, max_bytes)
       expect_identical(r$policy_reason, rep("http_200_use_rules", 2L),
                        label = label)
@@ -222,20 +265,18 @@ test_that("etlkvljs: a line split at byte 512,000 is never read in part", {
   }
 })
 
-test_that("etlkvljs: the same lines inside the window are read", {
+test_that("ROBO-etlkvljs: the same lines inside the window are read", {
   # The positive control: each probe's decision when its line is whole.
-  google <- ss_grid[ss_grid$ruleset == "google" &
-                      ss_grid$backend == "google", ]
   for (name in names(ss_tails)) {
     tail <- ss_tails[[name]]
     ss_serve(ss_split_body(tail, split = ss_window - 1000L))
-    r <- ss_eval_url(names(tail$probes), 524288L, google)$results
+    r <- ss_eval_url(names(tail$probes), 524288L, ss_google)$results
     expect_identical(r$url_decision, unname(tail$probes), label = name)
     expect_identical(r$matcher_body_truncated, rep(TRUE, 2L), label = name)
   }
 })
 
-test_that("etlkvljs: a 3xx over max_bytes is incomplete under every ruleset", {
+test_that("ROBO-etlkvljs: a 3xx over max_bytes stays incomplete", {
   local_fake_ssrfr(function(req) {
     fake_response(
       302L, headers = list(Location = "http://example.com/moved"),
@@ -263,36 +304,38 @@ ss_expect_supplied <- function(x, size, google_bytes, decisions) {
   expect_false(x$evidence$body_truncated)
   expect_identical(r$evidence_status, rep("usable_body", nrow(r)))
   expect_identical(r$policy_reason, rep("supplied_body_use_rules", nrow(r)))
-  for (i in seq_len(nrow(r))) {
-    backend <- r$matcher_backend[[i]]
-    label <- ss_label(r, i, size)
-    if (identical(backend, "rfc9309")) {
-      expect_identical(r$matcher_status[[i]], "capability_unavailable",
-                       label = label)
-      expect_identical(r$url_decision[[i]], NA_character_, label = label)
-      next
-    }
-    # contract mismatch: engine-profiles.md section 6 and engine-contract-v1.md
-    # call the bing backend capability_unavailable; it is available.
-    expect_identical(r$matcher_status[[i]], "evaluated", label = label)
-    expect_identical(
-      r$url_decision[[i]], decisions[[backend]][[r$url[[i]]]], label = label
-    )
-    windowed <- identical(backend, "google") && size > ss_window
-    expect_identical(r$matcher_body_truncated[[i]], windowed, label = label)
-    expect_identical(
-      r$matcher_input_bytes[[i]],
-      if (identical(backend, "google")) google_bytes else as.integer(size),
-      label = label
-    )
+  label <- paste("supplied", size)
+  rfc <- r$matcher_backend == "rfc9309"
+  if (any(rfc)) {
+    ss_expect_rows(r[rfc, ], data.frame(
+      matcher_status = rep("capability_unavailable", sum(rfc)),
+      url_decision = rep(NA_character_, sum(rfc)), stringsAsFactors = FALSE
+    ), label)
   }
+  m <- r[!rfc, ]
+  if (nrow(m) == 0L) {
+    return(invisible())
+  }
+  # contract mismatch: engine-profiles.md section 6 and engine-contract-v1.md
+  # call the bing backend capability_unavailable; it is available.
+  want <- ss_want_rows(m, function(i) {
+    backend <- m$matcher_backend[[i]]
+    google <- identical(backend, "google")
+    list(
+      matcher_status = "evaluated",
+      url_decision = decisions[[backend]][[m$url[[i]]]],
+      matcher_body_truncated = google && size > ss_window,
+      matcher_input_bytes = as.integer(if (google) google_bytes else size)
+    )
+  })
+  ss_expect_rows(m, want, label)
 }
 
 ss_decisions <- function(google, other) {
   list(google = google, yandex = other, bing = other)
 }
 
-test_that("etlkvljs: a supplied body whose last line ends at the limits", {
+test_that("ROBO-etlkvljs: a supplied body whose last line ends at the limits", {
   # The rule line's LF is the body's last byte. Up to 512,001 bytes the
   # line's text lies inside the google window, so every matcher reads it:
   # at 512,001 only the LF is past the window, and the byte past it shows
@@ -303,9 +346,17 @@ test_that("etlkvljs: a supplied body whose last line ends at the limits", {
   paths <- c("/private", "/public")
   read <- stats::setNames(c("disallow", "allow"), ss_urls(paths))
   dropped <- stats::setNames(c("allow", "allow"), ss_urls(paths))
+  # One ruleset per backend at each size; at the first, every ruleset with
+  # the google and rfc9309 backends too. yandex and bing rows on a body this
+  # size cost the most; a supplied body resolves use_rules before the
+  # ruleset is read, and the status-class test below runs those two backends
+  # under every ruleset on a small body.
+  wide <- ss_grid[ss_grid$backend %in% c("google", "rfc9309") |
+                    ss_grid$ruleset == ss_grid$backend, ]
   for (size in c(511999L, 512000L, 512001L, 512002L)) {
     body <- ss_body(tail, size - length(tail), size)
-    x <- ss_eval_text(body, paths)
+    grid <- if (size == 511999L) wide else ss_diagonal
+    x <- ss_eval_text(body, paths, grid)
     google <- if (size > ss_window + 1L) dropped else read
     google_bytes <- if (size > ss_window + 1L) {
       size - length(tail)
@@ -316,13 +367,15 @@ test_that("etlkvljs: a supplied body whose last line ends at the limits", {
   }
 })
 
-test_that("etlkvljs: a supplied body over 500,000 bytes keeps use_rules", {
+test_that("ROBO-etlkvljs: a supplied body over 500,000 bytes keeps use_rules", {
   # Under the yandex ruleset too: the size branch reads fetched evidence
   # (engine-profiles.md section 2: a supplied body is use_rules).
   # contract mismatch: engine-contract-v1.md says bodies over 500,000 bytes
   # resolve allow_all under yandex, without limiting that to fetched bodies.
+  # The yandex ruleset alone: the test above runs a 511,999-byte supplied
+  # body through every pair, each use_rules (supplied_body_use_rules).
   body <- ss_body(charToRaw("Disallow: /private\n"), 1000L, 500001L)
-  x <- ss_eval_text(body, "/private")
+  x <- ss_eval_text(body, "/private", ss_grid[ss_grid$ruleset == "yandex", ])
   r <- x$results
   expect_identical(r$policy_action, rep("use_rules", nrow(r)))
   yandex <- r$robots_policy_ruleset == "yandex" &
@@ -330,31 +383,36 @@ test_that("etlkvljs: a supplied body over 500,000 bytes keeps use_rules", {
   expect_identical(r$url_decision[yandex], rep("disallow", sum(yandex)))
 })
 
-test_that("etlkvljs: a supplied line split at byte 512,000", {
+test_that("ROBO-etlkvljs: a supplied line split at byte 512,000", {
   # google drops the line the window splits; yandex and bing read the whole
-  # supplied body, so they apply it. Neither of those two matches a raw
-  # non-ASCII pattern against its percent-escaped path, so the utf8 line
-  # allows both of its probes there (matcher semantics, not size).
+  # supplied body, so they apply it, each to the probes it is asked
+  # (ss_probes()). One ruleset per backend: "a supplied body whose last line
+  # ends at the limits" runs a body near the window through every pair.
+  # Both sizes for the rule tail;
+  # the other tails differ from it only in where the line is split.
   for (name in names(ss_tails)) {
     tail <- ss_tails[[name]]
-    paths <- names(tail$probes)
-    read <- stats::setNames(unname(tail$probes), ss_urls(paths))
-    dropped <- stats::setNames(rep("allow", 2L), ss_urls(paths))
-    if (identical(name, "utf8")) {
-      read <- dropped
-    }
-    for (size in c(524288L, 600000L)) {
-      x <- ss_eval_text(ss_split_body(tail, size = size), paths)
-      ss_expect_supplied(
-        x, size, ss_window - tail$keep, ss_decisions(dropped, read)
-      )
+    sizes <- if (identical(name, "rule")) c(524288L, 600000L) else 524288L
+    for (size in sizes) {
+      body <- ss_split_body(tail, size = size)
+      for (backends in list(c("google", "rfc9309"), c("yandex", "bing"))) {
+        probes <- ss_probes(tail, backends[[1L]])
+        paths <- names(probes)
+        read <- stats::setNames(unname(probes), ss_urls(paths))
+        dropped <- stats::setNames(rep("allow", 2L), ss_urls(paths))
+        grid <- ss_diagonal[ss_diagonal$backend %in% backends, ]
+        x <- ss_eval_text(body, paths, grid)
+        ss_expect_supplied(
+          x, size, ss_window - tail$keep, ss_decisions(dropped, read)
+        )
+      }
     }
   }
 })
 
 # --- The legacy functions -----------------------------------------------------
 
-test_that("etlkvljs: allowed_by_robots_text() reads past byte 512,000", {
+test_that("ROBO-etlkvljs: allowed_by_robots_text() reads past byte 512,000", {
   # The legacy text path has no truncation flag and no google window: it
   # matches the whole supplied body (engine-contract-v1.md, Legacy
   # compatibility: the legacy functions remain unchanged).
@@ -370,13 +428,19 @@ test_that("etlkvljs: allowed_by_robots_text() reads past byte 512,000", {
   }
 })
 
-test_that("etlkvljs: allowed_by_robots_url() drops the line max_bytes splits", {
+test_that("ROBO-etlkvljs: allowed_by_robots_url() drops a split last line", {
   # engine-contract-v1.md: the legacy path matches a cut prefix up to its
-  # last line break, with no 512,000-byte window.
+  # last line break, with no 512,000-byte window: the rule tail runs on
+  # either side of it, every tail at the default max_bytes.
   for (name in names(ss_tails)) {
     tail <- ss_tails[[name]]
     paths <- names(tail$probes)
-    for (max_bytes in c(511999L, 512000L, 524288L)) {
+    sizes <- if (identical(name, "rule")) {
+      c(511999L, 512000L, 524288L)
+    } else {
+      524288L
+    }
+    for (max_bytes in sizes) {
       ss_serve(ss_split_body(tail, split = max_bytes))
       x <- allowed_by_robots_url(ss_urls(paths), "bot", max_bytes = max_bytes)
       label <- paste(name, max_bytes)
@@ -389,7 +453,7 @@ test_that("etlkvljs: allowed_by_robots_url() drops the line max_bytes splits", {
   }
 })
 
-test_that("etlkvljs: legacy and v1 differ on a line past the window", {
+test_that("ROBO-etlkvljs: legacy and v1 differ on a line past the window", {
   # A complete line between bytes 512,000 and max_bytes: the legacy path
   # reads it, the google ruleset's v1 reading does not (documented).
   tail <- ss_tails$rule
@@ -405,10 +469,13 @@ test_that("etlkvljs: legacy and v1 differ on a line past the window", {
 
 # --- robots_validate_url() on a cut body ------------------------------------
 
-test_that("etlkvljs: the validator reads a cut prefix to its last line", {
+test_that("ROBO-etlkvljs: the validator reads a cut prefix to its last line", {
+  # The validator has no 512,000-byte window: the rule tail runs on either
+  # side of it, every tail at the default max_bytes.
   for (name in names(ss_tails)) {
     tail <- ss_tails[[name]]
-    for (max_bytes in c(511999L, 512000L, 512001L, 524288L)) {
+    sizes <- if (identical(name, "rule")) c(511999L, 524288L) else 524288L
+    for (max_bytes in sizes) {
       ss_serve(ss_split_body(tail, split = max_bytes))
       x <- robots_validate_url("http://example.com/", max_bytes = max_bytes)
       d <- x$documents
@@ -424,7 +491,7 @@ test_that("etlkvljs: the validator reads a cut prefix to its last line", {
   }
 })
 
-test_that("etlkvljs: the validator reads a supplied body past 512,000", {
+test_that("ROBO-etlkvljs: the validator reads a supplied body past 512,000", {
   for (name in names(ss_tails)) {
     x <- robots_validate_text(ss_split_body(ss_tails[[name]]))
     expect_false(x$documents$body_truncated, label = name)
@@ -470,82 +537,104 @@ ss_over_budget <- function(req) {
   )
 }
 
+# Keyed by label. A body that disallows the probe "/x", so a `use_rules` row
+# shows its matcher ran; `decision` is what a matcher gives "/x" from the
+# full body (204 has none, so "/x" is allowed by default).
+ss_rules_body <- "User-agent: *\nDisallow: /x\n"
+ss_with_rules <- function(status) {
+  force(status)
+  function(req) fake_response(status, body = ss_rules_body)
+}
 ss_status_cases <- list(
-  list(label = "200", category = "status_200", evidence = "usable_body",
-       handler = function(req) fake_response(200L, body = "User-agent: *\n")),
-  list(label = "203", category = "status_other_2xx",
-       evidence = "usable_body",
-       handler = function(req) fake_response(203L, body = "User-agent: *\n")),
-  list(label = "204", category = "status_other_2xx",
-       evidence = "usable_body",
-       handler = function(req) fake_response(204L)),
-  list(label = "206", category = "status_206", evidence = "partial",
-       handler = function(req) fake_response(206L, body = "User-agent: *\n")),
-  list(label = "302 no Location", category = "protocol_error",
-       evidence = "http_protocol_error",
-       handler = function(req) fake_response(302L)),
-  list(label = "301 loop", category = "protocol_error",
-       evidence = "http_protocol_error",
-       handler = function(req) {
-         fake_response(301L, url = req$url,
-                       headers = list(Location = req$url))
-       }),
-  list(label = "301 over budget", category = "redirect_over_budget",
-       evidence = "redirect_over_budget", handler = ss_over_budget),
-  list(label = "400", category = "status_4xx", evidence = "http_status",
-       handler = function(req) fake_response(400L)),
-  list(label = "401", category = "status_4xx", evidence = "http_status",
-       handler = function(req) fake_response(401L)),
-  list(label = "403", category = "status_4xx", evidence = "http_status",
-       handler = function(req) fake_response(403L)),
-  list(label = "404", category = "status_4xx", evidence = "http_status",
-       handler = function(req) fake_response(404L)),
-  list(label = "410", category = "status_4xx", evidence = "http_status",
-       handler = function(req) fake_response(410L)),
-  list(label = "429", category = "status_429", evidence = "http_status",
-       handler = function(req) fake_response(429L)),
-  list(label = "500", category = "status_5xx", evidence = "http_status",
-       handler = function(req) fake_response(500L)),
-  list(label = "503", category = "status_5xx", evidence = "http_status",
-       handler = function(req) fake_response(503L)),
-  list(label = "timeout", category = "transport", evidence = "transport_fail",
-       handler = function(req) fake_failure("timeout")),
-  list(label = "unresolvable", category = "transport",
-       evidence = "transport_fail",
-       handler = function(req) fake_failure("unresolvable")),
-  list(label = "102", category = "protocol_error",
-       evidence = "http_protocol_error",
-       handler = function(req) fake_response(102L))
+  "200" = list(category = "status_200", evidence = "usable_body",
+               decision = "disallow", handler = ss_with_rules(200L)),
+  "203" = list(category = "status_other_2xx", evidence = "usable_body",
+               decision = "disallow", handler = ss_with_rules(203L)),
+  "204" = list(category = "status_other_2xx", evidence = "usable_body",
+               decision = "allow",
+               handler = function(req) fake_response(204L)),
+  "206" = list(category = "status_206", evidence = "partial",
+               handler = ss_with_rules(206L)),
+  "302 no Location" = list(category = "protocol_error",
+                           evidence = "http_protocol_error",
+                           handler = function(req) fake_response(302L)),
+  "301 loop" = list(category = "protocol_error",
+                    evidence = "http_protocol_error",
+                    handler = function(req) {
+                      fake_response(301L, url = req$url,
+                                    headers = list(Location = req$url))
+                    }),
+  "301 over budget" = list(category = "redirect_over_budget",
+                           evidence = "redirect_over_budget",
+                           handler = ss_over_budget),
+  "400" = list(category = "status_4xx", evidence = "http_status",
+               handler = function(req) fake_response(400L)),
+  "401" = list(category = "status_4xx", evidence = "http_status",
+               handler = function(req) fake_response(401L)),
+  "403" = list(category = "status_4xx", evidence = "http_status",
+               handler = function(req) fake_response(403L)),
+  "404" = list(category = "status_4xx", evidence = "http_status",
+               handler = function(req) fake_response(404L)),
+  "410" = list(category = "status_4xx", evidence = "http_status",
+               handler = function(req) fake_response(410L)),
+  "429" = list(category = "status_429", evidence = "http_status",
+               handler = function(req) fake_response(429L)),
+  "500" = list(category = "status_5xx", evidence = "http_status",
+               handler = function(req) fake_response(500L)),
+  "503" = list(category = "status_5xx", evidence = "http_status",
+               handler = function(req) fake_response(503L)),
+  timeout = list(category = "transport", evidence = "transport_fail",
+                 handler = function(req) fake_failure("timeout")),
+  unresolvable = list(category = "transport", evidence = "transport_fail",
+                      handler = function(req) fake_failure("unresolvable")),
+  "102" = list(category = "protocol_error", evidence = "http_protocol_error",
+               handler = function(req) fake_response(102L))
 )
 
-test_that("etlkvljs: each status class resolves as section 4 documents", {
-  for (case in ss_status_cases) {
+# What a row of `case` resolves to under `ruleset` and `backend`: the
+# section 4 cell, and the matcher result that follows from it.
+ss_status_want <- function(case, ruleset, backend) {
+  cell <- ss_status_policy[[case$category]][[ruleset]]
+  want <- list(
+    policy_status = cell[[1L]], policy_action = cell[[2L]],
+    matcher_status = "not_evaluated", url_decision = NA_character_
+  )
+  if (identical(cell[[2L]], "allow_all")) {
+    want$matcher_status <- "not_needed"
+    want$url_decision <- "allow"
+  } else if (identical(cell[[2L]], "use_rules") &&
+               !identical(case$evidence, "partial")) {
+    # A partial body is not matched (section 2); a full one is, except by
+    # the rfc9309 backend, which engine-contract-v1.md calls
+    # capability_unavailable.
+    if (identical(backend, "rfc9309")) {
+      want$matcher_status <- "capability_unavailable"
+    } else {
+      want$matcher_status <- "evaluated"
+      want$url_decision <- case$decision
+    }
+  }
+  want
+}
+
+test_that("ROBO-etlkvljs: each status class resolves as section 4 documents", {
+  for (case_label in names(ss_status_cases)) {
+    case <- ss_status_cases[[case_label]]
     local_fake_ssrfr(case$handler)
     x <- ss_eval_url("/x", 524288L)
     r <- x$results
     expect_identical(x$evidence$evidence_status, case$evidence,
-                     label = case$label)
-    for (i in seq_len(nrow(r))) {
-      want <- ss_status_policy[[case$category]][[r$robots_policy_ruleset[[i]]]]
-      label <- ss_label(r, i, case$label)
-      expect_identical(r$policy_status[[i]], want[[1L]], label = label)
-      expect_identical(r$policy_action[[i]], want[[2L]], label = label)
-      if (identical(want[[2L]], "allow_all")) {
-        expect_identical(r$url_decision[[i]], "allow", label = label)
-        expect_identical(r$matcher_status[[i]], "not_needed", label = label)
-      } else if (!identical(want[[2L]], "use_rules")) {
-        expect_identical(r$url_decision[[i]], NA_character_, label = label)
-      } else if (identical(case$evidence, "partial")) {
-        # Policy resolves, the partial body is not matched (section 2).
-        expect_identical(r$matcher_status[[i]], "not_evaluated",
-                         label = label)
-        expect_identical(r$url_decision[[i]], NA_character_, label = label)
-      }
-    }
+                     label = case_label)
+    want <- ss_want_rows(r, function(i) {
+      ss_status_want(
+        case, r$robots_policy_ruleset[[i]], r$matcher_backend[[i]]
+      )
+    })
+    ss_expect_rows(r, want, case_label)
   }
 })
 
-test_that("etlkvljs: a 4xx or 5xx over max_bytes keeps its status class", {
+test_that("ROBO-etlkvljs: a 4xx or 5xx over max_bytes keeps its status class", {
   # engine-profiles.md section 7: classified by its status (section 4).
   body <- ss_split_body(ss_tails$rule)
   for (status in c(403L, 503L)) {
@@ -556,13 +645,11 @@ test_that("etlkvljs: a 4xx or 5xx over max_bytes keeps its status class", {
     expect_false(x$evidence$body_present)
     r <- x$results
     category <- if (status == 403L) "status_4xx" else "status_5xx"
-    for (i in seq_len(nrow(r))) {
-      want <- ss_status_policy[[category]][[r$robots_policy_ruleset[[i]]]]
-      expect_identical(r$policy_status[[i]], want[[1L]],
-                       label = ss_label(r, i, status))
-      expect_identical(r$policy_action[[i]], want[[2L]],
-                       label = ss_label(r, i, status))
-    }
+    want <- ss_want_rows(r, function(i) {
+      cell <- ss_status_policy[[category]][[r$robots_policy_ruleset[[i]]]]
+      list(policy_status = cell[[1L]], policy_action = cell[[2L]])
+    })
+    ss_expect_rows(r, want, paste("HTTP", status))
   }
 })
 
@@ -657,48 +744,44 @@ ss_validator_cases <- list(
        message = "Partial HTTP response was rejected; no body was validated.")
 )
 
-ss_case_handler <- function(label) {
-  for (case in ss_status_cases) {
-    if (identical(case$label, label)) {
-      return(case$handler)
-    }
-  }
-  stop("no status case ", label)
-}
-
-test_that("etlkvljs: the validator's code and message per status class", {
+test_that("ROBO-etlkvljs: the validator's code and message per status class", {
   for (case in ss_validator_cases) {
-    local_fake_ssrfr(ss_case_handler(case$label))
+    local_fake_ssrfr(ss_status_cases[[case$label]]$handler)
     x <- robots_validate_url("http://example.com/")
     d <- x$diagnostics
+    expect_identical(nrow(d), 1L, label = case$label)
     expect_identical(d$code, case$code, label = case$label)
     expect_identical(d$severity, case$severity, label = case$label)
     expect_identical(x$documents$validation_status, "not_validated",
                      label = case$label)
     if (startsWith(case$message, ": ")) {
       # The fetch's own message opens it; the engine readings close it.
-      expect_true(endsWith(d$message, case$message), label = d$message)
+      expect_true(endsWith(d$message, case$message), label = case$label)
     } else {
       expect_identical(d$message, case$message, label = case$label)
     }
   }
 })
 
-test_that("etlkvljs: a non-200 2xx body is validated with no status code", {
+test_that("ROBO-etlkvljs: a non-200 2xx body is validated, no status code", {
   # Yandex reads a non-200 2xx as allow_all (section 4), but the validator
   # validates its body like a 200's and names no status.
   for (status in c(203L, 204L)) {
     local_fake_ssrfr(function(req) {
-      fake_response(status, body = "User-agent: *\nDisallow: /x\n")
+      fake_response(status, body = ss_rules_body)
     })
     x <- robots_validate_url("http://example.com/")
-    expect_identical(x$documents$http_status, status)
-    expect_identical(x$documents$fetch_outcome, "fetched")
+    d <- x$documents
+    status_label <- paste("HTTP", status)
+    expect_identical(d$http_status, status)
+    expect_identical(d$fetch_outcome, "fetched")
+    expect_identical(d$validation_status, "valid", label = status_label)
+    expect_identical(d$disallow_directives, 1L, label = status_label)
     expect_false(any(startsWith(x$diagnostics$code, "acquisition_")))
   }
 })
 
-test_that("etlkvljs: a 2xx refused whole is acquisition_limit_exceeded", {
+test_that("ROBO-etlkvljs: a 2xx refused whole is acquisition_limit_exceeded", {
   # engine-profiles.md section 7: a status mismatch over the limit is
   # body_too_large, refused whole, as a 3xx is.
   # contract mismatch: the robots_validate_text() code table says this code
