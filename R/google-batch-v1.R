@@ -4,15 +4,18 @@
 # run_batch_matcher_v1() (R/matcher-batch-v1.R) with the three pieces below:
 # the request-target extractor, the native batch, and the status mapping.
 # The native batch parses each distinct body once and answers every row that
-# selects it; match_google_v1() stays the reference row matcher, and the batch
+# selects it (the line collector reads each body with a matched row once
+# more); match_google_v1() stays the reference row matcher, and the batch
 # gives, row for row, the frame row_matcher_frame_v1(match_google_v1, ...)
 # gives (tests/testthat/test-google-batch-iooslxvj.R).
 
 # The vendored matcher takes the whole URL and finds the path itself
-# (GetPathParamsQuery()), so the target is the URL as its UTF-8 bytes: the
-# bytes cpp11 hands the row matcher for the same string.
+# (GetPathParamsQuery()), so the target is the whole URL, made into a string
+# by the same cpp11 conversion the row matcher's URL goes through: a latin1
+# URL arrives as its UTF-8 bytes, and a "bytes"-marked URL fails with the row
+# path's error.
 google_request_target_v1 <- function(url) {
-  enc2utf8(url)
+  robotstxtr_google_request_target_(url)
 }
 
 # The native Google batch, with the by-name signature run_batch_matcher_v1()
@@ -54,9 +57,10 @@ google_evaluate_batch_v1 <- function(bodies, body_index, product_tokens,
   matched_rule_type[matched] <- "allow"
   matched_rule_type[!allowed] <- "disallow"
   matched_rule_value <- rep(NA_character_, n)
-  for (b in unique(body_index[matched])) {
-    rows <- which(matched & body_index == b)
-    lookup <- collect_directive_lookup(strings[[b]])
+  matched_rows <- split(which(matched), body_index[matched])
+  for (b in names(matched_rows)) {
+    rows <- matched_rows[[b]]
+    lookup <- collect_directive_lookup(strings[[as.integer(b)]])
     hit <- match(line[rows], lookup$line)
     if (anyNA(hit)) {
       robots_abort(

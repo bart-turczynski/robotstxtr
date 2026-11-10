@@ -134,6 +134,21 @@ class FanOutHandler : public googlebot::RobotsParseHandler {
 
 }  // namespace
 
+// One URL as the batch's request target: the string cpp11 makes of it for the
+// row path's `cpp11::strings url` (translated to UTF-8 by R, so a
+// "bytes"-marked URL fails here exactly as it fails there), returned as a
+// UTF-8 string whose bytes the batch module hands back as raw.
+[[cpp11::register]]
+cpp11::writable::strings robotstxtr_google_request_target_(
+    cpp11::strings url) {
+  if (url.size() != 1) {
+    cpp11::stop("`url` must be a single string");
+  }
+  const std::string u(url[0]);
+  return cpp11::writable::strings({cpp11::r_string(
+      Rf_mkCharLenCE(u.data(), static_cast<int>(u.size()), CE_UTF8))});
+}
+
 // The Google batch (ROBO-iooslxvj): parse each DISTINCT body once and answer
 // every row that selects it.
 //
