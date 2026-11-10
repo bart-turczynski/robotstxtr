@@ -61,7 +61,9 @@ crawler's (ASCII case-insensitive), combined when several do, and then
 ignores every \verb{User-agent: *} rule; \verb{User-agent: *} applies only to a
 crawler no group names (RFC 9309 section 2.2.1). \code{\link[=robots_validate_text]{robots_validate_text()}}
 reports a named group that lacks \verb{User-agent: *} rules as
-\code{wildcard_rules_not_inherited}.
+\code{wildcard_rules_not_inherited}, except for the AI-training policy token
+\verb{__usage_ai-training}, which \code{*} never covers (an Internet-Draft,
+draft-kelley-aipref-training-preference-signal-00).
 
 Match metadata is fully populated on the text path. \code{matched_line} carries
 the upstream one-based matching line (or \code{NA} when no rule matched). For a

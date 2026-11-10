@@ -189,13 +189,22 @@ escape such as `%3c` (Google upper-cases the rule, not the URL), and on a
 Sitemap value
 that is not an absolute `http`, `https` or `ftp` URL. An info,
 `wildcard_rules_not_inherited`, notes a named User-agent group that lacks some
-`User-agent: *` rules: its crawler obeys only the groups that name it. A
-warning, `disallow_tied_by_allow`, flags a Disallow that an Allow with the
-identical pattern cancels, since Allow wins the tie. An info,
-`duplicate_rule`, notes an Allow or Disallow that repeats an earlier rule for
-the same crawlers, so it has no effect. A warning, `html_body`, says the body
-looks like an HTML page rather than a robots.txt. The "Diagnostic codes"
-section of `?robots_validate_text` lists every code.
+`User-agent: *` rules: its crawler obeys only the groups that name it. The
+AI-training policy token `__usage_ai-training`, from the Internet-Draft
+draft-kelley-aipref-training-preference-signal-00, is no crawler and `*` never
+covers it: its group gets an info, `ai_training_preference`, listing the
+group's own rules, and warnings flag a near-miss spelling
+(`ai_training_token_near_miss`), a line such as `Crawl-delay` in a group that
+names only the token (`ai_training_group_extra_line`), and a token line that
+shares a group with `User-agent: *`, or with a crawler or another policy
+token a directive line separates it from (`ai_training_token_stacked`). A key
+such as `DisallowAITraining`, which Google reads as `Disallow`, is
+`accepted_directive_prefix`. A warning, `disallow_tied_by_allow`, flags a
+Disallow that an Allow with the identical pattern cancels, since Allow wins
+the tie. An info, `duplicate_rule`, notes an Allow or Disallow that repeats an
+earlier rule for the same crawlers, so it has no effect. A warning,
+`html_body`, says the body looks like an HTML page rather than a robots.txt.
+The "Diagnostic codes" section of `?robots_validate_text` lists every code.
 
 ```{r, eval = FALSE}
 # Performs live HTTP, so it is not evaluated in the vignette.

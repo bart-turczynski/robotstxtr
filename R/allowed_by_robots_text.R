@@ -27,7 +27,9 @@
 #' ignores every `User-agent: *` rule; `User-agent: *` applies only to a
 #' crawler no group names (RFC 9309 section 2.2.1). [robots_validate_text()]
 #' reports a named group that lacks `User-agent: *` rules as
-#' `wildcard_rules_not_inherited`.
+#' `wildcard_rules_not_inherited`, except for the AI-training policy token
+#' `__usage_ai-training`, which `*` never covers (an Internet-Draft,
+#' draft-kelley-aipref-training-preference-signal-00).
 #'
 #' Match metadata is fully populated on the text path. `matched_line` carries
 #' the upstream one-based matching line (or `NA` when no rule matched). For a
