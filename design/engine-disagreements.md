@@ -338,9 +338,9 @@ given; Yandex compares the rule as written.
 
 Verdict: UNEVIDENCED for Yandex: the accepted corpus has no escape-case case.
 Bing is tester-observed (`body-sr2-bingbot-hexcase-*`). The Google side is the
-upstream matcher's behavior (`MaybeEscapePattern`), not a matcher bug; the gap
-is the validator's, which does not yet warn about such a rule: ROBO-kormmfyg
-(`design/edge-case-catalog.md`, `esc-lower-hex-rule`).
+upstream matcher's behavior (`MaybeEscapePattern`), not a matcher bug; the
+validator did not warn about such a rule, and `rule_lowercase_escape` now does
+(ROBO-kormmfyg; `design/edge-case-catalog.md`, `esc-lower-hex-rule`).
 
 ### 12. An empty `User-agent` value (yandex)
 

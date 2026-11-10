@@ -168,7 +168,7 @@ catalog does not run the Yandex matcher.
 | `esc-slash-rule-pct2f-url` — `Disallow: /a/b`, URL `/a%2Fb` | allow | as above | allow | none | no |
 | `esc-pct7e-rule-tilde-url` — `Disallow: /%7Ejoe` | `~` is unreserved, so `%7E` is decoded: `/~joe` disallow (§2.2.2 states the decoding for the URI; its Figure 4 maps `/foo/bar/%62%61%7A` to `/foo/bar/baz`, which reads as the rule side too) | not documented for unreserved characters | `/~joe` **allow**, `/%7Ejoe` disallow | `rule_escaped_unreserved@2` | yes; covered by `rule_escaped_unreserved` |
 | `esc-tilde-rule-pct7e-url` — `Disallow: /~joe`, URL `/%7Ejoe` or `/%7ejoe` | the URI's `%7E` MUST be decoded (§2.2.2): disallow | not documented | allow for both | none | yes, but not a validator gap: the file is correct RFC syntax and nothing in it could be flagged; the difference is the URL's form. `allowed_by_robots_text()` passes the URL to the matcher unchanged and leaves supplying an appropriately `%`-escaped URL to the caller ("R does not clean, decode, canonicalize, or reserialize the URL"), and the PRD's R-package rules say "do not normalize Unicode or percent escapes on the matcher side" (`design/PRD.md`) |
-| `esc-lower-hex-rule` — `Disallow: /a%3cb` | `<` is neither reserved nor unreserved, so `%3c` stays encoded on both sides (§2.2.2): `/a%3cb` matches octet for octet, disallow; `/a%3Cb` hinges on whether `%3c` equals `%3C`, which the RFC does not say: unspecified | not documented | `/a%3Cb` disallow (rule upper-cased), `/a%3cb` **allow** (URL not normalized): the exact path the owner wrote is not blocked | none | yes; **known gap**: ROBO-kormmfyg |
+| `esc-lower-hex-rule` — `Disallow: /a%3cb` | `<` is neither reserved nor unreserved, so `%3c` stays encoded on both sides (§2.2.2): `/a%3cb` matches octet for octet, disallow; `/a%3Cb` hinges on whether `%3c` equals `%3C`, which the RFC does not say: unspecified | not documented | `/a%3Cb` disallow (rule upper-cased), `/a%3cb` **allow** (URL not normalized): the exact path the owner wrote is not blocked | rule_lowercase_escape@2 | yes; covered by `rule_lowercase_escape` |
 | `esc-path-letter-case` — `Disallow: /Private` | SHOULD be case-sensitive | case-sensitive | `/Private` disallow, `/private` allow | none | no |
 | `esc-space-in-rule` — `Disallow: /a b` | a space is not allowed in `path-pattern` (§2.2); unspecified | not documented | `/a%20b` allow, `/a` allow: the rule keeps a raw space no escaped URL holds | `rule_inner_whitespace@2` | yes; covered by `rule_inner_whitespace` |
 | `esc-star-leading` — `Disallow: *.pdf` | not a valid `path-pattern` (must start `/`); unspecified | `*` matches any run | `/x.pdf` disallow, `/x.html` allow | none (a leading `*` is accepted) | no |
@@ -286,7 +286,7 @@ block red. An item marked fixed names the diagnostic that now covers it.
    binding ignores Googlebot-Image's documented parent token `Googlebot`.
 10. ROBO-kormmfyg — `esc-lower-hex-rule`: the matcher upper-cases a rule's
     lower-case escape but not the URL's, so `Disallow: /a%3cb` allows the
-    exact path `/a%3cb`; no diagnostic.
+    exact path `/a%3cb`; no diagnostic. Fixed: `rule_lowercase_escape`.
 11. ROBO-gokbvzcb (filed earlier) — `redirect-cross-host-html`: no validator
     diagnostic for a successful cross-host redirect, here to an HTML page.
     Fixed by ROBO-gokbvzcb: the `redirect_cross_site` warning, beside
