@@ -1,0 +1,5 @@
+User-agent: Bot
+Disallow: /x
+
+User-agent: *
+Allow: /

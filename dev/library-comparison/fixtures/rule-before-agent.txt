@@ -1,0 +1,3 @@
+Disallow: /x
+User-agent: *
+Disallow: /y

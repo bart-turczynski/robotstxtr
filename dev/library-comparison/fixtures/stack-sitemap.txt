@@ -1,0 +1,5 @@
+User-agent: FooBot
+Sitemap: https://example.com/s.xml
+
+User-agent: *
+Disallow: /x

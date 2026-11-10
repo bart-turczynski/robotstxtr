@@ -1,0 +1,5 @@
+User-agent: Foo
+Disallow: /x
+
+User-agent: *
+Allow: /
