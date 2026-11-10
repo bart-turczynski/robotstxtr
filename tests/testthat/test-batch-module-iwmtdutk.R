@@ -79,22 +79,16 @@ iw_tokens <- list(
 iw_adapters <- list(yandex = match_yandex_v1, bing = match_bing_v1)
 
 iw_digest <- function(frame) {
-  file <- tempfile(fileext = ".txt")
-  on.exit(unlink(file))
-  con <- file(file, open = "wb")
-  writeLines(
-    c(
-      seam_canonical(frame),
-      sprintf("n_parse_calls %s", format(attr(frame, "n_parse_calls"))),
-      sprintf("row.names %s", paste(attr(frame, "row.names"), collapse = ","))
-    ),
-    con, useBytes = TRUE
-  )
-  close(con)
-  unname(tools::md5sum(file))
+  seam_digest(frame, extra = c(
+    sprintf("n_parse_calls %s", format(attr(frame, "n_parse_calls"))),
+    sprintf("row.names %s", paste(attr(frame, "row.names"), collapse = ","))
+  ))
 }
 
-# Computed with the adapters of the base before the refactor (232b92d).
+# Computed with the R adapters of the base before the refactor (232b92d)
+# sourced over the refactored native bindings, since the grid gained
+# `plain_twin` (993091e). Without the twin, the current code still gives the
+# digests the base itself gave.
 iw_pinned <- c(
   yandex = "5ac927dc412f247270973dc70b83f04e",
   bing = "bd3e1b4caa6d74d34f20bdf5b40b332f"
@@ -318,24 +312,29 @@ iw_fake_run <- function(urls, tokens, seen = new.env()) {
 test_that("the module hands the native batch its tokens and targets", {
   seen <- new.env()
   iw_fake_run("https://example.com/", "bot", seen)
-  # Known gap (ROBO-wuhugihe): the call is positional, so a native batch whose
-  # parameters are ordered differently gets the tokens as its targets.
-  expect_identical(seen$targets, "bot")
-  expect_identical(seen$product_tokens, list(charToRaw("/x")))
+  # The call is by name (ROBO-wuhugihe), so a native batch whose parameters
+  # are ordered differently still gets each argument where it belongs.
+  expect_identical(seen$product_tokens, "bot")
+  expect_identical(seen$targets, list(charToRaw("/x")))
+})
+
+test_that("the decision prototype is the contract's atomic columns", {
+  expect_named(
+    matcher_decision_prototype_v1(),
+    setdiff(matcher_decision_columns_v1(), "matched_rule_value_raw")
+  )
 })
 
 test_that("the empty and non-empty frames have one column list and types", {
   empty <- matcher_batch_empty_frame_v1("native_status")
   one <- iw_fake_run("https://example.com/", "bot")
   expected <- c("native_status", matcher_decision_columns_v1())
-  expect_identical(names(empty), expected)
-  expect_identical(names(one), expected)
+  expect_named(empty, expected)
+  expect_named(one, expected)
   expect_identical(
     vapply(empty, typeof, character(1L)), vapply(one, typeof, character(1L))
   )
-  expect_identical(
-    lapply(empty, class), lapply(one, class)
-  )
+  expect_identical(lapply(empty, class), lapply(one, class))
 })
 
 test_that("a native result missing a declared column aborts", {

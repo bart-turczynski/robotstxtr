@@ -20,15 +20,6 @@
 # package-owned batching and result transport. The request-target extractor,
 # the native call and the status mapping below are Bing's own.
 
-# One row's absolute URL as request-target bytes, through Bing's own lexical
-# extractor. An empty target is rejected by Policy::Evaluate as
-# invalid_request_target -- UNLESS the product token is ALSO unsupported, in
-# which case Evaluate returns unsupported_profile first (the fixed core
-# precedence, spec SS6/SS16.3).
-bing_target_bytes_v1 <- function(url) {
-  matcher_target_bytes_v1(url, bing_extract_request_target)
-}
-
 # Map the native Bing columns onto SS10 matcher_status, reason and the error
 # columns.
 bing_map_native_v1 <- function(native, url_decision) {
