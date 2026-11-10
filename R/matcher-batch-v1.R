@@ -121,6 +121,18 @@ run_batch_matcher_v1 <- function(bodies, urls, product_tokens, bodies_class,
 
   mapped <- map_status(native, url_decision)
 
+  # A renamed native column would come back NULL and vanish from the frame.
+  missing_native <- setdiff(native_columns, names(native))
+  if (length(missing_native) > 0L) {
+    robots_abort(
+      sprintf(
+        "Native matcher output lacks column(s): %s.",
+        toString(missing_native)
+      ),
+      "robotstxtr_matcher_output_invariant"
+    )
+  }
+
   out <- do.call(data.frame, c(
     native[native_columns],
     list(

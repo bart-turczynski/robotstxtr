@@ -2,9 +2,9 @@
 #
 # Compiles the package-owned translation units AND the nested vendored
 # robotstxtyandex and robotstxtbing payloads into a single package shared
-# object. The vendored objects link in but are called by nothing yet (the
-# public matcher bindings are later units — YI4b for Yandex, BI4 for Bing);
-# both Yandex and Bing stay capability_unavailable.
+# object. The vendored objects are called through the package-owned matcher
+# bindings (src/yandex_matcher_binding.cpp, src/bing_binding.cpp), which share
+# the header-only byte helpers in src/binding_bytes.h.
 #
 # Portability / CRAN notes:
 #  * OBJECTS is an explicit, enumerated list (no GNU make $(wildcard)/patsubst),

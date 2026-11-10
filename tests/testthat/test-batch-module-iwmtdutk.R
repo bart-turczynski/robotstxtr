@@ -279,3 +279,35 @@ test_that("each binding hands the request-target bytes back verbatim", {
   expect_identical(y$matcher_request_target_raw, list(target))
   expect_identical(b$matcher_request_target_raw, list(target))
 })
+
+test_that("a native result missing a declared column aborts", {
+  native_eval <- function(bodies, body_index, product_tokens, targets) {
+    n <- length(body_index)
+    list(
+      url_decision = rep(TRUE, n),
+      matched_line = rep(NA_integer_, n),
+      matched_rule_type = rep(NA_character_, n),
+      matched_rule_value = rep(NA_character_, n),
+      matcher_input_bytes = rep(0, n),
+      matched_rule_value_raw = vector("list", n),
+      n_parse_calls = 1L
+    )
+  }
+  map_status <- function(native, url_decision) {
+    n <- length(url_decision)
+    list(
+      matcher_status = rep("evaluated", n), reason = rep(NA_character_, n),
+      matcher_body_truncated = rep(FALSE, n),
+      error_stage = rep(NA_character_, n),
+      error_class = rep(NA_character_, n), error_message = rep(NA_character_, n)
+    )
+  }
+  expect_error(
+    run_batch_matcher_v1(
+      list(charToRaw("User-agent: *\n")), "https://example.com/", "bot",
+      "robotstxtr_test_bodies", identity, native_eval, map_status,
+      "native_status"
+    ),
+    class = "robotstxtr_matcher_output_invariant"
+  )
+})
