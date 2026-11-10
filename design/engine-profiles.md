@@ -31,12 +31,14 @@ body for the selected product token.
   parsing-error catalog). robotstxtr validates syntax and structure for the Google-compatible profile
   only; this doc's per-engine policy work adds no validator scope (PRD §3; ADR-009 §8). §8 rule-count/line-length/typo items
   are future-validator reference only; nothing there executes.
-- **Bing robots policy** — no current Bing primary source publishes a robots.txt status/redirect/
+- <a id="bing-policy"></a>**Bing robots policy** — no current Bing primary source publishes a robots.txt status/redirect/
   network table or an RFC-9309 conformance claim. Every Bing status/redirect cell is
   `documentation_gap`; not synthesized from RFC. A product may opt into an explicit `assumed_rfc9309`
   application policy, never presented as `bing`.
 - **Crawler lifecycle emulation** (cache TTL, 30-day grace, last-known-good). Stateless; lifecycle-
   dependent cells resolve to `context_required` (§4).
+
+<a id="neutral-fetch"></a>
 
 ## 2. Neutral fetch outcome contract (L0 — engine-agnostic)
 
@@ -94,6 +96,8 @@ Note (`http_protocol_error` for 1xx): a received 1xx is an HTTP/protocol outcome
 distinct from `transport_fail` (DNS/TLS/network). Current code lumps 1xx into `http_error`
 (`R/fetch-policy.R:88`); this contract separates them (an implementation delta, §9).
 
+<a id="redirect-handling"></a>
+
 ## 3. Redirect handling (per terminal reason, then per engine)
 
 RFC 9309 §2.3.1.2 says crawlers SHOULD follow **at least five** consecutive redirects, incl. across
@@ -145,6 +149,8 @@ Address-class codes: `loopback`, `private`, `link-local`, `cloud-metadata`, `sha
 
 `crawler` is in the published value set but refused as a call-level error until it lands
 (ROBO-lwdxzdhw, ROBO-jqwukcog), and `fetch_allow_ranges` is recorded as empty until ROBO-bamcjvwn.
+
+<a id="status-policy"></a>
 
 ## 4. Status → policy (per `robots_policy_ruleset`, per-cell provenance)
 
@@ -350,6 +356,8 @@ capability_unavailable`; the §4 policy result still resolves independently (ADR
 This token/semantics boundary is published as data on
 `robots_engine_contract_v1()$matcher_capability` (keyed per backend with
 `token_policy`, `matcher_semantics`, and a `note`).
+
+<a id="policy-matcher-limits"></a>
 
 ## 7. Current policy/matcher limits (executable this release)
 
