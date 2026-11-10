@@ -64,9 +64,10 @@ RFC 9309 section 2.5 allows a crawler to parse. The document row reports
 the cut with \code{body_truncated} and \code{limit_exceeded} both \code{TRUE} and
 \code{final_newline = NA} (the file's end was never read), \code{byte_size} is the
 stored size, and a warning diagnostic with code \code{body_truncated} says most
-of the file may not have been validated. A 3xx body over
-\code{max_bytes} is refused whole and reported as \code{acquisition_limit_exceeded},
-and a 4xx or 5xx keeps its status outcome whatever its body size.
+of the file may not have been validated. A body over \code{max_bytes} with a 3xx
+status, an unknown status, or a 2xx whose libcurl and status-line statuses
+disagree is refused whole and reported as \code{acquisition_limit_exceeded}, and a
+4xx or 5xx keeps its status outcome whatever its body size.
 }
 \details{
 A status that leaves no body gets a code for its class (404 and 410
