@@ -90,6 +90,22 @@ Google, Yandex and Bing may do, or says that an engine's behavior is not
 documented. A refusal is robotstxtr's own safety choice, so its message
 gives no engine verdict for it.
 
+A fetch that succeeded after redirecting away from the robots.txt URL is
+reported beside the body's own diagnostics, from the source row's
+\code{robots_url}, \code{effective_url} and \code{content_flag}: \code{redirect_other_path}
+(same host, another path; info, or a warning when the page reached is
+HTML), \code{redirect_same_site} (another host of the same registrable domain;
+info, or a warning when the page reached is HTML) and
+\code{redirect_cross_site} (another registrable domain; warning). A
+change of scheme or port alone, such as \code{http} to \code{https}, is not
+reported. The registrable domain comes from the Public Suffix List
+through \code{rurl::get_domain()}, so \code{a.example.co.uk} and \code{b.example.co.uk}
+are one site; an IP literal, or a host with no registrable domain, is
+compared whole. RFC 9309 section 2.3.1.2 and Yandex document applying
+the file reached to the requested host, Google is inferred to, and Bing
+does not document it; when the page reached is HTML, the message says
+the robots.txt is effectively missing. The fetch itself is unchanged.
+
 This function validates the acquired robots.txt document. It does not answer
 whether any target URL is allowed; use \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} for that
 separate question. It also does not infer webmaster intent or check whether

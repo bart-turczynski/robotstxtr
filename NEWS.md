@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* `robots_validate_url()` reports a robots.txt fetch that redirected to another path, host or site (RFC 9309 §2.3.1.2) (ROBO-gokbvzcb).
+
 * `robots_validate_text()` and `robots_validate_url()` report `invalid_utf8` on each line holding the bytes, and bytes only a comment holds as the new `invalid_utf8_comment` warning (RFC 9309 §2.3) (ROBO-sniltuap).
 
 * `robots_validate_text()` reports a `Content-Signal` line as `content_signal_directive`, not `unsupported_directive`: an expired draft no crawler documents honoring (ROBO-fqkgreev).

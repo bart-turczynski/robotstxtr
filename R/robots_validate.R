@@ -42,8 +42,9 @@ validation_unsupported <- c(
 #' matchers agree on both pattern effects (a pattern not led by `/` or `*`
 #' never matches, and `$` anchors only as the last character). The sitemap
 #' checks are syntax-only: no sitemap is fetched, which is the `sitemapr`
-#' package's job. `body_truncated` and the codes starting `acquisition_` come
-#' only from [robots_validate_url()].
+#' package's job. `body_truncated` and the codes starting `acquisition_` or
+#' `redirect_` come only from [robots_validate_url()]; a `redirect_` row
+#' follows the body's own rows.
 #'
 #' \tabular{lll}{
 #'   \strong{Code} \tab \strong{Severity} \tab \strong{Meaning} \cr
@@ -172,6 +173,16 @@ validation_unsupported <- c(
 #'   \code{acquisition_redirect_non_http} \tab error \tab
 #'     A redirect to a scheme other than \code{http} or \code{https} was
 #'     refused for safety. \cr
+#'   \code{redirect_other_path} \tab info \tab
+#'     The fetch redirected to another path on the same host, such as the
+#'     home page; a warning when the page reached is HTML. \cr
+#'   \code{redirect_same_site} \tab info \tab
+#'     The fetch redirected to another host of the same registrable domain,
+#'     such as \code{www} and the bare domain; a warning when the page
+#'     reached is HTML. \cr
+#'   \code{redirect_cross_site} \tab warning \tab
+#'     The fetch redirected to another registrable domain, whose file is
+#'     applied to this host. \cr
 #'   \code{acquisition_transport_failed} \tab error \tab
 #'     A timeout, TLS, network or malformed-response failure, with each
 #'     engine's reading in
@@ -319,6 +330,22 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' Google, Yandex and Bing may do, or says that an engine's behavior is not
 #' documented. A refusal is robotstxtr's own safety choice, so its message
 #' gives no engine verdict for it.
+#'
+#' A fetch that succeeded after redirecting away from the robots.txt URL is
+#' reported beside the body's own diagnostics, from the source row's
+#' `robots_url`, `effective_url` and `content_flag`: `redirect_other_path`
+#' (same host, another path; info, or a warning when the page reached is
+#' HTML), `redirect_same_site` (another host of the same registrable domain;
+#' info, or a warning when the page reached is HTML) and
+#' `redirect_cross_site` (another registrable domain; warning). A
+#' change of scheme or port alone, such as `http` to `https`, is not
+#' reported. The registrable domain comes from the Public Suffix List
+#' through `rurl::get_domain()`, so `a.example.co.uk` and `b.example.co.uk`
+#' are one site; an IP literal, or a host with no registrable domain, is
+#' compared whole. RFC 9309 section 2.3.1.2 and Yandex document applying
+#' the file reached to the requested host, Google is inferred to, and Bing
+#' does not document it; when the page reached is HTML, the message says
+#' the robots.txt is effectively missing. The fetch itself is unchanged.
 #'
 #' This function validates the acquired robots.txt document. It does not answer
 #' whether any target URL is allowed; use [allowed_by_robots_url()] for that
@@ -1568,6 +1595,10 @@ validate_fetched_documents <- function(fetched) {
         max_bytes = source$max_bytes,
         body_truncated = isTRUE(robots$body_truncated[[i]])
       )
+      redirect <- redirect_host_diagnostic(source)
+      if (!is.null(redirect)) {
+        validated <- add_document_diagnostic(validated, redirect)
+      }
     } else {
       validated <- unavailable_validation(source)
     }
@@ -1784,6 +1815,125 @@ acquisition_diagnosis <- function(source) {
       opening, ": ", detail, " See robots_engine_contract_v1()."
     )
   )
+}
+
+# The diagnostic row for a robots.txt fetch that succeeded after redirecting
+# away from the robots.txt URL (ROBO-gokbvzcb), or NULL. It reads only the
+# source row's `robots_url`, `effective_url` and `content_flag`; the fetch
+# itself is unchanged. Hosts are compared idna-encoded and ASCII-lowercased.
+#
+# - Same host, the path still /robots.txt (a scheme or port change, such as
+#   http to https): silent, the usual case.
+# - Same host, another path: `redirect_other_path`, info, or a warning when
+#   the landing page is HTML (a catch-all to a page).
+# - Another host, same registrable domain (www and apex, or another
+#   subdomain): `redirect_same_site`, info, or a warning when the landing
+#   page is HTML.
+# - Another registrable domain: `redirect_cross_site`, warning: the rules
+#   applied are another site's.
+#
+# The registrable domain comes from the Public Suffix List through
+# rurl::get_domain() (so a.example.co.uk and b.example.co.uk are one site); an
+# IP literal, or a host with no registrable domain, is compared whole. The
+# engine readings are design/engine-profiles.md, section 3, "Within budget".
+redirect_host_diagnostic <- function(source) {
+  if (identical(source$robots_url, source$effective_url)) {
+    return(NULL)
+  }
+  from <- redirect_url_parts(source$robots_url)
+  to <- redirect_url_parts(source$effective_url)
+  if (is.null(from) || is.null(to)) {
+    return(NULL)
+  }
+  same_host <- identical(from$host, to$host)
+  if (same_host && identical(to$path, from$path)) {
+    return(NULL)
+  }
+  html <- identical(source$content_flag, "html")
+  if (same_host) {
+    code <- "redirect_other_path"
+    severity <- if (html) "warning" else "info"
+    where <- "another path on the same host"
+  } else if (identical(redirect_site_key(from$host),
+                       redirect_site_key(to$host))) {
+    code <- "redirect_same_site"
+    severity <- if (html) "warning" else "info"
+    where <- "another host of the same site"
+  } else {
+    code <- "redirect_cross_site"
+    severity <- "warning"
+    where <- "another site"
+  }
+  message <- sprintf(
+    paste0(
+      "The robots.txt at %s redirected to %s, %s. RFC 9309 (documented) and ",
+      "Yandex (documented, if the target answers 200) apply the file reached ",
+      "to the requested host, Google is inferred to do the same, and Bing is ",
+      "not documented."
+    ),
+    source$robots_url, source$effective_url, where
+  )
+  if (html) {
+    message <- paste(
+      message,
+      "The page reached is HTML, so the site's robots.txt is effectively",
+      "missing; any lines on it were read as directives anyway."
+    )
+  }
+  validation_diagnostic(
+    source$source_id, NA_integer_, severity, code, NA_character_,
+    NA_character_, message
+  )
+}
+
+# The ASCII-lowercased idna host and the path of a URL, or NULL when it does
+# not parse to a host.
+redirect_url_parts <- function(url) {
+  if (length(url) != 1L || is.na(url)) {
+    return(NULL)
+  }
+  parsed <- tryCatch(
+    rurl::safe_parse_url(url, host_encoding = "idna"),
+    error = function(e) NULL
+  )
+  host <- parsed$host
+  if (!is.character(host) || length(host) != 1L || is.na(host) ||
+        !nzchar(host)) {
+    return(NULL)
+  }
+  path <- parsed$path
+  if (!is.character(path) || length(path) != 1L || is.na(path) ||
+        !nzchar(path)) {
+    path <- "/"
+  }
+  # A fully qualified name's root dot is the same host (as ssrfr's
+  # normalize_host_name reads it), and get_domain() finds no domain with it.
+  host <- sub("\\.$", "", ascii_lower(host))
+  if (!nzchar(host)) {
+    return(NULL)
+  }
+  list(host = host, path = path)
+}
+
+# The registrable domain of a host, or the whole host when it has none (an IP
+# literal, a public suffix, or a name under no listed suffix).
+redirect_site_key <- function(host) {
+  domain <- tryCatch(rurl::get_domain(host), error = function(e) NA_character_)
+  if (length(domain) != 1L || is.na(domain) || !nzchar(domain)) {
+    return(host)
+  }
+  ascii_lower(domain)
+}
+
+# Appends one diagnostic row to a validated document and recounts its row.
+add_document_diagnostic <- function(validated, diagnostic) {
+  diagnostics <- rbind(validated$diagnostics, diagnostic)
+  document <- validated$document
+  document$validation_status <- validation_status(diagnostics)
+  document$diagnostic_count <- as.integer(nrow(diagnostics))
+  document$warning_count <- as.integer(sum(diagnostics$severity == "warning"))
+  document$error_count <- as.integer(sum(diagnostics$severity == "error"))
+  list(document = document, diagnostics = diagnostics)
 }
 
 # "Google: ...; Yandex: ...; Bing: ..." for one policy-table category.

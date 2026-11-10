@@ -124,6 +124,9 @@ follows incl. cross-host, target's directives apply and the target must return 2
 `bing` `[documentation_gap]`. None of the engines conditions a redirect on its scheme: an HTTPS→HTTP
 hop is followed `[inferred]` for `rfc9309`, `google` and `yandex`, and is `[documentation_gap]` for
 `bing`.
+The validator's redirect codes (ROBO-gokbvzcb) decide "same site" by the registrable domain from
+the Public Suffix List (`rurl::get_domain()`), comparing an IP literal or a host with none whole;
+this is reporting only and changes no fetch.
 
 ### 3a. Safety level (ADR 0001)
 

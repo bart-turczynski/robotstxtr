@@ -51,8 +51,9 @@ checks describe the Google-compatible parser; the package's Bing and Yandex
 matchers agree on both pattern effects (a pattern not led by \code{/} or \code{*}
 never matches, and \code{$} anchors only as the last character). The sitemap
 checks are syntax-only: no sitemap is fetched, which is the \code{sitemapr}
-package's job. \code{body_truncated} and the codes starting \code{acquisition_} come
-only from \code{\link[=robots_validate_url]{robots_validate_url()}}.
+package's job. \code{body_truncated} and the codes starting \code{acquisition_} or
+\code{redirect_} come only from \code{\link[=robots_validate_url]{robots_validate_url()}}; a \code{redirect_} row
+follows the body's own rows.
 
 \tabular{lll}{
 \strong{Code} \tab \strong{Severity} \tab \strong{Meaning} \cr
@@ -181,6 +182,16 @@ no engine documents doing. \cr
 \code{acquisition_redirect_non_http} \tab error \tab
 A redirect to a scheme other than \code{http} or \code{https} was
 refused for safety. \cr
+\code{redirect_other_path} \tab info \tab
+The fetch redirected to another path on the same host, such as the
+home page; a warning when the page reached is HTML. \cr
+\code{redirect_same_site} \tab info \tab
+The fetch redirected to another host of the same registrable domain,
+such as \code{www} and the bare domain; a warning when the page
+reached is HTML. \cr
+\code{redirect_cross_site} \tab warning \tab
+The fetch redirected to another registrable domain, whose file is
+applied to this host. \cr
 \code{acquisition_transport_failed} \tab error \tab
 A timeout, TLS, network or malformed-response failure, with each
 engine's reading in

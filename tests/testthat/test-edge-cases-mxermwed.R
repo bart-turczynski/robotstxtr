@@ -281,7 +281,7 @@ test_that("ROBO-mxermwed: every known_gap row is restated above", {
     c("enc-utf16le-no-bom",
       "esc-space-in-rule",
       "esc-lower-hex-rule",
-      "grp-googlebot-image-fallback", "redirect-cross-host-html")
+      "grp-googlebot-image-fallback")
   )
 })
 
@@ -307,12 +307,18 @@ edge_covering_code <- c(
   "grp-digit-in-token" = "user_agent_cut",
   "grp-star-prefixed-token" = "user_agent_cut"
 )
+# A surprise that only robots_validate_url() reports, since it needs the
+# fetch; each is asserted in "the validator reports the cross-site redirect".
+edge_fetch_covering_code <- c(
+  "redirect-cross-host-html" = "redirect_cross_site"
+)
 edge_caller_side <- "esc-tilde-rule-pct7e-url"
 
 test_that("ROBO-mxermwed: every surprise is an issue or a diagnostic", {
   m <- edge_manifest
   open <- unique(m$id[m$surprise == "yes" & !nzchar(m$known_gap)])
-  expect_setequal(open, c(names(edge_covering_code), edge_caller_side))
+  expect_setequal(open, c(names(edge_covering_code),
+                          names(edge_fetch_covering_code), edge_caller_side))
   for (id in names(edge_covering_code)) {
     codes <- robots_validate_text(edge_case(id))$diagnostics$code
     expect_true(edge_covering_code[[id]] %in% codes, label = id)
@@ -391,9 +397,9 @@ test_that("ROBO-mxermwed: a cross-host redirect to HTML is fetched and used", {
   expect_identical(state$seen, rep(edge_redirect_hops, 3L))
 })
 
-test_that("ROBO-mxermwed: the validator reports no redirect", {
-  # known gap (ROBO-gokbvzcb): no diagnostic for a successful cross-host
-  # redirect; the document validates the landing page's lines only
+test_that("ROBO-mxermwed: the validator reports the cross-site redirect", {
+  # fixed by ROBO-gokbvzcb: after the landing page's own lines, one
+  # redirect_cross_site warning says the robots.txt is effectively missing
   state <- new.env(parent = emptyenv())
   local_fake_ssrfr(edge_redirect_handler(state))
   v <- robots_validate_url("http://a.example/page")
@@ -403,6 +409,16 @@ test_that("ROBO-mxermwed: the validator reports no redirect", {
   m <- edge_manifest
   expect_identical(
     edge_format_codes(v$diagnostics),
-    m$validator_codes[m$id == "redirect-cross-host-html"][[1L]]
+    paste0(
+      m$validator_codes[m$id == "redirect-cross-host-html"][[1L]],
+      ";redirect_cross_site@NA"
+    )
   )
+  expect_true(
+    edge_fetch_covering_code[["redirect-cross-host-html"]] %in%
+      v$diagnostics$code
+  )
+  d <- v$diagnostics[v$diagnostics$code == "redirect_cross_site", ]
+  expect_identical(d$severity, "warning")
+  expect_match(d$message, "effectively missing", fixed = TRUE)
 })
