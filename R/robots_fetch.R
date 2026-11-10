@@ -89,11 +89,12 @@
 #' `NA` in both columns means the delay is not available, not that none was
 #' requested. That is the case when the final response has no `Retry-After`,
 #' and also when the fetch ends without a usable final response: a refusal, a
-#' transport failure, a redirect error, or a 3xx body over `max_bytes`. A 4xx or
-#' 5xx whose body exceeds `max_bytes` keeps its status and outcome, but its
-#' headers are not available, so its `Retry-After` is `NA` even when the
-#' server sent one. `robots_fetch()` never retries: honoring the delay is the
-#' caller's choice.
+#' transport failure, a redirect error, or a body over `max_bytes` with a 3xx
+#' status, an unknown status, or a 2xx whose libcurl and status-line statuses
+#' disagree. A 4xx or 5xx whose body exceeds `max_bytes` keeps its status and
+#' outcome, but its headers are not available, so its `Retry-After` is `NA`
+#' even when the server sent one. `robots_fetch()` never retries: honoring the
+#' delay is the caller's choice.
 #'
 #' Each source row also keeps the final response's `Content-Type` field value
 #' as `content_type`, exactly as received (`NA` when absent or when there is
