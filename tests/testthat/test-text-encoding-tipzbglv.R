@@ -148,10 +148,45 @@ te_native_body <- function() {
   ))
 }
 
-for (te_locale in c("en_US.ISO8859-1", "fr_FR.ISO8859-15")) {
+# The predicate itself, on l10n_info()-shaped stand-ins: this runs everywhere,
+# including the fleet image, which installs no 8-bit locale.
+test_that("only a UTF-8 or ASCII native encoding takes unmarked text as is", {
+  as_written <- robotstxtr:::native_text_as_written
+  expect_true(as_written(list(`UTF-8` = TRUE, codeset = "UTF-8")))
+  for (codeset in c("US-ASCII", "ANSI_X3.4-1968", "ASCII")) {
+    expect_true(as_written(list(`UTF-8` = FALSE, codeset = codeset)))
+  }
+  for (codeset in c("ISO-8859-1", "ISO8859-15", "ISO-8859-2", "KOI8-R")) {
+    expect_false(as_written(list(`UTF-8` = FALSE, codeset = codeset)))
+  }
+  expect_false(as_written(list(`UTF-8` = FALSE)))
+  expect_false(as_written(list(`UTF-8` = FALSE, codeset = character())))
+})
+
+# The entry points in a real 8-bit locale. The fleet image installs none, so
+# these skip there with one reason that .fleet-ci.yml allows; they run where
+# the locales exist (macOS ships both).
+te_8bit_locales <- list(
+  latin1 = c("en_US.ISO8859-1", "en_US.ISO-8859-1", "en_US.iso88591"),
+  latin9 = c("fr_FR.ISO8859-15", "fr_FR.ISO-8859-15", "fr_FR.iso885915")
+)
+
+te_with_8bit_ctype <- function(locales, code) {
+  old <- Sys.getlocale("LC_CTYPE")
+  on.exit(Sys.setlocale("LC_CTYPE", old), add = TRUE)
+  for (locale in locales) {
+    set <- suppressWarnings(Sys.setlocale("LC_CTYPE", locale))
+    if (identical(set, locale)) {
+      return(force(code))
+    }
+  }
+  skip("no 8-bit native locale installed")
+}
+
+for (te_locale in te_8bit_locales) {
   test_that(paste("robots_evaluate_text_v1() converts unmarked text under",
-                  te_locale), {
-    te_with_ctype(te_locale, {
+                  te_locale[[1L]]), {
+    te_with_8bit_ctype(te_locale, {
       body <- te_native_body()
       expect_identical(Encoding(body), "unknown")
       x <- robots_evaluate_text_v1(body, te_url, "bot", "google", "google")
@@ -161,8 +196,8 @@ for (te_locale in c("en_US.ISO8859-1", "fr_FR.ISO8859-15")) {
   })
 
   test_that(paste("allowed_by_robots_text() converts unmarked text under",
-                  te_locale), {
-    te_with_ctype(te_locale, {
+                  te_locale[[1L]]), {
+    te_with_8bit_ctype(te_locale, {
       x <- allowed_by_robots_text(te_native_body(), te_url, "bot")
       expect_identical(x$robots$body[[1L]], te_raw)
       expect_false(x$results$allowed)
@@ -170,8 +205,8 @@ for (te_locale in c("en_US.ISO8859-1", "fr_FR.ISO8859-15")) {
   })
 
   test_that(paste("robots_validate_text() converts unmarked text under",
-                  te_locale), {
-    te_with_ctype(te_locale, {
+                  te_locale[[1L]]), {
+    te_with_8bit_ctype(te_locale, {
       x <- robots_validate_text(te_native_body())
       expect_identical(x$documents$byte_size, length(te_raw))
       expect_false("invalid_utf8" %in% x$diagnostics$code)

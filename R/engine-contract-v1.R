@@ -672,9 +672,9 @@ text_body_bytes_v1 <- function(robots_txt) {
 # TRUE when the session's native encoding is UTF-8 or ASCII (the C locale), so
 # an unmarked string's bytes are already what a UTF-8 reading wants. The C
 # locale reports its codeset under several names; a platform that reports none
-# is not assumed to be ASCII.
-native_text_as_written <- function() {
-  info <- l10n_info()
+# is not assumed to be ASCII. `info` is l10n_info()'s shape; tests pass their
+# own, since the fleet image installs no 8-bit locale.
+native_text_as_written <- function(info = l10n_info()) {
   if (isTRUE(info[["UTF-8"]])) {
     return(TRUE)
   }
