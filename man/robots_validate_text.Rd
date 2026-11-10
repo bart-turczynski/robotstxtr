@@ -59,6 +59,11 @@ only from \code{\link[=robots_validate_url]{robots_validate_url()}}.
 \code{byte_order_mark} \tab warning \tab
 The document starts with a UTF-8 byte-order mark; the parser skips it.
 \cr
+\code{misplaced_byte_order_mark} \tab warning \tab
+A UTF-8 byte-order mark after the start of the file begins a line, so
+the parser reads it as part of the key and ignores that line's
+directive. A hidden User-agent line starts no group: the lines after
+it stay with the group before it until the next User-agent line. \cr
 \code{nul_byte} \tab error \tab
 A line holds NUL bytes, which can truncate parsing. \cr
 \code{invalid_utf8} \tab error \tab
