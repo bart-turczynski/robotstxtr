@@ -92,7 +92,8 @@ validation_unsupported <- c(
 #'     A pattern not led by \code{/} or \code{*}; it never matches. \cr
 #'   \code{rule_cut_by_comment} \tab warning \tab
 #'     A \code{#} with no space or tab before it starts a comment inside an
-#'     Allow or Disallow value, cutting the rule to a wider prefix. \cr
+#'     Allow or Disallow value, cutting the rule at the \code{#}. A vertical
+#'     tab or form feed before the \code{#} still counts as no space. \cr
 #'   \code{rule_inner_dollar} \tab warning \tab
 #'     A \code{$} before a pattern's end; it matches a literal \code{$}. \cr
 #'   \code{rule_escaped_unreserved} \tab warning \tab
@@ -637,14 +638,19 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         )
       }
       # The parser cuts the line at its first `#` (ROBO-gjhpykcj), so
-      # `Disallow: /a#b` is the wider rule `/a`. Gated on has_comment: the
-      # parser never sees a `#` after a NUL or past its line buffer.
-      if (parsed$has_comment[[i]] && nzchar(value) &&
-            rule_cut_by_comment(raw_lines[[line]])) {
+      # `Disallow: /a#b` is the wider rule `/a`. The parser stops at a NUL,
+      # but the matchers drop NULs and read on (R/body-decode.R), so a line
+      # with a NUL is checked NUL-free. Otherwise it is gated on has_comment:
+      # the parser never sees a `#` past its line buffer.
+      has_nul <- nul_counts[[line]] > 0L
+      if ((parsed$has_comment[[i]] ||
+             (has_nul && !parsed$line_too_long[[i]])) &&
+            nzchar(value) &&
+            rule_cut_by_comment(nul_free_bytes(raw_lines[[line]]))) {
         add_diagnostic(
           line, "warning", "rule_cut_by_comment", type,
-          paste0("A '#' with no space before it starts a comment, so the ",
-                 "rule is cut to the wider prefix before it.")
+          paste0("A '#' with no space or tab before it starts a comment, ",
+                 "so the rule is cut at the '#'.")
         )
       }
     } else if (identical(type, "sitemap") && !nzchar(value)) {

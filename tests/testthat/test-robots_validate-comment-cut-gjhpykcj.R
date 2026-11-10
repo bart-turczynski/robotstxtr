@@ -64,13 +64,32 @@ test_that("the check reads raw bytes: invalid UTF-8 and Latin-1 values", {
   }
 })
 
-test_that("a NUL before the # hides it from the parser; after, it fires", {
-  before <- c(charToRaw("Disallow: /a"), as.raw(0), charToRaw("x#b"))
-  expect_identical(nrow(cc_hits(before)), 0L)
-  glued <- c(charToRaw("Disallow: /a"), as.raw(0), charToRaw("#b"))
-  expect_identical(nrow(cc_hits(glued)), 0L)
+test_that("a NUL before or after the # still gets the cut warning", {
+  # The parser stops at the NUL, but the matchers drop NULs and read on, so
+  # they cut the rule at the `#`: the check reads the line NUL-free.
+  for (tail in list(charToRaw("x#b"), charToRaw("#b"))) {
+    line <- c(charToRaw("Disallow: /a"), as.raw(0), tail)
+    expect_cut(line, "disallow")
+    codes <- cc_validate(line)$diagnostics$code
+    expect_true("nul_byte" %in% codes)
+  }
+  body <- c(charToRaw("User-agent: *\nDisallow: /a"), as.raw(0),
+            charToRaw("#b\n"))
+  expect_false(robotstxtr_allowed_text_(decode_matcher_body(body),
+                                        "https://example.com/abc", "FooBot"))
   after <- c(charToRaw("Disallow: /a#b"), as.raw(0), charToRaw("c"))
   expect_cut(after, "disallow")
+  # A NUL-free space before the # still sets the comment apart.
+  spaced <- c(charToRaw("Disallow: /a "), as.raw(0), charToRaw("#b"))
+  expect_identical(nrow(cc_hits(spaced)), 0L)
+})
+
+test_that("only SP and HT set a # apart; a $ before it still fires", {
+  # RFC 9309 WS is SP and HT; a vertical tab or form feed is glued.
+  expect_cut("Disallow: /a\v#b", "disallow")
+  expect_cut("Disallow: /a\f#b", "disallow")
+  # The cut leaves /a$, a changed rule rather than a wider one.
+  expect_cut("Disallow: /a$#b", "disallow")
 })
 
 test_that("CRLF lines, a BOM and an empty body behave", {
@@ -90,4 +109,14 @@ test_that("a # past the parser's line buffer is not seen", {
   x <- robots_validate_text(paste0("User-agent: *\n", long, "\n"))
   expect_true("line_too_long" %in% x$diagnostics$code)
   expect_false("rule_cut_by_comment" %in% x$diagnostics$code)
+})
+
+test_that("the observed Bing fragment body gets the cut warning", {
+  # Expectation exp-sr2-bingbot-fragment-comment: Bing cuts at the #.
+  path <- system.file("bing-corpus", "bodies",
+                      "body-sr2-bingbot-fragment-prefix-discriminator.txt",
+                      package = "robotstxtr", mustWork = TRUE)
+  bytes <- readBin(path, "raw", file.size(path))
+  found <- robots_validate_text(bytes)$diagnostics
+  expect_identical(found$line[found$code == "rule_cut_by_comment"], 2L)
 })
