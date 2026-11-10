@@ -290,7 +290,7 @@ test_that("ROBO-mxermwed: every known_gap row is restated above", {
     c("enc-bom-mid-file", "enc-bom-before-user-agent", "enc-utf16le-no-bom",
       "enc-latin1-comment", "esc-pct7e-rule-tilde-url", "esc-space-in-rule",
       "esc-lower-hex-rule", "cmt-hash-in-rule", "grp-user-agent-with-space",
-      "grp-digit-in-token", "grp-star-prefixed-token", "content-spam-html",
+      "grp-digit-in-token", "grp-star-prefixed-token",
       "grp-googlebot-image-fallback", "redirect-cross-host-html")
   )
 })
@@ -307,7 +307,8 @@ edge_covering_code <- c(
   "enc-latin1-rule" = "invalid_utf8",
   "esc-dollar-then-star" = "rule_inner_dollar",
   "esc-lone-dollar" = "rule_missing_leading_slash",
-  "size-long-line" = "line_too_long"
+  "size-long-line" = "line_too_long",
+  "content-spam-html" = "html_body"
 )
 edge_caller_side <- "esc-tilde-rule-pct7e-url"
 
@@ -322,17 +323,18 @@ test_that("ROBO-mxermwed: every surprise is an issue or a diagnostic", {
 })
 
 test_that("ROBO-mxermwed: a spam HTML page served as robots.txt", {
-  # known gap (ROBO-ccfsanhq): no validator diagnostic says the body is HTML;
-  # it shows only as malformed_line and unknown_directive rows plus no_rules,
-  # and the matcher allows everything
+  # fixed by ROBO-ccfsanhq: one html_body warning names the body as HTML,
+  # beside the malformed_line and unknown_directive rows and no_rules; the
+  # matcher still allows everything
   bytes <- edge_case("content-spam-html")
   x <- robots_validate_text(bytes)
   expect_identical(x$documents$validation_status, "error")
   expect_identical(
     sort(unique(x$diagnostics$code)),
-    c("accepted_missing_colon", "malformed_line", "no_rules",
+    c("accepted_missing_colon", "html_body", "malformed_line", "no_rules",
       "unknown_directive")
   )
+  expect_identical(sum(x$diagnostics$code == "html_body"), 1L)
   expect_identical(edge_decision(bytes, "/private/", "FooBot"), "allow")
 })
 

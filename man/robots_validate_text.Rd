@@ -107,6 +107,9 @@ repeat; the message names the earlier line. \cr
 \code{missing_user_agent} \tab error \tab
 Allow or Disallow rules exist but no line names a non-empty
 User-agent. \cr
+\code{html_body} \tab warning \tab
+The body looks like an HTML page, not a robots.txt; its lines are still
+read and reported one by one. \cr
 \code{no_rules} \tab info \tab
 The parser read no Allow or Disallow rule, so the document restricts
 nothing.
