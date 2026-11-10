@@ -1,0 +1,5 @@
+User-agent: FooBot
+# note
+
+User-agent: *
+Disallow: /x
