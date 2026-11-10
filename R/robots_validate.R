@@ -1339,9 +1339,12 @@ validation_ascii_action <- function(action, type) {
 # (GetKeyAndValueFrom, src/robots.cc), rendered for a message, when it is
 # not exactly `allow` or `disallow`; NULL when it is (ROBO-xglcoagv). The
 # parser hands R only the type of a known key, so the key is derived again
-# from the line's bytes: the BOM prefix Parse() skips on line 1, the C-string
-# end at the first NUL, the comment cut at `#`, ASCII whitespace stripped,
-# and the separator (the first `:`, or the first SP or HT without a colon).
+# from the line's bytes: the BOM prefix Parse() skips on line 1, leading
+# ASCII whitespace, the separator (the first `:`, or the first SP or HT when
+# the parser reported a missing colon) and trailing whitespace. The parser
+# also ends the line at a NUL and at `#`, but it found its separator before
+# both, and that cut line is a prefix of these bytes, so the first separator
+# here is the same one and neither cut can change the key.
 validation_prefix_key <- function(bytes, line, type, missing_colon) {
   if (identical(line, 1L)) {
     bom <- as.raw(c(0xef, 0xbb, 0xbf))
@@ -1352,19 +1355,19 @@ validation_prefix_key <- function(bytes, line, type, missing_colon) {
     }
     bytes <- bytes[seq_len(length(bytes) - skip) + skip]
   }
-  cut_at <- function(bytes, stops) {
-    hit <- which(bytes %in% as.raw(stops))
-    if (length(hit) == 0L) bytes else bytes[seq_len(hit[[1L]] - 1L)]
-  }
-  bytes <- cut_at(bytes, 0x00)
-  bytes <- cut_at(bytes, 0x23)
   space <- as.raw(c(0x20, 0x09, 0x0a, 0x0b, 0x0c, 0x0d))
   lead <- which(!bytes %in% space)
   if (length(lead) == 0L) {
     return(NULL)
   }
   bytes <- bytes[lead[[1L]]:length(bytes)]
-  key <- cut_at(bytes, if (missing_colon) c(0x20, 0x09) else 0x3a)
+  separator <- as.raw(if (missing_colon) c(0x20, 0x09) else 0x3a)
+  stop_at <- which(bytes %in% separator)
+  key <- if (length(stop_at) == 0L) {
+    bytes
+  } else {
+    bytes[seq_len(stop_at[[1L]] - 1L)]
+  }
   kept <- which(!key %in% space)
   key <- key[seq_len(if (length(kept) == 0L) 0L else max(kept))]
   folded <- as.integer(key)
