@@ -351,24 +351,27 @@ dated vendor record in §7a; this section repeats none of it.
 
 No matcher or decision changes here. A token group stacked onto `*` gives its rules to every
 crawler on every row of `design/engine-disagreements.md` class 1b when only blank lines come
-between; with an unknown field such as `Content-Signal` between, the `google_yandex`, `yandex` and
-`google_bingbot` rows still stack and the `bing` row ends the `*` run there. The validator
-(`robots_validate_text()`, `robots_validate_url()`) reads the draft as follows:
+between. With a directive between (`Crawl-delay`, `Sitemap` or an unknown field such as
+`Content-Signal`, class 1), the `google_yandex`, `yandex` and `google_bingbot` rows still stack
+and the `bing` row ends the run there. The validator (`robots_validate_text()`,
+`robots_validate_url()`) reads the draft as follows:
 
 | Code | Severity | When |
 |---|---|---|
-| `ai_training_preference` | info | A User-agent value is the token whole, ASCII case aside. One per group, on its first such line; the message lists the group's own rules (an empty Disallow as no restriction), never merges in `*`, and names the other groups' lines when several groups name the token. |
+| `ai_training_preference` | info | A User-agent value is the token whole, ASCII case aside. One per group, on its first such line; the message lists the group's own rules (an empty Disallow as no restriction), never merges in `*`, and names up to three other groups' lines, then a count, when several groups name the token. |
 | `ai_training_token_near_miss` | warning | The value's leading `[A-Za-z_-]` run, with `_` and `-` removed and ASCII-lowercased, is `usageaitraining`, but the value is not the token (`__usage_ai_training`, `usage_ai-training`, `__usage-ai-training`, `__usage_ai-training/1.0`). For a suffix the message adds that Google's matcher still reads the token. |
-| `ai_training_group_extra_line` | warning | A directive other than Allow, Disallow and User-agent, and not file-level (Sitemap, Host, Clean-param), between the first User-agent line and the last rule of a group that names only the token, such as `Crawl-delay`. |
-| `ai_training_token_stacked` | warning | A policy-token User-agent line (a `__usage_` key, the token or a near miss) shares a group with `*`, or with a named crawler and a directive line sits between them. |
+| `ai_training_group_extra_line` | warning | A directive other than Allow, Disallow and User-agent, and not file-level (Sitemap, Host, Clean-param), in a group that names only the token, such as `Crawl-delay`: before the group's last rule, or anywhere when the group is the file's last. |
+| `ai_training_token_stacked` | warning | A policy-token User-agent line (a `__usage_` key, the token or a near miss) shares a group with `*`, or with a crawler or another policy token and a directive line sits between them. The message says Bing joins the lines only when nothing but blank or comment lines comes between, which a `*` line alone can satisfy. |
 
 Blank and comment lines are RFC 9309 emptylines, and the draft allows mixed groups, so
-consecutive or comment-headed User-agent lines naming crawlers and the token stay silent. A line
-after a token group's last rule may head the next group (a `Content-Signal` line just before
-`User-agent: *`, or trailing `Host` and `Clean-param` lines), so `ai_training_group_extra_line`
-leaves it out; a `Crawl-delay` there is missed too. A User-agent line naming no crawler (empty, or
-led by a byte outside `[A-Za-z_-]`) is never named by `ai_training_token_stacked` and does not
-make a token group mixed.
+consecutive or comment-headed User-agent lines naming crawlers and the token stay silent. The
+token and its near misses are one class, so a repeat of the token across a directive is not
+stacking. A line after the last rule of a token group that another group follows may head that
+group (a `Content-Signal` line just before `User-agent: *`), so `ai_training_group_extra_line`
+leaves it out; a `Crawl-delay` there is missed too. In the file's last group nothing follows, so
+such a line is reported. A User-agent line naming no crawler (empty, or led by a byte outside
+`[A-Za-z_-]`) is never named by `ai_training_token_stacked` and does not make a token group mixed,
+and neither does a value Google reads as the token (`__usage_ai-training/1.0`).
 
 The token is never reported as `wildcard_rules_not_inherited`, and neither is a value Google's
 matcher reads as the token. All four codes are skipped for a body holding a NUL byte, like the
