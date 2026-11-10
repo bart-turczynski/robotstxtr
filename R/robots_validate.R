@@ -138,8 +138,13 @@ validation_unsupported <- c(
 #'     read and reported one by one. \cr
 #'   \code{no_rules} \tab info \tab
 #'     The parser read no Allow or Disallow rule, so the document restricts
-#'     nothing.
+#'     nothing (see \code{rules_after_nul_removal}).
 #'     Not reported for a body cut at \code{max_bytes}. \cr
+#'   \code{rules_after_nul_removal} \tab warning \tab
+#'     The parser read no Allow or Disallow rule, but with the NUL bytes
+#'     removed, as Google's matcher reads the body, it holds some; UTF-16
+#'     text does this, and should be re-saved as UTF-8. Reported in place
+#'     of \code{no_rules}, even for a body cut at \code{max_bytes}. \cr
 #'   \code{body_truncated} \tab warning \tab
 #'     The body exceeded \code{max_bytes}; only lines before the cut were read.
 #'     \cr
@@ -821,7 +826,29 @@ validate_document_bytes <- function(bytes, source_id, source_type,
              "were read as directives anyway.")
     )
   }
-  if (rule_count == 0L && !body_truncated) {
+  # The parser ends a line at its first NUL, but Google's matcher drops the
+  # NULs and reads on (R/body-decode.R), so rules that appear only once the NULs
+  # are gone, as in UTF-16 text, are reported instead of no_rules
+  # (ROBO-igrkabdb). Rules read before a cut are real, so a cut body is
+  # checked too.
+  nul_free_rules <- 0L
+  if (rule_count == 0L && length(nul_lines) > 0L) {
+    nul_free_parsed <- robotstxtr_validation_parse_(nul_free_bytes(bytes))
+    nul_free_rules <- sum(nul_free_parsed$type %in% c("allow", "disallow"))
+  }
+  if (nul_free_rules > 0L) {
+    add_diagnostic(
+      NA_integer_, "warning", "rules_after_nul_removal", NA_character_,
+      sprintf(
+        paste0(
+          "With its NUL bytes removed, as Google's matcher reads it, the ",
+          "document has %d Allow or Disallow rule(s); if this is a UTF-16 ",
+          "file, re-save it as UTF-8 (RFC 9309 section 2.3)."
+        ),
+        nul_free_rules
+      )
+    )
+  } else if (rule_count == 0L && !body_truncated) {
     add_diagnostic(
       NA_integer_, "info", "no_rules", NA_character_,
       paste0("Document has no Allow or Disallow rules, so it places no ",

@@ -190,13 +190,15 @@ test_that("ROBO-mxermwed: a BOM inside the file is named on its line", {
   expect_identical(edge_decision(bytes, "/a", "FooBot"), "disallow")
 })
 
-test_that("ROBO-mxermwed: UTF-16 without a BOM matches what no_rules denies", {
-  # known gap (ROBO-igrkabdb): the matcher drops the NULs and enforces
-  # Disallow: /a, while the validator reports no_rules ("places no
-  # restrictions") for the same bytes
+test_that("ROBO-mxermwed: UTF-16 without a BOM names the rules it holds", {
+  # Fixed by ROBO-igrkabdb: the matcher still drops the NULs and enforces
+  # Disallow: /a, and rules_after_nul_removal now says so in place of
+  # no_rules ("places no restrictions")
   bytes <- edge_case("enc-utf16le-no-bom")
   expect_identical(edge_decision(bytes, "/a", "FooBot"), "disallow")
-  expect_true("no_rules" %in% robots_validate_text(bytes)$diagnostics$code)
+  codes <- robots_validate_text(bytes)$diagnostics$code
+  expect_true("rules_after_nul_removal" %in% codes)
+  expect_false("no_rules" %in% codes)
 })
 
 test_that("ROBO-mxermwed: a Latin-1 byte in a comment is a line warning", {
@@ -279,8 +281,7 @@ test_that("ROBO-mxermwed: every known_gap row is restated above", {
   m <- edge_manifest
   expect_setequal(
     unique(m$id[nzchar(m$known_gap)]),
-    c("enc-utf16le-no-bom",
-      "esc-lower-hex-rule",
+    c("esc-lower-hex-rule",
       "grp-googlebot-image-fallback")
   )
 })
@@ -295,6 +296,7 @@ edge_covering_code <- c(
   "enc-bom-before-user-agent" = "misplaced_byte_order_mark",
   "enc-bom-doubled" = "misplaced_byte_order_mark",
   "enc-utf16le-bom" = "nul_byte",
+  "enc-utf16le-no-bom" = "rules_after_nul_removal",
   "enc-utf16be-bom" = "nul_byte",
   "enc-latin1-rule" = "invalid_utf8",
   "esc-dollar-then-star" = "rule_inner_dollar",

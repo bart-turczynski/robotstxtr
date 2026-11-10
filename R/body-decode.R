@@ -14,7 +14,9 @@
 # from the byte sequence; every remaining byte is decoded and matched unchanged,
 # in order. The document is not truncated at the NUL and no other byte is
 # rewritten. `robots_validate_text()` applies the same rule (see
-# `nul_free_bytes()` there) before checking encoding validity.
+# `nul_free_bytes()` there) before checking encoding validity, and, when its
+# own parse reads no rule, to count the rules Google's matcher reads
+# (`rules_after_nul_removal`, ROBO-igrkabdb).
 #
 # How this differs from the reference matcher, deliberately. Google's C++
 # matcher parses each line as a NUL-terminated C string, so it reads
