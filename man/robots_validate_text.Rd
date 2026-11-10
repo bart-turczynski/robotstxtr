@@ -208,13 +208,16 @@ An accepted typo such as \code{Dissallow} is reported as
 For \code{wildcard_rules_not_inherited}, a crawler obeys only the groups that
 name it (combined when several do) and ignores the \verb{User-agent: *} group,
 as RFC 9309 section 2.2.1 says. Each \code{*} Allow or Disallow is compared
-with the named crawler's rules by type and value; a trailing \code{*} is
-ignored (\verb{/x} equals \verb{/x*}, and \code{*} and \verb{/*} equal \code{/}), \code{$} is not, and
-empty values are left out. The message lists the missing \code{*} rules, ten at
-most. A crawler whose rules are all explicit allow-all (an empty
-\verb{Disallow:}, \verb{Allow: /}, \verb{Allow: /*} or \verb{Allow: *}) is not reported; an
-empty \verb{Allow:} is ignored, and a crawler whose groups have no other rule
-is reported.
+with the named crawler's rules by type and value, except that a \code{*} Allow
+matching every path is not listed, because the named group's own rules are
+what the crawler follows. Such an Allow is \code{/} with any \code{*}s after it, or a
+run of \code{*}s with an optional \code{/} before and an optional final \code{$} (\code{/},
+\verb{/*}, \code{*}, \verb{/*$}, \verb{*$}; \verb{/$} is not one). A trailing \code{*} is ignored (\verb{/x}
+equals \verb{/x*}, and \code{*} and \verb{/*} equal \code{/}), \code{$} is not, and empty values are
+left out. The message lists the missing \code{*} rules, ten at most. A crawler
+whose rules are all explicit allow-all (an empty \verb{Disallow:} or an
+every-path \code{Allow}, as above) is not reported; an empty \verb{Allow:} is ignored,
+and a crawler whose groups have no other rule is reported.
 
 For \code{disallow_tied_by_allow}, an Allow and a Disallow with the same
 pattern match the same paths with the same priority, and Allow wins the
