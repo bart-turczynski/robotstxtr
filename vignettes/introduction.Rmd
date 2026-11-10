@@ -211,7 +211,9 @@ or 5xx keeps its status outcome and gets a code for its class:
 4xx, `acquisition_http_429` and `acquisition_http_5xx`; a 1xx or
 out-of-range status gets `acquisition_http_protocol`. Its message names the
 status and what Google, Yandex and Bing may do with it, as
-`robots_engine_contract_v1()` records.
+`robots_engine_contract_v1()` records. A 2xx other than 200, such as 203 or 204,
+keeps its body, which is still validated, and gets `acquisition_http_other_2xx`,
+an info whose message names how Google, Yandex and Bing read that status.
 
 The validation profile is explicitly `google-parser-compatible`: it reflects
 the package's pinned parser (including accepted typo and missing-colon forms)
