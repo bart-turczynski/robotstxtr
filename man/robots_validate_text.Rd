@@ -86,6 +86,10 @@ An empty Allow or Disallow value, which the matcher ignores. \cr
 A pattern not led by \code{/} or \code{*}; it never matches. \cr
 \code{rule_inner_dollar} \tab warning \tab
 A \code{$} before a pattern's end; it matches a literal \code{$}. \cr
+\code{rule_escaped_unreserved} \tab warning \tab
+A pattern percent-escapes an unreserved character, such as \code{\%7E}
+for \code{~}. Google matches only the escape, never the character,
+though RFC 9309 section 2.2.2 decodes it. One per rule line. \cr
 \code{empty_sitemap_value} \tab warning \tab
 A Sitemap line with an empty value. \cr
 \code{invalid_sitemap_url} \tab warning \tab
