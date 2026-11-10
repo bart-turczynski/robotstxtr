@@ -145,8 +145,10 @@ cpp11::writable::strings robotstxtr_google_request_target_(
     cpp11::stop("`url` must be a single string");
   }
   const std::string u(url[0]);
-  return cpp11::writable::strings({cpp11::r_string(
-      Rf_mkCharLenCE(u.data(), static_cast<int>(u.size()), CE_UTF8))});
+  cpp11::writable::strings out(1);
+  // cpp11::r_string makes the CHARSXP (marked UTF-8) under unwind protection.
+  out[0] = cpp11::r_string(u);
+  return out;
 }
 
 // The Google batch (ROBO-iooslxvj): parse each DISTINCT body once and answer
