@@ -114,6 +114,9 @@ Allow or Disallow value, cutting the rule at the \code{#}. A vertical
 tab or form feed before the \code{#} still counts as no space. \cr
 \code{rule_inner_dollar} \tab warning \tab
 A \code{$} before a pattern's end; it matches a literal \code{$}. \cr
+\code{rule_inner_whitespace} \tab warning \tab
+A pattern holds a space, tab, vertical tab or form feed; crawlers
+request URLs with it percent-encoded, so the rule never matches. \cr
 \code{rule_escaped_unreserved} \tab warning \tab
 A pattern percent-escapes an unreserved character, such as \code{\%7E}
 for \code{~}. Google matches only the escape, never the character,
