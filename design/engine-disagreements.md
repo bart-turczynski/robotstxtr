@@ -29,7 +29,8 @@ blank line, other directives, other suffixes, the inverse URL form) until the
 cause is isolated, and the decision, reason and matched line are recorded for
 each row. Every live class is pinned. Some refuted candidates are pinned too:
 the Yandex form of class 1 (its own stacking test), the Bing form of class 4,
-and the `*%*` shape of class 9 (pinned in class 10). Class 5 and class 9's
+the `*%*` shape of class 9 (pinned in class 10), and class 14's stacked Yandex
+form and `sitemap`-prefix control. Class 5 and class 9's
 other forms are listed, not pinned.
 
 Verdicts:
@@ -73,7 +74,8 @@ No class is OUR BUG: every backend does what its contract says. Most rows have
 Google disallowing where the other engine allows. The rows where Google allows
 and the other engine disallows are class 10's `/page` shape, class 11's
 `/a%3cb` path, class 6's raw `/café` path, class 1's later-`bingbot`
-`Disallow` shape and class 13's `Allow`-prefixed key (below).
+`Disallow` shape, class 13's `Allow`-prefixed key and class 14's after-a-rule
+shape (below).
 
 ## Classes
 
@@ -435,8 +437,8 @@ then `Other`: `disallow rule_disallow 4` for the Yandex token), and inside a
 `*` group all four rows are `disallow rule_disallow 3`.
 `robots_evaluate_text_v1()` returns access decisions only, no sitemap list, so
 a difference in which sitemaps an engine collects cannot show here. The control
-would turn red only if Bing stopped sealing a run at an unknown field, and then
-together with class 1.
+would turn red only if Bing stopped sealing, or Yandex started sealing, a run
+at an unknown field, and then together with class 1.
 
 Verdict: EXPECTED-SOURCED, on class 13's sources. Google's side is the upstream
 engine itself, which `design/engine-profiles.md` §5b checks against the pinned
