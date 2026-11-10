@@ -1576,6 +1576,14 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' vendored-matcher identity is published as
 #' `robots_engine_contract_v1()$matcher_identity$yandex`.
 #'
+#' A Google row reports no line for a rule with an empty value: when the
+#' selected rule is an `Allow:` or `Disallow:` with nothing after the colon,
+#' the row reports `url_decision = "allow"` with `reason = "default_allow"`,
+#' `matched_rule_type = "none"`, `NA` `matched_line` and `matched_rule_value`,
+#' and a `NULL` `matched_rule_value_raw`, as the legacy functions do (PRD
+#' section 6.6, "Match metadata rules"). An empty Yandex `Disallow` instead
+#' reports `effective_empty_disallow` with its line.
+#'
 #' @param robots_txt A single, non-missing character value containing the
 #'   robots.txt body.
 #' @param url A character vector of URLs to evaluate.
@@ -1654,6 +1662,9 @@ robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
 #' bounded to their supported vendor profiles and RFC 9309 behavior is available
 #' only under the `rfc9309` backend. See
 #' `robots_engine_contract_v1()$matcher_capability`.
+#'
+#' A Google row whose selected rule has an empty value reports
+#' `reason = "default_allow"` with no line, as in [robots_evaluate_text_v1()].
 #'
 #' @inheritParams robots_evaluate_text_v1
 #' @inheritParams robots_fetch
