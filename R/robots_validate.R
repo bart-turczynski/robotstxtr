@@ -42,8 +42,9 @@ validation_unsupported <- c(
 #' matchers agree on both pattern effects (a pattern not led by `/` or `*`
 #' never matches, and `$` anchors only as the last character). The sitemap
 #' checks are syntax-only: no sitemap is fetched, which is the `sitemapr`
-#' package's job. `body_truncated` and the codes starting `acquisition_` come
-#' only from [robots_validate_url()].
+#' package's job. `body_truncated` and the codes starting `acquisition_` or
+#' `redirect_` come only from [robots_validate_url()]; a `redirect_` row
+#' follows the body's own rows.
 #'
 #' \tabular{lll}{
 #'   \strong{Code} \tab \strong{Severity} \tab \strong{Meaning} \cr
@@ -177,7 +178,8 @@ validation_unsupported <- c(
 #'     home page; a warning when the page reached is HTML. \cr
 #'   \code{redirect_same_site} \tab info \tab
 #'     The fetch redirected to another host of the same registrable domain,
-#'     such as \code{www} and the bare domain. \cr
+#'     such as \code{www} and the bare domain; a warning when the page
+#'     reached is HTML. \cr
 #'   \code{redirect_cross_site} \tab warning \tab
 #'     The fetch redirected to another registrable domain, whose file is
 #'     applied to this host. \cr
@@ -334,7 +336,8 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' `robots_url`, `effective_url` and `content_flag`: `redirect_other_path`
 #' (same host, another path; info, or a warning when the page reached is
 #' HTML), `redirect_same_site` (another host of the same registrable domain;
-#' info) and `redirect_cross_site` (another registrable domain; warning). A
+#' info, or a warning when the page reached is HTML) and
+#' `redirect_cross_site` (another registrable domain; warning). A
 #' change of scheme or port alone, such as `http` to `https`, is not
 #' reported. The registrable domain comes from the Public Suffix List
 #' through `rurl::get_domain()`, so `a.example.co.uk` and `b.example.co.uk`
@@ -1824,7 +1827,8 @@ acquisition_diagnosis <- function(source) {
 # - Same host, another path: `redirect_other_path`, info, or a warning when
 #   the landing page is HTML (a catch-all to a page).
 # - Another host, same registrable domain (www and apex, or another
-#   subdomain): `redirect_same_site`, info.
+#   subdomain): `redirect_same_site`, info, or a warning when the landing
+#   page is HTML.
 # - Another registrable domain: `redirect_cross_site`, warning: the rules
 #   applied are another site's.
 #
@@ -1833,6 +1837,9 @@ acquisition_diagnosis <- function(source) {
 # IP literal, or a host with no registrable domain, is compared whole. The
 # engine readings are design/engine-profiles.md, section 3, "Within budget".
 redirect_host_diagnostic <- function(source) {
+  if (identical(source$robots_url, source$effective_url)) {
+    return(NULL)
+  }
   from <- redirect_url_parts(source$robots_url)
   to <- redirect_url_parts(source$effective_url)
   if (is.null(from) || is.null(to)) {
@@ -1850,7 +1857,7 @@ redirect_host_diagnostic <- function(source) {
   } else if (identical(redirect_site_key(from$host),
                        redirect_site_key(to$host))) {
     code <- "redirect_same_site"
-    severity <- "info"
+    severity <- if (html) "warning" else "info"
     where <- "another host of the same site"
   } else {
     code <- "redirect_cross_site"
@@ -1869,8 +1876,8 @@ redirect_host_diagnostic <- function(source) {
   if (html) {
     message <- paste(
       message,
-      "The page reached is HTML, so the robots.txt is effectively missing:",
-      "it yields no rules."
+      "The page reached is HTML, so the site's robots.txt is effectively",
+      "missing; any lines on it were read as directives anyway."
     )
   }
   validation_diagnostic(
@@ -1899,7 +1906,13 @@ redirect_url_parts <- function(url) {
         !nzchar(path)) {
     path <- "/"
   }
-  list(host = ascii_lower(host), path = path)
+  # A fully qualified name's root dot is the same host (as ssrfr's
+  # normalize_host_name reads it), and get_domain() finds no domain with it.
+  host <- sub("\\.$", "", ascii_lower(host))
+  if (!nzchar(host)) {
+    return(NULL)
+  }
+  list(host = host, path = path)
 }
 
 # The registrable domain of a host, or the whole host when it has none (an IP

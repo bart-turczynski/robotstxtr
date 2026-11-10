@@ -86,6 +86,19 @@ test_that("ROBO-gokbvzcb: another site's HTML page is a missing robots.txt", {
   expect_identical(d$code, "redirect_cross_site")
   expect_identical(d$severity, "warning")
   expect_match(d$message, "effectively missing", fixed = TRUE)
+  expect_match(d$message, "read as directives anyway", fixed = TRUE)
+})
+
+test_that("ROBO-gokbvzcb: a www home page in HTML is a same-site warning", {
+  v <- redirect_validate(
+    "http://example.com/page", "http://example.com/robots.txt",
+    "https://www.example.com/", body = redirect_html_body(),
+    type = "text/html"
+  )
+  d <- redirect_rows(v)
+  expect_identical(d$code, "redirect_same_site")
+  expect_identical(d$severity, "warning")
+  expect_match(d$message, "effectively missing", fixed = TRUE)
 })
 
 test_that("ROBO-gokbvzcb: a cross-site warning does not need a body", {
@@ -196,6 +209,30 @@ test_that("ROBO-gokbvzcb: letter case and IDN in the target are no change", {
     "http://xn--bcher-kva.example.com/robots.txt",
     "https://bücher.EXAMPLE.com/robots.txt"
   ))
+})
+
+test_that("ROBO-gokbvzcb: a trailing root dot is the same host", {
+  expect_null(redirect_case(
+    "http://example.com/robots.txt", "http://example.com./robots.txt"
+  ))
+  expect_null(redirect_case(
+    "http://example.com./robots.txt", "https://example.com/robots.txt"
+  ))
+  d <- redirect_case(
+    "http://example.com/robots.txt", "http://www.example.com./robots.txt"
+  )
+  expect_identical(d$code, "redirect_same_site")
+  d <- redirect_case(
+    "http://example.com./robots.txt", "http://example.com./"
+  )
+  expect_identical(d$code, "redirect_other_path")
+  # Through the fetch: a dotted input upgraded to https without the dot.
+  v <- redirect_validate(
+    "http://example.com./page", "http://example.com./robots.txt",
+    "https://example.com/robots.txt"
+  )
+  expect_identical(v$documents$robots_url, "http://example.com./robots.txt")
+  expect_identical(nrow(redirect_rows(v)), 0L)
 })
 
 test_that("ROBO-gokbvzcb: a port change alone is not reported", {

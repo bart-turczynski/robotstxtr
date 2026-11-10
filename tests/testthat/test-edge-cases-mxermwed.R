@@ -305,17 +305,20 @@ edge_covering_code <- c(
   "content-spam-html" = "html_body",
   "grp-user-agent-with-space" = "user_agent_cut",
   "grp-digit-in-token" = "user_agent_cut",
-  "grp-star-prefixed-token" = "user_agent_cut",
-  # The body's own code; redirect_cross_site, which needs the fetch, is
-  # asserted in "the validator reports the cross-site redirect" below.
-  "redirect-cross-host-html" = "html_body"
+  "grp-star-prefixed-token" = "user_agent_cut"
+)
+# A surprise that only robots_validate_url() reports, since it needs the
+# fetch; each is asserted in "the validator reports the cross-site redirect".
+edge_fetch_covering_code <- c(
+  "redirect-cross-host-html" = "redirect_cross_site"
 )
 edge_caller_side <- "esc-tilde-rule-pct7e-url"
 
 test_that("ROBO-mxermwed: every surprise is an issue or a diagnostic", {
   m <- edge_manifest
   open <- unique(m$id[m$surprise == "yes" & !nzchar(m$known_gap)])
-  expect_setequal(open, c(names(edge_covering_code), edge_caller_side))
+  expect_setequal(open, c(names(edge_covering_code),
+                          names(edge_fetch_covering_code), edge_caller_side))
   for (id in names(edge_covering_code)) {
     codes <- robots_validate_text(edge_case(id))$diagnostics$code
     expect_true(edge_covering_code[[id]] %in% codes, label = id)
@@ -410,6 +413,10 @@ test_that("ROBO-mxermwed: the validator reports the cross-site redirect", {
       m$validator_codes[m$id == "redirect-cross-host-html"][[1L]],
       ";redirect_cross_site@NA"
     )
+  )
+  expect_true(
+    edge_fetch_covering_code[["redirect-cross-host-html"]] %in%
+      v$diagnostics$code
   )
   d <- v$diagnostics[v$diagnostics$code == "redirect_cross_site", ]
   expect_identical(d$severity, "warning")
