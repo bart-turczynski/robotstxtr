@@ -138,3 +138,43 @@ test_that("a body marked latin1 is still converted to UTF-8", {
     c(charToRaw("Disallow: /caf"), as.raw(c(0xc3, 0xa9)))
   )
 })
+
+# In an 8-bit native locale an unmarked string is native text, so it is still
+# converted to UTF-8: the native byte E9 (U+00E9 in both ISO-8859-1 and
+# ISO-8859-15) becomes C3 A9, which is the reproduction's own UTF-8 body.
+te_native_body <- function() {
+  rawToChar(c(
+    charToRaw("User-agent: *\nDisallow: /caf"), as.raw(0xe9), charToRaw("\n")
+  ))
+}
+
+for (te_locale in c("en_US.ISO8859-1", "fr_FR.ISO8859-15")) {
+  test_that(paste("robots_evaluate_text_v1() converts unmarked text under",
+                  te_locale), {
+    te_with_ctype(te_locale, {
+      body <- te_native_body()
+      expect_identical(Encoding(body), "unknown")
+      x <- robots_evaluate_text_v1(body, te_url, "bot", "google", "google")
+      expect_identical(x$evidence$body[[1L]], te_raw)
+      expect_identical(x$results$url_decision, "disallow")
+    })
+  })
+
+  test_that(paste("allowed_by_robots_text() converts unmarked text under",
+                  te_locale), {
+    te_with_ctype(te_locale, {
+      x <- allowed_by_robots_text(te_native_body(), te_url, "bot")
+      expect_identical(x$robots$body[[1L]], te_raw)
+      expect_false(x$results$allowed)
+    })
+  })
+
+  test_that(paste("robots_validate_text() converts unmarked text under",
+                  te_locale), {
+    te_with_ctype(te_locale, {
+      x <- robots_validate_text(te_native_body())
+      expect_identical(x$documents$byte_size, length(te_raw))
+      expect_false("invalid_utf8" %in% x$diagnostics$code)
+    })
+  })
+}

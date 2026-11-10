@@ -43,12 +43,13 @@
 #' `input_unknown`).
 #'
 #' @param robots_txt A single, non-missing character scalar holding the
-#'   robots.txt body. An empty body is valid. A body marked UTF-8, or unmarked
-#'   (as `rawToChar()` gives), is taken as UTF-8 bytes as written, in any
-#'   locale; one marked `"latin1"` is converted to UTF-8, and one marked
-#'   `Encoding = "bytes"` is used verbatim. In a Latin-1 native locale an
-#'   unmarked body is read as native text and converted. Those exact bytes are
-#'   stored in the returned `robots$body` and passed to the matcher.
+#'   robots.txt body. An empty body is valid. A body marked UTF-8 is used as
+#'   written. An unmarked body (as `rawToChar()` gives) is taken as UTF-8 bytes
+#'   as written when the session's native encoding is UTF-8 or ASCII (the C
+#'   locale), and converted from the native encoding otherwise; one marked
+#'   `"latin1"` is converted, and one marked `Encoding = "bytes"` is used
+#'   verbatim. Those exact bytes are stored in the returned `robots$body` and
+#'   passed to the matcher.
 #' @param url A character vector of URL strings to match, passed to the matcher
 #'   unchanged. May have length zero.
 #' @param user_agent A matcher user-agent string, length one or `length(url)`,

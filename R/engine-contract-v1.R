@@ -652,20 +652,35 @@ expand_product_token_v1 <- function(token, n) {
 # The bytes of a supplied robots.txt string, shared by every text entry point
 # (ROBO-tipzbglv). A string marked "bytes" is used verbatim, and one marked
 # UTF-8 is already UTF-8. An unmarked ("unknown") string is taken as UTF-8
-# bytes as written: enc2utf8() would re-encode it as native-locale text, and
-# under LC_CTYPE C, whose charset is ASCII, that escapes each non-ASCII byte as
-# "<xx>". Only a Latin-1 native locale keeps the conversion, since there an
-# unmarked string is native latin1 text. A string marked "latin1" is
+# bytes as written when native_text_as_written() holds: enc2utf8() would
+# re-encode it as native-locale text, and under LC_CTYPE C, whose charset is
+# ASCII, that escapes each non-ASCII byte as "<xx>". In any other native
+# encoding (an 8-bit locale such as ISO-8859-1 or ISO-8859-15) an unmarked
+# string is native text, so it is converted. A string marked "latin1" is
 # converted.
 text_body_bytes_v1 <- function(robots_txt) {
   encoding <- Encoding(robots_txt)
   if (identical(encoding, "bytes")) {
     return(charToRaw(robots_txt))
   }
-  if (identical(encoding, "unknown") && !isTRUE(l10n_info()[["Latin-1"]])) {
+  if (identical(encoding, "unknown") && native_text_as_written()) {
     return(charToRaw(robots_txt))
   }
   charToRaw(enc2utf8(robots_txt))
+}
+
+# TRUE when the session's native encoding is UTF-8 or ASCII (the C locale), so
+# an unmarked string's bytes are already what a UTF-8 reading wants. The C
+# locale reports its codeset under several names; a platform that reports none
+# is not assumed to be ASCII.
+native_text_as_written <- function() {
+  info <- l10n_info()
+  if (isTRUE(info[["UTF-8"]])) {
+    return(TRUE)
+  }
+  codeset <- info[["codeset"]]
+  is.character(codeset) && length(codeset) == 1L &&
+    codeset %in% c("US-ASCII", "ANSI_X3.4-1968", "ASCII")
 }
 
 matcher_string_v1 <- function(body) {
@@ -1597,11 +1612,11 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' `Disallow`, it instead reports `effective_empty_disallow` with that line.
 #'
 #' @param robots_txt A single, non-missing character value containing the
-#'   robots.txt body. A body marked UTF-8, or unmarked (as `rawToChar()`
-#'   gives), is taken as UTF-8 bytes as written, in any locale; one marked
-#'   `"latin1"` is converted to UTF-8, and one marked `Encoding = "bytes"` is
-#'   used verbatim. In a Latin-1 native locale an unmarked body is read as
-#'   native text and converted.
+#'   robots.txt body. A body marked UTF-8 is used as written. An unmarked body
+#'   (as `rawToChar()` gives) is taken as UTF-8 bytes as written when the
+#'   session's native encoding is UTF-8 or ASCII (the C locale), and converted
+#'   from the native encoding otherwise; one marked `"latin1"` is converted,
+#'   and one marked `Encoding = "bytes"` is used verbatim.
 #' @param url A character vector of URLs to evaluate.
 #' @param robots_product_token A matcher-profile selector: a robots.txt
 #'   `User-agent:` group label, NOT an HTTP `User-Agent` crawler identity. It is

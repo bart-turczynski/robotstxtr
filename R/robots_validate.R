@@ -23,11 +23,11 @@ validation_unsupported <- c(
 #'
 #' `robots_txt` may be text or a raw vector. Raw input is useful when validating
 #' acquisition bytes that contain malformed UTF-8, a byte-order mark, or NUL
-#' bytes. Character input marked UTF-8, or unmarked (as `rawToChar()` gives), is
-#' taken as UTF-8 bytes as written, in any locale; input marked `"latin1"` is
-#' converted to UTF-8, and input marked `Encoding = "bytes"` is used verbatim.
-#' In a Latin-1 native locale unmarked input is read as native text and
-#' converted.
+#' bytes. Character input marked UTF-8 is used as written. Unmarked input (as
+#' `rawToChar()` gives) is taken as UTF-8 bytes as written when the session's
+#' native encoding is UTF-8 or ASCII (the C locale), and converted from the
+#' native encoding otherwise; input marked `"latin1"` is converted, and input
+#' marked `Encoding = "bytes"` is used verbatim.
 #'
 #' The result contains three typed data frames: `map` (the validation target),
 #' `documents` (one summary row per document), and `diagnostics` (zero or more
