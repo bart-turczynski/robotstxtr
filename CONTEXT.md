@@ -31,17 +31,18 @@ evaluator reads it once per call and dispatches on its entries alone.
 
 **Matcher adapter.** A backend's one entry point,
 `callable(bodies, urls, product_tokens)`, called once per evaluation with
-every row that backend matches. It returns a decision frame. The Google
-adapter wraps a row matcher; the Yandex and Bing adapters parse each distinct
-body once.
+every row that backend matches. It returns a decision frame. In the Google,
+Yandex and Bing adapters the matcher parses each distinct body once; Google's
+line collector reads each body that has a matched row once more.
 
 **Decision frame.** What an adapter returns: one row per input row, in input
 order, with the twelve columns of `matcher_decision_columns_v1()`. The
 evaluator checks its row count and columns and scatters its rows back.
 
 **Row matcher.** A function that matches one row,
-`function(body, url, product_token)`, such as `match_google_v1()`. It sits
-behind an adapter and is never dispatched to directly.
+`function(body, url, product_token)`, such as `match_google_v1()`. It is
+never dispatched to directly; `match_google_v1()` is the reference the Google
+adapter's batch must equal row for row.
 
 **Product token.** The robots.txt `User-agent:` group selector a row is
 evaluated for. It is never sent as an HTTP header; the HTTP request carries

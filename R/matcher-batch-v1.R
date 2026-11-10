@@ -1,10 +1,10 @@
-# The shared batch module behind the Yandex and Bing matcher adapters
-# (ROBO-iwmtdutk).
+# The shared batch module behind the Yandex, Bing and Google matcher adapters
+# (ROBO-iwmtdutk; Google since ROBO-iooslxvj).
 #
-# Both adapters have slice A's batch interface `callable(bodies, urls,
-# product_tokens)` -> a decision frame (ROBO-bukqpjli), and both native
-# bindings parse each DISTINCT body exactly once. What the two adapters
-# shared is batching and result transport, and that is all this module
+# The adapters have slice A's batch interface `callable(bodies, urls,
+# product_tokens)` -> a decision frame (ROBO-bukqpjli), and each native
+# binding parses each DISTINCT body exactly once. What the adapters
+# share is batching and result transport, and that is all this module
 # holds: the argument check, recycling, the request-target bytes, the
 # distinct-body grouping, the allow/disallow decision, the empty frame and
 # the frame assembly. Everything an engine decides stays with its adapter:
@@ -17,10 +17,11 @@
 # evaluates. `extract_target` is the engine's own lexical extractor: one URL
 # in, the slash-prefixed target or NA_character_ out. A missing or empty URL,
 # or one the extractor gives no target for, becomes an empty target
-# (raw(0)), which each engine rejects as invalid_request_target -- unless the
-# product token is also unsupported, in which case the engine reports that
-# first. Leaving that precedence to the engine, rather than mapping the NA
-# here, keeps each engine's own unsupported-first rule.
+# (raw(0)), and each engine decides what that means. Yandex and Bing reject it
+# as invalid_request_target -- unless the product token is also unsupported,
+# in which case the engine reports that first; leaving that precedence to the
+# engine, rather than mapping the NA here, keeps each engine's own
+# unsupported-first rule. Google reads the empty URL as the path "/".
 matcher_target_bytes_v1 <- function(url, extract_target) {
   if (is.na(url) || !nzchar(url)) {
     return(raw(0))
@@ -32,19 +33,21 @@ matcher_target_bytes_v1 <- function(url, extract_target) {
   charToRaw(target)
 }
 
-# Group per-row raw bodies into the distinct-body list + 1-based index the
-# native batch bindings take. Keys are the full byte sequence rendered as hex,
-# so embedded NUL and invalid UTF-8 compare safely and dedupe exactly.
+# Group per-row bodies into the distinct-body list + 1-based index the native
+# batch bindings take, distinct bodies in order of first appearance, each the
+# first row's body as it is. The native grouping (robotstxtr_batch_body_groups_,
+# src/matcher_binding.cpp) is exact on a raw body's bytes alone, so embedded
+# NUL, invalid UTF-8 and attributes neither split nor merge groups; it hashes
+# each distinct body object once, so the rows of one source, which share one
+# body object, cost one lookup each. A body that is not raw (NULL included)
+# is a group of its own and reaches the engine as it is, to be refused there
+# as on its own. Keys built in R cost each row a pass over its body, which
+# outweighed the parse a batch saves (ROBO-iooslxvj).
 matcher_body_groups_v1 <- function(bodies) {
-  keys <- vapply(
-    bodies,
-    function(b) paste(as.character(b), collapse = ""),
-    character(1L)
-  )
-  first <- !duplicated(keys)
+  body_index <- robotstxtr_batch_body_groups_(bodies)
   list(
-    distinct_bodies = bodies[first],
-    body_index = match(keys, keys[first])
+    distinct_bodies = bodies[!duplicated(body_index)],
+    body_index = body_index
   )
 }
 
