@@ -280,6 +280,64 @@ test_that("each binding hands the request-target bytes back verbatim", {
   expect_identical(b$matcher_request_target_raw, list(target))
 })
 
+# A fake native batch for driving run_batch_matcher_v1() directly: every row
+# allowed, one native status column, and what it was called with recorded in
+# `seen`. Its parameters are in a different order from the module's.
+iw_fake_run <- function(urls, tokens, seen = new.env()) {
+  native_eval <- function(bodies, body_index, targets, product_tokens) {
+    seen$targets <- targets
+    seen$product_tokens <- product_tokens
+    n <- length(body_index)
+    list(
+      native_status = rep("ok", n),
+      url_decision = rep(TRUE, n),
+      matched_line = rep(NA_integer_, n),
+      matched_rule_type = rep(NA_character_, n),
+      matched_rule_value = rep(NA_character_, n),
+      matcher_input_bytes = rep(0L, n),
+      matched_rule_value_raw = vector("list", n),
+      n_parse_calls = 1L
+    )
+  }
+  map_status <- function(native, url_decision) {
+    n <- length(url_decision)
+    list(
+      matcher_status = rep("evaluated", n), reason = rep(NA_character_, n),
+      matcher_body_truncated = rep(FALSE, n),
+      error_stage = rep(NA_character_, n),
+      error_class = rep(NA_character_, n), error_message = rep(NA_character_, n)
+    )
+  }
+  run_batch_matcher_v1(
+    rep(list(charToRaw("User-agent: *\n")), length(urls)), urls, tokens,
+    "robotstxtr_test_bodies", function(url) "/x", native_eval, map_status,
+    "native_status"
+  )
+}
+
+test_that("the module hands the native batch its tokens and targets", {
+  seen <- new.env()
+  iw_fake_run("https://example.com/", "bot", seen)
+  # Known gap (ROBO-wuhugihe): the call is positional, so a native batch whose
+  # parameters are ordered differently gets the tokens as its targets.
+  expect_identical(seen$targets, "bot")
+  expect_identical(seen$product_tokens, list(charToRaw("/x")))
+})
+
+test_that("the empty and non-empty frames have one column list and types", {
+  empty <- matcher_batch_empty_frame_v1("native_status")
+  one <- iw_fake_run("https://example.com/", "bot")
+  expected <- c("native_status", matcher_decision_columns_v1())
+  expect_identical(names(empty), expected)
+  expect_identical(names(one), expected)
+  expect_identical(
+    vapply(empty, typeof, character(1L)), vapply(one, typeof, character(1L))
+  )
+  expect_identical(
+    lapply(empty, class), lapply(one, class)
+  )
+})
+
 test_that("a native result missing a declared column aborts", {
   native_eval <- function(bodies, body_index, product_tokens, targets) {
     n <- length(body_index)
