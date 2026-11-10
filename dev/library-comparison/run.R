@@ -152,7 +152,8 @@ ref <- run_lib("google-ref", ref_manifest)
 # Every check below compares against the reference, so without it there is
 # nothing to report.
 ref_cols <- strsplit(ref, "\t", fixed = TRUE)
-ref_bad <- lengths(ref_cols) != 3L | startsWith(ref, "ERR")
+# strsplit() drops a trailing empty field, and only fields 1 and 2 are read.
+ref_bad <- lengths(ref_cols) < 2L | startsWith(ref, "ERR")
 if (any(ref_bad)) {
   stop("google-ref gave no answer on ", sum(ref_bad), " of ", length(ref),
        " cases (first: ", ref[ref_bad][[1L]], ")", call. = FALSE)
@@ -270,12 +271,12 @@ if (any(gone)) {
       paste0("  ", cases$id[gone], " ", cases$path[gone], "\n"), sep = "")
   failed <- TRUE
 }
-missing <- !paste(expected_split$id, expected_split$path) %in%
+unmatched <- !paste(expected_split$id, expected_split$path) %in%
   paste(cases$id, cases$path)
-if (any(missing)) {
+if (any(unmatched)) {
   cat("an expected split names no case:\n",
-      paste0("  ", expected_split$id[missing], " ",
-             expected_split$path[missing], "\n"), sep = "")
+      paste0("  ", expected_split$id[unmatched], " ",
+             expected_split$path[unmatched], "\n"), sep = "")
   failed <- TRUE
 }
 if (any(splits & expected)) {

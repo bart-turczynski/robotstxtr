@@ -15,9 +15,10 @@
 #   rtx  rOpenSci robotstxt 0.7.15 (its checks run through spiderbar)
 #   spb  spiderbar 0.2.5
 # "others" in a comment means every library not named. robotstxtr agrees
-# with the reference on every row here except the NUL-bearing UTF-16 body,
-# which is a deliberate split (design/engine-profiles.md section 5b,
-# class 5).
+# with the reference on every row here except enc-utf16le-no-bom on /a, the
+# UTF-16LE body without a BOM: a deliberate split (design/engine-profiles.md
+# section 5b, class 5), the one row run.R's expected-split list names. The
+# two UTF-16 bodies with a BOM bear NULs too and agree.
 #
 # The bodies are the committed fixtures: the class fixtures in
 # fixtures/library-comparison-dqqkvwts/ (manifest.csv there records every
@@ -118,7 +119,9 @@ test_that("class 1: a non-rule line between two User-agent lines", {
   lc_expect(body, "/x", "disallow")
   lc_expect(body, "/x", "disallow", token = "BarBot")
   # The same body without the blank line (not a fixture): as above.
-  body <- sub("\n\n", "\n", body, fixed = TRUE)
+  joined <- sub("\n\n", "\n", body, fixed = TRUE)
+  expect_false(identical(joined, body))
+  body <- joined
   lc_expect(body, "/x", "disallow")
   lc_expect(body, "/x", "disallow", token = "BarBot")
   # The second group named: as Crawl-delay above.
