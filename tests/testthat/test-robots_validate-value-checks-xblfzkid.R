@@ -107,6 +107,37 @@ test_that("an inner '$' is rule_inner_dollar", {
   )
 })
 
+test_that("a raw space or control whitespace inside a rule is unflagged", {
+  # known gap (ROBO-dlgeqluf): an interior space, tab, VT or FF matches no
+  # percent-encoded URL, and no value check says so yet
+  for (line in c(
+    "Disallow: /a b", "Allow: /a b", "Disallow: /a\tb", "Disallow: /a\vb",
+    "Disallow: /a\fb"
+  )) {
+    x <- vc_validate(line)
+    expect_identical(nrow(x$diagnostics), 0L, label = line)
+  }
+})
+
+test_that("a value trimmed or escaped to a clean pattern draws nothing", {
+  # The parser trims the edges of a value and cuts a comment, so these values
+  # are clean; %20 is an escaped space, not a raw one.
+  for (line in c(
+    "Disallow: /a%20b", "Disallow: /a #comment", "Disallow: /a ",
+    "Disallow:  /a", "Disallow: /a\t", "Disallow: /a\v", "Disallow: /a\f"
+  )) {
+    x <- vc_validate(line)
+    expect_identical(nrow(x$diagnostics), 0L, label = line)
+  }
+})
+
+test_that("a User-agent or Sitemap value with a space is no rule", {
+  for (line in c("User-agent: Foo Bot", "Sitemap: https://a.example/x y")) {
+    x <- vc_validate(line)
+    expect_false("rule_inner_whitespace" %in% x$diagnostics$code, label = line)
+  }
+})
+
 test_that("well-formed patterns stay clean of the value checks", {
   for (line in c(
     "Disallow: *.pdf", "Disallow: /*.pdf$", "Allow: /$"
