@@ -143,15 +143,30 @@ test_that("ROBO-yvhqvthd: robots_validate_text() has no status code", {
 
 test_that("ROBO-yvhqvthd: the readings come from the status table", {
   expect_identical(status_engine_readings("status_other_2xx"), yv_readings)
+  # The wording follows the cell's action, whichever engine holds it.
+  for (ruleset in c("google", "yandex", "bing", "rfc9309", "assumed_rfc9309")) {
+    expect_identical(
+      status_policy_phrase(ruleset, "status_other_2xx", "evaluated",
+                           "use_rules"),
+      "reads the body's rules as for a 200",
+      label = ruleset
+    )
+  }
+  # A table edit that gives Bing use_rules here still yields a message.
+  real <- engine_policy_table_v1
+  local_mocked_bindings(engine_policy_table_v1 = function() {
+    table <- real()
+    bing <- table$category == "status_other_2xx" & table$ruleset == "bing"
+    table$policy_status[bing] <- "evaluated"
+    table$policy_action[bing] <- "use_rules"
+    table
+  })
   expect_identical(
-    status_policy_phrase("google", "status_other_2xx", "evaluated",
-                         "use_rules"),
-    "reads the body's rules as for a 200"
-  )
-  # The branch is for that one cell: another use_rules cell still stops.
-  expect_error(
-    status_policy_phrase("yandex", "status_other_2xx", "evaluated",
-                         "use_rules"),
-    "No status phrase for policy (evaluated, use_rules).", fixed = TRUE
+    status_engine_readings("status_other_2xx"),
+    paste(
+      "Google: reads the body's rules as for a 200;",
+      "Yandex: places no restrictions on crawling;",
+      "Bing: reads the body's rules as for a 200"
+    )
   )
 })

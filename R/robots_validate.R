@@ -2034,10 +2034,11 @@ status_policy_phrase <- function(ruleset, category, status, action) {
     }
   } else if (identical(status, "evaluated") &&
                identical(action, "use_rules") &&
-               identical(category, "status_other_2xx") &&
-               identical(ruleset, "google")) {
-    # Google reads the body of a 2xx other than 200 as it reads a 200's
-    # (design/engine-profiles.md section 4, other 2xx row, `use_rules`).
+               identical(category, "status_other_2xx")) {
+    # A 2xx other than 200 whose body a ruleset reads (ROBO-yvhqvthd). Google
+    # documents it (design/engine-profiles.md section 4, other 2xx row); the
+    # wording follows the cell's action, so a table edit that gives another
+    # engine `use_rules` here still gets a phrase.
     "reads the body's rules as for a 200"
   } else if (identical(status, "context_required")) {
     "context-dependent (may pause crawling or use its last cached copy)"
