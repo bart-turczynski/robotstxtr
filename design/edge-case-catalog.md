@@ -147,12 +147,12 @@ vendored matcher's decision today; "Validator" lists the codes.
 | `enc-bom-mid-file` — BOM before line 2 `Disallow: /a` | unspecified | not documented; a BOM is only skipped at the start | `/a` allow: the line's key is BOM+`Disallow`, unknown | `misplaced_byte_order_mark@2`, `unknown_directive@2`, `no_rules` | yes; covered by `misplaced_byte_order_mark`, which names the hidden Disallow (ROBO-atkmqcov) |
 | `enc-bom-before-user-agent` — BOM before a second group's `User-agent: FooBot` | unspecified | not documented | `/a` disallow, `/b` disallow: the FooBot line is unknown, so FooBot falls to `*`, and its `Disallow: /b` joins the `*` group | `misplaced_byte_order_mark@4`, `unknown_directive@4` | yes; covered by `misplaced_byte_order_mark`, which says the User-agent line is not read and its rules join the group before it (ROBO-atkmqcov) |
 | `enc-bom-doubled` — two BOMs, then the rules | unspecified | only one leading BOM is documented as ignored | `/a` allow: the second BOM hides `User-agent`, so the rule has no group | `byte_order_mark@1`, `misplaced_byte_order_mark@1`, `unknown_directive@1`, `rule_without_user_agent@2`, `missing_user_agent` | yes; covered by `misplaced_byte_order_mark`, which names the hidden User-agent (`byte_order_mark` alone would say the BOM is skipped) |
-| `enc-utf16le-bom` — UTF-16LE with BOM | not UTF-8 (§2.3, MUST); MAY bridge (§2.2.2): unspecified | must be UTF-8 | `/a` allow (NULs dropped, the `FF FE` prefix spoils line 1, the rule has no group) | `nul_byte@1..3`, `invalid_utf8`, `malformed_line@1`, `no_rules` | yes; covered by `nul_byte` (errors) |
+| `enc-utf16le-bom` — UTF-16LE with BOM | not UTF-8 (§2.3, MUST); MAY bridge (§2.2.2): unspecified | must be UTF-8 | `/a` allow (NULs dropped, the `FF FE` prefix spoils line 1, the rule has no group) | `nul_byte@1..3`, `invalid_utf8@1`, `malformed_line@1`, `no_rules` | yes; covered by `nul_byte` (errors) |
 | `enc-utf16le-no-bom` — UTF-16LE, no BOM | as above | must be UTF-8 | `/a` **disallow**: with the NULs dropped the file is plain ASCII. Google's C++ reads each line only up to its first NUL, so no line holds a directive (allow); robotstxtr's drop is deliberate (`R/body-decode.R`) | `nul_byte@1..3`, `malformed_line@1`, `no_rules` | yes; **known gap**: `no_rules` ("places no restrictions") while the matcher enforces `Disallow: /a` |
-| `enc-utf16be-bom` — UTF-16BE with BOM | as above | must be UTF-8 | `/a` allow | `nul_byte@1..2`, `invalid_utf8`, `malformed_line@1`, `no_rules` | yes; covered by `nul_byte` (errors) |
-| `enc-latin1-rule` — `Disallow: /caf` + Latin-1 `é` (`E9`) | non-UTF-8 file (§2.3); unspecified | non-UTF-8 characters may be ignored, rules may become invalid | `/caf%E9` disallow (the byte is escaped to `%E9`), `/caf%C3%A9` allow | `invalid_utf8` (no line) | yes: the UTF-8 URL a browser sends is not blocked; covered by `invalid_utf8` (error) |
-| `enc-latin1-comment` — Latin-1 byte inside a comment only | the file is not UTF-8 (§2.3), though only a comment holds the byte: unspecified | as above | `/a` disallow, unaffected | `invalid_utf8` (error, no line) | no; **known gap**: a lineless error for a byte that changes nothing |
-| `enc-invalid-utf8-key` — `Dis\xFFallow: /a` | not UTF-8 (§2.3): unspecified; were the file read anyway, not a valid line | invalid lines ignored | `/a` allow | `invalid_utf8`, `unknown_directive@2`, `no_rules` | no |
+| `enc-utf16be-bom` — UTF-16BE with BOM | as above | must be UTF-8 | `/a` allow | `nul_byte@1..2`, `invalid_utf8@1`, `malformed_line@1`, `no_rules` | yes; covered by `nul_byte` (errors) |
+| `enc-latin1-rule` — `Disallow: /caf` + Latin-1 `é` (`E9`) | non-UTF-8 file (§2.3); unspecified | non-UTF-8 characters may be ignored, rules may become invalid | `/caf%E9` disallow (the byte is escaped to `%E9`), `/caf%C3%A9` allow | `invalid_utf8@2` | yes: the UTF-8 URL a browser sends is not blocked; covered by `invalid_utf8` (error) |
+| `enc-latin1-comment` — Latin-1 byte inside a comment only | the file is not UTF-8 (§2.3), though only a comment holds the byte: unspecified | as above | `/a` disallow, unaffected | `invalid_utf8_comment@1` (warning) | no |
+| `enc-invalid-utf8-key` — `Dis\xFFallow: /a` | not UTF-8 (§2.3): unspecified; were the file read anyway, not a valid line | invalid lines ignored | `/a` allow | `invalid_utf8@2`, `unknown_directive@2`, `no_rules` | no |
 | `enc-nonascii-rule-raw-url` — `Disallow: /café`, URL with a raw `é` | octets percent-encoded on both sides before comparison (§2.2.2): disallow | rules compared in percent-encoded form | `/café` allow, `/caf%C3%A9` disallow: the matcher escapes the rule, never the URL; `allowed_by_robots_text()` documents that the caller supplies an escaped URL | none | no (a caller-input caveat, not a site-owner one) |
 | `enc-escaped-rule-raw-url` — `Disallow: /caf%C3%A9`, raw `é` URL | disallow | as above | `/café` allow, same reason | none | no |
 
@@ -265,8 +265,9 @@ block red. An item marked fixed names the diagnostic that now covers it.
    `misplaced_byte_order_mark` names the BOM and the directive it hides.
 2. ROBO-igrkabdb — `enc-utf16le-no-bom`: `no_rules` says the file restricts nothing while the
    NUL-dropping matcher enforces its rules.
-3. ROBO-sniltuap — `enc-latin1-comment`: `invalid_utf8` has no line and is an error even when
-   only a comment holds the byte.
+3. ROBO-sniltuap — `enc-latin1-comment`: `invalid_utf8` had no line and was an error even when
+   only a comment held the byte. Fixed: each line is reported, and bytes only after the first
+   `#` give the `invalid_utf8_comment` warning.
 4. ROBO-gaczsrgj — `esc-pct7e-rule-tilde-url`: no diagnostic for an escaped unreserved
    character, which Google never matches against the raw form. Fixed:
    `rule_escaped_unreserved`.

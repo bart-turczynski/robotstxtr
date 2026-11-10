@@ -67,7 +67,11 @@ it stay with the group before it until the next User-agent line. \cr
 \code{nul_byte} \tab error \tab
 A line holds NUL bytes, which can truncate parsing. \cr
 \code{invalid_utf8} \tab error \tab
-The document bytes are not well-formed UTF-8. \cr
+A line holds bytes that are not well-formed UTF-8 before the line's
+first \code{#}. \cr
+\code{invalid_utf8_comment} \tab warning \tab
+A line's bytes that are not well-formed UTF-8 all sit in its comment,
+after the first \code{#}; no rule changes. \cr
 \code{malformed_line} \tab error \tab
 An active line is not a key-value directive. \cr
 \code{line_too_long} \tab error \tab

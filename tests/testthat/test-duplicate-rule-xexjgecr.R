@@ -71,8 +71,9 @@ test_that("values compare in the parser's canonical form", {
     charToRaw("\nDisallow: /"), as.raw(0xe9), charToRaw("\n")
   )
   x <- robots_validate_text(latin1)
-  expect_identical(x$diagnostics$code, c("invalid_utf8", "duplicate_rule"))
-  expect_identical(x$diagnostics$line, c(NA_integer_, 3L))
+  expect_identical(x$diagnostics$code,
+                   c("invalid_utf8", "invalid_utf8", "duplicate_rule"))
+  expect_identical(x$diagnostics$line, c(2L, 3L, 3L))
 })
 
 test_that("no stripping beyond the parser's canonical form", {

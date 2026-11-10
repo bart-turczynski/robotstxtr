@@ -96,7 +96,7 @@ test_that("no_rules sits beside the other findings of a rule-free file", {
     list(body = as.raw(c(0x23, 0x00, 0x0a)),
          codes = c("nul_byte", "no_rules"), status = "error"),
     list(body = as.raw(c(0x23, 0xff, 0x0a)),
-         codes = c("invalid_utf8", "no_rules"), status = "error")
+         codes = c("invalid_utf8_comment", "no_rules"), status = "warning")
   )
   for (case in cases) {
     label <- if (is.raw(case$body)) {
