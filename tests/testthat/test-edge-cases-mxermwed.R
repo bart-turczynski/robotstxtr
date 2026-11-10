@@ -281,7 +281,7 @@ test_that("ROBO-mxermwed: every known_gap row is restated above", {
   m <- edge_manifest
   expect_setequal(
     unique(m$id[nzchar(m$known_gap)]),
-    c("grp-googlebot-image-fallback")
+    "grp-googlebot-image-fallback"
   )
 })
 
