@@ -214,13 +214,14 @@ test_that("ROBO-mxermwed: UTF-16 without a BOM matches what no_rules denies", {
   expect_true("no_rules" %in% robots_validate_text(bytes)$diagnostics$code)
 })
 
-test_that("ROBO-mxermwed: a Latin-1 byte in a comment is a lineless error", {
-  # known gap (ROBO-sniltuap): invalid_utf8 has no line and is an error
-  # although only a comment holds the byte and the decision is unchanged
+test_that("ROBO-mxermwed: a Latin-1 byte in a comment is a line warning", {
+  # Fixed by ROBO-sniltuap: only a comment holds the byte and the decision is
+  # unchanged, so the row is the invalid_utf8_comment warning on line 1
   x <- robots_validate_text(edge_case("enc-latin1-comment"))
-  expect_identical(x$diagnostics$code, "invalid_utf8")
-  expect_identical(x$diagnostics$line, NA_integer_)
-  expect_identical(x$documents$validation_status, "error")
+  expect_identical(x$diagnostics$code, "invalid_utf8_comment")
+  expect_identical(x$diagnostics$line, 1L)
+  expect_identical(x$diagnostics$raw_text, "# caf\\xE9")
+  expect_identical(x$documents$validation_status, "warning")
 })
 
 test_that("ROBO-mxermwed: an escaped unreserved character is flagged", {
@@ -293,7 +294,7 @@ test_that("ROBO-mxermwed: every known_gap row is restated above", {
   expect_setequal(
     unique(m$id[nzchar(m$known_gap)]),
     c("enc-utf16le-no-bom",
-      "enc-latin1-comment", "esc-space-in-rule",
+      "esc-space-in-rule",
       "esc-lower-hex-rule",
       "grp-googlebot-image-fallback", "redirect-cross-host-html")
   )

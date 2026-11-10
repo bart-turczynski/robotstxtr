@@ -121,8 +121,8 @@ test_that("values compare in the parser's canonical form", {
   )
   x <- robots_validate_text(latin1)
   expect_identical(x$diagnostics$code,
-                   c("invalid_utf8", "disallow_tied_by_allow"))
-  expect_identical(x$diagnostics$line, c(NA_integer_, 3L))
+                   c("invalid_utf8", "invalid_utf8", "disallow_tied_by_allow"))
+  expect_identical(x$diagnostics$line, c(2L, 3L, 3L))
 })
 
 test_that("no stripping beyond the parser's canonical form", {
@@ -279,7 +279,7 @@ test_that("edge inputs compare without error", {
             as.raw(0xff), charToRaw("\n"))
   x <- robots_validate_text(body)
   expect_identical(x$diagnostics$code,
-                   c("invalid_utf8", "disallow_tied_by_allow"))
+                   c("invalid_utf8_comment", "disallow_tied_by_allow"))
 })
 
 test_that("a body cut at max_bytes is still checked", {

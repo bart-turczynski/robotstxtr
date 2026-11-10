@@ -58,7 +58,11 @@ validation_unsupported <- c(
 #'   \code{nul_byte} \tab error \tab
 #'     A line holds NUL bytes, which can truncate parsing. \cr
 #'   \code{invalid_utf8} \tab error \tab
-#'     The document bytes are not well-formed UTF-8. \cr
+#'     A line holds bytes that are not well-formed UTF-8 before any
+#'     \code{#}, in a key or value. \cr
+#'   \code{invalid_utf8_comment} \tab warning \tab
+#'     A line's bytes that are not well-formed UTF-8 all sit in its comment,
+#'     after the first \code{#}; no rule changes. \cr
 #'   \code{malformed_line} \tab error \tab
 #'     An active line is not a key-value directive. \cr
 #'   \code{line_too_long} \tab error \tab
@@ -536,15 +540,38 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     )
   }
 
-  bytes_without_nul <- nul_free_bytes(bytes)
-  encoding_valid <- validUTF8(rawToChar(bytes_without_nul))
-  encoding <- if (encoding_valid) "utf-8" else "invalid-utf-8"
-  if (!encoding_valid) {
-    add_diagnostic(
-      NA_integer_, "error", "invalid_utf8", NA_character_,
-      "Document bytes are not well-formed UTF-8."
-    )
+  # RFC 9309 section 2.3: the file MUST be UTF-8. LF and CR are ASCII, so the
+  # document is well-formed exactly when every line is. A line is checked
+  # without its NUL bytes, as the matchers read it. The parser cuts a line at
+  # its first `#` (GetKeyAndValueFrom), and `#` is never part of a multi-byte
+  # sequence, so bad bytes only after it change no rule (ROBO-sniltuap).
+  encoding_valid <- TRUE
+  for (line in seq_len(line_count)) {
+    line_bytes <- nul_free_bytes(raw_lines[[line]])
+    if (validUTF8(rawToChar(line_bytes))) {
+      next
+    }
+    encoding_valid <- FALSE
+    hash <- match(as.raw(0x23), line_bytes)
+    before_comment <- if (is.na(hash)) {
+      line_bytes
+    } else {
+      validation_raw_slice(line_bytes, 1L, hash - 1L)
+    }
+    if (validUTF8(rawToChar(before_comment))) {
+      add_diagnostic(
+        line, "warning", "invalid_utf8_comment", NA_character_,
+        paste0("Only a comment holds bytes that are not well-formed UTF-8; ",
+               "no rule changes.")
+      )
+    } else {
+      add_diagnostic(
+        line, "error", "invalid_utf8", NA_character_,
+        "Line bytes are not well-formed UTF-8."
+      )
+    }
   }
+  encoding <- if (encoding_valid) "utf-8" else "invalid-utf-8"
 
   active <- !parsed$is_empty & !parsed$is_comment
   malformed <- active & !parsed$has_directive
