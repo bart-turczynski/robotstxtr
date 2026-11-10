@@ -255,14 +255,65 @@ test_that("grouping is exact on the bytes alone", {
   groups <- matcher_body_groups_v1(list(structure(x, foo = 1), x, y))
   expect_identical(groups$distinct_bodies, list(x, y))
   expect_identical(groups$body_index, c(1L, 1L, 2L))
-  groups <- matcher_body_groups_v1(list(x, NULL, raw(0), y, raw(0)))
-  expect_identical(groups$distinct_bodies, list(x, raw(0), y))
-  expect_identical(groups$body_index, c(1L, 2L, 2L, 3L, 2L))
-  # Twins of one length, and bytes a NUL-free key alone would confuse.
+  # NULL is not a body: it keeps a group of its own, and reaches the native
+  # binding as NULL, to be refused there.
+  groups <- matcher_body_groups_v1(list(x, NULL, raw(0), y, raw(0), NULL))
+  expect_identical(groups$distinct_bodies, list(x, NULL, raw(0), y, NULL))
+  expect_identical(groups$body_index, c(1L, 2L, 3L, 4L, 3L, 5L))
+  # Twins of one length, and bytes a NUL-free key alone would confuse:
+  # NULs inside, and trailing NULs (which rawToChar() drops).
   twins <- list(
     gb_bodies$twin_a, gb_bodies$twin_b, gb_bytes("a", 0L, "b"),
-    gb_bytes("ab", 0L), gb_bytes("a", 0L, "b"), gb_bodies$twin_a
+    gb_bytes("ab", 0L), gb_bytes("a", 0L, "b"), gb_bodies$twin_a,
+    gb_bytes("ab"), gb_bytes("ab", 0L, 0L), gb_bytes(0L), raw(0),
+    gb_bytes("ab", 0L)
   )
   groups <- matcher_body_groups_v1(twins)
-  expect_identical(groups$body_index, c(1L, 2L, 3L, 4L, 3L, 1L))
+  expect_identical(
+    groups$body_index, c(1L, 2L, 3L, 4L, 3L, 1L, 5L, 6L, 7L, 8L, 4L)
+  )
+  # A plain body whose bytes spell another body's key stays apart from it.
+  spelled <- list(
+    gb_bytes("a", 0L, "b"), gb_bytes("3:2:ab"), "x", gb_bytes("<character>3")
+  )
+  groups <- matcher_body_groups_v1(spelled)
+  expect_identical(groups$body_index, 1:4)
+})
+
+# The condition an expression signals: its class, message and call.
+gb_condition <- function(expr) {
+  e <- tryCatch(expr, error = identity)
+  if (!inherits(e, "error")) {
+    return(list(class = "no error"))
+  }
+  list(
+    class = class(e), message = conditionMessage(e),
+    call = deparse(conditionCall(e))
+  )
+}
+
+test_that("a non-raw body is refused as the row path refuses it", {
+  url <- "https://example.com/private"
+  for (body in list(NULL, "x", list(charToRaw("x")))) {
+    # After an empty body, which a non-raw body must not join.
+    bodies <- list(raw(0), body)
+    label <- paste(typeof(body), "body")
+    google <- gb_condition(
+      match_google_batch_v1(bodies, url, "FooBot")
+    )
+    expect_true("error" %in% google$class, label = label)
+    expect_identical(
+      google, gb_condition(gb_oracle(bodies, rep(url, 2L), rep("FooBot", 2L))),
+      label = label
+    )
+    for (case in list(
+      list(adapter = match_yandex_v1, token = "Yandex"),
+      list(adapter = match_bing_v1, token = "bingbot")
+    )) {
+      batch <- gb_condition(case$adapter(bodies, url, case$token))
+      alone <- gb_condition(case$adapter(list(body), url, case$token))
+      expect_identical(batch$message, "expected a raw vector", label = label)
+      expect_identical(batch, alone, label = label)
+    }
+  }
 })

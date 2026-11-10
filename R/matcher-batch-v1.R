@@ -33,49 +33,60 @@ matcher_target_bytes_v1 <- function(url, extract_target) {
   charToRaw(target)
 }
 
-# One body's grouping key: exact on its bytes alone. A raw body's key is its
-# length, the positions of its NUL bytes and its other bytes as one string
-# (marked "bytes", so match() compares bytes and never translates); the three
-# parts give the bytes back, so equal keys mean equal bytes. Attributes do not
-# count, and NULL is the empty body. A body of any other type gets a key of
-# its own row, so it reaches the native binding as it is, to be refused there.
+# One body's grouping key, exact on its bytes alone (attributes aside). A raw
+# body with no NUL byte is its own key: the bytes as one string. Any other
+# raw body's key is its length, the positions of its NUL bytes and its other
+# bytes, which give the bytes back. A body that is not raw (NULL included)
+# gets a key of its own row: it is never grouped with another, and reaches
+# the engine as it is, to be refused there as on its own (by the Yandex and
+# Bing bindings, and by Google's matcher decoding). The keys are all in the
+# native encoding, so duplicated() and match() compare them as stored, never
+# translated.
 matcher_body_key_v1 <- function(body, row) {
-  if (is.null(body)) {
-    body <- raw(0)
-  }
   if (!is.raw(body)) {
     return(sprintf("<%s>%d", typeof(body), row))
   }
+  # rawToChar() refuses an embedded NUL and drops trailing ones: either way
+  # the body is not a plain string.
+  text <- tryCatch(rawToChar(body), error = function(e) NULL)
+  if (!is.null(text) && nchar(text, type = "bytes") == length(body)) {
+    return(text)
+  }
   nul <- body == as.raw(0)
-  key <- paste0(
+  paste0(
     length(body), ":", paste(which(nul), collapse = ","), ":",
     rawToChar(body[!nul])
   )
-  Encoding(key) <- "bytes"
-  key
 }
 
 # Group per-row raw bodies into the distinct-body list + 1-based index the
-# native batch bindings take, distinct bodies in order of first appearance and
-# with their attributes dropped (NULL as raw(0)). The key is exact on the
-# bytes (matcher_body_key_v1()), so embedded NUL and invalid UTF-8 dedupe
-# exactly, and match() hashes it. Rendering every byte as hex for a key (the
-# earlier helper) cost more than the Google matcher's parses on a large body,
-# and match() on the list of bodies itself is as slow (ROBO-iooslxvj,
-# dev/bench-google-batch.R).
+# native batch bindings take, distinct bodies in order of first appearance,
+# raw ones with their attributes dropped. The key is exact on the bytes
+# (matcher_body_key_v1()), so embedded NUL and invalid UTF-8 dedupe exactly,
+# and match() hashes it. A plain body's key is its bytes, which could spell
+# any other key, so plain and other keys are matched apart. Rendering every
+# byte as hex for a key (the earlier helper) cost more than the Google
+# matcher's parses on a large body, and match() on the list of bodies itself
+# is as slow (ROBO-iooslxvj, dev/bench-google-batch.R).
 matcher_body_groups_v1 <- function(bodies) {
+  n <- length(bodies)
   keys <- vapply(
-    seq_along(bodies),
-    function(i) matcher_body_key_v1(bodies[[i]], i),
-    character(1L)
+    seq_len(n), function(i) matcher_body_key_v1(bodies[[i]], i), character(1L)
   )
-  first <- !duplicated(keys)
+  # Only a plain body's key is exactly as long as the body: another raw key
+  # adds its length and NUL positions, which outnumber the NULs it drops.
+  plain <- vapply(bodies, is.raw, logical(1L)) &
+    nchar(keys, type = "bytes") == lengths(bodies)
+  group <- integer(n)
+  group[plain] <- which(plain)[match(keys[plain], keys[plain])]
+  group[!plain] <- which(!plain)[match(keys[!plain], keys[!plain])]
+  first <- !duplicated(group)
   distinct_bodies <- lapply(bodies[first], function(body) {
-    if (is.null(body)) raw(0) else if (is.raw(body)) as.vector(body) else body
+    if (is.raw(body)) as.vector(body) else body
   })
   list(
     distinct_bodies = distinct_bodies,
-    body_index = match(keys, keys[first])
+    body_index = match(group, group[first])
   )
 }
 
