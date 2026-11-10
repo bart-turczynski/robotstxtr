@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* `robots_validate_text()` and `robots_validate_url()` warn, as `rule_escaped_unreserved`, on a rule that percent-escapes an unreserved character such as `%7E`, which Google never matches against `~` (RFC 9309 §2.2.2) (ROBO-gaczsrgj).
+
 * `robots_validate_text()` and `robots_validate_url()` warn with `html_body` when the body looks like an HTML page, not a robots.txt (ROBO-ccfsanhq).
 
 * Text entry points no longer alter an unmarked non-ASCII `robots_txt` under `LC_ALL=C`; it is read as UTF-8, as in a UTF-8 locale (ROBO-tipzbglv).

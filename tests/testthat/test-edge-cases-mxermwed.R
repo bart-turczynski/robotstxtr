@@ -219,11 +219,12 @@ test_that("ROBO-mxermwed: a Latin-1 byte in a comment is a lineless error", {
   expect_identical(x$documents$validation_status, "error")
 })
 
-test_that("ROBO-mxermwed: an escaped unreserved character goes unflagged", {
-  # known gap (ROBO-gaczsrgj): Disallow: /%7Ejoe never matches /~joe under
-  # Google (RFC 9309 section 2.2.2 would decode %7E), and nothing says so
+test_that("ROBO-mxermwed: an escaped unreserved character is flagged", {
+  # Fixed (ROBO-gaczsrgj): Disallow: /%7Ejoe still never matches /~joe under
+  # Google (RFC 9309 section 2.2.2 would decode %7E), and
+  # rule_escaped_unreserved now says so
   bytes <- edge_case("esc-pct7e-rule-tilde-url")
-  expect_identical(edge_codes(bytes), "")
+  expect_identical(edge_codes(bytes), "rule_escaped_unreserved@2")
   expect_identical(edge_decision(bytes, "/~joe", "FooBot"), "allow")
 })
 
@@ -288,7 +289,7 @@ test_that("ROBO-mxermwed: every known_gap row is restated above", {
   expect_setequal(
     unique(m$id[nzchar(m$known_gap)]),
     c("enc-bom-mid-file", "enc-bom-before-user-agent", "enc-utf16le-no-bom",
-      "enc-latin1-comment", "esc-pct7e-rule-tilde-url", "esc-space-in-rule",
+      "enc-latin1-comment", "esc-space-in-rule",
       "esc-lower-hex-rule", "cmt-hash-in-rule", "grp-user-agent-with-space",
       "grp-digit-in-token", "grp-star-prefixed-token",
       "grp-googlebot-image-fallback", "redirect-cross-host-html")
@@ -307,6 +308,7 @@ edge_covering_code <- c(
   "enc-latin1-rule" = "invalid_utf8",
   "esc-dollar-then-star" = "rule_inner_dollar",
   "esc-lone-dollar" = "rule_missing_leading_slash",
+  "esc-pct7e-rule-tilde-url" = "rule_escaped_unreserved",
   "size-long-line" = "line_too_long",
   "content-spam-html" = "html_body"
 )
