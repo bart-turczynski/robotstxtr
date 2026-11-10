@@ -282,6 +282,49 @@ must not change silently: results for the seven two-token crawlers would move fr
 group. Option 1 changes matcher behavior and the published contract under the opt-in, and needs a
 decision issue first.
 
+### 5b. Google fidelity audit (ROBO-deehqhlc)
+
+**Method.** The reference is the pristine upstream google/robotstxt at
+`22b355ff855419e6a3ff8ff09c0ad7fdb17116f9`, the SHA the vendored matcher pins: a maintainer-only command-line tool
+calls `RobotsMatcher::OneAgentAllowedByRobots()` on the raw body bytes and reports the decision and
+`matching_line()`. The same body, token and URL go to each robotstxtr Google path:
+`robots_evaluate_text_v1()` with the `google` backend under every ruleset whose supplied-body reading
+reaches the matcher (`google`, `rfc9309`, `assumed_rfc9309`, `bing`, and `yandex` up to 500,000
+bytes); `allowed_by_robots_text()`; and `allowed_by_robots_url()` and `robots_evaluate_url_v1()`
+(`google`/`google`), which take no body argument, so the body is served at the ssrfr boundary
+(`tests/testthat/helper-fake-ssrfr.R`), with no network. The decision and the matched line are
+compared. The inputs are synthesized: empty-value rules; the window (a rule after byte 512,000, a
+line across it, a line whose line feed is byte 512,000 or 512,001, a rule past the 524,288-byte fetch cut);
+URL targets (query, fragment, empty path, bare origin, port, `%2F`, escapes in both cases, raw and
+escaped non-ASCII, `;` parameters); `*` and `$`; tokens (case, `Googlebot-Image` and `Googlebot-News`
+beside a `Googlebot` group, a caller token with a version, an unknown token, file tokens with a
+version, repeated, shared and split groups, a rule before any group); CRLF, lone CR, mixed endings,
+a BOM; invalid UTF-8 in a rule and in a `User-agent` value; lines past the upstream 16,663-byte line
+buffer; the typos upstream accepts; empty, scheme-less and `ftp:` URLs and an empty token; NUL bytes.
+Fixtures and recorded reference answers:
+`tests/testthat/fixtures/google-fidelity-deehqhlc/cases.R`; pins:
+`tests/testthat/test-google-fidelity-deehqhlc.R`; the differential, which re-derives the answers from
+the binary: `dev/google-fidelity/differential.R`.
+
+Every path agrees with the reference on decision and line, outside these classes:
+
+| # | Class | Fixture | Reference | robotstxtr | Verdict |
+|---|---|---|---|---|---|
+| 1 | an `Allow`/`Disallow` with an empty value (also `Disallow: # comment`) matches at priority 0 | `User-agent: FooBot` / `Disallow:`, URL `/x` | allowed, line 2 | allowed, `default_allow`, no line, type `none` (all paths) | DELIBERATE: PRD §6.6 match-metadata rules ("an empty path is ignored", restated as `default_allow`), `normalize_ignored_empty_path()` for the legacy paths; `match_google_v1()` copied it into v1 in `af141e7`. Undocumented for v1: `design/engine-contract-v1.md` states it for no Google row, while the Yandex backend reports the same rule as `effective_empty_disallow` with its line |
+| 2 | the 512,000-byte window (v1 paths) | a rule starting at byte 520,001; `Disallow: /private-drafts/` across byte 512,000 | disallowed, line 3 (no window) | allowed, `default_allow` | DELIBERATE: §7, the window `[documented]`, the cut line dropped `[application_choice]` (ROBO-phfbpfiy) |
+| 3 | the `max_bytes` cut (`allowed_by_robots_url()`) | a rule starting at byte 530,001 | disallowed, line 3 | allowed, `default_allow`, `body_truncated` | DELIBERATE: `allowed_by_robots_url()` `max_bytes` (524,288 by default; complete lines, ROBO-ldpahknv); §9 delta (c) |
+| 4 | input screening | URL `""`, token `""`; on the URL paths also `example.com/private`, `ftp://example.com/private` | a decision (`""` is path `/`; `""` as agent reads `*`) | no decision, `input_unknown` / `input_invalid` | DELIBERATE: PRD §6.6 input rules; the roxygen of `allowed_by_robots_text()` and `allowed_by_robots_url()` (HTTP(S) only) |
+| 5 | a NUL byte in a fetched body | `User-agent: *` / `\0Disallow: /x`, URL `/x` | allowed, no line (unknown key) | disallowed, line 2 (the NUL dropped) | DELIBERATE: PRD §6.6, acquired bytes carrying a NUL; `R/body-decode.R` (ROBO-hcqrzikz) |
+
+Classes 2 and 3 split the entry points: between bytes 512,000 and 524,288 the legacy paths read a rule
+the v1 paths do not, and `allowed_by_robots_text()` has no window at all, so on an over-window body
+the legacy paths agree with the reference and v1 follows Google's documented limit. A NUL inside a
+rule value (`Disallow: /a\0b`) is no class: the reference ends the value at the NUL and robotstxtr
+drops it, and both disallow `/ab`.
+
+A private corpus run of the `google`/`google` v1 path against the same reference found class 1 and
+no decision difference.
+
 ## 6. Matcher capability availability
 
 `robots_policy_ruleset` (§4) is pure data and always available. `matcher_backend` is separate:
