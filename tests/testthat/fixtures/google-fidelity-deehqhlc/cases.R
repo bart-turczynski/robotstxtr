@@ -413,17 +413,13 @@ gf_expected_difference <- function(id, path) {
 
 # --- robotstxtr's side --------------------------------------------------------
 
-# The v1 rulesets whose google backend reaches the matcher for a supplied
-# body: every ruleset reads a supplied body as `use_rules`, except that
-# yandex resolves a body over its limit `allow_all` with no matcher
-# (design/engine-profiles.md §7), so those rows are left out.
+# The v1 rulesets, each with the google backend. Every ruleset reads a
+# supplied body as `use_rules` (`supplied_body_use_rules`), at any size:
+# resolve_policy_v1() (R/engine-contract-v1.R) returns for a supplied source
+# before its yandex branch, which resolves a fetched 2xx over 500,000 bytes
+# `allow_all` (design/engine-profiles.md §7). So every row reaches the
+# matcher, the over-limit yandex rows included.
 gf_v1_rulesets <- c("google", "rfc9309", "assumed_rfc9309", "bing", "yandex")
-
-# The yandex limit, 500,000 bytes: the package's own policy_limit_v1()
-# (R/engine-contract-v1.R), published as `policy_body_limit_bytes`. The
-# allow_all rule in resolve_policy_v1() spells the same value as a literal
-# (`evidence$stored_bytes > 500000L`).
-gf_yandex_limit <- policy_limit_v1("yandex")
 
 gf_body_string <- function(body) {
   out <- rawToChar(body)
@@ -460,9 +456,6 @@ gf_run_case <- function(case) {
   body <- case$body
   if ("v1_text" %in% case$paths) {
     rulesets <- gf_v1_rulesets
-    if (length(body) > gf_yandex_limit) {
-      rulesets <- setdiff(rulesets, "yandex")
-    }
     x <- robots_evaluate_text_v1(
       gf_body_string(body), rep(case$url, length(rulesets)), case$token,
       rulesets, "google"
