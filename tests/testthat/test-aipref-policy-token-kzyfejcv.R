@@ -578,3 +578,81 @@ test_that("info messages grow linearly with the number of token groups", {
     expect_lt(sum(nchar(d$message)), 500 * n)
   }
 })
+
+test_that("agent names in messages are elided past 64 characters", {
+  long <- strrep("a", 20000L)
+  body <- ai_lines(paste("User-agent:", long), "Crawl-delay: 1",
+                   rep("User-agent: __usage_ai-training", 1000L),
+                   "Disallow: /")
+  d <- ai_diags(body)
+  d <- d[startsWith(d$code, "ai_training_"), , drop = FALSE]
+  stacked <- d[d$code == "ai_training_token_stacked", , drop = FALSE]
+  expect_identical(nrow(stacked), 1000L)
+  expect_match(stacked$message[[1L]],
+               paste0("`User-agent: ", strrep("a", 60L), "...` (line 1)"),
+               fixed = TRUE)
+  expect_match(stacked$message[[1L]],
+               paste0("also apply to ", strrep("a", 60L), "...."),
+               fixed = TRUE)
+  expect_lt(max(nchar(d$message)), 600)
+  expect_lt(sum(nchar(d$message)), 600 * nrow(d))
+  # A name of 64 characters is kept whole.
+  name <- strrep("b", 64L)
+  d <- ai_rows(ai_lines(paste("User-agent:", name), "Crawl-delay: 1",
+                        "User-agent: __usage_ai-training", "Disallow: /"),
+               "ai_training_token_stacked")
+  expect_match(d$message, paste0("`User-agent: ", name, "` (line 1)"),
+               fixed = TRUE)
+  # The policy-token line's own name is elided too.
+  token <- paste0("__usage_", strrep("c", 100L))
+  d <- ai_rows(ai_lines("User-agent: *", paste("User-agent:", token),
+                        "Disallow: /"), "ai_training_token_stacked")
+  expect_match(d$message, paste0("^`User-agent: ", substr(token, 1L, 60L),
+                                 "\\.\\.\\.` shares a group"))
+})
+
+test_that("a * line in the token's own segment is named over an earlier one", {
+  d <- ai_rows(ai_lines("User-agent: *", "Crawl-delay: 1", "User-agent: *",
+                        "User-agent: __usage_ai-training", "Disallow: /"),
+               "ai_training_token_stacked")
+  expect_identical(d$line, 4L)
+  expect_match(d$message, paste0(
+    "shares a group with `User-agent: *` (line 3)"
+  ), fixed = TRUE)
+  expect_match(d$message, "Bing's parser joins them too.", fixed = TRUE)
+})
+
+test_that("a cut body's last group is not taken as the file's last", {
+  body <- paste0(
+    "User-agent: __usage_ai-training\nDisallow: /\n",
+    "Content-Signal: ai-train=no\nUser-agent: *\nDisallow: /private\n"
+  )
+  x <- validate_document_bytes(charToRaw(body)[1:72], "s", "supplied",
+                               max_bytes = 72L, body_truncated = TRUE)
+  d <- x$diagnostics
+  expect_true("content_signal_directive" %in% d$code)
+  expect_false("ai_training_group_extra_line" %in% d$code)
+  # Read whole, the line heads the `*` group and is exempt too.
+  expect_false("ai_training_group_extra_line" %in% ai_diags(body)$code)
+  # Uncut, the same three lines end the file and the line warns.
+  short <- substr(body, 1L, 72L)
+  expect_true("ai_training_group_extra_line" %in% ai_diags(short)$code)
+})
+
+test_that("a near miss beside the exact token says the token line carries it", {
+  d <- ai_rows(ai_lines("User-agent: __usage_ai-training",
+                        "User-agent: __usage_ai_training", "Disallow: /"),
+               "ai_training_token_near_miss")
+  expect_identical(d$line, 2L)
+  expect_no_match(d$message, "states no AI-training preference",
+                  fixed = TRUE)
+  expect_match(d$message, paste0(
+    "so this line names no policy token; the group's ",
+    "`User-agent: __usage_ai-training` line (line 1) carries the preference."
+  ), fixed = TRUE)
+  # Alone, the group states none.
+  d <- ai_rows(ai_lines("User-agent: __usage_ai_training", "Disallow: /"),
+               "ai_training_token_near_miss")
+  expect_match(d$message, "so this group states no AI-training preference.",
+               fixed = TRUE)
+})

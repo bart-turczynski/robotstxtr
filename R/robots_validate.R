@@ -1159,9 +1159,9 @@ ai_training_diagnostics <- function(groups, parsed, truncated = FALSE) {
   family <- exact | near | startsWith(agents$key, "__usage_")
   class <- ifelse(exact | near, "usageaitraining", agents$key)
   found <- list(
-    ai_training_near_miss_rows(agents[near, , drop = FALSE]),
+    ai_training_near_miss_rows(agents, near, exact),
     ai_training_stacked_rows(agents, parsed, family, class),
-    ai_training_extra_line_rows(groups, parsed, exact),
+    ai_training_extra_line_rows(groups, parsed, exact, truncated),
     ai_training_preference_rows(groups, exact, truncated)
   )
   found <- do.call(rbind, c(list(ai_training_rows()), found))
@@ -1176,19 +1176,37 @@ ai_training_rows <- function(line = integer(), severity = character(),
              stringsAsFactors = FALSE)
 }
 
+# An agent name as the ai_training_ messages render it: elided past `max`
+# characters (its first `max - 4` and "..."), so a message stays bounded
+# however long a User-agent value is.
+ai_training_name <- function(name, max = 64L) {
+  long <- nchar(name, "bytes") > max
+  name[long] <- paste0(substr(name[long], 1L, max - 4L), "...")
+  name
+}
+
 # The message names the token read (ASCII) only; `raw_text` carries the
-# value, which may not be valid UTF-8.
-ai_training_near_miss_rows <- function(near) {
+# value, which may not be valid UTF-8. When the group also names the exact
+# token, that line carries the preference, and the message says so.
+ai_training_near_miss_rows <- function(agents, near, exact) {
+  token_line <- agents$line[exact][match(agents$group[near],
+                                         agents$group[exact])]
+  near <- agents[near, , drop = FALSE]
   read_as_token <- near$key == ai_training_token
-  message <- rep(sprintf(
+  token <- ai_training_name(ai_training_token)
+  message <- sprintf(
     paste0("User-agent value is not the AI-training policy token `%s`, ",
            "which matches only exactly, apart from ASCII case (%s, an ",
-           "Internet-Draft), so this group states no AI-training preference."),
-    ai_training_token, ai_training_draft
-  ), nrow(near))
+           "Internet-Draft), so %s"),
+    token, ai_training_draft,
+    ifelse(is.na(token_line), "this group states no AI-training preference.",
+           sprintf(paste0("this line names no policy token; the group's ",
+                          "`User-agent: %s` line (line %d) carries the ",
+                          "preference."), token, token_line))
+  )
   message[read_as_token] <- paste(
     message[read_as_token],
-    sprintf("Google's matcher still reads it as `%s`.", ai_training_token)
+    sprintf("Google's matcher still reads it as `%s`.", token)
   )
   ai_training_rows(near$line, rep("warning", nrow(near)),
                    rep("ai_training_token_near_miss", nrow(near)),
@@ -1261,14 +1279,14 @@ ai_training_stacked_rows <- function(agents, parsed, family, class) {
   other <- other[fire]
   joined <- !is.na(star_joined[fire])
   star <- !is.na(star[fire])
-  named <- ifelse(star, "*", agents$token[other])
+  named <- ifelse(star, "*", ai_training_name(agents$token[other]))
   message <- sprintf(
     paste0("`User-agent: %s` shares a group with `User-agent: %s` (line ",
            "%d): Google's and Yandex's parsers join User-agent lines that no ",
            "Allow or Disallow line separates, so this group's rules also ",
            "apply to %s. %s Give the policy token a separate group, after a ",
            "group that ends in an Allow or Disallow line."),
-    agents$token[token_rows], named, agents$line[other],
+    ai_training_name(agents$token[token_rows]), named, agents$line[other],
     ifelse(star, "every crawler no group names", named),
     ifelse(joined, "Bing's parser joins them too.",
            paste("Bing's parser ends the group at the directive line",
@@ -1284,7 +1302,8 @@ ai_training_stacked_rows <- function(agents, parsed, family, class) {
 # group, where nothing follows. A User-agent line naming no crawler (empty,
 # or led by a byte outside [A-Za-z_-]) or one Google reads as the token
 # (`__usage_ai-training/1.0`) does not make the group mixed.
-ai_training_extra_line_rows <- function(groups, parsed, exact) {
+ai_training_extra_line_rows <- function(groups, parsed, exact,
+                                        truncated = FALSE) {
   agents <- groups$agents
   rules <- groups$rules
   group_ids <- groups$groups$group
@@ -1297,7 +1316,8 @@ ai_training_extra_line_rows <- function(groups, parsed, exact) {
   }
   last <- !duplicated(rules$group, fromLast = TRUE)
   last_rule <- rules$line[last][match(group_ids, rules$group[last])]
-  final <- seq_along(group_ids) == length(group_ids)
+  # Before a `max_bytes` cut, the last group read is not the file's last.
+  final <- !truncated & seq_along(group_ids) == length(group_ids)
   lines <- parsed[parsed$has_directive & !parsed$type %in% c(
     "user-agent", "allow", "disallow", "sitemap"
   ), c("line", "type", "action"), drop = FALSE]
@@ -1319,7 +1339,7 @@ ai_training_extra_line_rows <- function(groups, parsed, exact) {
            "AI-training policy token `%s`: %s (an Internet-Draft) adds no ",
            "directive and keeps RFC 9309's group structure, so only Allow ",
            "and Disallow state the preference."),
-    ai_training_token, ai_training_draft
+    ai_training_name(ai_training_token), ai_training_draft
   )
   ai_training_rows(lines$line, rep("warning", nrow(lines)),
                    rep("ai_training_group_extra_line", nrow(lines)),
@@ -1359,7 +1379,8 @@ ai_training_preference_rows <- function(groups, exact, truncated,
            "Internet-Draft): a disallowed path is a preference against ",
            "training on it, an allowed one a preference for it. %s ",
            "`User-agent: *` rules never apply to the token."),
-    rep(ai_training_token, nrow(agents)), ai_training_draft, listed
+    rep(ai_training_name(ai_training_token), nrow(agents)),
+    ai_training_draft, listed
   )
   if (truncated && length(message) > 0L) {
     message <- paste(message,

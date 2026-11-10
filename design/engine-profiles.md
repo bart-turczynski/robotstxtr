@@ -371,7 +371,10 @@ group (a `Content-Signal` line just before `User-agent: *`), so `ai_training_gro
 leaves it out; a `Crawl-delay` there is missed too. In the file's last group nothing follows, so
 such a line is reported. A User-agent line naming no crawler (empty, or led by a byte outside
 `[A-Za-z_-]`) is never named by `ai_training_token_stacked` and does not make a token group mixed,
-and neither does a value Google reads as the token (`__usage_ai-training/1.0`).
+and neither does a value Google reads as the token (`__usage_ai-training/1.0`). On a body cut at
+`max_bytes`, the last group read is not taken as the file's last. A near miss in a group that also
+names the token says the token's line carries the preference. Every agent name in these messages is
+elided past 64 characters (its first 60 and `...`), so message size stays linear in the rows.
 
 The token is never reported as `wildcard_rules_not_inherited`, and neither is a value Google's
 matcher reads as the token. All four codes are skipped for a body holding a NUL byte, like the
