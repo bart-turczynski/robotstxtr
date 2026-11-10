@@ -371,7 +371,7 @@ test_that("the check sits beside no_rules without overlapping it", {
 })
 
 test_that("a NUL inside a * rule skips the group checks", {
-  # The parser reads `/a`, the matchers `/ab` (ROBO-fdhmlvwm).
+  # The parser reads `/a`, Google's matcher `/ab` (ROBO-fdhmlvwm).
   body <- c(charToRaw("User-agent: *\nDisallow: /a"), as.raw(0),
             charToRaw("b\nUser-agent: Bingbot\nDisallow: /x\n"))
   x <- robots_validate_text(body)

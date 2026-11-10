@@ -180,7 +180,8 @@ holds Allow or Disallow rules the parser, which ends a line at its
 first NUL, does not read. When the parser read no rule, every
 NUL-free rule is counted; UTF-16 text does this, and should be
 re-saved as UTF-8; reported in place of \code{no_rules}. Otherwise
-only rules on lines the parser does not read as rules, or in a group
+only grouped rules (after a User-agent line, as Google's matcher
+reads them) on lines the parser does not read as rules, or in a group
 the NUL changes, are counted; a value the NUL only shortens is not.
 Reported even for a body cut at \code{max_bytes}. \cr
 \code{body_truncated} \tab warning \tab

@@ -156,3 +156,50 @@ test_that("NUL lines that hide no rule stay silent", {
     c("nul_byte@1", "nul_byte@2", "no_rules@NA")
   )
 })
+
+# Bytes from strings, with a NUL between each two.
+ch_join <- function(...) {
+  parts <- list(...)
+  out <- charToRaw(parts[[1L]])
+  for (part in parts[-1L]) {
+    out <- c(out, ch_nul, charToRaw(part))
+  }
+  out
+}
+
+test_that("a NUL between CR and LF does not renumber later lines", {
+  # Dropped from the whole body, `\r\0\n` would become one CRLF and every
+  # later line would move up by one.
+  bytes <- ch_join("User-agent: *\r\nDisallow: /a\r",
+                   "\nDisallow: /b\r\nDisallow: /c\r\nAllow: /d\r\n")
+  expect_identical(ch_rows(robots_validate_text(bytes)), "nul_byte@3")
+
+  many <- c(ch_join("User-agent: *\r\nDisallow: /a\r", "\n"),
+            charToRaw(paste0("Disallow: /p", seq_len(100L), "\r\n",
+                             collapse = "")))
+  expect_identical(ch_rows(robots_validate_text(many)), "nul_byte@3")
+})
+
+test_that("a CR-NUL-LF body that hides a rule counts it alone", {
+  bytes <- ch_join("User-agent: *\r\nDisallow: /a\r",
+                   "\nDisallow: /b\r\n", "Allow: /x\r\n")
+  x <- robots_validate_text(bytes)
+  expect_identical(ch_rows(x),
+                   c("nul_byte@3", "nul_byte@5", "rules_after_nul_removal@NA"))
+  expect_hidden_rules(x, 1L, "CR-NUL-LF")
+})
+
+test_that("a lone-CR body keeps its line numbers", {
+  bytes <- ch_join("User-agent: *\rDisallow: /a\r", "\rDisallow: /b\r",
+                   "Allow: /x\r")
+  x <- robots_validate_text(bytes)
+  expect_identical(ch_rows(x),
+                   c("nul_byte@3", "nul_byte@5", "rules_after_nul_removal@NA"))
+  expect_hidden_rules(x, 1L, "lone CR")
+})
+
+test_that("a hidden rule outside any group is not counted", {
+  # Google's matcher ignores a rule before the first User-agent too.
+  bytes <- ch_join("", "Disallow: /x\nUser-agent: *\nDisallow: /y\n")
+  expect_identical(ch_rows(robots_validate_text(bytes)), "nul_byte@1")
+})

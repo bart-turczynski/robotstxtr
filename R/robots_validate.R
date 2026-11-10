@@ -171,7 +171,8 @@ validation_unsupported <- c(
 #'     first NUL, does not read. When the parser read no rule, every
 #'     NUL-free rule is counted; UTF-16 text does this, and should be
 #'     re-saved as UTF-8; reported in place of \code{no_rules}. Otherwise
-#'     only rules on lines the parser does not read as rules, or in a group
+#'     only grouped rules (after a User-agent line, as Google's matcher
+#'     reads them) on lines the parser does not read as rules, or in a group
 #'     the NUL changes, are counted; a value the NUL only shortens is not.
 #'     Reported even for a body cut at \code{max_bytes}. \cr
 #'   \code{body_truncated} \tab warning \tab
@@ -947,18 +948,28 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # are gone, as in UTF-16 text, are reported instead of no_rules
   # (ROBO-igrkabdb). Rules read before a cut are real, so a cut body is
   # checked too. When the parser reads rules of its own, the NUL-free read is
-  # reported only for the grouped rules it adds: a rule on a line the parser
-  # does not read as one, or in a group the NUL changes (ROBO-ctdkqawi). A
-  # value the NUL only shortens keeps its rule and group, and is not counted.
+  # reported only for the grouped rules it adds: a grouped rule on a line the
+  # parser does not read as one, or in a group the NUL changes
+  # (ROBO-ctdkqawi). A rule before the first User-agent is in no group, for
+  # Google's matcher too, and is not counted; nor is a value the NUL only
+  # shortens, which keeps its rule and group. That read is built line by
+  # line, each line NUL-free and ended by LF, so its line N is raw line N: a
+  # NUL dropped from the whole body would turn `\r\0\n` into one CRLF and
+  # move every later line up by one.
   nul_free_rules <- 0L
   hidden_rules <- 0L
   if (length(nul_lines) > 0L) {
-    nul_free_parsed <- robotstxtr_validation_parse_(nul_free_bytes(bytes))
     if (rule_count == 0L) {
+      nul_free_parsed <- robotstxtr_validation_parse_(nul_free_bytes(bytes))
       nul_free_rules <- sum(nul_free_parsed$type %in% c("allow", "disallow"))
     } else {
-      nul_free_parsed <- as.data.frame(nul_free_parsed,
-                                       stringsAsFactors = FALSE)
+      nul_free_text <- unlist(lapply(nul_free_lines, function(line_bytes) {
+        c(line_bytes, as.raw(0x0a))
+      }), use.names = FALSE)
+      nul_free_parsed <- as.data.frame(
+        robotstxtr_validation_parse_(nul_free_text),
+        stringsAsFactors = FALSE
+      )
       nul_free_parsed <- nul_free_parsed[nul_free_parsed$line <= line_count, ,
                                          drop = FALSE]
       hidden_rules <- sum(!validation_rule_keys(nul_free_parsed) %in%
