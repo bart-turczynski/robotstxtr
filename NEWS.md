@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* `robots_validate_text()` now warns `rules_after_nul_removal` when NUL bytes hide rules from its parser that Google's matcher reads, even beside other rules (ROBO-ctdkqawi).
+
 * `robots_validate_text()` and `robots_validate_url()` now take time linear in the number of diagnostics (ROBO-dbvmxcfw).
 
 * The v1 `google` matcher parses each distinct robots.txt once per call, not once per URL (ROBO-iooslxvj).

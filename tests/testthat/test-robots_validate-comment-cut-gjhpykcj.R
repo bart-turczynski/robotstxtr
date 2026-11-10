@@ -65,8 +65,8 @@ test_that("the check reads raw bytes: invalid UTF-8 and Latin-1 values", {
 })
 
 test_that("a NUL before or after the # still gets the cut warning", {
-  # The parser stops at the NUL, but the matchers drop NULs and read on, so
-  # they cut the rule at the `#`: the check reads the line NUL-free.
+  # The parser stops at the NUL, but Google's matcher drops NULs and reads
+  # on, so it cuts the rule at the `#`: the check reads the line NUL-free.
   for (tail in list(charToRaw("x#b"), charToRaw("#b"))) {
     line <- c(charToRaw("Disallow: /a"), as.raw(0), tail)
     expect_cut(line, "disallow")

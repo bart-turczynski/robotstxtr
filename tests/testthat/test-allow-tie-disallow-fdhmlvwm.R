@@ -215,8 +215,8 @@ test_that("a tie on an inner-dollar pattern keeps both warnings", {
   )
 })
 
-# The parser stops a value at a NUL; the matchers drop the NUL and read on,
-# so the group checks are skipped on any NUL.
+# The parser stops a value at a NUL; Google's matcher drops the NUL and reads
+# on, so the group checks are skipped on any NUL.
 at_nul <- function(...) {
   parts <- list(...)
   out <- charToRaw(parts[[1L]])
@@ -250,7 +250,7 @@ test_that("a NUL in a User-agent skips wildcard_rules_not_inherited", {
   x <- robots_validate_text(at_nul(
     "User-agent: *\nDisallow: /a\n\nUser-agent: bot", "x\nAllow: /b\n"
   ))
-  expect_identical(x$diagnostics$code, "nul_byte")
+  expect_identical(x$diagnostics$code, c("nul_byte", "rules_after_nul_removal"))
 })
 
 test_that("edge inputs compare without error", {
