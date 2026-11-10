@@ -87,6 +87,9 @@ compatibility with the named crawler, while the Yandex and Bing backends are
 bounded to their supported vendor profiles and RFC 9309 behavior is available
 only under the \code{rfc9309} backend. See
 \code{robots_engine_contract_v1()$matcher_capability}.
+
+A Google row whose selected rule has an empty value reports
+\code{reason = "default_allow"} with no line, as in \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}.
 }
 \examples{
 # A refused origin is decided before any request, so this runs offline. The
