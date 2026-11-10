@@ -66,7 +66,8 @@ lc_answer <- function(body, path, token = "FooBot") {
   Encoding(url) <- "UTF-8"
   v1 <- robots_evaluate_text_v1(body, url, token, "google", "google")$results
   text <- allowed_by_robots_text(body, url, token)$results$allowed
-  c(v1 = v1$url_decision, text = if (isTRUE(text)) "allow" else "disallow")
+  text <- if (is.na(text)) NA_character_ else if (text) "allow" else "disallow"
+  c(v1 = v1$url_decision, text = text)
 }
 
 lc_expect <- function(body, path, want, token = "FooBot") {

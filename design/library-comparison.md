@@ -253,8 +253,10 @@ disallow (3 against 2), `py` allows. CPython 3.15.2
 `Lib/urllib/robotparser.py` `RuleLine.applies_to`: "return the matching
 length plus 1", the length of the path text the pattern matched.
 
-Verdict: library deviation; RFC 9309 §2.2.2 counts the octets of the
-pattern ("the most octets"), as Google does.
+Verdict: library deviation from Google, which counts the octets of the
+pattern. RFC 9309 §2.2.2 ("the match that has the most octets") does not say
+whether the pattern or the matched text is counted, so `py`'s reading is not
+clearly an RFC break.
 
 ### 10. Allow on a tie, and a trailing `*`
 
@@ -337,8 +339,9 @@ and re-escapes both sides; robots-parser 3.0.1 `Robots.js`
 `urlEncodeToUpper` upper-cases escapes on both sides. Others: none found.
 
 Verdict: library deviation. RFC 9309 §2.2.2 decodes an unreserved escape
-such as `%7E` and keeps a reserved one such as `%2F`, so `pro` and `jv`
-follow the RFC on `%7E`, and `py`, `rtx`, `spb` break it on `%2F`.
+such as `%7E` and keeps a reserved one such as `%2F`. Every library in the
+table above that decodes `%7E` follows the RFC there; `py`, `rtx` and `spb`
+break it on `%2F`.
 `design/edge-case-catalog.md` records the Google side and its validator
 gaps (ROBO-gaczsrgj for `%7E`).
 
