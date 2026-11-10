@@ -243,10 +243,16 @@ write `NA` in both.
 2. `html`: a line starting, after whitespace or a UTF-8 BOM, with
    `<!doctype html`, `<html`, `<head` or `<body`, in any letter case,
    possibly after `<?...?>` declarations and `<!--...-->` comments that close
-   on that same line. An HTML error page lands here.
+   on that same line. An HTML error page lands here. So does a body whose
+   first non-whitespace byte is `<` and whose window holds `<!doctype html`,
+   `<html`, `<head`, `<body`, `<script` or `<style` anywhere, in any letter
+   case, followed by whitespace, `>`, `/` or the window's end: a minified
+   page opening with inline script or style (ROBO-qquftxcx). `<title`,
+   `<link` and `<meta` are left out, since RSS and Atom feeds use them.
 3. `xml`: the first non-whitespace byte is `<`. No robots.txt line starts
-   with `<`; a `<` inside a comment or a value never flags. HTML tag soup
-   without any of the four markers above lands here, not in `html`.
+   with `<`; a `<` inside a comment or a value never flags. Markup without
+   any of the six markers above, such as a feed or tag soup, lands here, not
+   in `html`.
 4. `json`: the body opens with a JSON object (`{` then `"` or `}`) or array
    (`[` then a value or `]`).
 
