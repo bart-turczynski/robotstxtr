@@ -2,6 +2,8 @@
 
 * The v1 `google` matcher parses each distinct robots.txt once per call, not once per URL (ROBO-iooslxvj).
 
+* `robots_validate_text()` recognizes the draft aipref `__usage_ai-training` token: an info, warnings on near misses, unusable lines and stacked groups, and no `wildcard_rules_not_inherited` (ROBO-kzyfejcv).
+
 * `robots_validate_text()` and `robots_validate_url()` warn, as `rule_lowercase_escape`, on a lower-case percent-escape in an Allow or Disallow pattern, which Google matches only in upper case (ROBO-kormmfyg).
 
 * `robots_validate_url()` notes a 2xx status other than 200, such as 203, with an info `acquisition_http_other_2xx` naming how Google, Yandex and Bing read it (ROBO-yvhqvthd).

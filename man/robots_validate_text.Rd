@@ -137,6 +137,25 @@ A Sitemap scheme other than \code{http}, \code{https} or \code{ftp}. \cr
 A named User-agent group lacks some \code{User-agent: *} rules, which
 its crawlers therefore do not obey. Anchored on the group's first
 User-agent line. Not reported for a body cut at \code{max_bytes}. \cr
+\code{ai_training_preference} \tab info \tab
+A User-agent line names the AI-training policy token
+\code{__usage_ai-training}; the message lists its group's own rules.
+One per group, on its first such line. \cr
+\code{ai_training_token_near_miss} \tab warning \tab
+A User-agent value close to the policy token that does not match it
+exactly, such as \code{__usage_ai_training} or
+\code{__usage_ai-training/1.0}. \cr
+\code{ai_training_group_extra_line} \tab warning \tab
+A directive such as \code{Crawl-delay} in a group that names only the
+policy token, before its last rule or anywhere in the file's last
+group; file-level Sitemap, Host and \code{Clean-param} lines are left
+out.
+\cr
+\code{ai_training_token_stacked} \tab warning \tab
+A policy-token User-agent line (\code{__usage_}, or a near miss)
+shares a group with \code{User-agent: *}, or with a crawler or other
+policy token from which a directive line separates it, so the group's
+rules reach them too. \cr
 \code{disallow_tied_by_allow} \tab warning \tab
 A Disallow never takes effect: an Allow with the identical pattern
 applies to the same crawlers and wins the tie. Anchored on the
@@ -182,7 +201,9 @@ A 1xx or a status outside 100 to 599. \cr
 A 2xx other than 200, such as 203 or 204; the body is still validated.
 \code{message} names how Google, Yandex and Bing read the status. \cr
 \code{acquisition_limit_exceeded} \tab error \tab
-A 3xx body exceeded \code{max_bytes} and was refused whole. \cr
+A body with a 3xx status, an unknown status, or a 2xx whose libcurl and
+status-line statuses disagree exceeded \code{max_bytes} and was refused
+whole. \cr
 \code{acquisition_partial_response} \tab error \tab
 A partial HTTP response was rejected. \cr
 \code{acquisition_redirect_over_budget} \tab error \tab
@@ -246,6 +267,35 @@ left out. The message lists the missing \code{*} rules, ten at most. A crawler
 whose rules are all explicit allow-all (an empty \verb{Disallow:} or an
 every-path \code{Allow}, as above) is not reported; an empty \verb{Allow:} is ignored,
 and a crawler whose groups have no other rule is reported.
+
+The \code{ai_training_} codes follow
+draft-kelley-aipref-training-preference-signal-00 (dated 2026-10-30), an
+Internet-Draft: a \verb{User-agent: __usage_ai-training} group states an
+AI-training preference, a disallowed path one against training on it and
+an allowed path one in favor. The draft matches the token exactly, apart
+from ASCII case, and a \verb{User-agent: *} group never applies to it, so the
+token is never reported as \code{wildcard_rules_not_inherited}, nor is a value
+Google's matcher reads as the token (\verb{__usage_ai-training/1.0}). A near
+miss is a value whose leading run of letters, \verb{_} and \code{-}, with the \verb{_}
+and \code{-} removed, is \code{usageaitraining} in any case. The Google and Yandex
+parsers join User-agent lines that no Allow or Disallow line separates
+into one group; the Bing parser joins them only across blank and comment
+lines and ends the group at any other directive
+(\code{design/engine-disagreements.md} classes 1 and 1b). So a training
+opt-out after a \code{*} group that holds no rule can become a Disallow for
+every crawler, and \code{ai_training_token_stacked} says so, naming which
+parsers join the lines. Another policy token or crawler a directive line
+separates from the token is reported too. Blank and comment lines
+separate nothing, and the draft lets a group mix tokens, so consecutive
+or comment-headed User-agent lines that name crawlers stay silent. A
+line after a token group's last rule may head the next group, so
+\code{ai_training_group_extra_line} leaves it out unless the group is the
+file's last. A key such as \code{DisallowAITraining} is
+\code{accepted_directive_prefix}. A body cut at \code{max_bytes} is checked, and
+the info then says the lines past the cut were not read; a document
+holding a NUL byte gets none of these codes.
+Which crawler operators read the token, and from when, is recorded with
+dates in \code{design/engine-profiles.md} section 7a.
 
 For \code{disallow_tied_by_allow}, an Allow and a Disallow with the same
 pattern match the same paths with the same priority, and Allow wins the

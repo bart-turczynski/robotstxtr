@@ -136,9 +136,11 @@ Yandex row the matcher status is `not_evaluated` with either
 `reason = "invalid_request_target"`
 (`error_class = "robots_invalid_request_target"`), both at
 `error_stage = "input"`; `unsupported_crawler` takes precedence when both a
-target and a token are invalid. Bodies over 500,000 bytes resolve through the
-documented Yandex `allow_all` policy (`matcher_status = "not_needed"`) before
-the matcher runs. A 2xx cut at `max_bytes` that stored at least 512,000 bytes
+target and a token are invalid. A fetched body over 500,000 bytes resolves
+through the documented Yandex `allow_all` policy before the matcher runs
+(`matcher_status = "not_needed"`); a supplied or local body stays `use_rules`
+(`supplied_body_use_rules`) at any size. A 2xx cut at `max_bytes` that stored at
+least 512,000 bytes
 is a file over 500 KB under either reading of the unit, so it resolves
 `allow_all` too, while its `evidence_status` stays `incomplete`
 (ROBO-arrtietl): a cut 200 with the same `yandex_file_over_500000_bytes`
@@ -159,11 +161,14 @@ legacy functions and `as_legacy_robots_decisions_v1()` report the same
 differs: when the selected rule is an empty `Disallow`, the row reports
 `effective_empty_disallow` with that rule's line.
 
-RFC 9309 and Bing matcher requests return `capability_unavailable-v1`. Their
-policy tables still resolve independently where the accepted design has
-evidence. Bing fetch/status policy remains a `documentation_gap`;
-`assumed_rfc9309` is a separately named application policy and is never reported
-as Bing.
+RFC 9309 matcher requests return `matcher_status = "capability_unavailable"`
+(reason `matcher_capability_unavailable`; the rfc9309 revision is
+`capability-unavailable-v1`). Bing matcher
+requests are available, bounded to its supported vendor profiles
+(`bounded_profiles`). The RFC 9309 and Bing policy tables still resolve
+independently where the accepted design has evidence. Bing fetch/status policy
+remains a `documentation_gap`; `assumed_rfc9309` is a separately named
+application policy and is never reported as Bing.
 
 ## Legacy compatibility
 
@@ -193,9 +198,10 @@ chain; a redirect's `Retry-After` never counts.
 
 `NA` means "not available", not "no delay requested". Besides a final
 response without the field, that covers an outcome with no usable final
-response: a refusal, a transport failure, a `redirect_error`, and a 3xx
-body over `max_bytes`. A 2xx body over `max_bytes` is a final response, cut
-(ROBO-ldpahknv below), so its `Retry-After` is kept. A 4xx or 5xx whose body
+response: a refusal, a transport failure, a `redirect_error`, and a body
+over `max_bytes` with a 3xx status, an unknown status, or a 2xx whose libcurl
+and status-line statuses disagree. A 2xx body over `max_bytes` that is cut is a
+final response (ROBO-ldpahknv below), so its `Retry-After` is kept. A 4xx or 5xx whose body
 exceeds `max_bytes` keeps its
 status and outcome, but ssrfr's size failure carries no headers, so its
 `Retry-After` is `NA` even when the server sent one. robotstxtr never
@@ -280,7 +286,9 @@ split a character.
 | v1 `termination_reason` | `ceiling` |
 | v1 `evidence_status` | `incomplete`, as before: no v1 policy verdict or URL decision is made from a prefix, except for a cut of at least 512,000 bytes: the `yandex` ruleset's `allow_all` (ROBO-arrtietl) and the `google` ruleset's match, with the `google` backend, of the complete lines in its first 512,000 bytes (ROBO-ptibdnvy) |
 
-A 3xx body over `max_bytes` is still `body_too_large` with no body, and a 4xx
+A body over `max_bytes` with a 3xx status, an unknown status, or a 2xx whose
+libcurl and status-line statuses disagree is still `body_too_large` with no
+body, and a 4xx
 or 5xx still keeps its status outcome with no body: ssrfr truncates only a 2xx.
 A 206 stays `partial_response` with no body.
 
@@ -354,7 +362,8 @@ Decisions:
   prefix. Its documentation says so.
   `observed_bytes` stays in the v1 evidence only.
 - `robots_validate_url()` validates a cut prefix and reports the cut in its
-  documents frame. A body refused whole (a 3xx over `max_bytes`) is still
+  documents frame. A body refused whole (a 3xx, an unknown status, or a 2xx
+  whose libcurl and status-line statuses disagree, over `max_bytes`) is still
   `not_validated` with `acquisition_limit_exceeded`.
 - `max_bytes` below RFC 9309's 500 KiB floor (`512000`) stays accepted, and
   is documented as below it. The default, `524288`, meets the floor.

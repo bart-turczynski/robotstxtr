@@ -145,10 +145,12 @@ crawler. Bing seals the `*` run at `Content-Signal`, an unknown field, and the
 stacks on all four rows.
 
 This shape decides how an aipref `__usage_ai-training` group
-(draft-kelley-aipref-training-preference-signal) reads under Google-style
-stacking: a training opt-out written after a `*` group that holds only
-non-rule lines becomes a full `Disallow` for every crawler. The validator side
-is ROBO-kzyfejcv.
+(draft-kelley-aipref-training-preference-signal-00, an Internet-Draft dated
+2026-10-30) reads under Google-style stacking: a training opt-out written
+after a `*` group that holds only non-rule lines becomes a full `Disallow` for
+every crawler. The validator side is ROBO-kzyfejcv: `robots_validate_text()`
+warns `ai_training_token_stacked` on the token line of this fixture (and of
+the control, whose group also names `*`); see `design/engine-profiles.md` §5c.
 
 Verdict: EXPECTED-SOURCED, on class 1's sources
 (`design/robotstxtbing-v2-spec.md` §9.3 rule 2a).
