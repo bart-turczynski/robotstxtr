@@ -9,10 +9,15 @@
 # (`RobotsMatcher::OneAgentAllowedByRobots()` on the raw body bytes, then
 # `matching_line()`): `ref_allowed` and `ref_line`, 0 when no rule matched.
 # The differential re-derives both from the reference binary and fails on any
-# drift, so the recorded answers stay the reference's, not robotstxtr's.
+# drift, so the recorded answers stay the reference's, not robotstxtr's, and on
+# any difference gf_expected_difference() below does not list.
 #
 # `paths` names the robotstxtr entry points a case can reach: a body with a
 # NUL byte cannot be an R string, so it reaches only the fetched paths.
+#
+# Source this file into an environment that can see the package namespace and
+# tests/testthat/helper-fake-ssrfr.R (the test file's own environment, or the
+# differential's), never into globalenv.
 
 gf_text_paths <- c("v1_text", "text")
 gf_url_paths <- c("url", "v1_url")
@@ -341,24 +346,84 @@ gf_cases <- function() {
             "FooBot", "ftp://example.com/private", 0, 2),
 
     # --- A NUL byte (only a fetched body can carry one) -------------------
-    # The reference stops the value at the NUL ("/a"); robotstxtr drops the
-    # NUL ("/ab"). Both disallow /ab on line 2.
+    # The reference reads each line as a NUL-terminated C string, so the
+    # rule is "/a"; robotstxtr removes the NUL, so the rule is "/ab". Both
+    # disallow /ab on line 2; only the reference disallows /a and /ac.
     gf_case("nul-in-rule", "nul",
             c(gf_b("User-agent: *\nDisallow: /a"), as.raw(0), gf_b("b\n")),
             "FooBot", "https://example.com/ab", 0, 2, gf_url_paths),
+    gf_case("nul-in-rule-prefix", "nul",
+            c(gf_b("User-agent: *\nDisallow: /a"), as.raw(0), gf_b("b\n")),
+            "FooBot", "https://example.com/a", 0, 2, gf_url_paths),
+    gf_case("nul-in-rule-other", "nul",
+            c(gf_b("User-agent: *\nDisallow: /a"), as.raw(0), gf_b("b\n")),
+            "FooBot", "https://example.com/ac", 0, 2, gf_url_paths),
+    # The same C string is empty: the reference reads an empty line.
     gf_case("nul-before-key", "nul",
             c(gf_b("User-agent: *\n"), as.raw(0), gf_b("Disallow: /x\n")),
             "FooBot", "https://example.com/x", 1, 0, gf_url_paths)
   )
 }
 
+# --- The expected differences -------------------------------------------------
+
+gf_v1_path <- function(path) startsWith(path, "v1_")
+
+# What robotstxtr returns where it differs from the reference, by case and
+# path: list(class, allowed, line, reason), or NULL where it must agree. The
+# classes are design/engine-profiles.md §5b's. The pinned test and the
+# differential both read this table.
+gf_expected_difference <- function(id, path) {
+  empty_value <- c(
+    "ev-disallow", "ev-allow", "ev-both", "ev-comment", "ev-beside-rule-miss"
+  )
+  invalid_reason <- if (gf_v1_path(path)) "input_invalid" else "input_unknown"
+  if (id %in% empty_value) {
+    return(list(class = 1L, allowed = TRUE, line = NA_integer_,
+                reason = "default_allow"))
+  }
+  if (id %in% c("win-after", "win-after-ceiling", "win-straddle") &&
+        gf_v1_path(path)) {
+    return(list(class = 2L, allowed = TRUE, line = NA_integer_,
+                reason = "default_allow"))
+  }
+  if (identical(id, "win-after-ceiling") && identical(path, "url")) {
+    return(list(class = 3L, allowed = TRUE, line = NA_integer_,
+                reason = "default_allow"))
+  }
+  if (id %in% c("in-empty-url", "in-empty-token")) {
+    return(list(class = 4L, allowed = NA, line = NA_integer_,
+                reason = invalid_reason))
+  }
+  if (id %in% c("in-schemeless-url", "in-ftp-url") &&
+        path %in% c("url", "v1_url:google")) {
+    return(list(class = 4L, allowed = NA, line = NA_integer_,
+                reason = invalid_reason))
+  }
+  if (identical(id, "nul-before-key")) {
+    return(list(class = 5L, allowed = FALSE, line = 2L,
+                reason = "rule_disallow"))
+  }
+  if (id %in% c("nul-in-rule-prefix", "nul-in-rule-other")) {
+    return(list(class = 5L, allowed = TRUE, line = NA_integer_,
+                reason = "default_allow"))
+  }
+  NULL
+}
+
 # --- robotstxtr's side --------------------------------------------------------
 
 # The v1 rulesets whose google backend reaches the matcher for a supplied
 # body: every ruleset reads a supplied body as `use_rules`, except that
-# yandex resolves a body over 500,000 bytes `allow_all` with no matcher
+# yandex resolves a body over its limit `allow_all` with no matcher
 # (design/engine-profiles.md §7), so those rows are left out.
 gf_v1_rulesets <- c("google", "rfc9309", "assumed_rfc9309", "bing", "yandex")
+
+# The yandex limit, 500,000 bytes: the package's own policy_limit_v1()
+# (R/engine-contract-v1.R), published as `policy_body_limit_bytes`. The
+# allow_all rule in resolve_policy_v1() spells the same value as a literal
+# (`evidence$stored_bytes > 500000L`).
+gf_yandex_limit <- policy_limit_v1("yandex")
 
 gf_body_string <- function(body) {
   out <- rawToChar(body)
@@ -395,7 +460,7 @@ gf_run_case <- function(case) {
   body <- case$body
   if ("v1_text" %in% case$paths) {
     rulesets <- gf_v1_rulesets
-    if (length(body) > 500000L) {
+    if (length(body) > gf_yandex_limit) {
       rulesets <- setdiff(rulesets, "yandex")
     }
     x <- robots_evaluate_text_v1(

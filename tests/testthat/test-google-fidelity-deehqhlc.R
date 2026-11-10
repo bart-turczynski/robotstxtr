@@ -17,50 +17,18 @@
 #   2. the 512,000-byte window (v1 paths): a rule after it, or a line it cuts;
 #   3. the max_bytes cut (allowed_by_robots_url()): a rule past the cut;
 #   4. input screening: an empty URL or token, a URL that is not HTTP(S);
-#   5. a NUL byte in a fetched body is dropped, not read.
+#   5. a NUL byte in a fetched body: the reference reads a line only up to
+#      its first NUL, robotstxtr removes the NUL.
 
-source(test_path("fixtures", "google-fidelity-deehqhlc", "cases.R"))
-
-gf_v1_path <- function(path) startsWith(path, "v1_")
-
-# What robotstxtr returns where it differs from the reference, by case and
-# path: list(class, allowed, line, reason), or NULL where it must agree.
-gf_expected_difference <- function(id, path) {
-  empty_value <- c(
-    "ev-disallow", "ev-allow", "ev-both", "ev-comment", "ev-beside-rule-miss"
-  )
-  invalid_reason <- if (gf_v1_path(path)) "input_invalid" else "input_unknown"
-  if (id %in% empty_value) {
-    return(list(class = 1L, allowed = TRUE, line = NA_integer_,
-                reason = "default_allow"))
-  }
-  if (id %in% c("win-after", "win-after-ceiling", "win-straddle") &&
-        gf_v1_path(path)) {
-    return(list(class = 2L, allowed = TRUE, line = NA_integer_,
-                reason = "default_allow"))
-  }
-  if (identical(id, "win-after-ceiling") && identical(path, "url")) {
-    return(list(class = 3L, allowed = TRUE, line = NA_integer_,
-                reason = "default_allow"))
-  }
-  if (id %in% c("in-empty-url", "in-empty-token")) {
-    return(list(class = 4L, allowed = NA, line = NA_integer_,
-                reason = invalid_reason))
-  }
-  if (id %in% c("in-schemeless-url", "in-ftp-url") &&
-        path %in% c("url", "v1_url:google")) {
-    return(list(class = 4L, allowed = NA, line = NA_integer_,
-                reason = invalid_reason))
-  }
-  if (identical(id, "nul-before-key")) {
-    return(list(class = 5L, allowed = FALSE, line = 2L,
-                reason = "rule_disallow"))
-  }
-  NULL
-}
+# Into this file's environment, which sees helper-fake-ssrfr.R and the
+# namespace; globalenv sees neither under an installed-package check.
+source(
+  test_path("fixtures", "google-fidelity-deehqhlc", "cases.R"), local = TRUE
+)
 
 test_that("ROBO-deehqhlc: every path agrees with the reference outside 1-5", {
   seen <- integer()
+  differing <- character()
   for (case in gf_cases()) {
     got <- gf_run_case(case)
     for (k in seq_len(nrow(got))) {
@@ -76,6 +44,7 @@ test_that("ROBO-deehqhlc: every path agrees with the reference outside 1-5", {
         )
       } else {
         seen <- union(seen, want$class)
+        differing <- union(differing, case$id)
         expect_identical(got$allowed[[k]], want$allowed, label = label)
         expect_identical(got$line[[k]], want$line, label = label)
         expect_identical(got$reason[[k]], want$reason, label = label)
@@ -83,6 +52,13 @@ test_that("ROBO-deehqhlc: every path agrees with the reference outside 1-5", {
     }
   }
   expect_setequal(seen, 1:5)
+  # Every case the table lists reaches a path where it differs.
+  expect_setequal(differing, c(
+    "ev-disallow", "ev-allow", "ev-both", "ev-comment", "ev-beside-rule-miss",
+    "win-after", "win-after-ceiling", "win-straddle",
+    "in-empty-url", "in-empty-token", "in-schemeless-url", "in-ftp-url",
+    "nul-before-key", "nul-in-rule-prefix", "nul-in-rule-other"
+  ))
 })
 
 test_that("ROBO-deehqhlc: the fixtures reach every path and family", {
@@ -94,6 +70,12 @@ test_that("ROBO-deehqhlc: the fixtures reach every path and family", {
   ))
   ids <- vapply(cases, `[[`, character(1L), "id")
   expect_false(anyDuplicated(ids) > 0L)
+  # Every entry point is reached, and a NUL body only by the fetched ones.
+  paths <- lapply(cases, `[[`, "paths")
+  expect_setequal(unlist(paths), c("v1_text", "text", "url", "v1_url"))
+  nul <- families == "nul"
+  expect_true(all(vapply(paths[nul], setequal, logical(1L), gf_url_paths)))
+  expect_true(all(vapply(paths[!nul], setequal, logical(1L), gf_all_paths)))
 })
 
 # --- Class 1: an Allow/Disallow with an empty value ---------------------------
@@ -185,18 +167,20 @@ test_that("ROBO-deehqhlc class 2: a line the window cuts is dropped whole", {
   expect_identical(r$matcher_input_bytes, rep(512000L - 11L, 2L))
 })
 
-test_that("ROBO-deehqhlc class 2: a line whose LF is past the window applies", {
-  # Reference and v1 agree: disallowed on line 3, both when the LF is byte
-  # 512,000 and when it is byte 512,001.
+test_that("ROBO-deehqhlc class 2: a rule ending at the window edge applies", {
+  # Reference and v1 agree: disallowed on line 3, both when the rule ends at
+  # byte 512,000 and its LF is byte 512,001 (past the window), and when the
+  # LF itself is byte 512,000.
   for (at in c(512000L - 18L, 512000L - 19L)) {
+    label <- sprintf("LF at byte %d", at + 19L)
     body <- gf_edge_body("Disallow: /private\n", at, 600000L)
     r <- robots_evaluate_text_v1(
       gf_body_string(body), "https://example.com/private", "FooBot",
       "google", "google"
     )$results
-    expect_identical(r$url_decision, "disallow")
-    expect_identical(r$matched_line, 3L)
-    expect_identical(r$matcher_input_bytes, 512000L)
+    expect_identical(r$url_decision, "disallow", label = label)
+    expect_identical(r$matched_line, 3L, label = label)
+    expect_identical(r$matcher_input_bytes, 512000L, label = label)
   }
 })
 
@@ -268,9 +252,11 @@ test_that("ROBO-deehqhlc class 4: the URL paths need an HTTP(S) URL", {
 # --- Class 5: a NUL byte ------------------------------------------------------
 
 test_that("ROBO-deehqhlc class 5: a NUL before a key is dropped, not read", {
-  # Reference: "\0Disallow" is an unknown key, so /x is allowed, no line.
-  # robotstxtr drops NUL bytes before matching (PRD §6.6, NUL rule;
-  # R/body-decode.R; ROBO-hcqrzikz), so the line is a Disallow.
+  # Reference: the parser reads each line as a NUL-terminated C string
+  # (src/robots.cc, GetKeyAndValueFrom()), so "\0Disallow: /x" is an empty
+  # line and /x is allowed, no line. robotstxtr removes NUL bytes before
+  # matching (PRD §6.6, NUL rule; R/body-decode.R; ROBO-hcqrzikz), so the
+  # line is a Disallow.
   body <- c(
     charToRaw("User-agent: *\n"), as.raw(0), charToRaw("Disallow: /x\n")
   )
@@ -283,4 +269,26 @@ test_that("ROBO-deehqhlc class 5: a NUL before a key is dropped, not read", {
   expect_identical(u$matched_line, 2L)
   expect_identical(v$url_decision, "disallow")
   expect_identical(v$matched_line, 2L)
+})
+
+test_that("ROBO-deehqhlc class 5: a NUL inside a value is removed, not a cut", {
+  # Reference: the same C string ends the value at the NUL, so the rule is
+  # "/a": /a, /ac and /ab are all disallowed on line 2. robotstxtr removes
+  # the NUL, so the rule is "/ab": only /ab is disallowed (PRD §6.6: the
+  # document is not truncated at the NUL; R/body-decode.R).
+  body <- c(
+    charToRaw("User-agent: *\nDisallow: /a"), as.raw(0), charToRaw("b\n")
+  )
+  urls <- c(
+    "https://example.com/a", "https://example.com/ac", "https://example.com/ab"
+  )
+  gf_with_body(body, {
+    u <- allowed_by_robots_url(urls, "FooBot")$results
+    v <- robots_evaluate_url_v1(urls, "FooBot", "google", "google")$results
+  })
+  expect_identical(u$allowed, c(TRUE, TRUE, FALSE))
+  expect_identical(u$matched_line, c(NA_integer_, NA_integer_, 2L))
+  expect_identical(v$url_decision, c("allow", "allow", "disallow"))
+  expect_identical(v$matched_line, c(NA_integer_, NA_integer_, 2L))
+  expect_identical(v$matched_rule_value[[3L]], "/ab")
 })
