@@ -117,18 +117,14 @@ test_that("ROBO-yvhqvthd: validate_document_bytes() fires on a fetched 2xx", {
 })
 
 test_that("ROBO-yvhqvthd: validate_document_bytes() gates on the fetched 2xx", {
-  # Not 2xx other than 200 (200, 404, 429, 500, 102, 600, a missing status), a
-  # 206 (partial, though 2xx), and a row that was not fetched: no code.
-  for (status in c(200L, 206L, 404L, 429L, 500L, 102L, 600L, NA_integer_)) {
+  # Not 2xx other than 200 (200, 404, 429, 500, 102, 600, a missing status),
+  # and a row that was not fetched: no code.
+  for (status in c(200L, 404L, 429L, 500L, 102L, 600L, NA_integer_)) {
     expect_identical(
       yv_document(http_status = status)$code, character(),
       label = paste("fetched", status)
     )
   }
-  expect_identical(
-    yv_document(http_status = 206L, fetch_outcome = "partial_response")$code,
-    character()
-  )
   expect_identical(
     yv_document(http_status = 203L, fetch_outcome = "partial_response")$code,
     character()

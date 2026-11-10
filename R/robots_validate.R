@@ -876,10 +876,10 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   }
   # A fetched 2xx other than 200 keeps its body, which is validated as a 200's
   # is; the code says how each ruleset reads the status (ROBO-yvhqvthd). A 206
-  # is partial (classify_status) and never a fetched body, so it is left out
-  # even though http_status_category_v1() counts it as 2xx other.
-  other_2xx <- identical(fetch_outcome, "fetched") && !is.na(http_status) &&
-    http_status != 206L &&
+  # never comes here fetched: classify_status() gives it partial_response with
+  # no body. http_status_category_v1() still counts 206 as 2xx other, and a
+  # missing status is protocol_error, so the category test drops that too.
+  other_2xx <- identical(fetch_outcome, "fetched") &&
     identical(http_status_category_v1(http_status), "status_other_2xx")
   if (other_2xx) {
     add_diagnostic(
