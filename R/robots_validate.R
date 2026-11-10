@@ -474,9 +474,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     )
   }
 
-  has_bom <- length(bytes) >= 3L && identical(
-    bytes[1:3], as.raw(c(0xef, 0xbb, 0xbf))
-  )
+  has_bom <- length(bytes) >= 3L && identical(bytes[1:3], validation_bom)
   if (has_bom) {
     add_diagnostic(
       1L, "warning", "byte_order_mark", NA_character_,
@@ -1116,18 +1114,12 @@ misplaced_bom_offset <- function(line, skip_start) {
            line[[first]] %in% as.raw(c(0x20, 0x09, 0x0b, 0x0c))) {
     first <- first + 1L
   }
-  if (first + 2L <= n &&
-        identical(line[first:(first + 2L)], validation_bom)) {
-    first
-  } else {
-    0L
-  }
+  # Indexing past the end of a raw vector gives 00, so a short tail never
+  # equals the BOM.
+  if (identical(line[first:(first + 2L)], validation_bom)) first else 0L
 }
 
 misplaced_bom_lines <- function(raw_lines, has_bom) {
-  if (length(raw_lines) == 0L) {
-    return(integer())
-  }
   found <- vapply(seq_along(raw_lines), function(i) {
     misplaced_bom_offset(raw_lines[[i]], i == 1L && has_bom) > 0L
   }, logical(1L))
@@ -1139,8 +1131,9 @@ misplaced_bom_lines <- function(raw_lines, has_bom) {
 misplaced_bom_hidden <- function(line, skip_start) {
   at <- misplaced_bom_offset(line, skip_start)
   rest <- validation_raw_slice(line, at + 3L, length(line))
+  # The binding reports at least one line, even for an empty `rest`.
   parsed <- robotstxtr_validation_parse_(rest)
-  type <- if (length(parsed$type) > 0L) parsed$type[[1L]] else "none"
+  type <- parsed$type[[1L]]
   labels <- c(
     "user-agent" = "User-agent", allow = "Allow", disallow = "Disallow",
     sitemap = "Sitemap"

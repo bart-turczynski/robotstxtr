@@ -152,6 +152,10 @@ test_that("ROBO-atkmqcov: a BOM that does not start the key is not counted", {
   expect_identical(bom_codes(c(ua_star, charToRaw("Al"), bom,
                                charToRaw("low: /a\n"))),
                    "unknown_directive@3")
+  # Two BOM bytes at a line's end are not a BOM.
+  expect_false("misplaced_byte_order_mark" %in% robots_validate_text(
+    c(ua_star, bom[1:2])
+  )$diagnostics$code)
 })
 
 test_that("ROBO-atkmqcov: empty, BOM-only, NUL and non-UTF-8 bodies", {
