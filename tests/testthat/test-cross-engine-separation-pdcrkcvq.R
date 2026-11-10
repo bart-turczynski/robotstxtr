@@ -227,11 +227,9 @@ test_that("D1 a Google request never touches the Yandex adapter", {
     calls$yandex <- calls$yandex + 1L
     NULL
   }
-  testthat::local_mocked_bindings(
-    match_google_v1 = fake_google,
-    match_yandex_v1 = fake_yandex,
-    .package = "robotstxtr"
-  )
+  local_matcher_registry(fake_matcher_registry(
+    google = fake_row_adapter(fake_google), yandex = fake_yandex
+  ))
 
   x <- robots_evaluate_text_v1(
     "user-agent: *\ndisallow: /private",
@@ -271,11 +269,9 @@ test_that("D2 a Yandex row dispatches to the Yandex adapter, not Google", {
     out$matched_rule_value_raw <- list(charToRaw("/private"))
     out
   }
-  testthat::local_mocked_bindings(
-    match_google_v1 = fake_google,
-    match_yandex_v1 = fake_yandex,
-    .package = "robotstxtr"
-  )
+  local_matcher_registry(fake_matcher_registry(
+    google = fake_row_adapter(fake_google), yandex = fake_yandex
+  ))
 
   x <- robots_evaluate_text_v1(
     "user-agent: *\ndisallow: /private",
@@ -543,21 +539,20 @@ test_that("BD1 a Bing row dispatches to the Bing adapter only", {
   calls$google <- 0L
   calls$yandex <- 0L
   calls$bing <- 0L
-  testthat::local_mocked_bindings(
-    match_google_v1 = function(body, url, product_token) {
+  local_matcher_registry(fake_matcher_registry(
+    google = fake_row_adapter(function(body, url, product_token) {
       calls$google <- calls$google + 1L
       xe_canned_google(body)
-    },
-    match_yandex_v1 = function(bodies, urls, product_tokens) {
+    }),
+    yandex = function(bodies, urls, product_tokens) {
       calls$yandex <- calls$yandex + 1L
       NULL
     },
-    match_bing_v1 = function(bodies, urls, product_tokens) {
+    bing = function(bodies, urls, product_tokens) {
       calls$bing <- calls$bing + 1L
       bxe_canned_bing(bodies)
-    },
-    .package = "robotstxtr"
-  )
+    }
+  ))
 
   x <- robots_evaluate_text_v1(
     "user-agent: bingbot\ndisallow: /private",
@@ -578,15 +573,15 @@ test_that("BD1 a Bing row dispatches to the Bing adapter only", {
 test_that("BD2 Google and Yandex rows never touch the Bing adapter", {
   calls <- new.env(parent = emptyenv())
   calls$bing <- 0L
-  testthat::local_mocked_bindings(
-    match_bing_v1 = function(bodies, urls, product_tokens) {
+  local_matcher_registry(fake_matcher_registry(
+    bing = function(bodies, urls, product_tokens) {
       calls$bing <- calls$bing + 1L
       bxe_canned_bing(bodies)
-    },
-    .package = "robotstxtr"
-  )
+    }
+  ))
 
-  # A Google row and a Yandex row in one call: neither may reach match_bing_v1.
+  # A Google row and a Yandex row in one call: neither may reach the Bing
+  # adapter.
   body <- "user-agent: *\ndisallow: /private"
   url <- rep("https://example.com/private", 2L)
   x <- robots_evaluate_text_v1(
@@ -604,12 +599,14 @@ test_that("BD3 Bing separation is enforced at the registry", {
   registry <- engine_matcher_registry_v1()
   expect_identical(registry$bing$availability, "available")
   expect_type(registry$bing$callable, "closure")
-  # The Bing adapter keeps the batch signature the dispatcher invokes, distinct
-  # from Google's per-row shape.
-  expect_named(
-    formals(match_bing_v1),
-    c("bodies", "urls", "product_tokens")
-  )
+  # Every registered adapter has the one batch signature the dispatcher
+  # invokes (ROBO-bukqpjli); Google's row matcher sits behind its adapter.
+  for (backend in c("google", "yandex", "bing")) {
+    expect_named(
+      formals(registry[[backend]]$callable),
+      c("bodies", "urls", "product_tokens")
+    )
+  }
   expect_named(
     formals(match_google_v1),
     c("body", "url", "product_token")

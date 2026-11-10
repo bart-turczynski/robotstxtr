@@ -11,9 +11,8 @@
 # data.frame. `bing_evaluate_batch()` parses each DISTINCT body exactly once and
 # evaluates every row selecting it in a single native call, so the adapter
 # dedupes bodies internally to preserve parse-once. `evaluate_rows_v1()` gathers
-# every `bing` row and invokes this adapter ONCE in batch form; the per-row
-# `match_backend_v1()` guard rejects row-dispatching `bing` as an internal
-# invariant violation.
+# every `bing` row and invokes this adapter ONCE in batch form, through the one
+# batch interface every matcher adapter has (ROBO-bukqpjli).
 #
 # ENGINE-PURE. This adapter shares no parser, group selector, access matcher, or
 # URL normalizer with Google or Yandex (spec SS4). It reuses only package-owned

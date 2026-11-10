@@ -39,28 +39,11 @@ gc_serve <- function(status = 200L, body = gc_body(), env = parent.frame()) {
   local_fake_ssrfr(function(req) fake_response(status, body = body), env = env)
 }
 
-# Fail any matcher call. The registry looks these up at call time.
+# Fail any matcher call: every adapter in the registry is a forbidden fake
+# (helper-matcher-registry-bukqpjli.R).
 gc_forbid_matchers <- function(env = parent.frame()) {
   calls <- new.env(parent = emptyenv())
-  calls$google <- 0L
-  calls$yandex <- 0L
-  calls$bing <- 0L
-  testthat::local_mocked_bindings(
-    match_google_v1 = function(body, url, product_token) {
-      calls$google <- calls$google + 1L
-      stop("match_google_v1 must not be called")
-    },
-    match_yandex_v1 = function(bodies, urls, product_tokens) {
-      calls$yandex <- calls$yandex + 1L
-      stop("match_yandex_v1 must not be called")
-    },
-    match_bing_v1 = function(bodies, urls, product_tokens) {
-      calls$bing <- calls$bing + 1L
-      stop("match_bing_v1 must not be called")
-    },
-    .package = "robotstxtr",
-    .env = env
-  )
+  local_matcher_registry(forbidden_matcher_registry(calls), env = env)
   calls
 }
 

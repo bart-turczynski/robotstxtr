@@ -1,28 +1,19 @@
-# Hidden engine-aware Yandex matcher adapter (ROBO-agrvzdnr, YI4c).
+# Engine-aware Yandex matcher adapter (ROBO-agrvzdnr, YI4c; registered by
+# YI5).
 #
 # `match_yandex_v1()` maps the checked robotstxtyandex native batch binding
 # (YI4b, R/yandex-checked-batch.R) onto the host per-row result shape, applying
 # the normative §10/§11 status/reason/error and exact-byte raw-value mappings of
-# design/robotstxtyandex-integration-v1-spec.md.
+# design/robotstxtyandex-integration-v1-spec.md. It is the callable
+# engine_matcher_registry_v1() registers for the `yandex` backend.
 #
-# This adapter is HIDDEN. It is NOT registered in engine_matcher_registry_v1(),
-# Yandex availability stays "capability_unavailable", the schema revision is
-# unchanged, and nothing in the public dispatcher/facade calls it. Wiring it
-# into the dispatcher, flipping availability, and activating schema revision
-# 2026-07-18.2 are a LATER unit (YI5). This unit only defines and tests the
-# adapter package-privately.
-#
-# BATCH SHAPE (deliberate, and a YI5 requirement). The existing dispatcher
-# (match_backend_v1 -> entry$callable(body, url, product_token)) invokes each
-# matcher callable ONCE PER ROW with scalar args. YI4b's hard mandate is
-# parse-once per DISTINCT body: yandex_evaluate_checked_batch() parses each
-# distinct body exactly once and evaluates all rows that select it in a single
-# native call. A per-row callable would parse once per row and defeat that. So
-# `match_yandex_v1()` is defined BATCH-shaped -- vector/list row inputs -> a
-# per-row-mapped data.frame -- and dedupes bodies internally so parse-once holds
-# YI5 MUST wire the dispatcher to invoke this adapter in BATCH (collecting every
-# row whose matcher_backend is "yandex" under a use_rules policy action) rather
-# than through the current per-row entry$callable path.
+# BATCH SHAPE. Every matcher adapter has the one batch interface
+# `callable(bodies, urls, product_tokens)` -> a decision frame
+# (ROBO-bukqpjli): evaluate_rows_v1() calls it once with every `yandex` row.
+# YI4b's hard mandate is parse-once per DISTINCT body:
+# yandex_evaluate_checked_batch() parses each distinct body exactly once and
+# evaluates all rows that select it in a single native call, so this adapter
+# dedupes bodies internally.
 
 # Convert one row's absolute URL into the exact request-target BYTES the native
 # checked binding expects. A missing/empty URL, or a URL from which the YI4a
@@ -82,14 +73,12 @@ yandex_empty_result_v1 <- function() {
 
 #' Map checked Yandex native results onto the host per-row result shape
 #'
-#' Package-private, HIDDEN engine-aware adapter (YI4c). It runs the YI4a
-#' request-target extractor per row, groups rows by distinct body, evaluates
-#' them through the checked robotstxtyandex batch binding (parse-once per
-#' distinct body), and maps native columns to the normative §10/§11 status,
-#' reason, error, and exact-byte raw-value contract. It performs no
-#' registration, no availability flip, and no schema-revision change; the
-#' dispatcher is wired to
-#' call it in batch by a later unit (YI5).
+#' Package-private engine-aware adapter (YI4c), registered for the `yandex`
+#' backend and called once per evaluation with every `yandex` row
+#' (ROBO-bukqpjli). It runs the YI4a request-target extractor per row, groups
+#' rows by distinct body, evaluates them through the checked robotstxtyandex
+#' batch binding (parse-once per distinct body), and maps native columns to the
+#' normative §10/§11 status, reason, error, and exact-byte raw-value contract.
 #'
 #' @param bodies A list of raw vectors, one per row -- the use_rules robots body
 #'   for that row (bytes verbatim). Deduped internally for parse-once batching.

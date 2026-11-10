@@ -201,6 +201,9 @@ all associated rows before returning owning R values.
 
 ## 7. Backend dispatch contract
 
+> Superseded by ROBO-bukqpjli: `match_backend_v1` is gone, and every backend
+> is a batch adapter behind one interface. See design/engine-contract-v1.md.
+
 The R layer MUST introduce a package-private dispatcher with semantics
 equivalent to:
 

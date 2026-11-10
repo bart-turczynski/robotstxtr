@@ -6,7 +6,7 @@
 # both supplied and fetched tracer bullets and for every non-evaluated path. It
 # also proves the v2 contract identity is published (robots_engine_contract_v2),
 # reconciles the single-sourced Bing identity against the compiled ground truth,
-# exercises the batch dispatch (rejecting row-dispatch), and proves Google and
+# exercises the one batch dispatch (ROBO-bukqpjli), and proves Google and
 # Yandex identities/behavior are byte-unchanged (SS15/SS16.5).
 
 # ---------------------------------------------------------------------------
@@ -244,14 +244,18 @@ test_that("a missing or empty product token is facade-invalid, no backend", {
 # Dispatch: Bing is batch-shaped and must never be row-dispatched or fall back
 # ---------------------------------------------------------------------------
 
-test_that("Bing rejects per-row dispatch as an internal invariant violation", {
+test_that("Bing is dispatched only in batch, one frame row per input row", {
+  # Every backend has the one batch interface (ROBO-bukqpjli): there is no
+  # per-row dispatcher left to misuse.
   registry <- robotstxtr:::engine_matcher_registry_v1()
-  expect_error(
-    robotstxtr:::match_backend_v1(
-      "bing", raw(0), "https://example.test/", "bingbot", registry
-    ),
-    class = "robotstxtr_matcher_backend_not_row_dispatchable"
+  out <- robotstxtr:::dispatch_matcher_v1(
+    registry, "bing", list(raw(0), raw(0)),
+    c("https://example.test/", "https://example.test/x"), "bingbot"
   )
+  expect_identical(nrow(out), 2L)
+  expect_false(exists(
+    "match_backend_v1", envir = asNamespace("robotstxtr"), inherits = FALSE
+  ))
 })
 
 # ---------------------------------------------------------------------------
