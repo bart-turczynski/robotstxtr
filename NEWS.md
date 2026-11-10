@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* `robots_validate_text()` and `robots_validate_url()` warn, as `rule_lowercase_escape`, on a lower-case percent-escape in an Allow or Disallow pattern, which Google matches only in upper case (ROBO-kormmfyg).
+
 * `robots_validate_url()` notes a 2xx status other than 200, such as 203, with an info `acquisition_http_other_2xx` naming how Google, Yandex and Bing read it (ROBO-yvhqvthd).
 
 * `robots_validate_text()` reports `rules_after_nul_removal` instead of `no_rules` when rules appear only once NUL bytes are dropped, as in UTF-16 files (RFC 9309 §2.3) (ROBO-igrkabdb).

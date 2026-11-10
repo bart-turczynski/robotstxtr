@@ -28,11 +28,13 @@ test_that("an escaped unreserved character is one rule_escaped_unreserved", {
     for (directive in c("disallow", "allow")) {
       line <- paste0(directive, ": ", value)
       x <- eu_validate(line)
-      expect_identical(x$diagnostics$code, "rule_escaped_unreserved",
-                       label = line)
-      expect_identical(x$diagnostics$severity, "warning", label = line)
-      expect_identical(x$diagnostics$line, 2L, label = line)
-      expect_identical(x$diagnostics$directive, directive, label = line)
+      # Filtered to this code: a lower-case escape also draws
+      # rule_lowercase_escape (ROBO-kormmfyg), pinned in its own file.
+      found <- eu_found(x)
+      expect_identical(found$code, "rule_escaped_unreserved", label = line)
+      expect_identical(found$severity, "warning", label = line)
+      expect_identical(found$line, 2L, label = line)
+      expect_identical(found$directive, directive, label = line)
       expect_identical(x$documents$validation_status, "warning", label = line)
     }
   }

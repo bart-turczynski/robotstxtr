@@ -121,6 +121,12 @@ request URLs with it percent-encoded, so the rule never matches. \cr
 A pattern percent-escapes an unreserved character, such as \code{\%7E}
 for \code{~}. Google matches only the escape, never the character,
 though RFC 9309 section 2.2.2 decodes it. One per rule line. \cr
+\code{rule_lowercase_escape} \tab warning \tab
+A pattern holds a lower-case percent-escape, such as \code{\%3c}.
+Google upper-cases the escape in a pattern but not in the URL, so a URL
+written with it never matches the rule; Bing upper-cases it too, and
+the package's Yandex matcher compares the pattern as written. One per
+rule line. \cr
 \code{empty_sitemap_value} \tab warning \tab
 A Sitemap line with an empty value. \cr
 \code{invalid_sitemap_url} \tab warning \tab
