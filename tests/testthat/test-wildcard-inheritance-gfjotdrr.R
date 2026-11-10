@@ -385,6 +385,52 @@ test_that("a large document keeps every message capped", {
   }
 })
 
+test_that("a * group's blanket Allow is listed as lost (ROBO-gkuuwbgc)", {
+  # Today `Allow: /` is compared like any other `*` rule, although it grants
+  # only what the default already allows.
+  rows <- wi_rows(wi_lines(
+    "User-agent: *", "Allow: /", "User-agent: ExampleBot",
+    "Disallow: /private/"
+  ))
+  expect_identical(nrow(rows), 1L)
+  expect_identical(rows$line, 3L)
+  expect_identical(rows$message, paste0(
+    "ExampleBot obeys only this group, so this `User-agent: *` rule ",
+    "does not apply to it: Allow: / (line 2).", wi_tail
+  ))
+  for (value in c("Allow: /*", "Allow: /**", "Allow: *", "Allow: **")) {
+    body <- wi_lines("User-agent: *", value, "User-agent: ExampleBot",
+                     "Disallow: /private/")
+    rows <- wi_rows(body)
+    expect_identical(nrow(rows), 1L, label = body)
+    expect_match(rows$message, paste0(value, " (line 2)."), fixed = TRUE,
+                 label = body)
+  }
+  # An empty Allow is no rule, so the named group is not exempt.
+  rows <- wi_rows(wi_lines("User-agent: *", "Allow: /",
+                           "User-agent: ExampleBot", "Allow:"))
+  expect_identical(nrow(rows), 1L)
+})
+
+test_that("a real * rule beside a blanket * Allow is still listed", {
+  body <- wi_lines("User-agent: *", "Allow: /", "Disallow: /tmp/",
+                   "User-agent: ExampleBot", "Disallow: /private/")
+  rows <- wi_rows(body)
+  expect_identical(rows$line, 4L)
+  # Today the blanket Allow is listed beside the real rule (ROBO-gkuuwbgc).
+  expect_identical(rows$message, paste0(
+    "ExampleBot obeys only this group, so these `User-agent: *` rules ",
+    "do not apply to it: Allow: / (line 2), Disallow: /tmp/ (line 3).",
+    wi_tail
+  ))
+  found <- wi_found(
+    "User-agent: *", "Allow: /", "Disallow: /tmp/",
+    "User-agent: ExampleBot", "Disallow: /private/"
+  )
+  expect_length(found, 1L)
+  expect_identical(found[[1L]]$missing, 2:3)
+})
+
 for (locale in readLines(test_path("fixtures", "case-folding-locales.txt"))) {
   test_that(paste("agent names merge the same under", locale), {
     old <- Sys.getlocale("LC_CTYPE")
