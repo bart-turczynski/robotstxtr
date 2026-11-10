@@ -250,7 +250,7 @@ test_that("a NUL in a User-agent skips wildcard_rules_not_inherited", {
   x <- robots_validate_text(at_nul(
     "User-agent: *\nDisallow: /a\n\nUser-agent: bot", "x\nAllow: /b\n"
   ))
-  expect_identical(x$diagnostics$code, "nul_byte")
+  expect_identical(x$diagnostics$code, c("nul_byte", "rules_after_nul_removal"))
 })
 
 test_that("edge inputs compare without error", {
