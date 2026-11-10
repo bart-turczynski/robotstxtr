@@ -99,6 +99,10 @@ any, or after an empty User-agent that follows a rule. \cr
 An empty Allow or Disallow value, which the matcher ignores. \cr
 \code{rule_missing_leading_slash} \tab warning \tab
 A pattern not led by \code{/} or \code{*}; it never matches. \cr
+\code{rule_cut_by_comment} \tab warning \tab
+A \code{#} with no space or tab before it starts a comment inside an
+Allow or Disallow value, cutting the rule at the \code{#}. A vertical
+tab or form feed before the \code{#} still counts as no space. \cr
 \code{rule_inner_dollar} \tab warning \tab
 A \code{$} before a pattern's end; it matches a literal \code{$}. \cr
 \code{rule_escaped_unreserved} \tab warning \tab
