@@ -218,12 +218,13 @@ test_that("ROBO-mxermwed: an escaped unreserved character is flagged", {
   expect_identical(edge_decision(bytes, "/~joe", "FooBot"), "allow")
 })
 
-test_that("ROBO-mxermwed: a raw space inside a rule goes unflagged", {
-  # known gap (ROBO-dlgeqluf): Disallow: /a b matches no percent-encoded URL;
-  # no diagnostic
+test_that("ROBO-mxermwed: a raw space in a rule is rule_inner_whitespace", {
+  # Fixed (ROBO-dlgeqluf): Disallow: /a b matches no percent-encoded URL, and
+  # rule_inner_whitespace now says so; the matcher's decisions are unchanged
   bytes <- edge_case("esc-space-in-rule")
-  expect_identical(edge_codes(bytes), "")
+  expect_identical(edge_codes(bytes), "rule_inner_whitespace@2")
   expect_identical(edge_decision(bytes, "/a%20b", "FooBot"), "allow")
+  expect_identical(edge_decision(bytes, "/a", "FooBot"), "allow")
 })
 
 test_that("ROBO-mxermwed: a # inside a rule widens it, flagged", {
@@ -279,7 +280,6 @@ test_that("ROBO-mxermwed: every known_gap row is restated above", {
   expect_setequal(
     unique(m$id[nzchar(m$known_gap)]),
     c("enc-utf16le-no-bom",
-      "esc-space-in-rule",
       "esc-lower-hex-rule",
       "grp-googlebot-image-fallback")
   )
@@ -301,6 +301,7 @@ edge_covering_code <- c(
   "esc-lone-dollar" = "rule_missing_leading_slash",
   "cmt-hash-in-rule" = "rule_cut_by_comment",
   "esc-pct7e-rule-tilde-url" = "rule_escaped_unreserved",
+  "esc-space-in-rule" = "rule_inner_whitespace",
   "size-long-line" = "line_too_long",
   "content-spam-html" = "html_body",
   "grp-user-agent-with-space" = "user_agent_cut",

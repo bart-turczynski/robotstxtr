@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* `robots_validate_text()` and `robots_validate_url()` warn, as `rule_inner_whitespace`, on whitespace inside an Allow or Disallow pattern, which matches no request URL (RFC 9309 §2.2) (ROBO-dlgeqluf).
+
 * `robots_validate_url()` reports a robots.txt fetch that redirected to another path, host or site (RFC 9309 §2.3.1.2) (ROBO-gokbvzcb).
 
 * `robots_validate_text()` and `robots_validate_url()` report `invalid_utf8` on each line holding the bytes, and bytes only a comment holds as the new `invalid_utf8_comment` warning (RFC 9309 §2.3) (ROBO-sniltuap).

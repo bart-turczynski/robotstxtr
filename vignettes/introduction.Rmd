@@ -179,8 +179,10 @@ BOM/NUL and final-newline evidence, and a validation status. The `diagnostics`
 table has stable line, severity, code, directive, raw-text, and message columns.
 Raw vectors are accepted so malformed UTF-8 and NUL bytes can be reported
 without first converting or losing the acquisition bytes. The validator also
-warns on Allow or Disallow patterns that never match (not led by `/` or `*`)
-or hold a literal `$` (one before the pattern's end), on patterns that
+warns on Allow or Disallow patterns that never match (not led by `/` or `*`,
+or holding a raw space or other whitespace, which crawlers send only
+percent-encoded) or hold a literal `$` (one before the pattern's end), on
+patterns that
 percent-escape an unreserved character such as `%7E` for `~` (Google never
 matches the escape against the character), and on a Sitemap value
 that is not an absolute `http`, `https` or `ftp` URL. An info,

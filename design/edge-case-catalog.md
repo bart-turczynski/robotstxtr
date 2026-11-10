@@ -170,7 +170,7 @@ catalog does not run the Yandex matcher.
 | `esc-tilde-rule-pct7e-url` — `Disallow: /~joe`, URL `/%7Ejoe` or `/%7ejoe` | the URI's `%7E` MUST be decoded (§2.2.2): disallow | not documented | allow for both | none | yes, but not a validator gap: the file is correct RFC syntax and nothing in it could be flagged; the difference is the URL's form. `allowed_by_robots_text()` passes the URL to the matcher unchanged and leaves supplying an appropriately `%`-escaped URL to the caller ("R does not clean, decode, canonicalize, or reserialize the URL"), and the PRD's R-package rules say "do not normalize Unicode or percent escapes on the matcher side" (`design/PRD.md`) |
 | `esc-lower-hex-rule` — `Disallow: /a%3cb` | `<` is neither reserved nor unreserved, so `%3c` stays encoded on both sides (§2.2.2): `/a%3cb` matches octet for octet, disallow; `/a%3Cb` hinges on whether `%3c` equals `%3C`, which the RFC does not say: unspecified | not documented | `/a%3Cb` disallow (rule upper-cased), `/a%3cb` **allow** (URL not normalized): the exact path the owner wrote is not blocked | none | yes; **known gap**: ROBO-kormmfyg |
 | `esc-path-letter-case` — `Disallow: /Private` | SHOULD be case-sensitive | case-sensitive | `/Private` disallow, `/private` allow | none | no |
-| `esc-space-in-rule` — `Disallow: /a b` | a space is not allowed in `path-pattern` (§2.2); unspecified | not documented | `/a%20b` allow, `/a` allow: the rule keeps a raw space no escaped URL holds | none | yes; **known gap**: nothing flags a raw space in a rule |
+| `esc-space-in-rule` — `Disallow: /a b` | a space is not allowed in `path-pattern` (§2.2); unspecified | not documented | `/a%20b` allow, `/a` allow: the rule keeps a raw space no escaped URL holds | `rule_inner_whitespace@2` | yes; covered by `rule_inner_whitespace` |
 | `esc-star-leading` — `Disallow: *.pdf` | not a valid `path-pattern` (must start `/`); unspecified | `*` matches any run | `/x.pdf` disallow, `/x.html` allow | none (a leading `*` is accepted) | no |
 | `esc-double-star` — `Disallow: /a**b` | `*` is zero or more of any character (§2.2.3) | same | `/axxb` disallow, `/a` allow | none | no |
 | `esc-star-dollar` — `Disallow: /*$` | disallow every path | same | `/` and `/anything` disallow | none | no |
@@ -271,7 +271,8 @@ block red. An item marked fixed names the diagnostic that now covers it.
 4. ROBO-gaczsrgj — `esc-pct7e-rule-tilde-url`: no diagnostic for an escaped unreserved
    character, which Google never matches against the raw form. Fixed:
    `rule_escaped_unreserved`.
-5. ROBO-dlgeqluf — `esc-space-in-rule`: no diagnostic for a raw space inside a rule.
+5. ROBO-dlgeqluf — `esc-space-in-rule`: no diagnostic for a raw space inside a rule. Fixed:
+   `rule_inner_whitespace`.
 6. Fixed: ROBO-gjhpykcj — `cmt-hash-in-rule`: a `#` that cuts a rule into a wider prefix
    went unflagged; `rule_cut_by_comment` now reports it.
 7. ROBO-zvhrayhx — `grp-user-agent-with-space`, `grp-digit-in-token`,
