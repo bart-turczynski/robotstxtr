@@ -252,3 +252,16 @@ test_that("a 203 robots.txt keeps its info row beside its rules", {
     "bf067c52aa2d02e673554f6dcf4c08d6"
   )
 })
+
+test_that("a non-ASCII directive name keeps its UTF-8 encoding mark", {
+  # The only value of the pinned frames marked UTF-8: the directive is
+  # `action`, read through validation_ascii_action(), and keeps its mark.
+  body <- charToRaw("User-agent: *\nCafé: /x\n")
+  d <- robots_validate_text(body)$diagnostics
+  expect_identical(linear_rows(d), c("unknown_directive@2", "no_rules@NA"))
+  expect_identical(Encoding(d$directive), c("UTF-8", "unknown"))
+  expect_identical(
+    seam_digest(d, linear_frame_extra(d)),
+    "33c52d397e23a2760bd8dcd10c44b258"
+  )
+})
