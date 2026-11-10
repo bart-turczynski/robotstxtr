@@ -75,6 +75,15 @@ bytes, \code{raw(0)} for an effective-empty Disallow, or \code{NULL} for an abse
 rule); it is populated for Yandex-evaluated rows and \code{NULL} elsewhere. The
 vendored-matcher identity is published as
 \code{robots_engine_contract_v1()$matcher_identity$yandex}.
+
+A Google row reports no line for a rule with an empty value: when the
+selected rule is an \verb{Allow:} or \verb{Disallow:} with nothing after the colon,
+the row reports \code{url_decision = "allow"} with \code{reason = "default_allow"},
+\code{matched_rule_type = "none"}, \code{NA} \code{matched_line} and \code{matched_rule_value},
+and a \code{NULL} \code{matched_rule_value_raw}; the legacy functions report the
+same decision source, type, line and value (\code{design/PRD.md} section 6.6,
+"Match metadata rules"). When a Yandex row's selected rule is an empty
+\code{Disallow}, it instead reports \code{effective_empty_disallow} with that line.
 }
 \examples{
 # A non-Google-named token evaluated through the default Google backend

@@ -145,6 +145,19 @@ is a file over 500 KB under either reading of the unit, so it resolves
 reason, a cut non-200 2xx with `non_200_allow_all` from the policy table, as
 its uncut form does. A smaller cut stays `incomplete_evidence`.
 
+A Google row reports no line for a rule with an empty value. When the rule that
+Google's matcher selects is an `Allow:` or `Disallow:` with nothing after the
+colon (also `Disallow: # comment`), the row reports `url_decision = "allow"`,
+`reason = "default_allow"`, `matched_rule_type = "none"`, `matched_line` and
+`matched_rule_value` `NA`, and `matched_rule_value_raw` `NULL`, although the
+native engine records that line as the match. This follows the PRD's "Match
+metadata rules" (§6.6: an empty-path directive is ignored and surfaces as
+`default_allow`); `match_google_v1()` applies it to v1 Google rows, and the
+legacy functions and `as_legacy_robots_decisions_v1()` report the same
+`decision_source`, type, line and value. The decision equals Google's. Yandex
+differs: when the selected rule is an empty `Disallow`, the row reports
+`effective_empty_disallow` with that rule's line.
+
 RFC 9309 and Bing matcher requests return `capability_unavailable-v1`. Their
 policy tables still resolve independently where the accepted design has
 evidence. Bing fetch/status policy remains a `documentation_gap`;
