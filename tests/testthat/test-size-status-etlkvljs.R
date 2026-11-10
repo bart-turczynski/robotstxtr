@@ -696,9 +696,14 @@ test_that("ROBO-etlkvljs: each status class resolves as section 4 documents", {
 })
 
 test_that("ROBO-etlkvljs: the status policy equals engine_policy_table_v1()", {
-  expect_identical(
-    ss_table_policy(engine_policy_table_v1()), ss_status_policy
-  )
+  policy <- engine_policy_table_v1()
+  expect_setequal(names(ss_status_policy), unique(policy$category))
+  for (category in names(ss_status_policy)) {
+    expect_setequal(
+      names(ss_status_policy[[category]]), unique(policy$ruleset)
+    )
+  }
+  expect_identical(ss_table_policy(policy), ss_status_policy)
 })
 
 test_that("ROBO-etlkvljs: a 4xx or 5xx over max_bytes keeps its status class", {
@@ -722,26 +727,61 @@ test_that("ROBO-etlkvljs: a 4xx or 5xx over max_bytes keeps its status class", {
 
 # --- Status classes: the validator -------------------------------------------
 
-# The validator's code and severity per status class, from the
-# robots_validate_text() code table. The engine readings in its messages are
-# pinned phrase by phrase in test-validate-status-ybzbxfml.R, and the
-# transport and redirect messages whole in test-redirect-reason-bsloeclp.R,
-# so they are not copied here. The 206 text is a literal that no other test
-# pins, so it stays.
+# The validator's code, severity and message per status class, from the
+# robots_validate_text() code table and the section 3 and 4 cells above. A
+# full message is checked where no other test pins it whole: 400, 401, 404,
+# 410, 500, 503 and 206. test-validate-status-ybzbxfml.R pins the phrases of
+# the first six and not the whole text, and no other test pins the 206 text.
+# The 403, 429 and 102 messages are pinned whole in that file, and the
+# timeout, 301 loop and 301 over budget messages whole in
+# test-redirect-reason-bsloeclp.R, so those cases check code and severity
+# alone. The 302 case checks the engine-readings tail of its message.
+ss_no_robots <- paste0(
+  "may treat it as no robots.txt, which places no restrictions on crawling"
+)
+ss_open_yandex <- "places no restrictions on crawling"
+ss_context_phrase <- paste0(
+  "context-dependent (may pause crawling or use its last cached copy)"
+)
+ss_readings <- function(google, yandex, bing = "not documented") {
+  paste0("Google: ", google, "; Yandex: ", yandex, "; Bing: ", bing, ".")
+}
+ss_tail <- " See robots_engine_contract_v1()."
+ss_firewall <- paste(
+  "A 401 or 403 is often a firewall or bot filter answering this client,",
+  "not the site's own robots.txt."
+)
 ss_validator_cases <- list(
-  list(label = "400", code = "acquisition_http_4xx", severity = "warning"),
-  list(label = "401", code = "acquisition_http_4xx", severity = "warning"),
+  list(label = "400", code = "acquisition_http_4xx", severity = "warning",
+       message = paste0("HTTP 400: ",
+                        ss_readings(ss_no_robots, ss_open_yandex), ss_tail)),
+  list(label = "401", code = "acquisition_http_4xx", severity = "warning",
+       message = paste0("HTTP 401: ",
+                        ss_readings(ss_no_robots, ss_open_yandex), " ",
+                        ss_firewall, ss_tail)),
   list(label = "403", code = "acquisition_http_4xx", severity = "warning"),
-  list(label = "404", code = "acquisition_missing", severity = "info"),
-  list(label = "410", code = "acquisition_missing", severity = "info"),
+  list(label = "404", code = "acquisition_missing", severity = "info",
+       message = paste0("HTTP 404: ",
+                        ss_readings(ss_no_robots, ss_open_yandex), ss_tail)),
+  list(label = "410", code = "acquisition_missing", severity = "info",
+       message = paste0("HTTP 410: ",
+                        ss_readings(ss_no_robots, ss_open_yandex), ss_tail)),
   list(label = "429", code = "acquisition_http_429", severity = "error"),
-  list(label = "500", code = "acquisition_http_5xx", severity = "error"),
-  list(label = "503", code = "acquisition_http_5xx", severity = "error"),
+  list(label = "500", code = "acquisition_http_5xx", severity = "error",
+       message = paste0("HTTP 500: ",
+                        ss_readings(ss_context_phrase, ss_open_yandex),
+                        ss_tail)),
+  list(label = "503", code = "acquisition_http_5xx", severity = "error",
+       message = paste0("HTTP 503: ",
+                        ss_readings(ss_context_phrase, ss_open_yandex),
+                        ss_tail)),
   list(label = "102", code = "acquisition_http_protocol", severity = "error"),
   list(label = "timeout", code = "acquisition_transport_failed",
        severity = "error"),
   list(label = "302 no Location", code = "acquisition_redirect_no_location",
-       severity = "error"),
+       severity = "error",
+       tail = paste0(": ", ss_readings("not documented", "not documented"),
+                     ss_tail)),
   list(label = "301 loop", code = "acquisition_redirect_loop",
        severity = "error"),
   list(label = "301 over budget", code = "acquisition_redirect_over_budget",
@@ -771,7 +811,7 @@ test_that("ROBO-etlkvljs: a misspelled label or a bad expected row stops", {
   )
 })
 
-test_that("ROBO-etlkvljs: the validator's code and severity per class", {
+test_that("ROBO-etlkvljs: the validator's code, severity and message", {
   for (case in ss_validator_cases) {
     local_fake_ssrfr(ss_case(case$label)$handler)
     x <- robots_validate_url("http://example.com/")
@@ -783,6 +823,9 @@ test_that("ROBO-etlkvljs: the validator's code and severity per class", {
                      label = case$label)
     if (!is.null(case$message)) {
       expect_identical(d$message, case$message, label = case$label)
+    }
+    if (!is.null(case$tail)) {
+      expect_true(endsWith(d$message, case$tail), label = case$label)
     }
   }
 })
