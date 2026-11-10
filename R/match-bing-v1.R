@@ -6,130 +6,33 @@
 # design/robotstxtbing-integration-v2-spec.md. It is the callable the atomic v2
 # activation registers for the `bing` backend.
 #
-# BATCH SHAPE (parse-once per distinct body, BI-V2-DISPATCH). Like the Yandex
-# adapter, this is batch-shaped: vector/list row inputs -> a per-row-mapped
-# data.frame. `bing_evaluate_batch()` parses each DISTINCT body exactly once and
-# evaluates every row selecting it in a single native call, so the adapter
-# dedupes bodies internally to preserve parse-once. `evaluate_rows_v1()` gathers
-# every `bing` row and invokes this adapter ONCE in batch form, through the one
-# batch interface every matcher adapter has (ROBO-bukqpjli).
+# BATCH SHAPE (parse-once per distinct body, BI-V2-DISPATCH).
+# `evaluate_rows_v1()` gathers every `bing` row and invokes this adapter ONCE in
+# batch form, through the one batch interface every matcher adapter has
+# (ROBO-bukqpjli).
+# `bing_evaluate_batch()` parses each DISTINCT body exactly once and evaluates
+# every row selecting it in a single native call. The batching (recycling,
+# target bytes, distinct-body grouping, frame assembly) is the shared module in
+# R/matcher-batch-v1.R (ROBO-iwmtdutk), which the Yandex adapter uses too.
 #
 # ENGINE-PURE. This adapter shares no parser, group selector, access matcher, or
-# URL normalizer with Google or Yandex (spec SS4). It reuses only package-owned
-# batching/transport infrastructure and, for clarity and independence, carries
-# its own bing-named helpers rather than sharing the Yandex ones.
+# URL normalizer with Google or Yandex (spec SS4): what it shares is only that
+# package-owned batching and result transport. The request-target extractor,
+# the native call and the status mapping below are Bing's own.
 
-# Convert one row's absolute URL into the exact request-target BYTES the native
-# binding evaluates. A missing/empty URL, or a URL from which the Bing lexical
-# extractor cannot derive a target (NA_character_), becomes an empty target
-# (raw(0)). An empty target is rejected by Policy::Evaluate as
+# One row's absolute URL as request-target bytes, through Bing's own lexical
+# extractor. An empty target is rejected by Policy::Evaluate as
 # invalid_request_target -- UNLESS the product token is ALSO unsupported, in
 # which case Evaluate returns unsupported_profile first (the fixed core
-# precedence, spec SS6/SS16.3). Delegating that precedence to the engine rather
-# than pre-mapping the NA here preserves the unsupported-first rule without
-# adapter re-prevalidation (mirrors the approved Yandex extractor wiring).
+# precedence, spec SS6/SS16.3).
 bing_target_bytes_v1 <- function(url) {
-  if (is.na(url) || !nzchar(url)) {
-    return(raw(0))
-  }
-  target <- bing_extract_request_target(url)
-  if (is.na(target)) {
-    return(raw(0))
-  }
-  charToRaw(target)
+  matcher_target_bytes_v1(url, bing_extract_request_target)
 }
 
-# Group per-row raw bodies into the distinct-body list + 1-based index the
-# native batch binding needs. Keys are the full byte sequence rendered as hex,
-# so embedded NUL and invalid UTF-8 compare safely and dedupe exactly. (Package
-# batching infrastructure; intentionally independent of the Yandex helper.)
-bing_body_groups_v1 <- function(bodies) {
-  keys <- vapply(
-    bodies,
-    function(b) paste(as.character(b), collapse = ""),
-    character(1L)
-  )
-  first <- !duplicated(keys)
-  list(
-    distinct_bodies = bodies[first],
-    body_index = match(keys, keys[first])
-  )
-}
-
-bing_empty_result_v1 <- function() {
-  out <- data.frame(
-    native_parse_status = character(),
-    native_evaluation_status = character(),
-    matcher_status = character(),
-    url_decision = character(),
-    reason = character(),
-    matched_line = integer(),
-    matched_rule_type = character(),
-    matched_rule_value = character(),
-    matcher_input_bytes = integer(),
-    matcher_body_truncated = logical(),
-    error_stage = character(),
-    error_class = character(),
-    error_message = character(),
-    stringsAsFactors = FALSE
-  )
-  out$matched_rule_value_raw <- list()
-  attr(out, "n_parse_calls") <- 0L
-  out
-}
-
-#' Map native Bing results onto the host per-row result shape
-#'
-#' Package-private engine-aware adapter (BI5). It runs the Bing request-target
-#' extractor per row, groups rows by distinct body, evaluates them through the
-#' native robotstxtbing batch binding (parse-once per distinct body), and maps
-#' native columns to the normative SS10/SS11 status, reason, error, and
-#' exact-byte raw-value contract. It performs no fetch and shares nothing with
-#' the Google or Yandex paths.
-#'
-#' @param bodies A list of raw vectors, one per row -- the use_rules robots body
-#'   for that row (bytes verbatim). Deduped internally for parse-once batching.
-#' @param urls A character vector of absolute HTTP(S) URLs, one per row (or a
-#'   single value recycled).
-#' @param product_tokens A character vector of robots product tokens, one per
-#'   row (or a single value recycled). Passed through to `Policy::Evaluate`; the
-#'   bounded-profile boundary (bingbot/adidxbot) is engine behavior, not an
-#'   adapter allowlist -- every other non-empty token returns the native
-#'   `unsupported_profile` outcome.
-#'
-#' @return A data.frame with one row per input carrying `native_parse_status`,
-#'   `native_evaluation_status`, `matcher_status`, `url_decision`, `reason`,
-#'   `matched_line`, `matched_rule_type`, `matched_rule_value`, the
-#'   `matched_rule_value_raw` list column (exact bytes / `raw(0)` / `NULL`),
-#'   `matcher_input_bytes`, `matcher_body_truncated`, and
-#'   `error_stage` / `error_class` / `error_message`. The distinct-body parse
-#'   count is attached as the `n_parse_calls` attribute.
-#' @keywords internal
-#' @noRd
-match_bing_v1 <- function(bodies, urls, product_tokens) {
-  if (!is.list(bodies)) {
-    robots_abort(
-      "`bodies` must be a list of raw vectors.",
-      "robotstxtr_invalid_bing_bodies"
-    )
-  }
-  n <- length(bodies)
-  if (n == 0L) {
-    return(bing_empty_result_v1())
-  }
-  urls <- rep(urls, length.out = n)
-  product_tokens <- rep(product_tokens, length.out = n)
-
-  targets_raw <- lapply(urls, bing_target_bytes_v1)
-  groups <- bing_body_groups_v1(bodies)
-
-  native <- bing_evaluate_batch(
-    bodies = groups$distinct_bodies,
-    body_index = groups$body_index,
-    product_tokens = product_tokens,
-    targets = targets_raw
-  )
-
+# Map the native Bing columns onto SS10 matcher_status, reason and the error
+# columns.
+bing_map_native_v1 <- function(native, url_decision) {
+  n <- length(url_decision)
   parse_status <- native$native_parse_status
   eval_status <- native$native_evaluation_status
 
@@ -153,11 +56,6 @@ match_bing_v1 <- function(bodies, urls, product_tokens) {
   matcher_status[unsupported] <- "unsupported_profile"
   matcher_status[invalid_target] <- "invalid_request_target"
   matcher_status[work_limit] <- "matcher_work_limit_exceeded"
-
-  decided <- !is.na(native$url_decision)
-  url_decision <- rep(NA_character_, n)
-  url_decision[decided & native$url_decision] <- "allow"
-  url_decision[decided & !native$url_decision] <- "disallow"
 
   # SS10.1 reasons are DERIVED from the native decision source, rule type, and
   # access. The shipped Bing profile never emits the effective-empty native
@@ -206,26 +104,52 @@ match_bing_v1 <- function(bodies, urls, product_tokens) {
   error_message[work_limit] <-
     "Evaluating the request exceeds the Bing matcher work budget."
 
-  out <- data.frame(
-    native_parse_status = parse_status,
-    native_evaluation_status = eval_status,
+  list(
     matcher_status = matcher_status,
-    url_decision = url_decision,
     reason = reason,
-    matched_line = native$matched_line,
-    matched_rule_type = native$matched_rule_type,
-    matched_rule_value = native$matched_rule_value,
-    matcher_input_bytes = native$matcher_input_bytes,
     matcher_body_truncated = native$matcher_body_truncated,
     error_stage = error_stage,
     error_class = error_class,
-    error_message = error_message,
-    stringsAsFactors = FALSE
+    error_message = error_message
   )
-  # Assign the native list THROUGH unchanged so the raw(0) (present-but-empty)
-  # vs NULL (absent) distinction survives verbatim -- rebuilding it would drop
-  # the NULL elements.
-  out$matched_rule_value_raw <- native$matched_rule_value_raw
-  attr(out, "n_parse_calls") <- native$n_parse_calls
-  out
+}
+
+#' Map native Bing results onto the host per-row result shape
+#'
+#' Package-private engine-aware adapter (BI5). It runs the Bing request-target
+#' extractor per row, groups rows by distinct body, evaluates them through the
+#' native robotstxtbing batch binding (parse-once per distinct body), and maps
+#' native columns to the normative SS10/SS11 status, reason, error, and
+#' exact-byte raw-value contract. It performs no fetch and shares no parser,
+#' group selector, access matcher or URL normalizer with the Google or Yandex
+#' paths.
+#'
+#' @param bodies A list of raw vectors, one per row -- the use_rules robots body
+#'   for that row (bytes verbatim). Deduped internally for parse-once batching.
+#' @param urls A character vector of absolute HTTP(S) URLs, one per row (or a
+#'   single value recycled).
+#' @param product_tokens A character vector of robots product tokens, one per
+#'   row (or a single value recycled). Passed through to `Policy::Evaluate`; the
+#'   bounded-profile boundary (bingbot/adidxbot) is engine behavior, not an
+#'   adapter allowlist -- every other non-empty token returns the native
+#'   `unsupported_profile` outcome.
+#'
+#' @return A data.frame with one row per input carrying `native_parse_status`,
+#'   `native_evaluation_status`, `matcher_status`, `url_decision`, `reason`,
+#'   `matched_line`, `matched_rule_type`, `matched_rule_value`, the
+#'   `matched_rule_value_raw` list column (exact bytes / `raw(0)` / `NULL`),
+#'   `matcher_input_bytes`, `matcher_body_truncated`, and
+#'   `error_stage` / `error_class` / `error_message`. The distinct-body parse
+#'   count is attached as the `n_parse_calls` attribute.
+#' @keywords internal
+#' @noRd
+match_bing_v1 <- function(bodies, urls, product_tokens) {
+  run_batch_matcher_v1(
+    bodies, urls, product_tokens,
+    bodies_class = "robotstxtr_invalid_bing_bodies",
+    extract_target = bing_extract_request_target,
+    native_eval = bing_evaluate_batch,
+    map_status = bing_map_native_v1,
+    native_columns = c("native_parse_status", "native_evaluation_status")
+  )
 }

@@ -3,8 +3,8 @@
 # Identical logic to src/Makevars (keep the two in sync). Forward-slash paths
 # work under the Rtools/mingw32-make used on Windows. Compiles the package-owned
 # translation units AND the nested vendored robotstxtyandex and robotstxtbing
-# payloads into the package shared object; the vendored objects link in but are
-# called by nothing yet (both engines stay capability_unavailable).
+# payloads into the package shared object; the vendored objects are called
+# through the package-owned Yandex and Bing matcher bindings.
 #
 # The vendored objects are named at the TOP LEVEL of src/ and their sources are
 # located via VPATH, so `R CMD build`'s `cleaning src` step (which globs only
