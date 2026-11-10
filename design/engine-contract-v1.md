@@ -153,9 +153,10 @@ colon (also `Disallow: # comment`), the row reports `url_decision = "allow"`,
 native engine records that line as the match. This follows the PRD's "Match
 metadata rules" (§6.6: an empty-path directive is ignored and surfaces as
 `default_allow`); `match_google_v1()` applies it to v1 Google rows, and the
-legacy functions and `as_legacy_robots_decisions_v1()` report the same. The
-decision equals Google's. Yandex differs, as stated above: an empty `Disallow`
-there reports `effective_empty_disallow` with its line.
+legacy functions and `as_legacy_robots_decisions_v1()` report the same
+`decision_source`, type, line and value. The decision equals Google's. Yandex
+differs: when the selected rule is an empty `Disallow`, the row reports
+`effective_empty_disallow` with that rule's line.
 
 RFC 9309 and Bing matcher requests return `capability_unavailable-v1`. Their
 policy tables still resolve independently where the accepted design has
