@@ -4,8 +4,7 @@
 # contract: design/engine-profiles.md sections 2, 3, 4 and 7, and
 # design/engine-contract-v1.md ("A robots.txt over `max_bytes`"). Every
 # fixture is synthesized here; responses are scripted at the ssrfr boundary
-# (helper-fake-ssrfr.R). The assertions pin current behavior; where it
-# departs from the documents a comment starting "contract mismatch" says so.
+# (helper-fake-ssrfr.R). The assertions pin current behavior.
 
 ss_window <- 512000L
 ss_rulesets <- c("rfc9309", "google", "yandex", "bing", "assumed_rfc9309")
@@ -350,8 +349,6 @@ ss_expect_supplied <- function(x, size, google_bytes, decisions) {
   if (nrow(m) == 0L) {
     return(invisible())
   }
-  # contract mismatch: engine-profiles.md section 6 and engine-contract-v1.md
-  # call the bing backend capability_unavailable; it is available.
   want <- ss_want_rows(m, function(i) {
     backend <- m$matcher_backend[[i]]
     google <- identical(backend, "google")
@@ -404,8 +401,6 @@ test_that("ROBO-etlkvljs: a supplied body whose last line ends at the limits", {
 test_that("ROBO-etlkvljs: a supplied body over 500,000 bytes keeps use_rules", {
   # Under the yandex ruleset too: the size branch reads fetched evidence
   # (engine-profiles.md section 2: a supplied body is use_rules).
-  # contract mismatch: engine-contract-v1.md says bodies over 500,000 bytes
-  # resolve allow_all under yandex, without limiting that to fetched bodies.
   # The yandex ruleset alone: the test above runs a 511,999-byte supplied
   # body through the google and rfc9309 backends and the diagonal, each
   # use_rules (supplied_body_use_rules).
@@ -852,8 +847,6 @@ test_that("ROBO-etlkvljs: a non-200 2xx body is validated, with its code", {
 test_that("ROBO-etlkvljs: a 2xx refused whole is acquisition_limit_exceeded", {
   # engine-profiles.md section 7: a status mismatch over the limit is
   # body_too_large, refused whole, as a 3xx is.
-  # contract mismatch: the robots_validate_text() code table says this code
-  # is for a 3xx body; a 2xx ssrfr refuses whole gets it too.
   local_fake_ssrfr(function(req) {
     fake_failure(
       "response-too-large",
