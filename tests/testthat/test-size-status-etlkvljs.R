@@ -62,8 +62,10 @@ ss_body <- function(tail, at, size = 600000L) {
 # - utf8: the split falls between the two bytes of "é" (C3 A9).
 # `probes` are paths and the decision each gets from the google backend when
 # the line is read whole; `raw_probes`, where set, are the paths and
-# decisions the yandex and bing backends give the whole line (the utf8 line
-# is probed there with the raw "é" path, the form those two match).
+# decisions the yandex and bing backends give the whole line. The utf8 line
+# is probed there with the raw "é" path. That pin is of current backend
+# behavior and is UNEVIDENCED in design/engine-disagreements.md section 6:
+# not documented engine behavior.
 ss_tails <- list(
   rule = list(
     bytes = charToRaw("Disallow: /private-drafts/\n"), keep = 11L,
@@ -133,12 +135,27 @@ ss_eval_text <- function(body, paths, grid = ss_grid) {
 }
 
 # The expected rows as one data frame: `want(i)` gives row i's expected
-# columns as a named list.
+# columns as a named list. Every row must carry the names of row 1 and one
+# value per column, so a NULL or short field stops here instead of recycling
+# onto other rows. Each column takes its type from row 1, since the callers
+# mix logical, integer and character columns.
 ss_want_rows <- function(r, want) {
   rows <- lapply(seq_len(nrow(r)), want)
-  cols <- stats::setNames(nm = names(rows[[1L]]))
+  cols <- names(rows[[1L]])
+  for (i in seq_along(rows)) {
+    if (!identical(names(rows[[i]]), cols)) {
+      stop("row ", i, " names differ from row 1", call. = FALSE)
+    }
+    for (col in cols) {
+      if (length(rows[[i]][[col]]) != 1L) {
+        stop("row ", i, ", column ", col, " is not one value", call. = FALSE)
+      }
+    }
+  }
   data.frame(
-    lapply(cols, function(col) unlist(lapply(rows, `[[`, col))),
+    lapply(stats::setNames(nm = cols), function(col) {
+      vapply(rows, `[[`, rows[[1L]][[col]], col)
+    }),
     stringsAsFactors = FALSE
   )
 }
@@ -592,6 +609,16 @@ ss_status_cases <- list(
                handler = function(req) fake_response(102L))
 )
 
+# The status case `label` names. An unknown label stops here: a misspelled
+# one would otherwise hand the test a NULL handler.
+ss_case <- function(label) {
+  case <- ss_status_cases[[label]]
+  if (is.null(case)) {
+    stop("no status case ", label, call. = FALSE)
+  }
+  case
+}
+
 # What a row of `case` resolves to under `ruleset` and `backend`: the
 # section 4 cell, and the matcher result that follows from it.
 ss_status_want <- function(case, ruleset, backend) {
@@ -745,9 +772,29 @@ ss_validator_cases <- list(
        message = "Partial HTTP response was rejected; no body was validated.")
 )
 
+test_that("ROBO-etlkvljs: a misspelled label or a bad expected row stops", {
+  expect_error(ss_case("4O4"), "no status case 4O4")
+  expect_error(
+    ss_want_rows(data.frame(a = 1:2), function(i) {
+      if (i == 1L) list(x = "a") else list(x = NULL)
+    }),
+    "row 2, column x"
+  )
+  expect_error(
+    ss_want_rows(data.frame(a = 1:2), function(i) list(x = c("a", "b"))),
+    "row 1, column x"
+  )
+  expect_error(
+    ss_want_rows(data.frame(a = 1:2), function(i) {
+      if (i == 1L) list(x = "a") else list(y = "b")
+    }),
+    "row 2 names differ"
+  )
+})
+
 test_that("ROBO-etlkvljs: the validator's code and message per status class", {
   for (case in ss_validator_cases) {
-    local_fake_ssrfr(ss_status_cases[[case$label]]$handler)
+    local_fake_ssrfr(ss_case(case$label)$handler)
     x <- robots_validate_url("http://example.com/")
     d <- x$diagnostics
     expect_identical(nrow(d), 1L, label = case$label)
