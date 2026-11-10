@@ -18,8 +18,13 @@ iw_bytes <- function(...) {
   }))
 }
 
-# A URL holding raw bytes, left in the native encoding the extractors read.
-iw_url <- function(...) rawToChar(iw_bytes(...))
+# A URL holding raw bytes, marked UTF-8 (as slice A's pin marks its URLs) so
+# the bytes reach the extractors untranslated in every locale.
+iw_url <- function(...) {
+  url <- rawToChar(iw_bytes(...))
+  Encoding(url) <- "UTF-8"
+  url
+}
 
 iw_bodies <- list(
   plain = iw_bytes("User-agent: *\nDisallow: /private\nAllow: /private/ok\n"),
