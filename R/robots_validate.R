@@ -603,8 +603,9 @@ validate_document_bytes <- function(bytes, source_id, source_type,
           line, "warning", "content_signal_directive", action,
           paste0("Content-Signal comes from an expired Internet-Draft and ",
                  "no crawler operator documents honoring it; for an ",
-                 "AI-training preference use a ",
-                 "`User-Agent: __usage_ai-training` group.")
+                 "AI-training preference use a separate ",
+                 "`User-agent: __usage_ai-training` group, not stacked ",
+                 "under another User-agent line.")
         )
       } else if (unsupported[[i]]) {
         add_diagnostic(

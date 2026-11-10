@@ -16,7 +16,8 @@ cs_generic <- paste0(
 cs_message <- paste0(
   "Content-Signal comes from an expired Internet-Draft and no crawler ",
   "operator documents honoring it; for an AI-training preference use a ",
-  "`User-Agent: __usage_ai-training` group."
+  "separate `User-agent: __usage_ai-training` group, not stacked under ",
+  "another User-agent line."
 )
 
 cs_fixture <- cs_lines(
@@ -40,7 +41,20 @@ test_that("a Content-Signal line gets its own warning", {
   expect_identical(d$message, cs_message)
   expect_match(d$message, "expired Internet-Draft", fixed = TRUE)
   expect_match(d$message, "no crawler operator documents", fixed = TRUE)
-  expect_match(d$message, "__usage_ai-training", fixed = TRUE)
+  expect_match(d$message, "separate `User-agent: __usage_ai-training` group",
+               fixed = TRUE)
+  expect_match(d$message, "not stacked under another User-agent line",
+               fixed = TRUE)
+})
+
+test_that("the advice's group stacked under User-agent: * blocks Google", {
+  # Why the message says a separate group (design/engine-disagreements.md
+  # row 1b): stacked, the Disallow is the `*` group's too.
+  body <- cs_lines("User-agent: *", "User-agent: __usage_ai-training",
+                   "Disallow: /")
+  r <- allowed_by_robots_text(body, "https://example.com/a",
+                              "Googlebot")$results
+  expect_false(r$allowed)
 })
 
 test_that("Content-Signal counts as a known, unsupported directive", {
