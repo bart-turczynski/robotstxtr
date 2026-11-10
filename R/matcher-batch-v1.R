@@ -33,60 +33,21 @@ matcher_target_bytes_v1 <- function(url, extract_target) {
   charToRaw(target)
 }
 
-# One body's grouping key, exact on its bytes alone (attributes aside). A raw
-# body with no NUL byte is its own key: the bytes as one string. Any other
-# raw body's key is its length, the positions of its NUL bytes and its other
-# bytes, which give the bytes back. A body that is not raw (NULL included)
-# gets a key of its own row: it is never grouped with another, and reaches
-# the engine as it is, to be refused there as on its own (by the Yandex and
-# Bing bindings, and by Google's matcher decoding). The keys are all in the
-# native encoding, so duplicated() and match() compare them as stored, never
-# translated.
-matcher_body_key_v1 <- function(body, row) {
-  if (!is.raw(body)) {
-    return(sprintf("<%s>%d", typeof(body), row))
-  }
-  # rawToChar() refuses an embedded NUL and drops trailing ones: either way
-  # the body is not a plain string.
-  text <- tryCatch(rawToChar(body), error = function(e) NULL)
-  if (!is.null(text) && nchar(text, type = "bytes") == length(body)) {
-    return(text)
-  }
-  nul <- body == as.raw(0)
-  paste0(
-    length(body), ":", paste(which(nul), collapse = ","), ":",
-    rawToChar(body[!nul])
-  )
-}
-
-# Group per-row raw bodies into the distinct-body list + 1-based index the
-# native batch bindings take, distinct bodies in order of first appearance,
-# raw ones with their attributes dropped. The key is exact on the bytes
-# (matcher_body_key_v1()), so embedded NUL and invalid UTF-8 dedupe exactly,
-# and match() hashes it. A plain body's key is its bytes, which could spell
-# any other key, so plain and other keys are matched apart. Rendering every
-# byte as hex for a key (the earlier helper) cost more than the Google
-# matcher's parses on a large body, and match() on the list of bodies itself
-# is as slow (ROBO-iooslxvj, dev/bench-google-batch.R).
+# Group per-row bodies into the distinct-body list + 1-based index the native
+# batch bindings take, distinct bodies in order of first appearance, each the
+# first row's body as it is. The native grouping (robotstxtr_batch_body_groups_,
+# src/matcher_binding.cpp) is exact on a raw body's bytes alone, so embedded
+# NUL, invalid UTF-8 and attributes neither split nor merge groups; it hashes
+# each distinct body object once, so the rows of one source, which share one
+# body object, cost one lookup each. A body that is not raw (NULL included)
+# is a group of its own and reaches the engine as it is, to be refused there
+# as on its own. Keys built in R cost each row a pass over its body, which
+# outweighed the parse a batch saves (ROBO-iooslxvj).
 matcher_body_groups_v1 <- function(bodies) {
-  n <- length(bodies)
-  keys <- vapply(
-    seq_len(n), function(i) matcher_body_key_v1(bodies[[i]], i), character(1L)
-  )
-  # Only a plain body's key is exactly as long as the body: another raw key
-  # adds its length and NUL positions, which outnumber the NULs it drops.
-  plain <- vapply(bodies, is.raw, logical(1L)) &
-    nchar(keys, type = "bytes") == lengths(bodies)
-  group <- integer(n)
-  group[plain] <- which(plain)[match(keys[plain], keys[plain])]
-  group[!plain] <- which(!plain)[match(keys[!plain], keys[!plain])]
-  first <- !duplicated(group)
-  distinct_bodies <- lapply(bodies[first], function(body) {
-    if (is.raw(body)) as.vector(body) else body
-  })
+  body_index <- robotstxtr_batch_body_groups_(bodies)
   list(
-    distinct_bodies = distinct_bodies,
-    body_index = match(group, group[first])
+    distinct_bodies = bodies[!duplicated(body_index)],
+    body_index = body_index
   )
 }
 

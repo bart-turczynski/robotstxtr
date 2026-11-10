@@ -36,6 +36,10 @@ robotstxtr_google_eval_batch_ <- function(bodies, ids, agents, targets) {
   .Call(`_robotstxtr_robotstxtr_google_eval_batch_`, bodies, ids, agents, targets)
 }
 
+robotstxtr_batch_body_groups_ <- function(bodies) {
+  .Call(`_robotstxtr_robotstxtr_batch_body_groups_`, bodies)
+}
+
 robotstxtr_checked_batch_ <- function(bodies, ids, agents, targets) {
   .Call(`_robotstxtr_robotstxtr_checked_batch_`, bodies, ids, agents, targets)
 }

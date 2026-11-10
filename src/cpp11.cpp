@@ -68,6 +68,13 @@ extern "C" SEXP _robotstxtr_robotstxtr_google_eval_batch_(SEXP bodies, SEXP ids,
     return cpp11::as_sexp(robotstxtr_google_eval_batch_(cpp11::as_cpp<cpp11::decay_t<cpp11::strings>>(bodies), cpp11::as_cpp<cpp11::decay_t<cpp11::integers>>(ids), cpp11::as_cpp<cpp11::decay_t<cpp11::strings>>(agents), cpp11::as_cpp<cpp11::decay_t<cpp11::list>>(targets)));
   END_CPP11
 }
+// matcher_binding.cpp
+cpp11::writable::integers robotstxtr_batch_body_groups_(cpp11::list bodies);
+extern "C" SEXP _robotstxtr_robotstxtr_batch_body_groups_(SEXP bodies) {
+  BEGIN_CPP11
+    return cpp11::as_sexp(robotstxtr_batch_body_groups_(cpp11::as_cpp<cpp11::decay_t<cpp11::list>>(bodies)));
+  END_CPP11
+}
 // yandex_matcher_binding.cpp
 cpp11::list robotstxtr_checked_batch_(cpp11::list bodies, cpp11::integers ids, cpp11::strings agents, cpp11::list targets);
 extern "C" SEXP _robotstxtr_robotstxtr_checked_batch_(SEXP bodies, SEXP ids, SEXP agents, SEXP targets) {
@@ -86,6 +93,7 @@ extern "C" SEXP _robotstxtr_robotstxtr_extract_request_target_(SEXP url) {
 extern "C" {
 static const R_CallMethodDef CallEntries[] = {
     {"_robotstxtr_robotstxtr_allowed_text_",                (DL_FUNC) &_robotstxtr_robotstxtr_allowed_text_,                3},
+    {"_robotstxtr_robotstxtr_batch_body_groups_",           (DL_FUNC) &_robotstxtr_robotstxtr_batch_body_groups_,           1},
     {"_robotstxtr_robotstxtr_bing_contract_info_",          (DL_FUNC) &_robotstxtr_robotstxtr_bing_contract_info_,          0},
     {"_robotstxtr_robotstxtr_bing_eval_batch_",             (DL_FUNC) &_robotstxtr_robotstxtr_bing_eval_batch_,             4},
     {"_robotstxtr_robotstxtr_bing_extract_request_target_", (DL_FUNC) &_robotstxtr_robotstxtr_bing_extract_request_target_, 1},

@@ -1098,9 +1098,19 @@ row_matcher_frame_v1 <- function(row_match, bodies, urls, product_tokens) {
 # R/google-batch-v1.R (ROBO-iooslxvj). Each distinct body is cut to Google's
 # 512,000-byte window there, and each row keeps its body's
 # `matcher_body_truncated`. Row for row it gives what match_google_v1(), the
-# reference row matcher, gives. Google rows carry no raw rule value yet
+# reference row matcher, gives. A batch holding a row the row matcher refuses
+# goes to the row matcher, so the same row fails first
+# (google_batch_refused_v1()). Google rows carry no raw rule value yet
 # (`matched_rule_value_raw` NULL).
 match_google_batch_v1 <- function(bodies, urls, product_tokens) {
+  n <- length(bodies)
+  if (is.list(bodies) && n > 0L &&
+        google_batch_refused_v1(bodies, urls, product_tokens)) {
+    return(row_matcher_frame_v1(
+      match_google_v1, bodies, rep(urls, length.out = n),
+      rep(product_tokens, length.out = n)
+    ))
+  }
   run_batch_matcher_v1(
     bodies, urls, product_tokens,
     bodies_class = "robotstxtr_invalid_google_bodies",

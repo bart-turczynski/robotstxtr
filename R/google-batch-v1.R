@@ -9,6 +9,18 @@
 # gives, row for row, the frame row_matcher_frame_v1(match_google_v1, ...)
 # gives (tests/testthat/test-google-batch-iooslxvj.R).
 
+# Whether a Google batch holds a row the row matcher refuses: a body that is
+# not raw, a URL or product token that is not a string, or a "bytes"-marked
+# URL. evaluate_rows_v1() sends none of these. The batch would refuse them
+# too, but in its own order (every URL before any body, every body before any
+# token), so match_google_batch_v1() hands such a batch to the row matcher,
+# whose first failing row then decides the error, as it always has.
+google_batch_refused_v1 <- function(bodies, urls, product_tokens) {
+  !all(vapply(bodies, is.raw, logical(1L))) ||
+    !is.character(urls) || !is.character(product_tokens) ||
+    any(Encoding(urls) == "bytes")
+}
+
 # The vendored matcher takes the whole URL and finds the path itself
 # (GetPathParamsQuery()), so the target is the whole URL, made into a string
 # by the same cpp11 conversion the row matcher's URL goes through: a latin1
@@ -44,7 +56,7 @@ google_evaluate_batch_v1 <- function(bodies, body_index, product_tokens,
 
   native <- robotstxtr_google_eval_batch_(
     bodies = strings, ids = body_index,
-    agents = as.character(product_tokens), targets = targets
+    agents = product_tokens, targets = targets
   )
   allowed <- native$allowed
   line <- native$matching_line
@@ -53,9 +65,9 @@ google_evaluate_batch_v1 <- function(bodies, body_index, product_tokens,
 
   matched_line <- line
   matched_line[!matched] <- NA_integer_
+  # A matched row takes its type from the collector below; a disallowed row
+  # always has a matched line.
   matched_rule_type <- rep("none", n)
-  matched_rule_type[matched] <- "allow"
-  matched_rule_type[!allowed] <- "disallow"
   matched_rule_value <- rep(NA_character_, n)
   matched_rows <- split(which(matched), body_index[matched])
   for (b in names(matched_rows)) {

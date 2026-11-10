@@ -12,16 +12,18 @@
 // decision_source (rule_allow / rule_disallow / default_allow) without a second
 // pass. matching_line() itself is not surfaced as the R-facing matched_line
 // column here; that (and full callback correlation) is slice R3.
-
 //
 // The batch surface (ROBO-iooslxvj): robotstxtr_google_eval_batch_() parses
 // each distinct body once and answers every (URL, product token) row that
-// selects it. See the comment above it.
+// selects it. See the comment above it. robotstxtr_batch_body_groups_() at
+// the end serves the shared batch module (R/matcher-batch-v1.R) of all three
+// engines: it only groups bodies, and touches no engine.
 
 #include <cstddef>
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include <cpp11.hpp>
@@ -191,7 +193,6 @@ cpp11::writable::list robotstxtr_google_eval_batch_(cpp11::strings bodies,
   for (R_xlen_t b = 0; b < n_bodies; ++b) {
     const std::vector<R_xlen_t>& rows =
         rows_by_body[static_cast<std::size_t>(b)];
-    if (rows.empty()) continue;
     const std::size_t k = rows.size();
 
     // Sized up front and never resized: each matcher keeps pointers into its
@@ -231,4 +232,43 @@ cpp11::writable::list robotstxtr_google_eval_batch_(cpp11::strings bodies,
       "matching_line"_nm = matching_line,
       "n_parse_calls"_nm = cpp11::as_sexp(n_parse_calls),
   });
+}
+
+// The shared batch module's body grouping (ROBO-iooslxvj), for every engine:
+// for each element of `bodies`, the 1-based id of its group, ids numbered in
+// order of first appearance. Raw bodies group on their exact bytes alone
+// (embedded NUL, invalid UTF-8 and attributes are just bytes and ignored);
+// the bytes of each distinct R object are hashed once, and a later element
+// that is the same object takes its group at once, so rows that share one
+// body object cost one lookup each. Any other element (NULL included) is a
+// group of its own, never joined, so the engine sees it and refuses it.
+[[cpp11::register]]
+cpp11::writable::integers robotstxtr_batch_body_groups_(cpp11::list bodies) {
+  const R_xlen_t n = bodies.size();
+  cpp11::writable::integers out(n);
+  std::unordered_map<SEXP, int> by_object;
+  // Views into the bodies' own bytes, which `bodies` keeps alive.
+  std::unordered_map<std::string_view, int> by_bytes;
+  int groups = 0;
+  for (R_xlen_t i = 0; i < n; ++i) {
+    SEXP body = bodies[i];
+    if (TYPEOF(body) != RAWSXP) {
+      out[i] = ++groups;
+      continue;
+    }
+    const auto same_object = by_object.find(body);
+    if (same_object != by_object.end()) {
+      out[i] = same_object->second;
+      continue;
+    }
+    const R_xlen_t size = Rf_xlength(body);
+    const std::string_view bytes(
+        size == 0 ? "" : reinterpret_cast<const char*>(RAW(body)),
+        static_cast<std::size_t>(size));
+    const auto found = by_bytes.emplace(bytes, groups + 1);
+    if (found.second) ++groups;
+    by_object.emplace(body, found.first->second);
+    out[i] = found.first->second;
+  }
+  return out;
 }

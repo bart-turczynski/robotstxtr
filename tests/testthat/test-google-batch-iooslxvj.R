@@ -252,8 +252,9 @@ test_that("an NA URL is evaluated as the empty URL", {
 test_that("grouping is exact on the bytes alone", {
   x <- gb_bodies$nul_value
   y <- gb_bodies$bad_utf8
+  # The first body of a group stands for it as it is; attributes do not split.
   groups <- matcher_body_groups_v1(list(structure(x, foo = 1), x, y))
-  expect_identical(groups$distinct_bodies, list(x, y))
+  expect_identical(groups$distinct_bodies, list(structure(x, foo = 1), y))
   expect_identical(groups$body_index, c(1L, 1L, 2L))
   # NULL is not a body: it keeps a group of its own, and reaches the native
   # binding as NULL, to be refused there.
@@ -316,4 +317,57 @@ test_that("a non-raw body is refused as the row path refuses it", {
       expect_identical(batch, alone, label = label)
     }
   }
+})
+
+test_that("a classed raw body gives the row path's result", {
+  local_mocked_s3_method(
+    "as.vector", "evil",
+    function(x, mode = "any") stop("as.vector() is not for this body")
+  )
+  evil <- structure(gb_bodies$groups, class = "evil")
+  urls <- c("https://example.com/private", "https://example.com/foo")
+  bodies <- list(evil, gb_bodies$groups)
+  expect_identical(
+    gb_strip(match_google_batch_v1(bodies, urls, "FooBot")),
+    gb_oracle(bodies, urls, rep("FooBot", 2L))
+  )
+  expect_adapter_output(match_google_batch_v1, bodies, urls, "FooBot", "google")
+  expect_adapter_output(match_yandex_v1, bodies, urls, "Yandex", "yandex")
+  expect_adapter_output(match_bing_v1, bodies, urls, "bingbot", "bing")
+})
+
+test_that("a token that is not a string fails as on the row path", {
+  bodies <- list(gb_bodies$groups)
+  url <- "https://example.com/private"
+  for (token in list(1, 1L, TRUE)) {
+    batch <- gb_condition(match_google_batch_v1(bodies, url, token))
+    expect_true("error" %in% batch$class, label = typeof(token))
+    expect_identical(
+      batch, gb_condition(gb_oracle(bodies, url, token)),
+      label = typeof(token)
+    )
+  }
+})
+
+test_that("the first failing row decides the error, as on the row path", {
+  bytes_url <- "https://example.com/caf\xe9"
+  Encoding(bytes_url) <- "bytes"
+  urls <- c("https://example.com/private", bytes_url)
+  tokens <- c("FooBot", "FooBot")
+  for (bodies in list(
+    list(NULL, gb_bodies$groups),
+    list(gb_bodies$groups, NULL)
+  )) {
+    expect_identical(
+      gb_condition(match_google_batch_v1(bodies, urls, tokens)),
+      gb_condition(gb_oracle(bodies, urls, tokens))
+    )
+  }
+  # A bad token in row 1 comes before a bad body in row 2.
+  bodies <- list(gb_bodies$groups, NULL)
+  urls <- rep("https://example.com/private", 2L)
+  expect_identical(
+    gb_condition(match_google_batch_v1(bodies, urls, list(1, "FooBot"))),
+    gb_condition(gb_oracle(bodies, urls, list(1, "FooBot")))
+  )
 })
