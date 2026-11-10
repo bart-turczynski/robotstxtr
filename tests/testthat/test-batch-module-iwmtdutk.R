@@ -23,6 +23,10 @@ iw_url <- function(...) rawToChar(iw_bytes(...))
 
 iw_bodies <- list(
   plain = iw_bytes("User-agent: *\nDisallow: /private\nAllow: /private/ok\n"),
+  # As long as `plain` and differing in one byte: grouping must key on bytes.
+  plain_twin = iw_bytes(
+    "User-agent: *\nDisallow: /privatf\nAllow: /private/ok\n"
+  ),
   nul = iw_bytes("User-agent: *\nDisallow: /n", 0L, "ul\n"),
   bad_utf8 = iw_bytes("User-agent: *\nDisallow: /a", 0xffL, "\n"),
   empty = raw(0),
@@ -85,10 +89,10 @@ iw_digest <- function(frame) {
   unname(tools::md5sum(file))
 }
 
-# Computed on the base before the refactor (232b92d).
+# Computed with the adapters of the base before the refactor (232b92d).
 iw_pinned <- c(
-  yandex = "64e34ad72126579b3e92c0a70093446d",
-  bing = "4da0401b027ca8d706cd1d3db7097429"
+  yandex = "5ac927dc412f247270973dc70b83f04e",
+  bing = "bd3e1b4caa6d74d34f20bdf5b40b332f"
 )
 
 test_that("each adapter's full frame on the synthesized batch is unchanged", {
