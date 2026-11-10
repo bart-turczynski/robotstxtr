@@ -74,6 +74,27 @@ test_that("ROBO-atkmqcov: the message names the directive the BOM hides", {
   expect_no_match(hit$message, "line is not read")
 })
 
+test_that("ROBO-atkmqcov: the hidden directive is read past the BOM only", {
+  # The doubled fixture: the second BOM, right after the skipped one, hides
+  # User-agent; the re-parse sees the line without either BOM.
+  hit <- bom_hits(bom_fixture("enc-bom-doubled"))
+  expect_identical(hit$directive, "user-agent")
+  expect_match(hit$message, "This User-agent line is not read")
+  # Blanks before the BOM: the re-parse starts after the BOM, not at the
+  # line's first byte, which would leave the BOM in the key.
+  hit <- bom_hits(c(ua_star, charToRaw(" \t"), bom,
+                    charToRaw("User-agent: FooBot\n")))
+  expect_identical(hit$directive, "user-agent")
+  expect_match(hit$message, "This User-agent line is not read")
+  # Line 1 after the skipped BOM: blanks, then a second BOM. The offset must
+  # pass over the skipped BOM, or the re-parse keeps the second BOM.
+  hit <- bom_hits(c(bom, charToRaw("  "), bom,
+                    charToRaw("User-agent: *\nDisallow: /a\n")))
+  expect_identical(hit$line, 1L)
+  expect_identical(hit$directive, "user-agent")
+  expect_match(hit$message, "This User-agent line is not read")
+})
+
 test_that("ROBO-atkmqcov: a BOM after leading blanks or on a CRLF line", {
   expect_identical(
     bom_codes(c(ua_star, charToRaw("  \t"), bom, charToRaw("Allow: /a\n"))),
