@@ -19,9 +19,12 @@
 #
 # Exit status 1 when the reference's live answers drift from the answers
 # recorded in cases.R (the pinned tests would then state the wrong
-# reference), or when a row differs from the reference in a way
-# gf_expected_difference() in cases.R does not list (a difference outside the
-# classes of design/engine-profiles.md §5b); 0 otherwise.
+# reference), or when gf_check_rows() in cases.R reports a row against the
+# live answers: one that differs from the reference where the gf_expected
+# table lists nothing (a difference outside the classes of
+# design/engine-profiles.md §5b), one that differs but not with the allowed,
+# line and reason the table lists, or one the table lists that agrees with
+# the reference (a stale entry); 0 otherwise.
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 1L) {
@@ -113,15 +116,19 @@ utils::write.table(
   diff, file.path(out_dir, "differences.tsv"),
   sep = "\t", quote = FALSE, row.names = FALSE
 )
-unexpected <- diff[is.na(diff$class), , drop = FALSE]
+# The same checks the pinned test runs on the recorded answers, here on the
+# live ones: a difference the table does not list, a listed row whose
+# allowed, line or reason is not the listed one, a listed row that agrees.
+check <- env$gf_check_rows(all, all$ref_allowed, all$ref_line)
 
 cat(sprintf(
   paste0(
     "cases: %d; robotstxtr rows: %d; differing rows: %d ",
-    "(decision %d, line only %d; unexpected %d)\n"
+    "(decision %d, line only %d; unexpected %d, mismatched %d, stale %d)\n"
   ),
   length(cases), nrow(all), nrow(diff), sum(all$decision_differs),
-  sum(all$line_differs), nrow(unexpected)
+  sum(all$line_differs), nrow(check$unexpected), nrow(check$mismatched),
+  nrow(check$stale)
 ))
 if (nrow(diff) > 0L) {
   print(diff[c("id", "path", "class", "ref_allowed", "ref_line", "allowed",
@@ -133,12 +140,20 @@ if (length(drift) > 0L) {
   cat("recorded reference answers drifted:\n", paste0("  ", drift, "\n"))
   failed <- TRUE
 }
-if (nrow(unexpected) > 0L) {
-  cat(
-    "rows differing outside the expected classes:\n",
-    paste0("  ", unexpected$id, " ", unexpected$path, "\n")
-  )
-  failed <- TRUE
+report <- c(
+  unexpected = "rows differing outside the expected classes:\n",
+  mismatched = "rows differing, but not with the answer gf_expected lists:\n",
+  stale = "rows gf_expected lists that agree with the reference:\n"
+)
+for (kind in names(report)) {
+  bad <- check[[kind]]
+  if (nrow(bad) > 0L) {
+    cat(report[[kind]], paste0(
+      "  ", bad$id, " ", bad$path, ": allowed ", bad$allowed, ", line ",
+      bad$line, ", reason ", bad$reason, "\n"
+    ))
+    failed <- TRUE
+  }
 }
 if (failed) {
   quit(status = 1L)
