@@ -89,6 +89,10 @@ test_that("rule paths ignore NUL bytes in the body", {
   h <- load_harness()
   body <- c(body_of("Disallow: /a"), as.raw(0), body_of("b\n"))
   expect_identical(h$rule_paths(body, 1L), "/ab")
+  # A byte that is not UTF-8 is kept as a byte.
+  body <- c(body_of("Disallow: /a"), as.raw(c(0, 0xe9)), body_of("\n"))
+  expect_identical(h$rule_paths(body, 1L), "/a%E9")
+  expect_identical(h$rule_paths(as.raw(c(0, 0)), 1L), character())
 })
 
 test_that("the fixed path list covers the documented probe kinds", {
@@ -742,7 +746,7 @@ test_that("evaluated bytes are recorded without the NULs evaluation drops", {
   expect_identical(seen$validated, length(body))
   expect_identical(seen$evaluated, length(body) - 2L)
 
-  # Evaluate mode records it per file, on every paths row.
+  # Evaluate mode records it once per file, in the files table.
   corpus <- local_corpus(hosts = character(), empty = character())
   dir.create(file.path(corpus, "a.test"))
   saveRDS(list(body = body), file.path(corpus, "a.test", "robots.rds"))
@@ -757,8 +761,11 @@ test_that("evaluated bytes are recorded without the NULs evaluation drops", {
     random = "/r", fns = fake_fns(new.env())
   )
   h$mode_evaluate(ctx)
+  files <- readRDS(file.path(run_dir, "shards", "files-00001.rds"))
+  expect_identical(files$evaluated_bytes, length(body) - 2L)
   paths <- readRDS(file.path(run_dir, "shards", "paths-00001.rds"))
-  expect_true(all(paths$evaluated_bytes == length(body) - 2L))
+  expect_gt(nrow(paths), 0L)
+  expect_null(paths$evaluated_bytes)
 })
 
 # ---------------------------------------------------------------------------
@@ -863,58 +870,102 @@ test_that("run.R refuses a bad --pkg and a bad compare before any run dir", {
   )
   expect_identical(run("compare", "--a", "x", "--b", "y", "--run-id", "c1"),
                    2L)
-  # Pin: each refusal leaves a "running" record behind.
-  expect_identical(sort(list.files(out)), c("c1", "missing", "nogit"))
-  for (id in c("c1", "missing", "nogit")) {
-    rec <- readRDS(file.path(out, id, "record.rds"))
-    expect_identical(rec$status, "running", info = id)
-  }
+  expect_length(list.files(out), 0L)
+  # A compare check that needs both runs' records refuses up front too.
+  expect_identical(run("manifest", "--run-id", "m1"), 0L)
+  expect_identical(
+    run("manifest", "--run-id", "m2", "--max-hosts", "1"), 0L
+  )
+  expect_identical(
+    run("compare", "--a", "m1", "--b", "m1", "--run-id", "c2"), 0L
+  )
+  # m2 planned chunk 1 cut mid-chunk: refused by the chunk plans check.
+  expect_identical(
+    run("compare", "--a", "m1", "--b", "m2", "--run-id", "c3"), 2L
+  )
+  expect_identical(sort(list.files(out)), c("c2", "m1", "m2"))
 })
 
 test_that("a robots.rds with a NUL in its first bytes is read", {
   h <- load_harness()
   path <- file.path(local_test_dir(), "robots.rds")
-  writeBin(as.raw(c(0x41, 0x00, 0x42)), path)
-  # Pin: rawToChar() on the magic bytes fails the read.
-  expect_error(h$read_corpus_record(path), "nul")
+  for (magic in list(c(0x41, 0x00, 0x42), c(0x42, 0x5a, 0x00),
+                     c(0x00, 0x00, 0x00), c(0x42, 0x00))) {
+    writeBin(as.raw(magic), path)
+    read <- h$read_corpus_record(path)
+    expect_null(read$record, info = toString(magic))
+    expect_false(read$vanished, info = toString(magic))
+    expect_identical(read$bytes, length(magic), info = toString(magic))
+  }
+  # An empty file is read too: no magic, unreadable.
+  writeBin(raw(0), path)
+  read <- h$read_corpus_record(path)
+  expect_null(read$record)
+  expect_identical(read$bytes, 0L)
+  # A NUL further in is no magic either; a bzip2 magic still decompresses.
+  saveRDS(list(body = as.raw(c(0x41, 0, 0x42))), path, compress = "bzip2")
+  expect_identical(
+    h$read_corpus_record(path)$record$body, as.raw(c(0x41, 0, 0x42))
+  )
 })
 
 test_that("a robots.rds that vanishes after the existence check", {
   h <- load_harness()
   corpus <- local_corpus()
   path <- file.path(corpus, "c.test", "robots.rds")
-  # Pin: the read itself fails.
-  expect_error(suppressWarnings(h$read_corpus_record(path)))
-  # The chunk walk sees the file as present, then it is gone.
+  read <- h$read_corpus_record(path)
+  expect_true(read$vanished)
+  expect_null(read$record)
+  # The chunk walk sees the file as present, then it is gone: recorded as
+  # absent, which the input check then flags as a change.
   h$file.exists <- function(...) TRUE
   on.exit(rm("file.exists", envir = h), add = TRUE)
-  expect_error(suppressWarnings(h$walk_chunk(
+  tables <- h$walk_chunk(
     corpus, h$list_host_dirs(corpus), list(chunk = 1L, ids = 1:3)
-  )))
+  )
+  expect_identical(tables$files$has_rds, c(TRUE, TRUE, FALSE))
+  expect_identical(tables$files$readable, c(TRUE, TRUE, NA))
 })
 
 test_that("a runner that fails outside a chunk leaves the run invalid", {
   h <- load_harness()
   runner <- function(ctx) stop("boom")
-  # Pin: the error escapes run_and_check().
-  expect_error(h$run_and_check(list(manifest = list()), list(), runner, NULL),
-               "boom")
+  rec <- h$run_and_check(list(manifest = list()), list(), runner, NULL)
+  expect_false(rec$manifest$valid)
+  expect_match(rec$invalid_cause, "^the run failed: boom$")
+  expect_null(rec$worker_failures)
+  # A refusal is passed on, not recorded.
+  refuse <- function(ctx) h$harness_refuse("no")
+  expect_refusal(h$run_and_check(list(), list(), refuse, NULL), "no")
 })
 
 test_that("one worker stops at the first failed chunk", {
   h <- load_harness()
   chunks <- lapply(1:3, function(i) list(chunk = i, ids = i))
-  calls <- 0L
-  work <- function(ch) {
-    calls <<- calls + 1L
-    if (ch$chunk == 1L) stop("first chunk lost")
-    list(n = 1L)
+  # A work function that counts its calls and fails on chunk `bad`.
+  counted <- function(bad) {
+    seen <- new.env()
+    seen$calls <- 0L
+    list(seen = seen, work = function(ch) {
+      seen$calls <- seen$calls + 1L
+      if (ch$chunk %in% bad) stop("chunk ", ch$chunk, " lost")
+      list(n = 1L)
+    })
   }
-  err <- tryCatch(h$run_chunks(chunks, work, 1L), error = function(e) e)
+  first <- counted(1L)
+  err <- tryCatch(h$run_chunks(chunks, first$work, 1L), error = function(e) e)
   expect_s3_class(err, "corpus_harness_worker_failure")
   expect_identical(err$failures$chunk, 1L)
-  # Pin: every later chunk still runs.
-  expect_identical(calls, 3L)
+  expect_match(conditionMessage(err), "^1 chunk\\(s\\) .*chunk 1 lost")
+  # No later chunk runs, and none is reported as a dead worker.
+  expect_identical(first$seen$calls, 1L)
+  second <- counted(2L)
+  err <- tryCatch(h$run_chunks(chunks, second$work, 1L), error = function(e) e)
+  expect_identical(err$failures$chunk, 2L)
+  expect_identical(second$seen$calls, 2L)
+  none <- counted(integer())
+  expect_length(h$run_chunks(chunks, none$work, 1L), 3L)
+  expect_identical(none$seen$calls, 3L)
 })
 
 test_that("a partial run against a full frozen run matches on its rows", {
@@ -931,8 +982,24 @@ test_that("a partial run against a full frozen run matches on its rows", {
     0L
   )
   rec <- readRDS(file.path(out, "part", "record.rds"))
-  # Pin: the unchanged corpus is reported as changed.
+  expect_true(rec$manifest$matches_frozen)
+  expect_identical(rec$manifest$frozen_rows_compared, 1L)
+  # A change on a host directory the partial run covers is still a mismatch.
+  saveRDS(list(body = body_of("changed")),
+          file.path(corpus, "a.test", "robots.rds"))
+  expect_identical(
+    run("manifest", "--run-id", "part2", "--max-hosts", "1",
+        "--manifest", "full"),
+    0L
+  )
+  rec <- readRDS(file.path(out, "part2", "record.rds"))
   expect_false(rec$manifest$matches_frozen)
+  # A frozen run without a readable manifest.rds is refused up front.
+  unlink(file.path(out, "full", "manifest.rds"))
+  expect_identical(
+    run("manifest", "--run-id", "part3", "--manifest", "full"), 2L
+  )
+  expect_false(dir.exists(file.path(out, "part3")))
 })
 
 test_that("harness_same needs one clean, known harness tree", {
@@ -947,9 +1014,15 @@ test_that("harness_same needs one clean, known harness tree", {
   fake_run(out, "na-b", harness = facts(NA_character_))
   same <- function(a, b) h$mode_compare(compare_ctx(out, a, b))$harness_same
   expect_true(same("clean", "clean"))
-  # Pins: a dirty tree, and two unknown trees, count as the same tree.
-  expect_true(same("clean", "dirty"))
-  expect_true(same("na-a", "na-b"))
+  expect_false(same("clean", "dirty"))
+  expect_false(same("dirty", "clean"))
+  expect_false(same("na-a", "na-b"))
+  expect_false(same("clean", "na-a"))
+  fake_run(out, "other", harness = facts("u"))
+  expect_false(same("clean", "other"))
+  # A run without harness facts recorded.
+  fake_run(out, "bare")
+  expect_false(same("bare", "bare"))
 })
 
 test_that("a planned host directory gone before the start manifest", {
@@ -960,16 +1033,49 @@ test_that("a planned host directory gone before the start manifest", {
     chunk = 1L, stringsAsFactors = FALSE
   )
   start <- h$corpus_manifest(corpus, plan)
-  # Pin: no column tells a missing directory from one without a robots.rds,
-  # and a partial run over it stays valid.
-  expect_null(start$dir_exists)
+  expect_identical(start$dir_exists, c(TRUE, TRUE, TRUE, FALSE))
+  expect_identical(start$has_rds, c(TRUE, TRUE, FALSE, FALSE))
+  check <- h$verify_run_inputs(start, start, start)
+  expect_false(check$valid)
+  expect_false(check$start_ok)
+  expect_identical(check$changes$check, "start")
+  expect_identical(check$changes$host, "gone.test")
+  expect_identical(check$changes$change, "vanished")
+  # The hash names the files only, so older frozen hashes still compare.
+  old <- start[, setdiff(names(start), "dir_exists")]
+  expect_identical(h$manifest_hash(old), h$manifest_hash(start))
+  expect_true(h$verify_run_inputs(old, old, old)$valid)
+
+  # An empty planned directory gone mid-run, seen by a partial run's end
+  # manifest; the files shards carry no dir_exists, so "during" is silent.
+  plan <- plan[1:3, ]
+  start <- h$corpus_manifest(corpus, plan)
   expect_true(h$verify_run_inputs(start, start, start)$valid)
+  unlink(file.path(corpus, "c.test"), recursive = TRUE)
+  end <- h$end_manifest(corpus, start, partial = TRUE)
+  during <- start[, setdiff(names(start), "dir_exists")]
+  check <- h$verify_run_inputs(start, during, end)
+  expect_false(check$valid)
+  expect_true(check$during_ok)
+  expect_identical(check$changes$host, "c.test")
+  expect_identical(check$changes$change, "vanished")
+  # And one that appears.
+  expect_identical(h$manifest_diff(end, start)$change, "appeared")
 })
 
-test_that("a body's evaluated bytes sit on its paths rows", {
+test_that("a body's evaluated bytes sit on its files row", {
   h <- load_harness()
-  read <- list(sha256 = "x", bytes = 3L, record = list(body = body_of("a")))
-  # Pin: the files table does not carry it.
-  expect_null(h$file_row(1L, "a.test", read)$evaluated_bytes)
-  expect_null(h$skipped_file_row(1L, "a.test")$evaluated_bytes)
+  body <- c(body_of("ab"), as.raw(0))
+  read <- list(sha256 = "x", bytes = 3L, record = list(body = body))
+  expect_identical(h$file_row(1L, "a.test", read)$evaluated_bytes, 2L)
+  no_body <- list(sha256 = "x", bytes = 3L, record = list(body = NULL))
+  expect_identical(
+    h$file_row(1L, "a.test", no_body)$evaluated_bytes, NA_integer_
+  )
+  expect_identical(
+    h$skipped_file_row(1L, "a.test")$evaluated_bytes, NA_integer_
+  )
+  expect_named(
+    h$file_row(1L, "a.test", read), names(h$skipped_file_row(1L, "a.test"))
+  )
 })
