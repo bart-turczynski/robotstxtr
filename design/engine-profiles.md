@@ -334,6 +334,37 @@ follow Google's documented 512,000-byte limit.
 A private corpus run of the `google`/`google` v1 path against the same reference found class 1 and
 no decision difference.
 
+### 5c. The aipref AI-training policy token (ROBO-kzyfejcv; validator only)
+
+draft-kelley-aipref-training-preference-signal-00 is an individual Internet-Draft (dated 2026-10-30,
+expires 2027-05-03; no formal IETF standing), so everything below may change with its next revision
+(https://datatracker.ietf.org/doc/draft-kelley-aipref-training-preference-signal/). It states an
+AI-training preference with an ordinary group keyed by the policy token `__usage_ai-training`, and
+adds no directive and no grammar: a disallowed path is a preference against training on it, an allowed
+path one in favor, and no such group means no preference. Two rules differ from crawler group
+selection: a `User-agent: *` group must not be read as matching the token, and the token matches
+exactly, apart from case, with no prefix or flexible match. The token says nothing about crawling.
+Which crawler operators read it, and from when, is the dated vendor record in §7a; this section
+repeats none of it.
+
+No matcher or decision changes here. A token group stacked onto `*` gives its rules to every crawler
+under the Google and Yandex backends (`design/engine-disagreements.md` class 1b). The validator (`robots_validate_text()`, `robots_validate_url()`) reads the draft as follows:
+
+| Code | Severity | When |
+|---|---|---|
+| `ai_training_preference` | info | A User-agent value is the token whole, ASCII case aside. One per group, on its first such line; the message lists the group's own rules and never merges in `*`. |
+| `ai_training_token_near_miss` | warning | The value's leading `[A-Za-z_-]` run, with `_` and `-` removed and ASCII-lowercased, is `usageaitraining`, but the value is not the token (`__usage_ai_training`, `usage_ai-training`, `__usage-ai-training`, `__usage_ai-training/1.0`). For a suffix the message adds that Google's matcher still reads the token. |
+| `ai_training_group_extra_line` | warning | A directive other than Allow, Disallow, User-agent or Sitemap (file-level) in a group that names only the token, such as `Crawl-delay`. |
+| `ai_training_token_stacked` | warning | A `__usage_` User-agent line shares a group with `*`, or with a named crawler and a line other than a User-agent line sits between them. Consecutive User-agent lines naming crawlers stay silent: that is RFC 9309 grouping. |
+
+The token is never reported as `wildcard_rules_not_inherited`, and neither is a value Google's matcher
+reads as the token. All four codes are skipped for a body holding a NUL byte, like the other group
+checks, and kept for a body cut at `max_bytes`, where the info says lines past the cut were not read.
+A `DisallowAITraining:`-style key is a different mistake, read by Google as `Disallow` for the whole
+group: `accepted_directive_prefix` (ROBO-xglcoagv) reports it, and its message points to the policy
+token group. Out of scope until the draft stabilizes: a public API answering "is training on this
+path opted out?". Pinned by `tests/testthat/test-aipref-policy-token-kzyfejcv.R`.
+
 ## 6. Matcher capability availability
 
 `robots_policy_ruleset` (§4) is pure data and always available. `matcher_backend` is separate:
