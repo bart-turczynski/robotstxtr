@@ -137,14 +137,15 @@ validation_unsupported <- c(
 #'     exactly, such as \code{__usage_ai_training} or
 #'     \code{__usage_ai-training/1.0}. \cr
 #'   \code{ai_training_group_extra_line} \tab warning \tab
-#'     A directive such as \code{Crawl-delay} before the last rule of a group
-#'     that names only the policy token; file-level Sitemap, Host and
-#'     Clean-param lines are left out. \cr
+#'     A directive such as \code{Crawl-delay} in a group that names only the
+#'     policy token, before its last rule or anywhere in the file's last
+#'     group; file-level Sitemap, Host and Clean-param lines are left out.
+#'     \cr
 #'   \code{ai_training_token_stacked} \tab warning \tab
 #'     A policy-token User-agent line (\code{__usage_}, or a near miss)
-#'     shares a group with \code{User-agent: *}, or with a named crawler
-#'     from which a directive line separates it, so the group's rules reach
-#'     those crawlers too. \cr
+#'     shares a group with \code{User-agent: *}, or with a crawler or other
+#'     policy token from which a directive line separates it, so the group's
+#'     rules reach them too. \cr
 #'   \code{disallow_tied_by_allow} \tab warning \tab
 #'     A Disallow never takes effect: an Allow with the identical pattern
 #'     applies to the same crawlers and wins the tie. Anchored on the
@@ -266,18 +267,21 @@ validation_unsupported <- c(
 #' miss is a value whose leading run of letters, `_` and `-`, with the `_`
 #' and `-` removed, is `usageaitraining` in any case. The Google and Yandex
 #' parsers join User-agent lines that no Allow or Disallow line separates
-#' into one group, and the Bing parser does unless an unknown field comes
-#' between (`design/engine-disagreements.md` class 1b), so a training
+#' into one group; the Bing parser joins them only across blank and comment
+#' lines and ends the group at any other directive
+#' (`design/engine-disagreements.md` classes 1 and 1b). So a training
 #' opt-out after a `*` group that holds no rule can become a Disallow for
-#' every crawler; `ai_training_token_stacked` says so. Blank and comment
-#' lines separate nothing, and the draft lets a group mix the token with
-#' crawler names, so consecutive or comment-headed User-agent lines that
-#' name crawlers stay silent. A line after a token group's last rule may
-#' head the next group, so `ai_training_group_extra_line` leaves it out. A
-#' key
-#' such as `DisallowAITraining` is `accepted_directive_prefix`. A body cut
-#' at `max_bytes` is checked, and the info then says the lines past the cut
-#' were not read; a document holding a NUL byte gets none of these codes.
+#' every crawler, and `ai_training_token_stacked` says so, naming which
+#' parsers join the lines. Another policy token or crawler a directive line
+#' separates from the token is reported too. Blank and comment lines
+#' separate nothing, and the draft lets a group mix tokens, so consecutive
+#' or comment-headed User-agent lines that name crawlers stay silent. A
+#' line after a token group's last rule may head the next group, so
+#' `ai_training_group_extra_line` leaves it out unless the group is the
+#' file's last. A key such as `DisallowAITraining` is
+#' `accepted_directive_prefix`. A body cut at `max_bytes` is checked, and
+#' the info then says the lines past the cut were not read; a document
+#' holding a NUL byte gets none of these codes.
 #' Which crawler operators read the token, and from when, is recorded with
 #' dates in `design/engine-profiles.md` section 7a.
 #'
@@ -1133,16 +1137,17 @@ ai_training_draft <- "draft-kelley-aipref-training-preference-signal-00"
 #   removed, is `usageaitraining` but which does not name the token exactly
 #   (`__usage_ai_training`, `__usage_ai-training/1.0`).
 # - ai_training_token_stacked: a policy-token line (a `__usage_` key, the
-#   token or a near miss) in a group that also names `*`, or a named crawler
-#   with a directive line between the two. Parsers that join User-agent lines
-#   no rule separates give the group's rules to those crawlers too. Blank and
-#   comment lines are RFC 9309 emptylines and the draft lets a group mix
-#   tokens, so consecutive or comment-headed User-agent lines stay silent.
+#   token or a near miss) in a group that also names `*`, or a crawler or
+#   another policy token (not the same class) with a directive line between
+#   the two. Parsers that join User-agent lines no rule separates give the
+#   group's rules to those crawlers too. Blank and comment lines are RFC 9309
+#   emptylines and the draft lets a group mix tokens, so consecutive or
+#   comment-headed User-agent lines stay silent.
 # - ai_training_group_extra_line: a directive other than Allow, Disallow or
-#   User-agent, and not file-level (Sitemap, Host, Clean-param), between the
-#   first User-agent line and the last rule of a group that names only the
-#   token. A line after the last rule may head the next group, so it is not
-#   counted.
+#   User-agent, and not file-level (Sitemap, Host, Clean-param), in a group
+#   that names only the token: before its last rule, or anywhere in the
+#   file's last group. A line after the last rule of an earlier group may
+#   head the next group, so it is not counted.
 # - ai_training_preference: one info per group naming the token, on its first
 #   such line, listing the group's own rules; `*` rules are never merged in.
 #   `truncated` adds that lines past a `max_bytes` cut were not read.
@@ -1152,9 +1157,10 @@ ai_training_diagnostics <- function(groups, parsed, truncated = FALSE) {
   exact <- !agents$cut & agents$key == ai_training_token
   near <- !exact & gsub("[_-]", "", agents$key) == "usageaitraining"
   family <- exact | near | startsWith(agents$key, "__usage_")
+  class <- ifelse(exact | near, "usageaitraining", agents$key)
   found <- list(
     ai_training_near_miss_rows(agents[near, , drop = FALSE]),
-    ai_training_stacked_rows(agents, parsed, family),
+    ai_training_stacked_rows(agents, parsed, family, class),
     ai_training_extra_line_rows(groups, parsed, exact),
     ai_training_preference_rows(groups, exact, truncated)
   )
@@ -1190,29 +1196,51 @@ ai_training_near_miss_rows <- function(near) {
 }
 
 # Linear in the agent lines. `segment` counts the directive lines (other than
-# User-agent) up to each agent line, so two agent lines of one group have a
-# directive between them exactly when their segments differ. Agent rows are
-# in file order and both group and segment never decrease along them, so
-# `group * width + segment` is sorted and findInterval() finds, for each
-# policy-token line, the nearest named crawler before it in an earlier
-# segment of its group, and the nearest after it in a later one. A `*` line
-# in the group is named first.
-ai_training_stacked_rows <- function(agents, parsed, family) {
+# User-agent) up to each agent line, so two agent lines have a directive
+# between them exactly when their segments differ; two groups always do (a
+# rule line ends a group). Agent rows are in file order, so segments never
+# decrease along them, and findInterval() finds for each policy-token line
+# the nearest candidate before it in an earlier segment and after it in a
+# later one. A candidate of the token line's own class (the same key; the
+# token and its near misses are one class) is skipped by jumping to the end
+# of its run of same-class candidates. Candidates in another group are
+# dropped. A `*` line in the group is named first, one in the token line's
+# segment (nothing but blank or comment lines between) before any other.
+# Bing ends a group at any directive (`design/engine-disagreements.md`
+# class 1), so it joins the lines only when the two share a segment.
+ai_training_stacked_rows <- function(agents, parsed, family, class) {
   token_rows <- which(family)
   if (length(token_rows) == 0L) {
     return(ai_training_rows())
   }
   breaks <- parsed$line[parsed$has_directive & parsed$type != "user-agent"]
   segment <- findInterval(agents$line, breaks)
-  width <- length(breaks) + 1
-  named_rows <- which(!family & !agents$global & nzchar(agents$key))
-  named_at <- agents$group[named_rows] * width + segment[named_rows]
-  token_at <- agents$group[token_rows] * width + segment[token_rows]
   group <- agents$group[token_rows]
-  before_pos <- findInterval(token_at, named_at, left.open = TRUE)
-  before_pos[before_pos == 0L] <- NA_integer_
-  before <- named_rows[before_pos]
-  after <- named_rows[findInterval(token_at, named_at) + 1L]
+  token_class <- class[token_rows]
+
+  candidates <- which(!agents$global & nzchar(agents$key))
+  n <- length(candidates)
+  candidate_class <- class[candidates]
+  run <- if (n == 0L) {
+    integer()
+  } else {
+    cumsum(c(TRUE, candidate_class[-1L] != candidate_class[-n]))
+  }
+  run_before <- match(run, run) - 1L
+  run_before[run_before == 0L] <- NA_integer_
+  run_after <- n + 2L - match(run, rev(run))
+  run_after[run_after > n] <- NA_integer_
+  at <- segment[candidates]
+  before <- findInterval(segment[token_rows], at, left.open = TRUE)
+  before[before == 0L] <- NA_integer_
+  same <- !is.na(before) & candidate_class[before] == token_class
+  before[same] <- run_before[before[same]]
+  after <- findInterval(segment[token_rows], at) + 1L
+  after[after > n] <- NA_integer_
+  same <- !is.na(after) & candidate_class[after] == token_class
+  after[same] <- run_after[after[same]]
+  before <- candidates[before]
+  after <- candidates[after]
   before[!is.na(before) & agents$group[before] != group] <- NA_integer_
   after[!is.na(after) & agents$group[after] != group] <- NA_integer_
   distance <- function(rows) abs(agents$line[rows] - agents$line[token_rows])
@@ -1220,44 +1248,56 @@ ai_training_stacked_rows <- function(agents, parsed, family) {
     is.na(after) | (!is.na(before) & distance(before) <= distance(after)),
     before, after
   )
+
   global_rows <- which(agents$global)
+  star_joined <- global_rows[match(segment[token_rows], segment[global_rows])]
+  star_joined[!is.na(star_joined) &
+                agents$group[star_joined] != group] <- NA_integer_
   star <- global_rows[match(group, agents$group[global_rows])]
+  star[!is.na(star_joined)] <- star_joined[!is.na(star_joined)]
   other <- ifelse(is.na(star), nearest, star)
   fire <- !is.na(other)
   token_rows <- token_rows[fire]
   other <- other[fire]
+  joined <- !is.na(star_joined[fire])
   star <- !is.na(star[fire])
   named <- ifelse(star, "*", agents$token[other])
   message <- sprintf(
     paste0("`User-agent: %s` shares a group with `User-agent: %s` (line ",
            "%d): Google's and Yandex's parsers join User-agent lines that no ",
-           "Allow or Disallow line separates, and Bing's does unless an ",
-           "unknown field comes between, so this group's rules also apply to ",
-           "%s. Give the policy token a separate group, after a group that ",
-           "ends in an Allow or Disallow line."),
+           "Allow or Disallow line separates, so this group's rules also ",
+           "apply to %s. %s Give the policy token a separate group, after a ",
+           "group that ends in an Allow or Disallow line."),
     agents$token[token_rows], named, agents$line[other],
-    ifelse(star, "every crawler no group names", named)
+    ifelse(star, "every crawler no group names", named),
+    ifelse(joined, "Bing's parser joins them too.",
+           paste("Bing's parser ends the group at the directive line",
+                 "between the two."))
   )
   ai_training_rows(agents$line[token_rows], rep("warning", length(token_rows)),
                    rep("ai_training_token_stacked", length(token_rows)),
                    rep("user-agent", length(token_rows)), message)
 }
 
-# A group's span starts at its first User-agent line; a line counts only
-# before the group's last rule. A User-agent line naming no crawler (empty,
-# or led by a byte outside [A-Za-z_-]) does not make the group mixed.
+# A group's span starts at its first User-agent line. A line after the
+# group's last rule may head the next group, so it counts only in the last
+# group, where nothing follows. A User-agent line naming no crawler (empty,
+# or led by a byte outside [A-Za-z_-]) or one Google reads as the token
+# (`__usage_ai-training/1.0`) does not make the group mixed.
 ai_training_extra_line_rows <- function(groups, parsed, exact) {
   agents <- groups$agents
   rules <- groups$rules
   group_ids <- groups$groups$group
-  naming <- agents$global | nzchar(agents$key)
+  mixed <- (agents$global | nzchar(agents$key)) &
+    agents$key != ai_training_token
   token_only <- group_ids %in% agents$group[exact] &
-    !group_ids %in% agents$group[naming & !exact]
+    !group_ids %in% agents$group[mixed]
   if (!any(token_only)) {
     return(ai_training_rows())
   }
   last <- !duplicated(rules$group, fromLast = TRUE)
   last_rule <- rules$line[last][match(group_ids, rules$group[last])]
+  final <- seq_along(group_ids) == length(group_ids)
   lines <- parsed[parsed$has_directive & !parsed$type %in% c(
     "user-agent", "allow", "disallow", "sitemap"
   ), c("line", "type", "action"), drop = FALSE]
@@ -1265,8 +1305,8 @@ ai_training_extra_line_rows <- function(groups, parsed, exact) {
   inside <- span > 0L
   lines <- lines[inside, , drop = FALSE]
   span <- span[inside]
-  keep <- token_only[span] & !is.na(last_rule[span]) &
-    lines$line < last_rule[span]
+  keep <- token_only[span] & (final[span] |
+    (!is.na(last_rule[span]) & lines$line < last_rule[span]))
   lines <- lines[keep, , drop = FALSE]
   directive <- vapply(seq_len(nrow(lines)), function(i) {
     validation_ascii_action(lines$action[[i]], lines$type[[i]])
@@ -1289,7 +1329,7 @@ ai_training_extra_line_rows <- function(groups, parsed, exact) {
 # Linear in the rules: they are split by group once, and at most `cap` per
 # group are rendered.
 ai_training_preference_rows <- function(groups, exact, truncated,
-                                        cap = 10L) {
+                                        cap = 10L, see = 3L) {
   agents <- groups$agents[exact, , drop = FALSE]
   agents <- agents[!duplicated(agents$group), , drop = FALSE]
   rules <- groups$rules
@@ -1314,14 +1354,19 @@ ai_training_preference_rows <- function(groups, exact, truncated,
     sprintf("This group's rules: %s%s.", toString(items),
             if (k > cap) sprintf(", and %d more", k - cap) else "")
   }, "", USE.NAMES = FALSE)
-  # Groups naming the same token merge, so each info points to the others.
-  others <- vapply(seq_len(nrow(agents)), function(i) {
-    rest <- agents$line[-i]
-    if (length(rest) == 0L) {
+  # Groups naming the same token merge, so each info points to the others:
+  # the first `see` of them, then a count, so the text stays linear.
+  lines <- agents$line
+  head_lines <- lines[seq_len(min(length(lines), see + 1L))]
+  others <- vapply(seq_along(lines), function(i) {
+    rest <- length(lines) - 1L
+    if (rest == 0L) {
       return("")
     }
-    sprintf(" Groups naming the token merge (also see line%s %s).",
-            if (length(rest) > 1L) "s" else "", toString(rest))
+    shown <- head_lines[head_lines != lines[[i]]][seq_len(min(rest, see))]
+    sprintf(" Groups naming the token merge (also see line%s %s%s).",
+            if (rest > 1L) "s" else "", toString(shown),
+            if (rest > see) sprintf(", and %d more", rest - see) else "")
   }, "")
   message <- sprintf(
     paste0("`User-agent: %s` states an AI-training preference (%s, an ",

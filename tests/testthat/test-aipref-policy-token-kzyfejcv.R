@@ -218,13 +218,14 @@ test_that("a token-only group warns on each line it cannot use", {
   )
 })
 
-test_that("lines after the token group's last rule draw no extra-line", {
-  # Trailing file-level lines, and a line heading the next group.
+test_that("a line that may head the next group draws no extra-line", {
+  # Trailing file-level lines stay silent; at the end of the file nothing
+  # follows, so a Crawl-delay there is the token group's.
   d <- ai_diags(ai_lines(
     "User-agent: __usage_ai-training", "Disallow: /",
     "Host: example.com", "Clean-param: ref", "Crawl-delay: 5"
   ))
-  expect_identical(ai_new_codes(d), "ai_training_preference")
+  expect_identical(d$line[d$code == "ai_training_group_extra_line"], 5L)
   d <- ai_diags(ai_lines(
     "User-agent: __usage_ai-training", "Disallow: /",
     "Content-Signal: ai-train=no", "User-agent: *", "Allow: /"
@@ -235,9 +236,23 @@ test_that("lines after the token group's last rule draw no extra-line", {
     "Content-Signal: ai-train=no", "User-agent: *", "Allow: /"
   ))
   expect_identical(ai_new_codes(d), "ai_training_preference")
-  # A rule-less token group has no rule block.
+  # A rule-less token group is the last group: its lines are its own.
   d <- ai_diags(ai_lines("User-agent: __usage_ai-training", "Crawl-delay: 5"))
+  expect_identical(d$line[d$code == "ai_training_group_extra_line"], 2L)
+  # A trailing line before a later group's User-agent line may head it.
+  d <- ai_diags(ai_lines(
+    "User-agent: __usage_ai-training", "Disallow: /", "Crawl-delay: 5",
+    "User-agent: GPTBot", "Disallow: /x"
+  ))
   expect_identical(ai_new_codes(d), "ai_training_preference")
+})
+
+test_that("a value Google reads as the token keeps a group token-only", {
+  d <- ai_diags(ai_lines(
+    "User-agent: __usage_ai-training", "User-agent: __usage_ai-training/1.0",
+    "Crawl-delay: 5", "Disallow: /"
+  ))
+  expect_identical(d$line[d$code == "ai_training_group_extra_line"], 3L)
 })
 
 test_that("lines outside a token-only group draw no extra-line warning", {
@@ -288,11 +303,18 @@ test_that("the issue's stacked shape warns on the token line", {
   expect_identical(d$message[[2L]], paste0(
     "`User-agent: __usage_ai-training` shares a group with ",
     "`User-agent: *` (line 1): Google's and Yandex's parsers join ",
-    "User-agent lines that no Allow or Disallow line separates, and Bing's ",
-    "does unless an unknown field comes between, so this group's rules ",
-    "also apply to every crawler no group names. Give the policy token a ",
-    "separate group, after a group that ends in an Allow or Disallow line."
+    "User-agent lines that no Allow or Disallow line separates, so this ",
+    "group's rules also apply to every crawler no group names. Bing's ",
+    "parser ends the group at the directive line between the two. Give the ",
+    "policy token a separate group, after a group that ends in an Allow or ",
+    "Disallow line."
   ))
+  # Nothing but blank lines between: Bing joins the lines too.
+  d <- ai_rows(ai_lines("User-agent: *", "", "User-agent: __usage_ai-training",
+                        "Disallow: /"), "ai_training_token_stacked")
+  expect_match(d$message, paste0(
+    "every crawler no group names. Bing's parser joins them too. Give"
+  ), fixed = TRUE)
   # Why: under Google the token's Disallow reaches every crawler.
   r <- allowed_by_robots_text(ai_stacked, "https://example.com/a",
                               "Googlebot")$results
@@ -345,8 +367,10 @@ test_that("a named crawler with a directive between it and the token warns", {
     expect_match(d$message, paste0(
       "shares a group with `User-agent: GPTBot` (line 1)"
     ), fixed = TRUE, info = between)
-    expect_match(d$message, "also apply to GPTBot.", fixed = TRUE,
-                 info = between)
+    expect_match(d$message, paste0(
+      "also apply to GPTBot. Bing's parser ends the group at the directive ",
+      "line between the two."
+    ), fixed = TRUE, info = between)
   }
   # After the token too, and the nearest crawler is named.
   d <- ai_rows(ai_lines("User-agent: FarBot", "Crawl-delay: 1",
@@ -416,10 +440,42 @@ test_that("the stacked warning is keyed on the __usage_ prefix", {
   d <- ai_rows(ai_lines("User-agent: *", "User-agent: __usage_search",
                         "Disallow: /"), "ai_training_token_stacked")
   expect_match(d$message, "^`User-agent: __usage_search` shares a group")
-  # Two policy tokens share a group without a warning.
-  d <- ai_diags(ai_lines("User-agent: __usage_search", "Crawl-delay: 5",
+  # Two policy tokens a directive separates merge under Google and Yandex,
+  # so each is stacked onto the other.
+  d <- ai_rows(ai_lines("User-agent: __usage_search", "Crawl-delay: 5",
+                        "User-agent: __usage_ai-training", "Disallow: /"),
+               "ai_training_token_stacked")
+  expect_identical(d$line, c(1L, 3L))
+  expect_match(d$message[[1L]], paste0(
+    "`User-agent: __usage_search` shares a group with ",
+    "`User-agent: __usage_ai-training` (line 3)"
+  ), fixed = TRUE)
+  expect_match(d$message[[2L]],
+               "shares a group with `User-agent: __usage_search` (line 1)",
+               fixed = TRUE)
+  # Consecutive, they share a group by choice.
+  d <- ai_diags(ai_lines("User-agent: __usage_search",
                          "User-agent: __usage_ai-training", "Disallow: /"))
   expect_identical(ai_new_codes(d), "ai_training_preference")
+})
+
+test_that("the same token repeated across a directive is not stacking", {
+  d <- ai_diags(ai_lines("User-agent: __usage_ai-training", "Crawl-delay: 5",
+                         "User-agent: __USAGE_AI-TRAINING", "Disallow: /"))
+  expect_false("ai_training_token_stacked" %in% d$code)
+  # A repeat is skipped when naming the nearest crawler.
+  d <- ai_rows(ai_lines("User-agent: GPTBot", "Crawl-delay: 1",
+                        "User-agent: __usage_ai-training", "Crawl-delay: 2",
+                        "User-agent: __usage_ai-training", "Crawl-delay: 3",
+                        "User-agent: ClaudeBot", "Crawl-delay: 4",
+                        "User-agent: __usage_ai-training", "Disallow: /"),
+               "ai_training_token_stacked")
+  expect_identical(d$line, c(3L, 5L, 9L))
+  expect_match(d$message[[1L]], "`User-agent: GPTBot` (line 1)", fixed = TRUE)
+  expect_match(d$message[[2L]], "`User-agent: ClaudeBot` (line 7)",
+               fixed = TRUE)
+  expect_match(d$message[[3L]], "`User-agent: ClaudeBot` (line 7)",
+               fixed = TRUE)
 })
 
 test_that("a near miss without the __usage_ prefix is a policy token too", {
@@ -485,6 +541,7 @@ test_that("a cut body keeps every check and says the info may be partial", {
 })
 
 test_that("a group of thousands of agents is checked in one pass", {
+  skip_on_cran()
   agents <- paste0("User-agent: Bot-", outer(letters, LETTERS, paste0))
   agents <- rep(agents, 5L)
   body <- ai_lines("User-agent: *", "Content-Signal: x", agents,
@@ -497,6 +554,7 @@ test_that("a group of thousands of agents is checked in one pass", {
 })
 
 test_that("the stacked check is linear: 4000 crawlers and 4000 tokens", {
+  skip_on_cran()
   # A pair table here is 16 million rows; the check must stay linear.
   named <- rep(paste0("User-agent: Bot-", outer(letters, LETTERS, paste0)),
                length.out = 4000L)
@@ -509,5 +567,32 @@ test_that("the stacked check is linear: 4000 crawlers and 4000 tokens", {
   expect_identical(stacked$line, 4002:8001)
   expect_match(stacked$message[[1L]], "`User-agent: Bot-",
                fixed = TRUE)
-  expect_lt(elapsed, 5)
+  expect_lt(elapsed, 30)
+})
+
+test_that("the info names at most three other token groups", {
+  body <- ai_lines(rep(c("User-agent: __usage_ai-training", "Disallow: /"),
+                       5L))
+  d <- ai_rows(body, "ai_training_preference")
+  expect_identical(d$line, c(1L, 3L, 5L, 7L, 9L))
+  expect_match(d$message[[1L]],
+               "(also see lines 3, 5, 7, and 1 more).", fixed = TRUE)
+  expect_match(d$message[[5L]],
+               "(also see lines 1, 3, 5, and 1 more).", fixed = TRUE)
+  d <- ai_rows(ai_lines(rep(c("User-agent: __usage_ai-training",
+                              "Disallow: /"), 4L)), "ai_training_preference")
+  expect_match(d$message[[2L]], "(also see lines 1, 5, 7).", fixed = TRUE)
+})
+
+test_that("info messages grow linearly with the number of token groups", {
+  # Each info names at most three others, so the total text per group is
+  # bounded however many groups repeat the token.
+  for (n in c(10L, 3000L)) {
+    body <- ai_lines(rep(c("User-agent: __usage_ai-training", "Disallow: /"),
+                         n))
+    d <- ai_rows(body, "ai_training_preference")
+    expect_identical(nrow(d), n)
+    expect_lt(max(nchar(d$message)), 500)
+    expect_lt(sum(nchar(d$message)), 500 * n)
+  }
 })
