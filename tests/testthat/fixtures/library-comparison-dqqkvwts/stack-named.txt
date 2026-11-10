@@ -1,4 +1,0 @@
-User-agent: FooBot
-Crawl-delay: 5
-User-agent: BarBot
-Disallow: /x
