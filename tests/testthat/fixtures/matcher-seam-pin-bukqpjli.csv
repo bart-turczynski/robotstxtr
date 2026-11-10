@@ -106,6 +106,8 @@
 "url:size-many-groups.txt","108d6781a13458d2856045c13803005a"
 "text:content-spam-html.txt","713b86ad4debd3437a0c4d551a822070"
 "url:content-spam-html.txt","22ab577016861b5d7b9a4464827794f1"
+"text:content-html-script-first.txt","062ac18fc2783998029bb6c2a8743721"
+"url:content-html-script-first.txt","111f531c86fe3f1ab9dc0329ca4463de"
 "text:redirect-cross-host-html.txt","5587cca9b09b493868e41952fd8985fa"
 "url:redirect-cross-host-html.txt","1fe0c42d3a326e6882169f9aa8aa31aa"
 "text:oth-space-before-colon.txt","15890a66733e1b660bd9282c2903985a"
