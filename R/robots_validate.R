@@ -597,17 +597,32 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     parsed <- parsed[parsed$line <= line_count, , drop = FALSE]
   }
 
+  # The diagnostics are kept as chunks of column vectors, in emission order:
+  # one chunk per row or batch. The frame is built once, at the end
+  # (ROBO-dbvmxcfw), so the cost stays linear in the number of rows. Each chunk
+  # is bound under its index: appending to a list held in the environment
+  # would copy the whole list on every append.
   diag_env <- new.env(parent = emptyenv())
-  diag_env$items <- list()
+  diag_env$n_chunks <- 0L
+  add_chunk <- function(line, severity, code, directive, raw_text, message) {
+    n <- length(line)
+    diag_env$n_chunks <- diag_env$n_chunks + 1L
+    assign(as.character(diag_env$n_chunks), list(
+      line = rep_len(as.integer(line), n),
+      severity = rep_len(as.character(severity), n),
+      code = rep_len(as.character(code), n),
+      directive = rep_len(as.character(directive), n),
+      raw_text = rep_len(as.character(raw_text), n),
+      message = rep_len(as.character(message), n)
+    ), envir = diag_env)
+  }
   add_diagnostic <- function(line, severity, code, directive, message) {
     raw_text <- if (!is.na(line) && line <= line_count) {
       render_validation_line(raw_lines[[line]])
     } else {
       NA_character_
     }
-    diag_env$items[[length(diag_env$items) + 1L]] <- validation_diagnostic(
-      source_id, line, severity, code, directive, raw_text, message
-    )
+    add_chunk(line, severity, code, directive, raw_text, message)
   }
 
   has_bom <- length(bytes) >= 3L && identical(bytes[1:3], validation_bom)
@@ -659,8 +674,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       !is.na(hash) &&
         validUTF8(rawToChar(validation_raw_slice(line_bytes, 1L, hash - 1L)))
     }, logical(1L))
-    diag_env$items[[length(diag_env$items) + 1L]] <- validation_diagnostic(
-      source_id, bad_lines, ifelse(in_comment, "warning", "error"),
+    add_chunk(
+      bad_lines, ifelse(in_comment, "warning", "error"),
       ifelse(in_comment, "invalid_utf8_comment", "invalid_utf8"),
       NA_character_,
       vapply(raw_lines[bad_lines], render_validation_line, "",
@@ -853,8 +868,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     found <- ai_training_diagnostics(groups, parsed,
                                      truncated = body_truncated)
     if (nrow(found) > 0L) {
-      diag_env$items[[length(diag_env$items) + 1L]] <- validation_diagnostic(
-        source_id, found$line, found$severity, found$code, found$directive,
+      add_chunk(
+        found$line, found$severity, found$code, found$directive,
         vapply(raw_lines[found$line], render_validation_line, "",
                USE.NAMES = FALSE),
         found$message
@@ -886,8 +901,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     # Its rows go in as one frame: a file can repeat thousands of rules.
     found <- duplicate_rule_diagnostics(groups)
     if (nrow(found) > 0L) {
-      diag_env$items[[length(diag_env$items) + 1L]] <- validation_diagnostic(
-        source_id, found$line, "info", "duplicate_rule", found$type,
+      add_chunk(
+        found$line, "info", "duplicate_rule", found$type,
         vapply(raw_lines[found$line], render_validation_line, "",
                USE.NAMES = FALSE),
         found$message
@@ -977,10 +992,18 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     )
   }
 
-  diagnostic_frame <- if (length(diag_env$items) == 0L) {
+  diagnostic_frame <- if (diag_env$n_chunks == 0L) {
     empty_validation_diagnostics()
   } else {
-    do.call(rbind, diag_env$items)
+    chunks <- mget(as.character(seq_len(diag_env$n_chunks)), envir = diag_env)
+    chunk_column <- function(name) {
+      unlist(lapply(chunks, `[[`, name), use.names = FALSE)
+    }
+    validation_diagnostic(
+      source_id, chunk_column("line"), chunk_column("severity"),
+      chunk_column("code"), chunk_column("directive"),
+      chunk_column("raw_text"), chunk_column("message")
+    )
   }
   core_recognized <- parsed$has_directive & parsed$type != "unknown"
   recognized <- sum(core_recognized) + sum(unsupported)

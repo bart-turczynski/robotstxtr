@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* `robots_validate_text()` and `robots_validate_url()` now take time linear in the number of diagnostics.
+
 * The v1 `google` matcher parses each distinct robots.txt once per call, not once per URL (ROBO-iooslxvj).
 
 * `robots_validate_text()` recognizes the draft aipref `__usage_ai-training` token: an info, warnings on near misses, unusable lines and stacked groups, and no `wildcard_rules_not_inherited` (ROBO-kzyfejcv).

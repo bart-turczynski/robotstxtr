@@ -267,3 +267,38 @@ test_that("a non-ASCII directive name keeps its UTF-8 encoding mark", {
     "29b7356bf39d00ceaff21bf1903a32b4"
   )
 })
+
+# Counts the calls to validation_diagnostic(), each passed to the real builder.
+linear_count_builds <- function(env = parent.frame()) {
+  built <- validation_diagnostic
+  calls <- new.env(parent = emptyenv())
+  calls$n <- 0L
+  local_mocked_bindings(
+    validation_diagnostic = function(...) {
+      calls$n <- calls$n + 1L
+      built(...)
+    },
+    .package = "robotstxtr",
+    .env = env
+  )
+  calls
+}
+
+test_that("the frame is built once, however many warnings there are", {
+  # One builder call per body, whatever the number of rows (ROBO-dbvmxcfw).
+  calls <- linear_count_builds()
+  n <- 2000L
+  rules <- paste0("Disallow: x", seq_len(n), collapse = "\n")
+  d <- robots_validate_text(charToRaw(paste0("User-agent: *\n", rules, "\n")))
+  expect_identical(calls$n, 1L)
+  expect_identical(nrow(d$diagnostics), n)
+  expect_identical(d$diagnostics$code, rep("rule_missing_leading_slash", n))
+  expect_identical(d$diagnostics$line, seq.int(2L, n + 1L))
+})
+
+test_that("the batches and document-level rows share that one build", {
+  calls <- linear_count_builds()
+  d <- robots_validate_text(linear_body_main())$diagnostics
+  expect_identical(calls$n, 1L)
+  expect_identical(nrow(d), 43L)
+})
