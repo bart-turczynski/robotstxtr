@@ -376,6 +376,43 @@ These byte-level limits affect the current policy/matcher decision (not future-v
   status or a status mismatch over the limit is `body_too_large`, nothing stored, `incomplete` under
   every ruleset. A 4xx/5xx over the limit is classified by its status (§4).
 
+### 7a. Content-Signal and Content-Usage lines (ROBO-fqkgreev; pages read 2026-11-10)
+
+Validator only: no matcher reads either line as a rule, and nothing here changes a decision (the Bing
+`*`-run sealing at an unknown field is `design/engine-disagreements.md` row 1b). Both keys stay in
+`validation_unsupported`, so they count in `unsupported_directives` and `recognized_directives`.
+
+**Content-Signal** gets its own warning, `content_signal_directive`, instead of `unsupported_directive`,
+whose "another crawler may use it" nothing documented supports. The message carries no date; this
+section is the dated statement behind it.
+
+- The syntax comes from draft-romm-aipref-contentsignals-00 (Cloudflare authors), an individual
+  Internet-Draft: last revision 2025-10-01, expired 2026-04-04 (six months on), "Expired & archived"
+  on the IETF datatracker
+  (https://datatracker.ietf.org/doc/draft-romm-aipref-contentsignals/).
+- The message's alternative is draft-kelley-aipref-training-preference-signal-00, an active individual
+  draft (dated 2026-10-30, expires 2027-05-03; no formal IETF standing), which defines a
+  `User-Agent: __usage_ai-training` group
+  (https://datatracker.ietf.org/doc/draft-kelley-aipref-training-preference-signal/).
+- As of 2026-11-10, no crawler operator below documents honoring Content-Signal `[documented]` (by
+  absence on each page):
+
+| Operator | Pages read 2026-11-10 | Finding |
+|---|---|---|
+| Google | https://developers.google.com/crawling/docs/robots-txt/robots-txt-spec ; https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers ; https://www.google.com/robots.txt | No Content-Signal or Content-Usage. The spec: "Rules other than `allow`, `disallow`, and `user-agent` are ignored by the robots.txt parser." The crawlers page says Google intends to support the aipref training preference token `__usage_ai-training` in early 2027. |
+| Bing | https://blogs.bing.com/search/2026/10/your-content-your-choice-clearer-preferences-for-training-and-grounding/ (2026-10-30) ; https://blogs.bing.com/webmaster/september-2023/Announcing-new-options-for-webmasters-to-control-usage-of-their-content-in-Bing-Chat ; https://www.bing.com/webmasters/help/how-to-create-a-robots-txt-file-cb7c31ec ; https://www.bing.com/robots.txt | No Content-Signal or Content-Usage on any of them. The 2026-10-30 post introduces a robots.txt AI Training preference with `User-Agent: __usage_ai-training` groups: "Starting February 1, 2027, Microsoft will honor the new preferences as it crawls". It says "These preferences will replace existing Microsoft preferences NoArchive and NoCache for training and grounding", and after 2027-03-01 "`NoArchive` and `NoCache` will no longer be read as a preference for training or grounding". The 2023 post's `nocache`/`noarchive` meta tags are the controls until then. The help page renders as a title only for the reader `[documentation_gap]`. |
+| OpenAI | https://developers.openai.com/api/docs/bots (redirected from platform.openai.com/docs/bots) ; https://openai.com/robots.txt | No Content-Signal or Content-Usage; controls are robots.txt groups for GPTBot, OAI-SearchBot and ChatGPT-User. OpenAI's 2026-10-30 post https://openai.com/index/helping-websites-express-ai-training-preferences/ was not readable directly (HTTP 403 on 2026-11-10); it is cited by its URL only, and its content is not recorded here. |
+| Anthropic | https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler ; https://www.anthropic.com/robots.txt | No Content-Signal or Content-Usage. "As of October 30, 2026, Anthropic has begun recognizing a machine-readable signal" for a "no AI training" preference, linking draft-kelley-aipref-training-preference-signal, and is "rolling this out across all of our services over time". |
+| Apple | https://support.apple.com/en-us/119829 ; https://www.apple.com/robots.txt | No Content-Signal or Content-Usage; controls are robots.txt (Applebot, Applebot-Extended), robots meta tags and `X-Robots-Tag`. |
+| Cloudflare | https://developers.cloudflare.com/bots/additional-configurations/managed-robots-txt/ ; https://contentsignals.org/ ; https://www.cloudflare.com/robots.txt | Defines Content Signals and publishes a `Content-Signal` line in its own robots.txt, but names no crawler that honors them: "`robots.txt` compliance is voluntary." |
+
+Re-read these pages when the draft or a vendor page changes; a vendor that documents honoring
+Content-Signal makes the message wrong.
+
+**Content-Usage** (the aipref vocabulary syntax) keeps the generic `unsupported_directive`: the ticket's
+default, kept unless a crawler documents it. None of the pages above does. Pinned by
+`tests/testthat/test-content-signal-fqkgreev.R`.
+
 ## 8. Future-validator reference (NOT executed this release)
 
 For the eventual validator (ADR-009 §8), not executable now: Yandex 2048 rules / 1024 chars per rule /
