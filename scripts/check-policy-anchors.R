@@ -10,9 +10,10 @@
 #
 #   Rscript scripts/check-policy-anchors.R [root]   # root defaults to "."
 #
-# A cheap gate of the fleet-ci local gate (.fleet-ci.yml). Base R only. Exit 1,
-# naming each dangling reference by file and line, on any. The optional root
-# lets a test point the check at a copy of the tree.
+# A cheap gate of the fleet-ci local gate (.fleet-ci.yml). Base R only. Exit 1
+# on any dangling reference, naming it by file and line, and on finding no
+# reference at all, which would let the check pass vacuously. The optional root
+# points the check at a copy of the tree, for the red cases.
 
 doc_rel <- file.path("design", "engine-profiles.md")
 ref_pattern <- "design/engine-profiles[.]md#[A-Za-z0-9_-]+"
@@ -53,6 +54,14 @@ refs <- do.call(rbind, lapply(r_files, function(path) {
     stringsAsFactors = FALSE
   )
 }))
+
+if (!nrow(refs)) {
+  cat(paste0(
+    "check-policy-anchors: no design/engine-profiles.md#x reference in R/*.R; ",
+    "the check would pass vacuously\n"
+  ))
+  quit(status = 1L)
+}
 
 dangling <- !refs$anchor %in% defined
 if (any(dangling)) {
