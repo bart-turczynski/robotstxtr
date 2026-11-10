@@ -191,6 +191,21 @@ test_that("ROBO-nhuirvrd: XML when the body opens with other markup", {
   expect_identical(ct_flag("<!-- x --><div>"), "xml")
 })
 
+test_that("ROBO-qquftxcx: a page opening with markup is HTML by any marker", {
+  # A minified page: the markers are mid-line, after inline script or style.
+  expect_identical(ct_flag("<script>var a=1;</script><html></html>"), "html")
+  expect_identical(ct_flag("<style>p{}</style><body>x</body>"), "html")
+  expect_identical(ct_flag("<div><script src=\"/a.js\"></script></div>"),
+                   "html")
+  expect_identical(ct_flag("<!-- x --><p>x</p><!DOCTYPE  html>"), "html")
+  expect_identical(ct_flag("<DIV><STYLE>p{}</STYLE></DIV>"), "html")
+  expect_identical(
+    ct_flag(c(as.raw(c(0xef, 0xbb, 0xbf)), charToRaw("<script/>"))), "html"
+  )
+  # A body that does not open with markup needs a line-start marker.
+  expect_identical(ct_flag("x <script></script>\n"), NA_character_)
+})
+
 test_that("ROBO-qquftxcx: feeds and title, link or meta tags stay xml", {
   # RSS and Atom use <title>, <link> and <meta>-like tags, never an HTML
   # document marker, so none of them makes a body html.

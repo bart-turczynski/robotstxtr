@@ -102,8 +102,10 @@
 #' 4096 bytes of a stored body: `"binary"` (a NUL byte, or at least 8 bytes,
 #' and more than 10% of them, not valid UTF-8), `"html"` (a line starting
 #' with `<!doctype html`, `<html`, `<head` or `<body`, possibly after an
-#' `<?xml ...?>` or `<!-- ... -->` on that line), `"xml"` (the body starts
-#' with `<`), `"json"` (the body starts with a JSON object or array), or `NA`.
+#' `<?xml ...?>` or `<!-- ... -->` on that line; or a body starting with `<`
+#' that holds `<!doctype html`, `<html`, `<head`, `<body`, `<script` or
+#' `<style` anywhere), `"xml"` (any other body starting with `<`), `"json"`
+#' (the body starts with a JSON object or array), or `NA`.
 #' The flag comes from the body alone, never from `content_type`, and changes
 #' nothing: the body is matched as it is either way.
 #'
