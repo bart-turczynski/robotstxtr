@@ -160,11 +160,12 @@ legacy functions and `as_legacy_robots_decisions_v1()` report the same
 differs: when the selected rule is an empty `Disallow`, the row reports
 `effective_empty_disallow` with that rule's line.
 
-RFC 9309 and Bing matcher requests return `capability_unavailable-v1`. Their
-policy tables still resolve independently where the accepted design has
-evidence. Bing fetch/status policy remains a `documentation_gap`;
-`assumed_rfc9309` is a separately named application policy and is never reported
-as Bing.
+RFC 9309 matcher requests return `capability_unavailable-v1`. Bing matcher
+requests are available, bounded to its supported vendor profiles
+(`bounded_profiles`). The RFC 9309 and Bing policy tables still resolve
+independently where the accepted design has evidence. Bing fetch/status policy
+remains a `documentation_gap`; `assumed_rfc9309` is a separately named
+application policy and is never reported as Bing.
 
 ## Legacy compatibility
 
