@@ -178,6 +178,10 @@ Selected **before** path matching; a capability + ruleset revision, not a contex
 - `yandex` — specific Yandex robot entry > `Yandex` > `*`. (Yandex, User-agent)
 - `bing` — `bingbot` > `msnbot` > `*`, discarding others. (Bing, "To crawl or not to crawl", 2012)
 
+Where the backends' group selection, parsing, matching or rule precedence make the same body
+answer differently, the classes, fixtures, verdicts and sources are in
+`design/engine-disagreements.md` (ROBO-glssaxva).
+
 ### 5a. Google crawler-token fallback (ROBO-mxsphtoo; pages read 2026-11-09)
 
 Question: does a Google crawler token with no group of its own (`Googlebot-Image`) fall back to a
