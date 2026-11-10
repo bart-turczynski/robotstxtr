@@ -28,31 +28,54 @@ source(
 )
 
 # Every case runs once, here; the tests below read these rows. A case is keyed
-# by its id: a NUL body never becomes an R string.
+# by its id: a NUL body never becomes an R string. A case that errors keeps
+# its condition, which gf_rows() raises inside the test that reads it.
 gf_case_list <- gf_cases()
 names(gf_case_list) <- vapply(gf_case_list, `[[`, character(1L), "id")
-gf_results <- lapply(gf_case_list, gf_run_case)
+gf_results <- lapply(gf_case_list, function(case) {
+  tryCatch(gf_run_case(case), error = identity)
+})
+
+# One case's rows; an error naming the case if it failed to run.
+gf_rows <- function(id) {
+  got <- gf_results[[id]]
+  if (inherits(got, "error")) {
+    stop(sprintf("case %s failed: %s", id, conditionMessage(got)),
+         call. = FALSE)
+  }
+  got
+}
 
 # One case's row on one path.
 gf_result <- function(id, path) {
-  got <- gf_results[[id]]
+  got <- gf_rows(id)
   got[got$path == path, , drop = FALSE]
 }
 
 # All rows, with the reference's recorded answers beside them.
 gf_all_rows <- function() {
-  rows <- do.call(rbind, unname(gf_results))
+  rows <- do.call(rbind, lapply(unname(names(gf_results)), gf_rows))
   case <- gf_case_list[rows$id]
   rows$ref_allowed <- vapply(case, `[[`, logical(1L), "ref_allowed")
   rows$ref_line <- vapply(case, `[[`, integer(1L), "ref_line")
   rows
 }
 
+test_that("ROBO-oxjmtaon: every fidelity case runs", {
+  for (id in names(gf_results)) {
+    expect_s3_class(gf_results[[id]], "data.frame", exact = TRUE)
+  }
+})
+
 test_that("ROBO-deehqhlc: every path agrees with the reference outside 1-5", {
   seen <- integer()
   differing <- character()
   for (case in gf_case_list) {
-    got <- gf_results[[case$id]]
+    got <- tryCatch(gf_rows(case$id), error = function(e) {
+      fail(conditionMessage(e))
+      NULL
+    })
+    if (is.null(got)) next
     for (k in seq_len(nrow(got))) {
       label <- paste(case$id, got$path[[k]])
       want <- gf_expected_difference(case$id, got$path[[k]])
@@ -82,16 +105,20 @@ test_that("ROBO-deehqhlc: every path agrees with the reference outside 1-5", {
 test_that("ROBO-oxjmtaon: gf_check_rows() checks each row's listed answer", {
   rows <- gf_all_rows()
   check <- function(rows) {
-    vapply(
-      gf_check_rows(rows, rows$ref_allowed, rows$ref_line), nrow, integer(1L)
-    )
+    out <- gf_check_rows(rows, rows$ref_allowed, rows$ref_line)
+    vapply(out[c("unexpected", "mismatched", "stale")], nrow, integer(1L))
   }
   none <- c(unexpected = 0L, mismatched = 0L, stale = 0L)
   expect_identical(check(rows), none)
 
-  # A class-5 row whose line or reason moves is not the listed answer.
+  # A class-5 row whose decision, line or reason moves is not the listed
+  # answer. Allowed with line 2 kept still differs from the reference
+  # (allowed, no line).
   k <- which(rows$id == "nul-before-key" & rows$path == "url")
   expect_length(k, 1L)
+  moved <- rows
+  moved$allowed[[k]] <- TRUE
+  expect_identical(check(moved), replace(none, "mismatched", 1L))
   moved <- rows
   moved$line[[k]] <- 3L
   expect_identical(check(moved), replace(none, "mismatched", 1L))
@@ -127,7 +154,7 @@ test_that("ROBO-oxjmtaon: gf_check_rows() checks each row's listed answer", {
 })
 
 test_that("ROBO-deehqhlc: the fixtures reach every path and family", {
-  cases <- gf_cases()
+  cases <- gf_case_list
   families <- vapply(cases, `[[`, character(1L), "family")
   expect_setequal(families, c(
     "empty_value", "window", "target", "pattern", "agent", "eol", "utf8",
@@ -208,6 +235,31 @@ test_that("ROBO-deehqhlc: the window bodies run once, under google only", {
   for (id in window) {
     expect_setequal(
       gf_results[[id]]$path, c("v1_text:google", "text", "url", "v1_url:google")
+    )
+  }
+})
+
+test_that("ROBO-oxjmtaon: every ruleset equals google on a window body", {
+  # gf_case_rulesets() runs the window bodies under google only, because a
+  # supplied body is use_rules under every ruleset. One vectorized call on
+  # the win-after body (over 512,000 bytes) keeps that premise pinned.
+  case <- gf_case_list[["win-after"]]
+  n <- length(gf_v1_rulesets)
+  r <- robots_evaluate_text_v1(
+    gf_body_string(case$body), rep(case$url, n), case$token,
+    gf_v1_rulesets, "google"
+  )$results
+  cols <- c("url_decision", "reason", "matched_line",
+            "matcher_body_truncated", "matcher_input_bytes")
+  expect_identical(nrow(r), n)
+  google <- r[match("google", gf_v1_rulesets), cols, drop = FALSE]
+  # The window cut the body: the rule after it is not read.
+  expect_identical(google$url_decision, "allow")
+  expect_true(google$matcher_body_truncated)
+  for (k in seq_len(n)) {
+    expect_identical(
+      as.list(r[k, cols, drop = FALSE]), as.list(google),
+      label = gf_v1_rulesets[[k]]
     )
   }
 })

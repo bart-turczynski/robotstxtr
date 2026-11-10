@@ -425,8 +425,9 @@ gf_expected_difference <- function(id, path) {
 # Checks robotstxtr's rows (gf_run_case()) against the reference's answers,
 # `ref_allowed` (logical) and `ref_line` (integer, 0 for no line), one of each
 # per row. A row differs from the reference when its decision does, or its
-# line does (NA counts as 0). Returns three row subsets, each with a `class`
-# column (NA where gf_expected lists nothing):
+# line does (NA counts as 0). Returns `rows`, every row with the columns
+# `decision_differs`, `line_differs` (the decision agrees, the line does not)
+# and `class` (NA where gf_expected lists nothing), and three subsets of it:
 # - `unexpected`: differs, and gf_expected lists nothing for it;
 # - `mismatched`: differs, is listed, but its allowed, line or reason is not
 #   the listed one;
@@ -436,8 +437,9 @@ gf_check_rows <- function(rows, ref_allowed, ref_line) {
   n <- nrow(rows)
   stopifnot(length(ref_allowed) == n, length(ref_line) == n)
   our_line <- ifelse(is.na(rows$line), 0L, rows$line)
-  differs <- is.na(rows$allowed) | rows$allowed != ref_allowed |
-    our_line != ref_line
+  rows$decision_differs <- is.na(rows$allowed) | rows$allowed != ref_allowed
+  rows$line_differs <- !rows$decision_differs & our_line != ref_line
+  differs <- rows$decision_differs | rows$line_differs
   wants <- lapply(seq_len(n), function(k) {
     gf_expected_difference(rows$id[[k]], rows$path[[k]])
   })
@@ -453,6 +455,7 @@ gf_check_rows <- function(rows, ref_allowed, ref_line) {
     if (is.null(want)) NA_integer_ else want$class
   }, integer(1L))
   list(
+    rows = rows,
     unexpected = rows[differs & !listed, , drop = FALSE],
     mismatched = rows[differs & listed & !matches_want, , drop = FALSE],
     stale = rows[!differs & listed, , drop = FALSE]

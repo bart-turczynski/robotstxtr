@@ -99,14 +99,13 @@ rows <- lapply(seq_along(cases), function(k) {
   ours$ref_line <- ref$line[[k]]
   ours
 })
+# The same checks the pinned test runs on the recorded answers, here on the
+# live ones: a difference the table does not list, a listed row whose
+# allowed, line or reason is not the listed one, a listed row that agrees.
+# The differing rows, their counts and their classes all come from it.
 all <- do.call(rbind, rows)
-our_line <- ifelse(is.na(all$line), 0L, all$line)
-all$decision_differs <- is.na(all$allowed) | all$allowed != all$ref_allowed
-all$line_differs <- !all$decision_differs & our_line != all$ref_line
-all$class <- vapply(seq_len(nrow(all)), function(k) {
-  want <- env$gf_expected_difference(all$id[[k]], all$path[[k]])
-  if (is.null(want)) NA_integer_ else want$class
-}, integer(1L))
+check <- env$gf_check_rows(all, all$ref_allowed, all$ref_line)
+all <- check$rows
 differs <- all$decision_differs | all$line_differs
 diff <- all[differs, c(
   "id", "family", "path", "class", "ref_allowed", "ref_line", "allowed",
@@ -116,10 +115,6 @@ utils::write.table(
   diff, file.path(out_dir, "differences.tsv"),
   sep = "\t", quote = FALSE, row.names = FALSE
 )
-# The same checks the pinned test runs on the recorded answers, here on the
-# live ones: a difference the table does not list, a listed row whose
-# allowed, line or reason is not the listed one, a listed row that agrees.
-check <- env$gf_check_rows(all, all$ref_allowed, all$ref_line)
 
 cat(sprintf(
   paste0(
