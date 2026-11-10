@@ -333,14 +333,15 @@ fake_manifest <- function() {
 # A finished run directory under `out` with one identical files shard per
 # chunk; `params` overrides the defaults.
 fake_run <- function(out, id, status = "finished", params = list(),
-                     chunks = 1L, manifest = fake_manifest(), combos = NULL) {
+                     chunks = 1L, manifest = fake_manifest(), combos = NULL,
+                     harness = NULL) {
   dir.create(file.path(out, id, "shards"), recursive = TRUE)
   p <- list(
     mode = "validate", seed = 1L, chunk_size = 1L, max_rule_paths = 1L,
     random_paths = 1L, subset = NA_character_, max_hosts = NA_integer_
   )
   p[names(params)] <- params
-  saveRDS(list(run_id = id, status = status, params = p),
+  saveRDS(list(run_id = id, status = status, params = p, harness = harness),
           file.path(out, id, "record.rds"))
   for (ch in chunks) {
     saveRDS(data.frame(x = 1L),
@@ -801,17 +802,14 @@ test_that("--manifest must name a finished run with a manifest", {
   expect_identical(h$frozen_manifest_hash(out, "frozen"), "abc")
 })
 
-test_that("run.R checks --manifest before it creates a run directory", {
-  skip_on_os("windows")
-  h <- load_harness()
-  run_r <- harness_file("run.R")
-  root <- local_test_dir()
-  corpus <- local_corpus()
-  out <- file.path(root, "out")
+# A function that runs dev/corpus/run.R in a child R process over a synthetic
+# corpus and output store, and returns its exit status.
+harness_runner <- function(corpus, out) {
+  run_r <- normalizePath(harness_file("run.R"))
   rscript <- file.path(R.home("bin"), "Rscript")
-  run <- function(...) {
+  function(...) {
     suppressWarnings(system2(
-      rscript, c(shQuote(normalizePath(run_r)), ...),
+      rscript, c(shQuote(run_r), ...),
       env = c(
         paste0("ROBOTSTXTR_CORPUS=", shQuote(corpus)),
         paste0("ROBOTSTXTR_CORPUS_OUT=", shQuote(out))
@@ -819,6 +817,15 @@ test_that("run.R checks --manifest before it creates a run directory", {
       stdout = FALSE, stderr = FALSE
     ))
   }
+}
+
+test_that("run.R checks --manifest before it creates a run directory", {
+  skip_on_os("windows")
+  load_harness()
+  root <- local_test_dir()
+  corpus <- local_corpus()
+  out <- file.path(root, "out")
+  run <- harness_runner(corpus, out)
   expect_identical(run("manifest", "--run-id", "first"), 0L)
   rec <- readRDS(file.path(out, "first", "record.rds"))
   expect_identical(rec$status, "finished")
@@ -833,4 +840,136 @@ test_that("run.R checks --manifest before it creates a run directory", {
   )
   rec <- readRDS(file.path(out, "second", "record.rds"))
   expect_true(rec$manifest$matches_frozen)
+})
+
+# ---------------------------------------------------------------------------
+# Second-pass review (ROBO-pqsyzudt)
+
+test_that("run.R refuses a bad --pkg and a bad compare before any run dir", {
+  skip_on_os("windows")
+  load_harness()
+  root <- local_test_dir()
+  out <- file.path(root, "out")
+  run <- harness_runner(local_corpus(), out)
+  not_git <- file.path(root, "not-git")
+  dir.create(not_git)
+  expect_identical(
+    run("validate", "--pkg", shQuote(not_git), "--run-id", "nogit"), 2L
+  )
+  expect_identical(
+    run("validate", "--pkg", shQuote(file.path(root, "missing")),
+        "--run-id", "missing"),
+    2L
+  )
+  expect_identical(run("compare", "--a", "x", "--b", "y", "--run-id", "c1"),
+                   2L)
+  # Pin: each refusal leaves a "running" record behind.
+  expect_identical(sort(list.files(out)), c("c1", "missing", "nogit"))
+  for (id in c("c1", "missing", "nogit")) {
+    rec <- readRDS(file.path(out, id, "record.rds"))
+    expect_identical(rec$status, "running", info = id)
+  }
+})
+
+test_that("a robots.rds with a NUL in its first bytes is read", {
+  h <- load_harness()
+  path <- file.path(local_test_dir(), "robots.rds")
+  writeBin(as.raw(c(0x41, 0x00, 0x42)), path)
+  # Pin: rawToChar() on the magic bytes fails the read.
+  expect_error(h$read_corpus_record(path), "nul")
+})
+
+test_that("a robots.rds that vanishes after the existence check", {
+  h <- load_harness()
+  corpus <- local_corpus()
+  path <- file.path(corpus, "c.test", "robots.rds")
+  # Pin: the read itself fails.
+  expect_error(suppressWarnings(h$read_corpus_record(path)))
+  # The chunk walk sees the file as present, then it is gone.
+  h$file.exists <- function(...) TRUE
+  on.exit(rm("file.exists", envir = h), add = TRUE)
+  expect_error(suppressWarnings(h$walk_chunk(
+    corpus, h$list_host_dirs(corpus), list(chunk = 1L, ids = 1:3)
+  )))
+})
+
+test_that("a runner that fails outside a chunk leaves the run invalid", {
+  h <- load_harness()
+  runner <- function(ctx) stop("boom")
+  # Pin: the error escapes run_and_check().
+  expect_error(h$run_and_check(list(manifest = list()), list(), runner, NULL),
+               "boom")
+})
+
+test_that("one worker stops at the first failed chunk", {
+  h <- load_harness()
+  chunks <- lapply(1:3, function(i) list(chunk = i, ids = i))
+  calls <- 0L
+  work <- function(ch) {
+    calls <<- calls + 1L
+    if (ch$chunk == 1L) stop("first chunk lost")
+    list(n = 1L)
+  }
+  err <- tryCatch(h$run_chunks(chunks, work, 1L), error = function(e) e)
+  expect_s3_class(err, "corpus_harness_worker_failure")
+  expect_identical(err$failures$chunk, 1L)
+  # Pin: every later chunk still runs.
+  expect_identical(calls, 3L)
+})
+
+test_that("a partial run against a full frozen run matches on its rows", {
+  skip_on_os("windows")
+  load_harness()
+  root <- local_test_dir()
+  corpus <- local_corpus()
+  out <- file.path(root, "out")
+  run <- harness_runner(corpus, out)
+  expect_identical(run("manifest", "--run-id", "full"), 0L)
+  expect_identical(
+    run("manifest", "--run-id", "part", "--max-hosts", "1",
+        "--manifest", "full"),
+    0L
+  )
+  rec <- readRDS(file.path(out, "part", "record.rds"))
+  # Pin: the unchanged corpus is reported as changed.
+  expect_false(rec$manifest$matches_frozen)
+})
+
+test_that("harness_same needs one clean, known harness tree", {
+  h <- load_harness()
+  out <- local_test_dir()
+  facts <- function(tree, dirty = FALSE) {
+    list(harness_git_sha = "s", harness_tree = tree, harness_dirty = dirty)
+  }
+  fake_run(out, "clean", harness = facts("t"))
+  fake_run(out, "dirty", harness = facts("t", dirty = TRUE))
+  fake_run(out, "na-a", harness = facts(NA_character_))
+  fake_run(out, "na-b", harness = facts(NA_character_))
+  same <- function(a, b) h$mode_compare(compare_ctx(out, a, b))$harness_same
+  expect_true(same("clean", "clean"))
+  # Pins: a dirty tree, and two unknown trees, count as the same tree.
+  expect_true(same("clean", "dirty"))
+  expect_true(same("na-a", "na-b"))
+})
+
+test_that("a planned host directory gone before the start manifest", {
+  h <- load_harness()
+  corpus <- local_corpus()
+  plan <- data.frame(
+    file_id = 1:4, host = c("a.test", "b.test", "c.test", "gone.test"),
+    chunk = 1L, stringsAsFactors = FALSE
+  )
+  start <- h$corpus_manifest(corpus, plan)
+  # Pin: no column tells a missing directory from one without a robots.rds,
+  # and a partial run over it stays valid.
+  expect_null(start$dir_exists)
+  expect_true(h$verify_run_inputs(start, start, start)$valid)
+})
+
+test_that("a body's evaluated bytes sit on its paths rows", {
+  h <- load_harness()
+  read <- list(sha256 = "x", bytes = 3L, record = list(body = body_of("a")))
+  # Pin: the files table does not carry it.
+  expect_null(h$file_row(1L, "a.test", read)$evaluated_bytes)
+  expect_null(h$skipped_file_row(1L, "a.test")$evaluated_bytes)
 })
