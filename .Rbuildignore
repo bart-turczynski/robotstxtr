@@ -14,6 +14,7 @@
 ^THIRD_PARTY_NOTICES\.md$
 ^doc$
 ^Meta$
+^vignettes/articles$
 # Shared scaffold layer: everything below is dev tooling, not package content,
 # and would otherwise trip "non-standard files/directories" in R CMD check.
 ^\.gitlab$

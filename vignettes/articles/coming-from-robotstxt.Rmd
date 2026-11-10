@@ -1,0 +1,435 @@
+---
+title: "Coming from robotstxt"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(robotstxtr)
+```
+
+This article is for users of the CRAN package `robotstxt` who are moving
+to robotstxtr. It covers three things: which robotstxtr function
+replaces each `robotstxt` function, the cases where the two packages give a
+different allow or disallow answer for the same file, and what robotstxtr
+offers that `robotstxt` does not.
+
+Everything said here about `robotstxt` refers to version 0.7.15, as its
+help pages and `NEWS.md` describe it. robotstxtr does not depend on
+`robotstxt`, and this article never runs it. The answers quoted for
+`robotstxt` come from the library comparison recorded in the repository,
+[`design/library-comparison.md`](https://gitlab.com/bart-turczynski/robotstxtr/-/blob/main/design/library-comparison.md),
+which ran both packages on the same synthesized files. Each difference
+below names its class there.
+
+## Function mapping
+
+### Checking paths
+
+`robotstxt` checks *paths* against a *domain*; robotstxtr checks *full
+URLs*. `allowed_by_robots_url()` needs each URL to start with `http://` or
+`https://`, since it fetches `robots.txt` from that origin. Build URLs from
+your paths before switching:
+
+```{r}
+paths <- c("/", "/private/report")
+urls <- paste0("https://example.com", paths)
+urls
+```
+
+| `robotstxt` 0.7.15 | robotstxtr |
+|---|---|
+| `paths_allowed(paths, domain, bot)`, which fetches the file | `allowed_by_robots_url(url, user_agent)` |
+| `paths_allowed(paths, domain, bot, robotstxt_list = ...)`, with text you already hold | `allowed_by_robots_text(robots_txt, url, user_agent)` |
+| `robotstxt(domain = ...)`, then `$check(paths, bot)` | `allowed_by_robots_url(url, user_agent)` |
+| `robotstxt(text = ...)`, then `$check(paths, bot)` | `allowed_by_robots_text(robots_txt, url, user_agent)` |
+
+The `bot` argument becomes `user_agent`: the product token that selects the
+`User-agent` group, such as `"FooBot"` or `"Googlebot"`. robotstxtr has no
+default for it, where `robotstxt` uses `bot = "*"`. Pass the name of your
+crawler. `robots_txt` is one string; if you hold the file as a vector of
+lines, join it with `paste(lines, collapse = "\n")` first.
+
+`paths_allowed()` returns a logical vector. robotstxtr returns a
+`robots_decisions` object; the logical answer is its `results$allowed`
+column, and `results$decision_source` says why:
+
+```{r}
+robots <- "User-agent: *
+Disallow: /private
+"
+
+x <- allowed_by_robots_text(robots, urls, "FooBot")
+x$results$allowed
+x$results[c("url", "allowed", "decision_source")]
+```
+
+`allowed` can also be `NA`, when no safe answer exists: an invalid URL, a
+fetch that failed, or a refused address. Treat `NA` as "do not know", not
+as an allow.
+
+The URL is matched exactly as you pass it. robotstxtr does not escape,
+decode or clean it; pass a percent-encoded URL (see the raw non-ASCII
+example below).
+
+### Fetching and reading the file
+
+| `robotstxt` 0.7.15 | robotstxtr |
+|---|---|
+| `get_robotstxt(domain)` | `robots_fetch(url)`, whose `robots$body` holds the raw bytes; or `robots_body()` on the result of `allowed_by_robots_url()` |
+| `get_robotstxts(domain)` | `robots_fetch(url)`, which is vectorized and fetches each distinct origin once |
+| `get_robotstxt_http_get(domain)` | no public equivalent; `robots_fetch()` is the fetch stage |
+| `rt_last_http` | the `robots` table that `robots_fetch()` returns: `http_status`, `fetch_outcome`, `content_type` and the stored body per origin |
+| `rt_request_handler()`, `request_handler_handler()` and the `on_*_default` handlers | no equivalent; see below |
+
+```{r, eval = FALSE}
+# Not evaluated: these calls make network requests.
+fetched <- robots_fetch(c("https://example.com/", "https://example.com/private"))
+fetched$robots[c("robots_url", "fetch_outcome", "http_status")]
+rawToChar(fetched$robots$body[[1]])
+
+decisions <- allowed_by_robots_url("https://example.com/", "FooBot")
+robots_body(decisions, n = Inf)
+```
+
+The fetch arguments map as follows:
+
+| `robotstxt` argument | robotstxtr |
+|---|---|
+| `user_agent` (the HTTP header) | `fetch_user_agent`; `NULL` sends `robotstxtr/<version>` |
+| `force`, and the session cache | none: no cache across calls, and each call fetches each origin once |
+| `ssl_verifypeer` | none: TLS is always verified with the platform defaults |
+| `use_futures` | none: origins are fetched one after another |
+| `encoding` | none: the body's bytes are matched as received, with NUL bytes dropped |
+| `warn`, `verbose` | none: fetch outcomes are columns, not warnings |
+| `on_server_error`, `on_not_found`, `on_redirect` and the other handlers | a fixed policy in `allowed_by_robots_url()`; per-engine status rules in `robots_evaluate_url_v1()` |
+
+`robotstxt` lets you pass handlers that decide what a server error, a
+redirect or an HTML body means. robotstxtr does not take handlers. Its
+headline functions apply one documented policy: a 404 or 410 allows
+(`missing_allow`), and any other failure gives `NA` (`fetch_unknown`). When
+you need a search engine's own reading of a status code, use the engine
+rulesets described at the end of this article. A body that looks like HTML,
+XML or JSON is still matched as it is; `robots_fetch()` reports the guess in
+its `content_flag` column.
+
+### Parsing and validity
+
+| `robotstxt` 0.7.15 | robotstxtr |
+|---|---|
+| `parse_robotstxt(txt)` | no equivalent; robotstxtr does not return a parsed rule table |
+| `robotstxt()$bots`, `$permissions`, `$sitemap`, `$host`, `$other` | no equivalent; `robots_validate_text()` reports counts and per-line diagnostics |
+| `is_valid_robotstxt(text)` | `robots_validate_text(robots_txt)`, its `documents$validation_status` |
+| `print()` and `as.list()` methods | `print()` methods for each result object; the results are plain lists of data frames |
+| `%>%` (re-exported from `magrittr`) | not re-exported; use the base pipe `|>` |
+
+robotstxtr does not expose a parsed rule table because it does not parse
+the file in R. The vendored matcher reads the file, and robotstxtr reports
+which rule decided each URL:
+
+```{r}
+m <- allowed_by_robots_text(robots, "https://example.com/private/report", "FooBot")
+m$results[c("matched_line", "matched_rule_type", "matched_rule_value")]
+```
+
+## Differences that change an answer
+
+robotstxtr follows the Google matcher it vendors. `robotstxt` 0.7.15
+answers through the `spiderbar` package (its `NEWS.md` for 0.6.0 makes the
+`spiderbar` check "the default and only method"). The library comparison
+found the classes below, where the two give a different answer on the same
+file and URL.
+
+Each example runs live with robotstxtr. The examples use this helper, which
+turns paths into URLs on `example.com` and keeps the columns that matter:
+
+```{r}
+decide <- function(body, paths, token = "FooBot") {
+  x <- allowed_by_robots_text(body, paste0("https://example.com", paths), token)
+  data.frame(
+    path = paths,
+    allowed = x$results$allowed,
+    decision_source = x$results$decision_source
+  )
+}
+```
+
+### A line between two `User-agent` lines
+
+`User-agent` lines in a row share one group. A `Crawl-delay` or `Sitemap`
+line between them does not end the run, so `FooBot` below gets the
+`User-agent: *` rules:
+
+```{r}
+stacked <- "User-agent: FooBot
+Crawl-delay: 5
+
+User-agent: *
+Disallow: /x
+"
+decide(stacked, "/x")
+
+stacked_sitemap <- "User-agent: FooBot
+Sitemap: https://example.com/s.xml
+
+User-agent: *
+Disallow: /x
+"
+decide(stacked_sitemap, "/x")
+```
+
+`robotstxt` 0.7.15 allows `/x` in both: it ends `FooBot`'s group at the
+`Crawl-delay` or `Sitemap` line and leaves it with no rules. RFC 9309 §2.2.4
+also says a Sitemap line must not end a group. (Class 1.)
+
+### Ties go to `Allow`
+
+When an `Allow` and a `Disallow` match with the same length, `Allow` wins,
+whatever their order. A trailing `*` counts toward a rule's length:
+
+```{r}
+decide("User-agent: *\nDisallow: /x\nAllow: /x\n", "/x")
+decide("User-agent: *\nDisallow: /p\nAllow: /p*\n", c("/p", "/px"))
+```
+
+`robotstxt` 0.7.15 disallows all three: the first rule wins a tie, and it
+drops the trailing `*`, which makes the second file a tie too. (Class 10.)
+
+### `$` and `*` in patterns
+
+```{r}
+# "/*$" matches every path.
+decide("User-agent: *\nDisallow: /*$\n", c("/", "/anything"))
+
+# A "$" that is not last is a literal character.
+decide("User-agent: *\nDisallow: /a$*\n", c("/a", "/a$", "/a$b"))
+
+# A pattern not led by "/" or "*" never matches.
+decide("User-agent: *\nDisallow: $\n", "/")
+```
+
+`robotstxt` 0.7.15 allows `/` and `/anything` under `/*$` (class 5). Under
+`/a$*` it disallows `/a` and allows `/a$` and `/a$b` (class 6). It
+disallows `/` under `Disallow: $`, reading the rule as `/$` (class 8).
+
+### `Allow: /index.html` also allows the directory
+
+```{r}
+decide("User-agent: *\nDisallow: /\nAllow: /index.html\n", c("/", "/x"))
+```
+
+Google treats an allowed `index.html` or `index.htm` as allowing its
+directory too, so `/` is allowed. `robotstxt` 0.7.15 disallows `/`. RFC
+9309 has no such rule. (Class 22.)
+
+### A rule before the first `User-agent`
+
+```{r}
+decide("Disallow: /x\nUser-agent: *\nDisallow: /y\n", c("/x", "/y"))
+```
+
+robotstxtr ignores a rule that comes before any `User-agent` line, so `/x`
+is allowed. `robotstxt` 0.7.15 adds it to the `*` group and disallows `/x`.
+(Class 19.)
+
+### The group's name in the file
+
+The matcher reads a `User-agent` value up to its first character that is
+not a letter, `_` or `-`. So `User-agent: Googlebot/2.1` names the
+`Googlebot` group, and `User-agent: Foo Bot` names `Foo`:
+
+```{r}
+decide("User-agent: Googlebot/2.1\nDisallow: /x\n", "/x", token = "Googlebot")
+decide("User-agent: Foo Bot\nDisallow: /x\n", "/x", token = "Foo")
+```
+
+`robotstxt` 0.7.15 allows both: it compares the whole value, so neither
+group applies. (Class 12.)
+
+### Line endings
+
+A carriage return alone ends a line:
+
+```{r}
+decide("User-agent: *\rDisallow: /x\r", "/x")
+```
+
+`robotstxt` 0.7.15 allows `/x` here, as if the file were one line. With
+`\n` or `\r\n` line endings the two agree. RFC 9309 §2.2 counts a lone CR as
+a line end. (Class 18.)
+
+### Percent escapes
+
+The matcher compares escapes as written. It does not decode `%2F` to `/`
+or `%7E` to `~`:
+
+```{r}
+decide("User-agent: *\nDisallow: /a%2Fb\n", c("/a/b", "/a%2Fb"))
+decide("User-agent: *\nDisallow: /%7Ejoe\n", c("/~joe", "/%7Ejoe"))
+```
+
+`robotstxt` 0.7.15 decodes escapes and disallows `/a/b` and `/~joe` too
+(class 13). RFC 9309 §2.2.2 decodes `%7E` but keeps `%2F`, so on the
+`%7E` row `robotstxt` follows the RFC and Google does not.
+
+The matcher upper-cases a lower-case escape in a rule, but never in the
+URL:
+
+```{r}
+decide("User-agent: *\nDisallow: /a%3cb\n", c("/a%3cb", "/a%3Cb"))
+```
+
+`robotstxt` 0.7.15 disallows `/a%3cb`. (Class 14.)
+
+### Raw non-ASCII and spaces
+
+robotstxtr does not escape the URL. A raw `é` does not match an escaped
+rule; the percent-encoded URL does:
+
+```{r}
+decide("User-agent: *\nDisallow: /caf%C3%A9\n", c("/café", "/caf%C3%A9"))
+```
+
+`robotstxt` 0.7.15 escapes the URL first and disallows the raw form too
+(class 15). If your paths hold raw non-ASCII characters, percent-encode
+them before calling robotstxtr; `utils::URLencode()` is one way.
+
+A raw space in a rule stays a raw space, so it does not match `%20`:
+
+```{r}
+decide("User-agent: *\nDisallow: /a b\n", c("/a%20b", "/a"))
+```
+
+`robotstxt` 0.7.15 disallows `/a%20b`. (Class 16.)
+
+### Very long lines
+
+The matcher reads at most 16,663 bytes of a line and cuts the rest, which
+can leave a shorter rule that matches more:
+
+```{r}
+long_path <- paste0("/", strrep("a", 16700))
+long_body <- paste0("User-agent: *\nDisallow: ", long_path, "/secret\n")
+decide(long_body, paste0(long_path, "/public"))$allowed
+```
+
+`robotstxt` 0.7.15 allows this URL, since it reads the whole rule. The
+validator reports such a line as `line_too_long`. (Class 17.)
+
+### Byte order marks
+
+robotstxtr skips one leading UTF-8 byte order mark. A second one stays part
+of the first line, so `User-agent: *` below is not read and the rule has no
+group:
+
+```{r}
+bom <- intToUtf8(0xFEFF)
+decide(paste0(bom, bom, "User-agent: *\nDisallow: /a\n"), "/a")
+```
+
+`robotstxt` 0.7.15 disallows `/a`. (Class 3.)
+
+### A line with an empty field name
+
+`robotstxt` 0.7.15 stops with an error ("'names' attribute ... must be the
+same length as the vector") on a file whose first field line has an empty
+name, such as a line holding only `:`. robotstxtr ignores the line:
+
+```{r}
+decide(":\nUser-agent: *\nDisallow: /x\n", "/x")
+```
+
+(Errors and API constraints, `rtx` row.)
+
+## What robotstxtr adds
+
+### Search engine rulesets and matchers
+
+`allowed_by_robots_text()` and `allowed_by_robots_url()` always use the
+Google matcher. `robots_evaluate_text_v1()` and `robots_evaluate_url_v1()`
+take two explicit choices instead:
+
+- `robots_policy_ruleset`: how fetch evidence, such as a missing file, a
+  server error or a redirect, becomes an action, per engine: `"google"`,
+  `"yandex"`, `"bing"`, `"rfc9309"` or `"assumed_rfc9309"`.
+- `matcher_backend`: which matcher reads the rules: `"google"`, `"yandex"`,
+  `"bing"` or `"rfc9309"`.
+
+```{r}
+robots_engine_contract_v1()$matcher_availability
+```
+
+The `rfc9309` matcher is not built yet, and says so instead of falling back
+to another matcher:
+
+```{r}
+robots_evaluate_text_v1(
+  robots,
+  "https://example.com/private/report",
+  robots_product_token = "FooBot",
+  robots_policy_ruleset = "rfc9309",
+  matcher_backend = "rfc9309"
+)$results[c("matcher_status", "reason", "url_decision")]
+```
+
+The Yandex and Bing matchers accept only the tokens they model, listed by
+`robots_engine_contract_v1()$matcher_capability$<backend>$supported_profiles`
+and checked with `robots_resolve_matcher_profile_v1()`:
+
+```{r}
+robots_evaluate_text_v1(
+  robots,
+  "https://example.com/private/report",
+  robots_product_token = "bingbot",
+  robots_policy_ruleset = "bing",
+  matcher_backend = "bing"
+)$results[c("matcher_status", "url_decision")]
+```
+
+`as_legacy_robots_decisions_v1()` turns a result evaluated with the Google
+ruleset and matcher into the `robots_decisions` shape. The "Engine-aware
+contract" vignette covers this interface in full.
+
+### A validator
+
+`robots_validate_text()` checks a file you hold, and
+`robots_validate_url()` fetches and checks one. Several of the differences
+above come from lines that the validator flags:
+
+```{r}
+v <- robots_validate_text(
+  "User-agent: *\nDisallow: $\nDisallow: /a$*\nCrawl-delay: 5\n"
+)
+v$documents$validation_status
+v$diagnostics[c("line", "severity", "code")]
+```
+
+The "Diagnostic codes" section of `?robots_validate_text` lists every code.
+
+### A guarded fetch
+
+Every request from `allowed_by_robots_url()`, `robots_fetch()`,
+`robots_validate_url()` and `robots_evaluate_url_v1()` goes through the
+`ssrfr` guard against server-side request forgery, for the first request
+and for every redirect. A host that is, or resolves to, a loopback,
+private, link-local or cloud-metadata address is refused before any
+connection. The fetch also follows at most five redirects, refuses an
+`https` to `http` redirect, sends no cookies or credentials, caps the body
+at `max_bytes` (512 KiB by default) and has one `timeout` per origin.
+
+```{r, eval = FALSE}
+# Not evaluated here. The loopback origin is refused before any request:
+# fetch_outcome is "ssrf_blocked", decision_source is "fetch_unknown" and
+# allowed is NA.
+allowed_by_robots_url("http://127.0.0.1/page", "FooBot")$results[
+  c("fetch_outcome", "decision_source", "allowed")
+]
+```
+
+`robotstxt` has no such guard, which matters when the URLs you check come
+from users or from crawled pages.
