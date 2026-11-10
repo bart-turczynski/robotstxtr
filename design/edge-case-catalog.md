@@ -241,6 +241,7 @@ The 500 KiB boundaries are pinned elsewhere (table above).
 | id | RFC 9309 | Google doc | Matcher | Validator | Surprise |
 |---|---|---|---|---|---|
 | `content-spam-html` — a casino/popunder page with scripts, links and an iframe served as robots.txt | no valid records: no rules | an HTML download is parsed for rules and everything else ignored | `/`, `/private/` allow | `accepted_missing_colon`, `unknown_directive` and `malformed_line` rows, `html_body` (the body looks like HTML, from the ROBO-nhuirvrd content flag), `no_rules`; `validation_status = "error"` | yes; covered by `html_body` |
+| `content-html-script-first` — a one-line page opening with inline `<script>` and `<style>`, its doctype and `<html>` mid-line | no valid records: no rules | an HTML download is parsed for rules and everything else ignored | `/`, `/private/` allow | `unknown_directive`, `html_body` (the content flag is `"html"`: a body opening with `<` that holds a script, style or document marker anywhere), `no_rules` | yes; covered by `html_body` |
 | `redirect-cross-host-html` — `http://a.example/robots.txt` answers 301 to `https://b.example/landing`, an HTML page | redirects followed, reached rules applied to the first authority (§2.3.1.2) | redirects followed | the fetch follows (`redirect_count = 1`, `effective_url` the landing page, `content_type = "text/html"`, `content_flag = "html"`, v1 `usable_body` / `http_200_use_rules`), and every URL is allowed | the landing page's lines (`malformed_line`, `accepted_missing_colon`, `unknown_directive`, `html_body`, `no_rules`); `robots_validate_url()` adds a `redirect_cross_site` warning (another registrable domain; the robots.txt is effectively missing, the page being HTML) | yes; covered by `redirect_cross_site` (from the fetch) |
 
 The redirect case runs through the ssrfr fake (`helper-fake-ssrfr.R`); its
@@ -291,3 +292,11 @@ block red. An item marked fixed names the diagnostic that now covers it.
     diagnostic for a successful cross-host redirect, here to an HTML page.
     Fixed by ROBO-gokbvzcb: the `redirect_cross_site` warning, beside
     `redirect_same_site` and `redirect_other_path`.
+12. ROBO-qquftxcx (filed 2026-11-10) — `content-html-script-first`: `html_body`
+    needs an HTML marker at a line start, so a minified page opening with
+    inline script or style is flagged `"xml"`; and a one-line page cut at
+    `max_bytes` leaves nothing readable to sniff. Neither draws `html_body`.
+    Fixed by ROBO-qquftxcx: a body opening with `<` is `"html"` when a
+    doctype, `<html`, `<head`, `<body`, `<script` or `<style` appears
+    anywhere in the window, and `html_body` sniffs the stored bytes, before
+    the cut.

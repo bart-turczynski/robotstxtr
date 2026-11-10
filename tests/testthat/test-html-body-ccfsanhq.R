@@ -146,3 +146,119 @@ test_that("an HTML body cut at max_bytes draws html_body, not no_rules", {
   expect_true("body_truncated" %in% x$diagnostics$code)
   expect_false("no_rules" %in% x$diagnostics$code)
 })
+
+# A one-line page longer than max_bytes: the cut leaves no complete line.
+one_line_html <- paste0(
+  "<!DOCTYPE html><html><head><title>Example</title></head><body>",
+  strrep("<p>x</p>", 20L), "</body></html>\n"
+)
+
+test_that("ROBO-qquftxcx: a one-line HTML page cut at max_bytes is HTML", {
+  # The cut leaves an empty readable prefix; html_body sniffs the stored
+  # bytes, as the fetch row does, so the two agree.
+  local_fake_ssrfr(function(req) {
+    fake_response(200L, headers = list(`Content-Type` = "text/html"),
+                  body = one_line_html)
+  })
+  x <- robots_validate_url("https://example.com/", max_bytes = 100L)
+  expect_identical(x$diagnostics$code, c("html_body", "body_truncated"))
+  expect_one_html_body(x)
+  expect_match(x$diagnostics$message[[1L]], "read as directives anyway")
+  expect_identical(x$documents$line_count, 0L)
+  expect_identical(robots_fetch("https://example.com/", max_bytes = 100L)$
+                     robots$content_flag, "html")
+})
+
+test_that("ROBO-qquftxcx: a minified page cut mid-line keeps its lines", {
+  # A complete first line, with no marker, survives the cut: it is read, and
+  # html_body comes from the stored bytes, whose markers lie past the cut.
+  body <- paste0("<div>var a=1;</div>\n<style>p{}</style><html><body>",
+                 strrep("<p>x</p>", 20L), "</body></html>\n")
+  local_fake_ssrfr(function(req) {
+    fake_response(200L, body = body)
+  })
+  x <- robots_validate_url("https://example.com/", max_bytes = 60L)
+  expect_one_html_body(x)
+  expect_identical(x$documents$line_count, 1L)
+  expect_identical(
+    paste0(x$diagnostics$code, "@", x$diagnostics$line),
+    c("accepted_missing_colon@1", "unknown_directive@1", "html_body@NA",
+      "body_truncated@NA")
+  )
+})
+
+test_that("ROBO-qquftxcx: binary bytes past the cut keep html_body", {
+  # The NUL lies in the partial last line the cut drops, so the stored bytes
+  # sniff "binary" and nul_byte never fires; the readable lines still sniff
+  # "html", and that is enough.
+  body <- c(charToRaw("<!DOCTYPE html>\n<html><body>x</body>\n<p>abc"),
+            as.raw(0), charToRaw(strrep("a", 200L)))
+  expect_identical(robots_content_flag(body), "binary")
+  local_fake_ssrfr(function(req) {
+    fake_response(200L, body = body)
+  })
+  x <- robots_validate_url("https://example.com/", max_bytes = 60L)
+  expect_one_html_body(x)
+  expect_false("nul_byte" %in% x$diagnostics$code)
+  expect_identical(
+    paste0(x$diagnostics$code, "@", x$diagnostics$line),
+    c("malformed_line@2", "accepted_missing_colon@1", "unknown_directive@1",
+      "html_body@NA", "body_truncated@NA")
+  )
+})
+
+test_that("ROBO-qquftxcx: a minified page opening with script or style", {
+  script <- paste0("<script>var a={b:1};</script><!DOCTYPE html><html>",
+                   "<body>x</body></html>\n")
+  style <- "<style>p{color:red}</style><body><p>x</p></body>\n"
+  upper <- "<SCRIPT SRC=\"/a.js\"></SCRIPT><BODY></BODY>\n"
+  bom <- c(as.raw(c(0xef, 0xbb, 0xbf)),
+           charToRaw("<script></script><html></html>\n"))
+  crlf <- "\r\n  <style>p{}</style>\r\n"
+  bodies <- list(script = script, style = style, upper = upper, bom = bom,
+                 crlf = crlf)
+  for (label in names(bodies)) {
+    body <- bodies[[label]]
+    bytes <- if (is.raw(body)) body else charToRaw(body)
+    expect_identical(robots_content_flag(bytes), "html", label = label)
+    expect_one_html_body(robots_validate_text(bytes), label = label)
+  }
+})
+
+test_that("ROBO-qquftxcx: markup with no HTML marker draws no html_body", {
+  # A feed's title and link tags, and tag names that only start like one.
+  feed <- paste0("<?xml version=\"1.0\"?><feed><title>x</title>",
+                 "<link href=\"https://example.com/\"/></feed>\n")
+  soup <- "<div><headline/><scripts/><bodyx/></div>\n"
+  for (body in c(feed, soup)) {
+    expect_identical(robots_content_flag(charToRaw(body)), "xml", label = body)
+    expect_false("html_body" %in% html_codes(body), label = body)
+  }
+  # A robots.txt never opens with `<`, so a marker inside it is still no flag.
+  rules <- "User-agent: *\nDisallow: /<script>\n# <style>\n"
+  expect_true(is.na(robots_content_flag(charToRaw(rules))))
+  expect_false("html_body" %in% html_codes(rules))
+})
+
+test_that("ROBO-qquftxcx: a marker cut by the sniffer's window is not read", {
+  # `<script` would start at byte 4093: only `<scr` is in the window.
+  pad <- paste0("<div>", strrep("a", 4087L))
+  cut <- paste0(pad, "<script></script>\n")
+  expect_identical(regexpr("<script", cut, fixed = TRUE)[[1L]], 4093L)
+  expect_identical(robots_content_flag(charToRaw(cut)), "xml")
+  # The same marker whole at the window's end counts.
+  whole <- paste0(substr(pad, 1L, content_check_bytes - 6L), "<style")
+  expect_identical(nchar(whole), content_check_bytes)
+  expect_identical(robots_content_flag(charToRaw(whole)), "html")
+})
+
+test_that("ROBO-qquftxcx: binary still wins over a mid-line marker", {
+  with_nul <- c(charToRaw("<script></script><html>"), as.raw(0),
+                charToRaw("</html>\n"))
+  expect_identical(robots_content_flag(with_nul), "binary")
+  expect_false("html_body" %in% html_codes(with_nul))
+  latin1 <- c(charToRaw("<style></style><body>caf"), as.raw(0xe9),
+              charToRaw("</body>\n"))
+  expect_identical(robots_content_flag(latin1), "html")
+  expect_one_html_body(robots_validate_text(latin1))
+})

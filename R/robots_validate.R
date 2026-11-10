@@ -591,6 +591,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # the site's. `byte_size` stays the stored size; the file's real end was
   # never read, so `final_newline` is NA.
   stored_size <- length(bytes)
+  stored_bytes <- bytes
   bytes <- readable_body(bytes, body_truncated)
   parsed <- as.data.frame(
     robotstxtr_validation_parse_(bytes),
@@ -933,10 +934,14 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   }
   # A body that looks like an HTML page gets one document-level warning
   # (ROBO-ccfsanhq), from the fetch row's sniffer (ROBO-nhuirvrd) read on the
-  # validated bytes. Its per-line rows stay: a real rule inside the page is
-  # still enforced. A NUL or mostly invalid UTF-8 makes the flag "binary",
-  # which nul_byte and invalid_utf8 already report.
-  if (identical(robots_content_flag(bytes), "html")) {
+  # stored bytes, as the fetch row reads them, so a page cut mid-line is
+  # still seen, or on the validated bytes, so a NUL or invalid UTF-8 in the
+  # partial line a cut drops does not hide it (ROBO-qquftxcx). Its per-line
+  # rows stay: a real rule inside the page is still enforced. Where the
+  # validated bytes hold the NUL or mostly invalid UTF-8, the flag is
+  # "binary", and nul_byte or invalid_utf8 reports it instead.
+  if (identical(robots_content_flag(stored_bytes), "html") ||
+        identical(robots_content_flag(bytes), "html")) {
     add_diagnostic(
       NA_integer_, "warning", "html_body", NA_character_,
       paste0("The body looks like an HTML page, not a robots.txt; its lines ",

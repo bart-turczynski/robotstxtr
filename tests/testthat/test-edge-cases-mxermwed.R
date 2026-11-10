@@ -277,6 +277,17 @@ test_that("ROBO-mxermwed: a lower-case escape in a rule is flagged", {
   expect_identical(edge_decision(bytes, "/a%3Cb", "FooBot"), "disallow")
 })
 
+test_that("ROBO-mxermwed: a page opening with inline script is HTML", {
+  # Fixed by ROBO-qquftxcx: a minified page whose first bytes are inline
+  # script and style is flagged "html" by its mid-line markers, and draws
+  # html_body; the matcher still allows everything
+  bytes <- edge_case("content-html-script-first")
+  expect_identical(robots_content_flag(bytes), "html")
+  expect_identical(edge_codes(bytes),
+                   "unknown_directive@1;html_body@NA;no_rules@NA")
+  expect_identical(edge_decision(bytes, "/private/", "FooBot"), "allow")
+})
+
 test_that("ROBO-mxermwed: every known_gap row is restated above", {
   m <- edge_manifest
   expect_setequal(
@@ -306,6 +317,7 @@ edge_covering_code <- c(
   "esc-lower-hex-rule" = "rule_lowercase_escape",
   "size-long-line" = "line_too_long",
   "content-spam-html" = "html_body",
+  "content-html-script-first" = "html_body",
   "grp-user-agent-with-space" = "user_agent_cut",
   "grp-digit-in-token" = "user_agent_cut",
   "grp-star-prefixed-token" = "user_agent_cut"
