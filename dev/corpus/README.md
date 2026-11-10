@@ -75,8 +75,9 @@ directory is created, so a refusal leaves no `running` record behind.
   package's parser, (b) a fixed list of probes (`$`, `*`, percent-escapes in
   both cases, `%2F`, letter case, `index.html`, non-ASCII, the empty path,
   queries), and (c) a seeded random set that depends only on `--seed`.
-  The package parses a body once per result row, so a large body's rows are
-  costly: a body over `--large-bytes` (default 65,536) gets the narrow tier,
+  The package parses each distinct body once per call, but every result row
+  still walks every rule of its body, so a large body's rows are costly: a
+  body over `--large-bytes` (default 65,536) gets the narrow tier,
   every ruleset x available backend with each backend's first named token
   (`size_combos`, same combo ids) over up to `--size-rule-paths` rule paths
   and a short fixed probe list. The `paths` table's `tier` column says which

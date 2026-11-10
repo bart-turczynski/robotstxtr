@@ -152,7 +152,8 @@ colon (also `Disallow: # comment`), the row reports `url_decision = "allow"`,
 `matched_rule_value` `NA`, and `matched_rule_value_raw` `NULL`, although the
 native engine records that line as the match. This follows the PRD's "Match
 metadata rules" (§6.6: an empty-path directive is ignored and surfaces as
-`default_allow`); `match_google_v1()` applies it to v1 Google rows, and the
+`default_allow`); the Google adapter and its reference row matcher
+`match_google_v1()` apply it to v1 Google rows, and the
 legacy functions and `as_legacy_robots_decisions_v1()` report the same
 `decision_source`, type, line and value. The decision equals Google's. Yandex
 differs: when the selected rule is an empty `Disallow`, the row reports
@@ -408,9 +409,10 @@ status outside the published set.
 The evaluator hands an adapter the readable body: a body cut at `max_bytes`
 (read only under the `google` ruleset with the `google` backend) has its
 partial last line dropped first, and each row's own cut is OR-ed into the
-frame's `matcher_body_truncated`. The Google adapter still matches row by
-row; each row's body is cut to Google's 512,000-byte window before any
-grouping, and its `matched_rule_value_raw` is `NULL`.
+frame's `matcher_body_truncated`. The Google adapter parses each distinct
+body once, cut to Google's 512,000-byte window, and gives row for row what
+its reference row matcher `match_google_v1()` gives; its
+`matched_rule_value_raw` is `NULL`.
 
 To add a backend without changing the core result schema:
 
