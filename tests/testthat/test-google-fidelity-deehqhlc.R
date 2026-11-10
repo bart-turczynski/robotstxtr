@@ -7,7 +7,8 @@
 # re-derives those answers from a reference binary. These tests need no
 # binary: they pin what robotstxtr returns, and say in comments what the
 # reference returns. The paths: the v1 facade with the google backend under
-# every ruleset that reaches the matcher (`v1_text:<ruleset>`),
+# every ruleset that reaches the matcher (`v1_text:<ruleset>`; the window
+# bodies under `google` only, gf_case_rulesets()),
 # allowed_by_robots_text() (`text`), allowed_by_robots_url() with the body
 # served at the ssrfr boundary (`url`, helper-fake-ssrfr.R), and
 # robots_evaluate_url_v1() the same way (`v1_url:google`). No network.
@@ -196,23 +197,37 @@ test_that("ROBO-deehqhlc class 1: a real rule beside an empty one still wins", {
 
 # --- Class 2: the 512,000-byte window -----------------------------------------
 
+# The window and max_bytes tests read the `window` rows gf_results already
+# holds, rather than rebuilding and rerunning their 0.5 to 0.6 MB bodies.
+
+test_that("ROBO-deehqhlc: the window bodies run once, under google only", {
+  window <- names(gf_case_list)[
+    vapply(gf_case_list, `[[`, character(1L), "family") == "window"
+  ]
+  expect_length(window, 6L)
+  for (id in window) {
+    expect_setequal(
+      gf_results[[id]]$path, c("v1_text:google", "text", "url", "v1_url:google")
+    )
+  }
+})
+
 test_that("ROBO-deehqhlc class 2: a rule after the window is not read", {
   # Reference (no window): disallowed on line 3. v1: Google reads the first
   # 512,000 bytes (design/engine-profiles.md §7, documented).
   # allowed_by_robots_text() reads the whole body, as the reference does.
-  body <- gf_edge_body("Disallow: /after\n", 520000L)
-  url <- "https://example.com/after"
-  r <- robots_evaluate_text_v1(
-    gf_body_string(body), url, "FooBot", "google", "google"
-  )$results
-  expect_identical(r$url_decision, "allow")
-  expect_identical(r$reason, "default_allow")
-  expect_true(r$matcher_body_truncated)
-  # The comment line crosses the window: only "User-agent: *\n" is read.
-  expect_identical(r$matcher_input_bytes, 14L)
-  legacy <- allowed_by_robots_text(gf_body_string(body), url, "FooBot")
-  expect_false(legacy$results$allowed)
-  expect_identical(legacy$results$matched_line, 3L)
+  for (path in c("v1_text:google", "v1_url:google")) {
+    r <- gf_result("win-after", path)
+    expect_true(r$allowed, label = path)
+    expect_identical(r$reason, "default_allow", label = path)
+    expect_true(r$matcher_body_truncated, label = path)
+    # The comment line crosses the window: only "User-agent: *\n" is read.
+    expect_identical(r$matcher_input_bytes, 14L, label = path)
+  }
+  legacy <- gf_result("win-after", "text")
+  expect_false(legacy$allowed)
+  expect_identical(legacy$line, 3L)
+  expect_false(legacy$body_truncated)
 })
 
 test_that("ROBO-deehqhlc class 2: a line the window cuts is dropped whole", {
@@ -220,31 +235,24 @@ test_that("ROBO-deehqhlc class 2: a line the window cuts is dropped whole", {
   # line. v1 drops the line the window cuts (§7, application_choice), so
   # neither "Disallow: /private-drafts/" nor its first 11 bytes,
   # "Disallow: /", is a rule.
-  body <- gf_edge_body("Disallow: /private-drafts/\n", 512000L - 11L)
-  r <- robots_evaluate_text_v1(
-    gf_body_string(body),
-    c("https://example.com/private-drafts/x", "https://example.com/public"),
-    "FooBot", "google", "google"
-  )$results
-  expect_identical(r$url_decision, c("allow", "allow"))
-  expect_identical(r$matched_line, c(NA_integer_, NA_integer_))
-  expect_identical(r$matcher_input_bytes, rep(512000L - 11L, 2L))
+  for (id in c("win-straddle", "win-straddle-prefix")) {
+    r <- gf_result(id, "v1_text:google")
+    expect_true(r$allowed, label = id)
+    expect_identical(r$line, NA_integer_, label = id)
+    expect_true(r$matcher_body_truncated, label = id)
+    expect_identical(r$matcher_input_bytes, 512000L - 11L, label = id)
+  }
 })
 
 test_that("ROBO-deehqhlc class 2: a rule ending at the window edge applies", {
   # Reference and v1 agree: disallowed on line 3, both when the rule ends at
   # byte 512,000 and its LF is byte 512,001 (past the window), and when the
   # LF itself is byte 512,000.
-  for (at in c(512000L - 18L, 512000L - 19L)) {
-    label <- sprintf("LF at byte %d", at + 19L)
-    body <- gf_edge_body("Disallow: /private\n", at, 600000L)
-    r <- robots_evaluate_text_v1(
-      gf_body_string(body), "https://example.com/private", "FooBot",
-      "google", "google"
-    )$results
-    expect_identical(r$url_decision, "disallow", label = label)
-    expect_identical(r$matched_line, 3L, label = label)
-    expect_identical(r$matcher_input_bytes, 512000L, label = label)
+  for (id in c("win-edge-lf-outside", "win-edge-lf-inside")) {
+    r <- gf_result(id, "v1_text:google")
+    expect_false(r$allowed, label = id)
+    expect_identical(r$line, 3L, label = id)
+    expect_identical(r$matcher_input_bytes, 512000L, label = id)
   }
 })
 
@@ -254,21 +262,16 @@ test_that("ROBO-deehqhlc class 3: a rule past max_bytes is not fetched", {
   # Reference (whole body): disallowed on line 3. allowed_by_robots_url()
   # keeps the first max_bytes (524,288) bytes of a 2xx and reads its complete
   # lines (its @param max_bytes; ROBO-ldpahknv); the rule starts at 530,001.
-  body <- gf_edge_body("Disallow: /after\n", 530000L)
-  gf_with_body(body, {
-    x <- allowed_by_robots_url("https://example.com/after", "FooBot")
-  })
-  expect_true(x$results$allowed)
-  expect_identical(x$results$decision_source, "default_allow")
-  expect_true(x$robots$body_truncated)
+  x <- gf_result("win-after-ceiling", "url")
+  expect_true(x$allowed)
+  expect_identical(x$reason, "default_allow")
+  expect_true(x$body_truncated)
   # Between the window and the cut, the legacy URL path still reads a rule
   # the v1 paths do not (class 2): the reference's answer.
-  body <- gf_edge_body("Disallow: /after\n", 520000L)
-  gf_with_body(body, {
-    x <- allowed_by_robots_url("https://example.com/after", "FooBot")
-  })
-  expect_false(x$results$allowed)
-  expect_identical(x$results$matched_line, 3L)
+  x <- gf_result("win-after", "url")
+  expect_false(x$allowed)
+  expect_identical(x$line, 3L)
+  expect_false(x$body_truncated)
 })
 
 # --- Class 4: input screening -------------------------------------------------

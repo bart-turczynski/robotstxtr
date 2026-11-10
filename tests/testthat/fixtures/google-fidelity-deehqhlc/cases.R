@@ -466,8 +466,17 @@ gf_check_rows <- function(rows, ref_allowed, ref_line) {
 # resolve_policy_v1() (R/engine-contract-v1.R) returns for a supplied source
 # before its yandex branch, which resolves a fetched 2xx over 500,000 bytes
 # `allow_all` (design/engine-profiles.md §7). So every row reaches the
-# matcher, the over-limit yandex rows included.
+# matcher, the over-limit yandex rows included. With the google backend each
+# ruleset's row therefore equals the google row by construction, so the
+# `window` family's 0.5 to 0.6 MB bodies run under `google` only
+# (ROBO-oxjmtaon). That a supplied body over 500,000 bytes keeps use_rules
+# under yandex is pinned in test-size-status-etlkvljs.R and
+# test-yandex-edge-matrices-qfytjxev.R.
 gf_v1_rulesets <- c("google", "rfc9309", "assumed_rfc9309", "bing", "yandex")
+
+gf_case_rulesets <- function(case) {
+  if (identical(case$family, "window")) "google" else gf_v1_rulesets
+}
 
 gf_body_string <- function(body) {
   out <- rawToChar(body)
@@ -475,20 +484,39 @@ gf_body_string <- function(body) {
   out
 }
 
-gf_row <- function(path, allowed, line, reason) {
+# `matcher_body_truncated` and `matcher_input_bytes` are the v1 rows' (NA on
+# the legacy paths), `body_truncated` the legacy paths' `robots` field (NA on
+# the v1 paths).
+gf_row <- function(path, allowed, line, reason,
+                   matcher_body_truncated = NA, matcher_input_bytes = NA,
+                   body_truncated = NA) {
   data.frame(
     path = path, allowed = as.logical(allowed), line = as.integer(line),
-    reason = as.character(reason), stringsAsFactors = FALSE
+    reason = as.character(reason),
+    matcher_body_truncated = as.logical(matcher_body_truncated),
+    matcher_input_bytes = as.integer(matcher_input_bytes),
+    body_truncated = as.logical(body_truncated), stringsAsFactors = FALSE
   )
 }
 
 gf_from_v1 <- function(path, r) {
   allowed <- c(allow = TRUE, disallow = FALSE)[r$url_decision]
-  gf_row(path, unname(allowed), r$matched_line, r$reason)
+  gf_row(
+    path, unname(allowed), r$matched_line, r$reason,
+    matcher_body_truncated = r$matcher_body_truncated,
+    matcher_input_bytes = r$matcher_input_bytes
+  )
 }
 
-gf_from_legacy <- function(path, r) {
-  gf_row(path, r$allowed, r$matched_line, r$decision_source)
+gf_from_legacy <- function(path, x) {
+  r <- x$results
+  # A URL refused before any fetch has no `robots` row.
+  truncated <- x$robots$body_truncated
+  if (length(truncated) != 1L) truncated <- NA
+  gf_row(
+    path, r$allowed, r$matched_line, r$decision_source,
+    body_truncated = truncated
+  )
 }
 
 # Serve `body` at the ssrfr boundary for the duration of `code`.
@@ -498,12 +526,13 @@ gf_with_body <- function(body, code) {
 }
 
 # One row per robotstxtr path the case reaches: `allowed` (NA when no
-# decision), `line` (NA when no rule is reported) and the reason.
+# decision), `line` (NA when no rule is reported), the reason, and the
+# truncation facts gf_row() names.
 gf_run_case <- function(case) {
   rows <- list()
   body <- case$body
   if ("v1_text" %in% case$paths) {
-    rulesets <- gf_v1_rulesets
+    rulesets <- gf_case_rulesets(case)
     x <- robots_evaluate_text_v1(
       gf_body_string(body), rep(case$url, length(rulesets)), case$token,
       rulesets, "google"
@@ -516,11 +545,11 @@ gf_run_case <- function(case) {
   }
   if ("text" %in% case$paths) {
     x <- allowed_by_robots_text(gf_body_string(body), case$url, case$token)
-    rows[[length(rows) + 1L]] <- gf_from_legacy("text", x$results)
+    rows[[length(rows) + 1L]] <- gf_from_legacy("text", x)
   }
   if ("url" %in% case$paths) {
     x <- gf_with_body(body, allowed_by_robots_url(case$url, case$token))
-    rows[[length(rows) + 1L]] <- gf_from_legacy("url", x$results)
+    rows[[length(rows) + 1L]] <- gf_from_legacy("url", x)
   }
   if ("v1_url" %in% case$paths) {
     x <- gf_with_body(
