@@ -116,7 +116,8 @@ validation_unsupported <- c(
 #'     A pattern holds a lower-case percent-escape, such as \code{\%3c}.
 #'     Google upper-cases the escape in a pattern but not in the URL, so a URL
 #'     written with it never matches the rule; Bing upper-cases it too, and
-#'     Yandex compares the pattern as written. One per rule line. \cr
+#'     the package's Yandex matcher compares the pattern as written. One per
+#'     rule line. \cr
 #'   \code{empty_sitemap_value} \tab warning \tab
 #'     A Sitemap line with an empty value. \cr
 #'   \code{invalid_sitemap_url} \tab warning \tab
