@@ -66,6 +66,37 @@ test_that("class 1: a comment line does not end the stacked group", {
   )
 })
 
+test_that("class 1: bing seals the run at Request-rate and Noindex too", {
+  # Both are unknown fields to bing (bing-v2-spec §9.2 knows only user-agent,
+  # allow, disallow, sitemap and crawl-delay), so rule 2a applies.
+  for (directive in c("Request-rate: 1/5", "Noindex: /x")) {
+    body <- dg_lines("User-agent: bingbot", directive, "User-agent: *",
+                     "Disallow: /private")
+    expect_identical(
+      dg_outcome(body, "/private"),
+      dg_expect(dg_disallow(4), dg_disallow(4), dg_disallow(4), dg_default),
+      info = directive
+    )
+  }
+})
+
+test_that("class 1: yandex keeps a stacked Yandex run across non-rule lines", {
+  # The Yandex token's own run: `Other` stacks onto `Yandex`, so line 4
+  # applies to Yandex. Foo is an unknown field to yandex, Host too; Crawl-delay,
+  # Clean-param and Sitemap are known fields that are not rules.
+  for (directive in c("Crawl-delay: 5", "Clean-param: ref /x",
+                      "Host: example.com", "Sitemap: https://example.com/s.xml",
+                      "Foo: bar", "# note")) {
+    body <- dg_lines("User-agent: Yandex", directive, "User-agent: Other",
+                     "Disallow: /private")
+    expect_identical(
+      dg_outcome(body, "/private"),
+      dg_expect(dg_disallow(4), dg_disallow(4), dg_default, dg_default),
+      info = directive
+    )
+  }
+})
+
 test_that("class 1: a later bingbot group then decides bing's answer", {
   body <- dg_lines(
     "User-agent: bingbot", "Crawl-delay: 1", "User-agent: *",
@@ -76,17 +107,58 @@ test_that("class 1: a later bingbot group then decides bing's answer", {
     dg_expect(dg_disallow(4), dg_disallow(4), dg_disallow(4),
               dg_allow_rule(7))
   )
+  # The same shape the other way round: google allows, bing disallows.
+  body <- dg_lines(
+    "User-agent: bingbot", "Crawl-delay: 10", "User-agent: *",
+    "Allow: /private", "", "User-agent: bingbot", "Disallow: /private"
+  )
+  expect_identical(
+    dg_outcome(body, "/private"),
+    dg_expect(dg_allow_rule(4), dg_allow_rule(4), dg_allow_rule(4),
+              dg_disallow(7))
+  )
+})
+
+test_that("class 1: an unknown field seals a `*` run before a policy token", {
+  # The aipref shape (ROBO-kzyfejcv): google and yandex stack
+  # `__usage_ai-training` onto `*`, so its Disallow reaches every crawler;
+  # bing seals `*` at Content-Signal, an unknown field.
+  tail <- c("", "", "User-agent: __usage_ai-training", "Disallow: /")
+  body <- dg_lines("User-agent: *", "Content-Signal: ai-train=no",
+                   "Sitemap: https://example.com/sitemap.xml", tail)
+  expect_identical(
+    dg_outcome(body, "/"),
+    dg_expect(dg_disallow(7), dg_disallow(7), dg_disallow(7), dg_default)
+  )
+  # Content-Signal alone seals it on bing.
+  body <- dg_lines("User-agent: *", "Content-Signal: ai-train=no", tail)
+  expect_identical(
+    dg_outcome(body, "/"),
+    dg_expect(dg_disallow(6), dg_disallow(6), dg_disallow(6), dg_default)
+  )
+  # The blank lines alone do not: all four rows stack.
+  body <- dg_lines("User-agent: *", tail)
+  expect_identical(
+    dg_outcome(body, "/"),
+    dg_expect(dg_disallow(5), dg_disallow(5), dg_disallow(5), dg_disallow(5))
+  )
 })
 
 test_that("class 2: a leading BOM hides line 1 from yandex and bing", {
-  body <- paste0("﻿", dg_lines("User-agent: *", "Disallow: /private"))
+  # Marked "bytes", so the body reaches the matchers as these bytes under any
+  # locale; an unmarked "\xef\xbb\xbf" would be re-encoded under LC_ALL=C.
+  dg_bom <- function(body) {
+    body <- paste0("\xef\xbb\xbf", body)
+    Encoding(body) <- "bytes"
+    body
+  }
+  body <- dg_bom(dg_lines("User-agent: *", "Disallow: /private"))
   expect_identical(
     dg_outcome(body, "/private"),
     dg_expect(dg_disallow(2), dg_default, dg_disallow(2), dg_default)
   )
   # The BOM costs a line only: before a comment, nothing is lost.
-  body <- paste0("﻿", dg_lines("# c", "User-agent: *",
-                                    "Disallow: /private"))
+  body <- dg_bom(dg_lines("# c", "User-agent: *", "Disallow: /private"))
   expect_identical(
     dg_outcome(body, "/private"),
     dg_expect(dg_disallow(3), dg_disallow(3), dg_disallow(3), dg_disallow(3))
@@ -216,5 +288,22 @@ test_that("class 12: an empty User-agent value ends the group on yandex", {
   expect_identical(
     dg_outcome(body, "/private"),
     dg_expect(dg_disallow(3), dg_default, dg_disallow(3), dg_disallow(3))
+  )
+})
+
+test_that("class 13: google reads a key starting with disallow as Disallow", {
+  # Google's KeyIsDisallow and KeyIsAllow accept a key by prefix
+  # (ROBO-xglcoagv); yandex and bing ignore the unknown field.
+  body <- dg_lines("User-agent: *", "DisallowAITraining: /")
+  expect_identical(
+    dg_outcome(body, "/x"),
+    dg_expect(dg_disallow(2), dg_default, dg_disallow(2), dg_default)
+  )
+  # An Allow-prefixed key: the other way round.
+  body <- dg_lines("User-agent: *", "Disallow: /", "AllowAITraining: /x")
+  expect_identical(
+    dg_outcome(body, "/x"),
+    dg_expect(dg_allow_rule(3), dg_disallow(2), dg_allow_rule(3),
+              dg_disallow(2))
   )
 })
