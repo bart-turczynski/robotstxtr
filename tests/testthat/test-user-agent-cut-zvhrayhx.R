@@ -17,13 +17,14 @@ uac_rows <- function(body) {
 }
 
 uac_read_as <- function(token) {
-  sprintf(paste0("User-agent value is read as '%s': the matcher stops at ",
-                 "the first character outside letters, '_' and '-'."), token)
+  sprintf(paste0("User-agent value is read as '%s' by Google's matcher, ",
+                 "which stops at the first character outside letters, '_' ",
+                 "and '-'."), token)
 }
 
-uac_none <- paste0("User-agent value names no crawler: the matcher reads a ",
-                   "product token only from a leading run of letters, '_' ",
-                   "and '-'.")
+uac_none <- paste0("User-agent value names no crawler: Google's matcher ",
+                   "reads a product token only from a leading run of ",
+                   "letters, '_' and '-'.")
 
 test_that("a value cut at a space is one warning naming the token read", {
   x <- robots_validate_text(uac_body("Foo Bot"))

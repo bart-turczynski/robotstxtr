@@ -78,10 +78,11 @@ validation_unsupported <- c(
 #'   \code{empty_user_agent} \tab error \tab
 #'     A User-agent line with an empty value. \cr
 #'   \code{user_agent_cut} \tab warning \tab
-#'     A User-agent value the matcher reads only up to its first character
-#'     outside letters, \code{_} and \code{-}, such as \code{Foo Bot} or
-#'     \code{Googlebot/2.1}; the message names the token read, or says it
-#'     names no crawler (\code{*bot}). \cr
+#'     A User-agent value Google's matcher reads only up to its first
+#'     character outside letters, \code{_} and \code{-}, such as
+#'     \code{Foo Bot} or \code{Googlebot/2.1}; the message names the token
+#'     read, or says it names no crawler (\code{*bot}). The Bing and Yandex
+#'     matchers do not cut the value. \cr
 #'   \code{rule_without_user_agent} \tab error \tab
 #'     An Allow or Disallow in no group a non-empty User-agent opened: before
 #'     any, or after an empty User-agent that follows a rule. \cr
@@ -649,23 +650,23 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # checks.
   if (length(nul_lines) == 0L) {
     groups <- validation_groups(parsed)
-    # The matcher reads a User-agent value only up to its first byte outside
-    # [A-Za-z_-], so the group names another crawler than written, or none
-    # (ROBO-zvhrayhx). The message names the token only (ASCII): the value
-    # may not be valid UTF-8, and `raw_text` carries it.
+    # Google's matcher reads a User-agent value only up to its first byte
+    # outside [A-Za-z_-], so the group names another crawler than written,
+    # or none (ROBO-zvhrayhx). The message names the token only (ASCII):
+    # the value may not be valid UTF-8, and `raw_text` carries it.
     agents <- groups$agents
     for (i in which(agents$cut)) {
       token <- agents$token[[i]]
       add_diagnostic(
         agents$line[[i]], "warning", "user_agent_cut", "user-agent",
         if (nzchar(token)) {
-          sprintf(paste0("User-agent value is read as '%s': the matcher ",
-                         "stops at the first character outside letters, ",
-                         "'_' and '-'."), token)
+          sprintf(paste0("User-agent value is read as '%s' by Google's ",
+                         "matcher, which stops at the first character ",
+                         "outside letters, '_' and '-'."), token)
         } else {
-          paste0("User-agent value names no crawler: the matcher reads a ",
-                 "product token only from a leading run of letters, '_' ",
-                 "and '-'.")
+          paste0("User-agent value names no crawler: Google's matcher ",
+                 "reads a product token only from a leading run of letters, ",
+                 "'_' and '-'.")
         }
       )
     }
