@@ -722,90 +722,30 @@ test_that("ROBO-etlkvljs: a 4xx or 5xx over max_bytes keeps its status class", {
 
 # --- Status classes: the validator -------------------------------------------
 
-# The validator's code, severity and engine readings per class, from the
-# robots_validate_text() code table and the section 3 and 4 cells above.
-ss_no_robots <- paste0(
-  "may treat it as no robots.txt, which places no restrictions on crawling"
-)
-ss_open_yandex <- "places no restrictions on crawling"
-ss_context_phrase <- paste0(
-  "context-dependent (may pause crawling or use its last cached copy)"
-)
-ss_readings <- function(google, yandex, bing = "not documented") {
-  paste0("Google: ", google, "; Yandex: ", yandex, "; Bing: ", bing, ".")
-}
-ss_tail <- " See robots_engine_contract_v1()."
-ss_firewall <- paste(
-  "A 401 or 403 is often a firewall or bot filter answering this client,",
-  "not the site's own robots.txt."
-)
-
+# The validator's code and severity per status class, from the
+# robots_validate_text() code table. The engine readings in its messages are
+# pinned phrase by phrase in test-validate-status-ybzbxfml.R, and the
+# transport and redirect messages whole in test-redirect-reason-bsloeclp.R,
+# so they are not copied here. The 206 text is a literal that no other test
+# pins, so it stays.
 ss_validator_cases <- list(
-  list(label = "400", code = "acquisition_http_4xx", severity = "warning",
-       message = paste0("HTTP 400: ",
-                        ss_readings(ss_no_robots, ss_open_yandex), ss_tail)),
-  list(label = "401", code = "acquisition_http_4xx", severity = "warning",
-       message = paste0("HTTP 401: ",
-                        ss_readings(ss_no_robots, ss_open_yandex), " ",
-                        ss_firewall, ss_tail)),
-  list(label = "403", code = "acquisition_http_4xx", severity = "warning",
-       message = paste0("HTTP 403: ",
-                        ss_readings(ss_no_robots, ss_open_yandex), " ",
-                        ss_firewall, ss_tail)),
-  list(label = "404", code = "acquisition_missing", severity = "info",
-       message = paste0("HTTP 404: ",
-                        ss_readings(ss_no_robots, ss_open_yandex), ss_tail)),
-  list(label = "410", code = "acquisition_missing", severity = "info",
-       message = paste0("HTTP 410: ",
-                        ss_readings(ss_no_robots, ss_open_yandex), ss_tail)),
-  list(label = "429", code = "acquisition_http_429", severity = "error",
-       message = paste0(
-         "HTTP 429: ",
-         ss_readings(
-           paste("not documented for robots.txt (Google excludes 429",
-                 "from its 4xx rule)"),
-           ss_open_yandex
-         ),
-         ss_tail
-       )),
-  list(label = "500", code = "acquisition_http_5xx", severity = "error",
-       message = paste0("HTTP 500: ",
-                        ss_readings(ss_context_phrase, ss_open_yandex),
-                        ss_tail)),
-  list(label = "503", code = "acquisition_http_5xx", severity = "error",
-       message = paste0("HTTP 503: ",
-                        ss_readings(ss_context_phrase, ss_open_yandex),
-                        ss_tail)),
-  list(label = "102", code = "acquisition_http_protocol", severity = "error",
-       message = paste0("HTTP 102: ",
-                        ss_readings("not documented", "not documented"),
-                        ss_tail)),
+  list(label = "400", code = "acquisition_http_4xx", severity = "warning"),
+  list(label = "401", code = "acquisition_http_4xx", severity = "warning"),
+  list(label = "403", code = "acquisition_http_4xx", severity = "warning"),
+  list(label = "404", code = "acquisition_missing", severity = "info"),
+  list(label = "410", code = "acquisition_missing", severity = "info"),
+  list(label = "429", code = "acquisition_http_429", severity = "error"),
+  list(label = "500", code = "acquisition_http_5xx", severity = "error"),
+  list(label = "503", code = "acquisition_http_5xx", severity = "error"),
+  list(label = "102", code = "acquisition_http_protocol", severity = "error"),
   list(label = "timeout", code = "acquisition_transport_failed",
-       severity = "error",
-       message = paste0(": ",
-                        ss_readings(ss_context_phrase, "not documented"),
-                        ss_tail)),
+       severity = "error"),
   list(label = "302 no Location", code = "acquisition_redirect_no_location",
-       severity = "error",
-       message = paste0(": ",
-                        ss_readings("not documented", "not documented"),
-                        ss_tail)),
+       severity = "error"),
   list(label = "301 loop", code = "acquisition_redirect_loop",
-       severity = "error",
-       message = paste0(": ",
-                        ss_readings("not documented", "not documented"),
-                        ss_tail)),
+       severity = "error"),
   list(label = "301 over budget", code = "acquisition_redirect_over_budget",
-       severity = "error",
-       message = paste0(
-         ": ",
-         ss_readings(
-           paste("may stop and treat it as a 404, which places no",
-                 "restrictions on crawling"),
-           "not documented"
-         ),
-         ss_tail
-       )),
+       severity = "error"),
   list(label = "206", code = "acquisition_partial_response",
        severity = "error",
        message = "Partial HTTP response was rejected; no body was validated.")
@@ -831,7 +771,7 @@ test_that("ROBO-etlkvljs: a misspelled label or a bad expected row stops", {
   )
 })
 
-test_that("ROBO-etlkvljs: the validator's code and message per status class", {
+test_that("ROBO-etlkvljs: the validator's code and severity per class", {
   for (case in ss_validator_cases) {
     local_fake_ssrfr(ss_case(case$label)$handler)
     x <- robots_validate_url("http://example.com/")
@@ -841,10 +781,7 @@ test_that("ROBO-etlkvljs: the validator's code and message per status class", {
     expect_identical(d$severity, case$severity, label = case$label)
     expect_identical(x$documents$validation_status, "not_validated",
                      label = case$label)
-    if (startsWith(case$message, ": ")) {
-      # The fetch's own message opens it; the engine readings close it.
-      expect_true(endsWith(d$message, case$message), label = case$label)
-    } else {
+    if (!is.null(case$message)) {
       expect_identical(d$message, case$message, label = case$label)
     }
   }
