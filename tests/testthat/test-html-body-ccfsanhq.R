@@ -170,9 +170,9 @@ test_that("ROBO-qquftxcx: a one-line HTML page cut at max_bytes is HTML", {
 })
 
 test_that("ROBO-qquftxcx: a minified page cut mid-line keeps its lines", {
-  # A complete first line survives the cut: it is read, and html_body comes
-  # from the stored bytes, whose markers lie past the cut.
-  body <- paste0("<script>var a=1;</script>\n<style>p{}</style><html><body>",
+  # A complete first line, with no marker, survives the cut: it is read, and
+  # html_body comes from the stored bytes, whose markers lie past the cut.
+  body <- paste0("<div>var a=1;</div>\n<style>p{}</style><html><body>",
                  strrep("<p>x</p>", 20L), "</body></html>\n")
   local_fake_ssrfr(function(req) {
     fake_response(200L, body = body)
