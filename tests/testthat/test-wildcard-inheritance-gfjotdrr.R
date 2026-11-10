@@ -250,12 +250,12 @@ test_that("a latin1 agent name is cut where the matcher cuts it", {
 test_that("an explicit allow-all group is exempt", {
   for (rules in list("Disallow:", "Allow: /", c("Disallow:", "Allow: /"),
                      "Allow: /*", "Allow: /**", "Allow: *", "Allow: **",
-                     c("Disallow:", "Allow:"))) {
+                     "Allow: /*$", "Allow: *$", c("Disallow:", "Allow:"))) {
     body <- wi_lines("User-agent: *", "Disallow: /a", "User-agent: Bingbot",
                      rules)
     expect_identical(nrow(wi_rows(body)), 0L, label = body)
   }
-  for (rules in list("Allow:", "Allow: /$", "Allow: *$", "Allow: /*$",
+  for (rules in list("Allow:", "Allow: /$", "Allow: /*$*", "Allow: *$*",
                      c("Allow:", "Disallow: /z"))) {
     body <- wi_lines("User-agent: *", "Disallow: /a", "User-agent: Bingbot",
                      rules)
@@ -386,8 +386,8 @@ test_that("a large document keeps every message capped", {
 })
 
 test_that("a * group's blanket Allow is not listed as lost (ROBO-gkuuwbgc)", {
-  # A `*` Allow that matches every path is not compared: a named group that
-  # does not inherit it loses nothing it could use (the tie case is below).
+  # A `*` Allow matching every path is not listed, because the named group's
+  # own rules are what the crawler follows (the tie case is below).
   rows <- wi_rows(wi_lines(
     "User-agent: *", "Allow: /", "User-agent: ExampleBot",
     "Disallow: /private/"
@@ -399,7 +399,7 @@ test_that("a * group's blanket Allow is not listed as lost (ROBO-gkuuwbgc)", {
                      "Disallow: /private/")
     expect_identical(nrow(wi_rows(body)), 0L, label = body)
   }
-  # A named group whose only rule is an empty Allow loses nothing either.
+  # An empty Allow in the named group changes nothing, so nothing is listed.
   rows <- wi_rows(wi_lines("User-agent: *", "Allow: /",
                            "User-agent: ExampleBot", "Allow:"))
   expect_identical(nrow(rows), 0L)
@@ -409,6 +409,26 @@ test_that("a * group's blanket Allow is not listed as lost (ROBO-gkuuwbgc)", {
   rows <- wi_rows(body)
   expect_identical(nrow(rows), 1L)
   expect_match(rows$message, "Allow: /$ (line 2).", fixed = TRUE)
+  # A `$` before the end is literal, so these match only paths containing `$`.
+  for (value in c("Allow: /*$*", "Allow: *$*")) {
+    body <- wi_lines("User-agent: *", value, "User-agent: ExampleBot",
+                     "Disallow: /private/")
+    rows <- wi_rows(body)
+    expect_identical(nrow(rows), 1L, label = body)
+    expect_match(rows$message, paste0(value, " (line 2)."), fixed = TRUE,
+                 label = body)
+  }
+})
+
+test_that("a named group whose only rule is a $-anchored every-path Allow", {
+  # Exempt like `Allow: /`: the group's own rules are what it follows.
+  body <- wi_lines("User-agent: *", "Disallow: /x", "User-agent: ExampleBot",
+                   "Allow: /*$")
+  expect_identical(nrow(wi_rows(body)), 0L)
+  # `/*$*` is not every path, so the group is not exempt.
+  body <- wi_lines("User-agent: *", "Disallow: /x", "User-agent: ExampleBot",
+                   "Allow: /*$*")
+  expect_identical(nrow(wi_rows(body)), 1L)
 })
 
 test_that("a named Disallow: / keeps a * blanket Allow silent", {
