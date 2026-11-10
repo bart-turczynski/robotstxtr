@@ -55,10 +55,11 @@ test_that("bad bytes before the # make the line an error", {
                         0xe9, "\n"))
   expect_identical(d$code, "invalid_utf8")
   expect_identical(d$line, 2L)
-  # A truncated lead byte right before the #.
+  # A truncated lead byte right before the #. The glued # also cuts the
+  # rule (rule_cut_by_comment, ROBO-gjhpykcj).
   d <- iu_rows(iu_bytes("User-agent: *\nDisallow: /a", 0xc3, "#\n"))
-  expect_identical(d$code, "invalid_utf8")
-  expect_identical(d$line, 2L)
+  expect_identical(d$code, c("invalid_utf8", "rule_cut_by_comment"))
+  expect_identical(d$line, c(2L, 2L))
 })
 
 test_that("NUL bytes are dropped before the line is checked", {
@@ -70,10 +71,12 @@ test_that("NUL bytes are dropped before the line is checked", {
   d <- iu_rows(iu_bytes("User-agent: *\nDisallow: /", 0xc3, 0x00, 0xa9,
                         "\n"))
   expect_identical(d$code, "nul_byte")
-  # A NUL before the #: the # is still found on the NUL-free line.
+  # A NUL before the #: the # is still found on the NUL-free line, where it
+  # also cuts the rule (rule_cut_by_comment, ROBO-gjhpykcj).
   d <- iu_rows(iu_bytes("User-agent: *\nDisallow: /a", 0x00, "# ", 0xff,
                         "\n"))
-  expect_identical(d$code, c("nul_byte", "invalid_utf8_comment"))
+  expect_identical(d$code,
+                   c("nul_byte", "invalid_utf8_comment", "rule_cut_by_comment"))
 })
 
 test_that("several bad lines get one row each, in line order", {
