@@ -277,11 +277,21 @@ test_that("ROBO-mxermwed: a lower-case escape in a rule is flagged", {
   expect_identical(edge_decision(bytes, "/a%3Cb", "FooBot"), "disallow")
 })
 
+test_that("ROBO-mxermwed: a page opening with inline script is not HTML", {
+  # known gap (ROBO-qquftxcx): a minified page whose first bytes are inline
+  # script and style has no HTML marker at a line start, so the content flag
+  # is "xml" and the validator draws no html_body; the matcher allows all
+  bytes <- edge_case("content-html-script-first")
+  expect_identical(robots_content_flag(bytes), "xml")
+  expect_identical(edge_codes(bytes), "unknown_directive@1;no_rules@NA")
+  expect_identical(edge_decision(bytes, "/private/", "FooBot"), "allow")
+})
+
 test_that("ROBO-mxermwed: every known_gap row is restated above", {
   m <- edge_manifest
   expect_setequal(
     unique(m$id[nzchar(m$known_gap)]),
-    "grp-googlebot-image-fallback"
+    c("grp-googlebot-image-fallback", "content-html-script-first")
   )
 })
 

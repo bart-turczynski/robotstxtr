@@ -146,3 +146,23 @@ test_that("an HTML body cut at max_bytes draws html_body, not no_rules", {
   expect_true("body_truncated" %in% x$diagnostics$code)
   expect_false("no_rules" %in% x$diagnostics$code)
 })
+
+# A one-line page longer than max_bytes: the cut leaves no complete line.
+one_line_html <- paste0(
+  "<!DOCTYPE html><html><head><title>Example</title></head><body>",
+  strrep("<p>x</p>", 20L), "</body></html>\n"
+)
+
+test_that("a one-line HTML page cut at max_bytes is pinned", {
+  # known gap (ROBO-qquftxcx): the cut leaves an empty readable prefix, so
+  # the validator sniffs nothing and the page draws body_truncated alone,
+  # while the fetch row sniffs the stored bytes and calls them html
+  local_fake_ssrfr(function(req) {
+    fake_response(200L, headers = list(`Content-Type` = "text/html"),
+                  body = one_line_html)
+  })
+  x <- robots_validate_url("https://example.com/", max_bytes = 100L)
+  expect_identical(x$diagnostics$code, "body_truncated")
+  expect_identical(robots_fetch("https://example.com/", max_bytes = 100L)$
+                     robots$content_flag, "html")
+})
