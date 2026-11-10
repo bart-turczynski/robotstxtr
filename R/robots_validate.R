@@ -1329,7 +1329,7 @@ ai_training_extra_line_rows <- function(groups, parsed, exact) {
 # Linear in the rules: they are split by group once, and at most `cap` per
 # group are rendered.
 ai_training_preference_rows <- function(groups, exact, truncated,
-                                        cap = 10L, see = 3L) {
+                                        cap = 10L) {
   agents <- groups$agents[exact, , drop = FALSE]
   agents <- agents[!duplicated(agents$group), , drop = FALSE]
   rules <- groups$rules
@@ -1354,26 +1354,12 @@ ai_training_preference_rows <- function(groups, exact, truncated,
     sprintf("This group's rules: %s%s.", toString(items),
             if (k > cap) sprintf(", and %d more", k - cap) else "")
   }, "", USE.NAMES = FALSE)
-  # Groups naming the same token merge, so each info points to the others:
-  # the first `see` of them, then a count, so the text stays linear.
-  lines <- agents$line
-  head_lines <- lines[seq_len(min(length(lines), see + 1L))]
-  others <- vapply(seq_along(lines), function(i) {
-    rest <- length(lines) - 1L
-    if (rest == 0L) {
-      return("")
-    }
-    shown <- head_lines[head_lines != lines[[i]]][seq_len(min(rest, see))]
-    sprintf(" Groups naming the token merge (also see line%s %s%s).",
-            if (rest > 1L) "s" else "", toString(shown),
-            if (rest > see) sprintf(", and %d more", rest - see) else "")
-  }, "")
   message <- sprintf(
     paste0("`User-agent: %s` states an AI-training preference (%s, an ",
            "Internet-Draft): a disallowed path is a preference against ",
            "training on it, an allowed one a preference for it. %s ",
-           "`User-agent: *` rules never apply to the token.%s"),
-    rep(ai_training_token, nrow(agents)), ai_training_draft, listed, others
+           "`User-agent: *` rules never apply to the token."),
+    rep(ai_training_token, nrow(agents)), ai_training_draft, listed
   )
   if (truncated && length(message) > 0L) {
     message <- paste(message,

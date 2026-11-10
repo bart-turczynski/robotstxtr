@@ -358,7 +358,7 @@ and the `bing` row ends the run there. The validator (`robots_validate_text()`,
 
 | Code | Severity | When |
 |---|---|---|
-| `ai_training_preference` | info | A User-agent value is the token whole, ASCII case aside. One per group, on its first such line; the message lists the group's own rules (an empty Disallow as no restriction), never merges in `*`, and names up to three other groups' lines, then a count, when several groups name the token. |
+| `ai_training_preference` | info | A User-agent value is the token whole, ASCII case aside. One per group, on its first such line; the message lists the group's own rules (an empty Disallow as no restriction), and never merges in `*` or names another group. |
 | `ai_training_token_near_miss` | warning | The value's leading `[A-Za-z_-]` run, with `_` and `-` removed and ASCII-lowercased, is `usageaitraining`, but the value is not the token (`__usage_ai_training`, `usage_ai-training`, `__usage-ai-training`, `__usage_ai-training/1.0`). For a suffix the message adds that Google's matcher still reads the token. |
 | `ai_training_group_extra_line` | warning | A directive other than Allow, Disallow and User-agent, and not file-level (Sitemap, Host, Clean-param), in a group that names only the token, such as `Crawl-delay`: before the group's last rule, or anywhere when the group is the file's last. |
 | `ai_training_token_stacked` | warning | A policy-token User-agent line (a `__usage_` key, the token or a near miss) shares a group with `*`, or with a crawler or another policy token and a directive line sits between them. The message says Bing joins the lines only when nothing but blank or comment lines comes between, which a `*` line alone can satisfy. |

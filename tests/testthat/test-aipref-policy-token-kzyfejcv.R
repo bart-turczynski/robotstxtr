@@ -93,19 +93,15 @@ test_that("each group naming the token gets one info, on its first line", {
     "Disallow: /a", "User-agent: __usage_ai-training", "Disallow: /b"
   ), "ai_training_preference")
   expect_identical(d$line, c(1L, 4L))
-  expect_match(d$message[[1L]], paste0(
-    "never apply to the token. Groups naming the token merge (also see ",
-    "line 4)."
-  ), fixed = TRUE)
-  expect_match(d$message[[2L]], "(also see line 1).", fixed = TRUE)
-  d <- ai_rows(ai_lines(
-    "User-agent: __usage_ai-training", "Disallow: /a",
-    "User-agent: __usage_ai-training", "Disallow: /b",
-    "User-agent: __usage_ai-training", "Disallow: /c"
-  ), "ai_training_preference")
-  expect_match(d$message[[2L]], "(also see lines 1, 5).", fixed = TRUE)
-  d <- ai_rows(ai_exempt, "ai_training_preference")
-  expect_no_match(d$message, "also see", fixed = TRUE)
+  # Each info lists only its own group's rules, naming no other group.
+  expect_true(endsWith(d$message[[1L]], paste0(
+    "This group's rules: Disallow: /a (line 3). `User-agent: *` rules never ",
+    "apply to the token."
+  )))
+  expect_true(endsWith(d$message[[2L]], paste0(
+    "This group's rules: Disallow: /b (line 5). `User-agent: *` rules never ",
+    "apply to the token."
+  )))
 })
 
 test_that("the token is matched apart from ASCII case only", {
@@ -570,23 +566,9 @@ test_that("the stacked check is linear: 4000 crawlers and 4000 tokens", {
   expect_lt(elapsed, 30)
 })
 
-test_that("the info names at most three other token groups", {
-  body <- ai_lines(rep(c("User-agent: __usage_ai-training", "Disallow: /"),
-                       5L))
-  d <- ai_rows(body, "ai_training_preference")
-  expect_identical(d$line, c(1L, 3L, 5L, 7L, 9L))
-  expect_match(d$message[[1L]],
-               "(also see lines 3, 5, 7, and 1 more).", fixed = TRUE)
-  expect_match(d$message[[5L]],
-               "(also see lines 1, 3, 5, and 1 more).", fixed = TRUE)
-  d <- ai_rows(ai_lines(rep(c("User-agent: __usage_ai-training",
-                              "Disallow: /"), 4L)), "ai_training_preference")
-  expect_match(d$message[[2L]], "(also see lines 1, 5, 7).", fixed = TRUE)
-})
-
 test_that("info messages grow linearly with the number of token groups", {
-  # Each info names at most three others, so the total text per group is
-  # bounded however many groups repeat the token.
+  # Each info names only its own group, so the text per group is bounded
+  # however many groups repeat the token.
   for (n in c(10L, 3000L)) {
     body <- ai_lines(rep(c("User-agent: __usage_ai-training", "Disallow: /"),
                          n))
