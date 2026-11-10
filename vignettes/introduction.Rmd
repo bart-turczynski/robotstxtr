@@ -180,7 +180,9 @@ table has stable line, severity, code, directive, raw-text, and message columns.
 Raw vectors are accepted so malformed UTF-8 and NUL bytes can be reported
 without first converting or losing the acquisition bytes. The validator also
 warns on Allow or Disallow patterns that never match (not led by `/` or `*`)
-or hold a literal `$` (one before the pattern's end), and on a Sitemap value
+or hold a literal `$` (one before the pattern's end), on patterns that
+percent-escape an unreserved character such as `%7E` for `~` (Google never
+matches the escape against the character), and on a Sitemap value
 that is not an absolute `http`, `https` or `ftp` URL. An info,
 `wildcard_rules_not_inherited`, notes a named User-agent group that lacks some
 `User-agent: *` rules: its crawler obeys only the groups that name it. A

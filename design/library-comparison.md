@@ -342,8 +342,8 @@ Verdict: library deviation. RFC 9309 §2.2.2 decodes an unreserved escape
 such as `%7E` and keeps a reserved one such as `%2F`. Every library in the
 table above that decodes `%7E` follows the RFC there; `py`, `rtx` and `spb`
 break it on `%2F`.
-`design/edge-case-catalog.md` records the Google side and its validator
-gaps (ROBO-gaczsrgj for `%7E`).
+`design/edge-case-catalog.md` records the Google side, and the validator
+warns on such a rule with `rule_escaped_unreserved` (ROBO-gaczsrgj).
 
 ### 14. A lower-case escape in a rule: every library differs
 

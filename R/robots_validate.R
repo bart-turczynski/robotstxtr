@@ -77,6 +77,10 @@ validation_unsupported <- c(
 #'     A pattern not led by \code{/} or \code{*}; it never matches. \cr
 #'   \code{rule_inner_dollar} \tab warning \tab
 #'     A \code{$} before a pattern's end; it matches a literal \code{$}. \cr
+#'   \code{rule_escaped_unreserved} \tab warning \tab
+#'     A pattern percent-escapes an unreserved character, such as \code{\%7E}
+#'     for \code{~}. Google matches only the escape, never the character,
+#'     though RFC 9309 section 2.2.2 decodes it. One per rule line. \cr
 #'   \code{empty_sitemap_value} \tab warning \tab
 #'     A Sitemap line with an empty value. \cr
 #'   \code{invalid_sitemap_url} \tab warning \tab
@@ -1118,7 +1122,60 @@ rule_value_diagnostics <- function(value) {
       )
     )
   }
+  escaped <- rule_escaped_unreserved_diagnostic(value)
+  if (!is.null(escaped)) {
+    found[[length(found) + 1L]] <- escaped
+  }
   found
+}
+
+# RFC 3986 section 2.3 unreserved characters. RFC 9309 section 2.2.2 decodes
+# their escapes before matching; Google's matcher compares the escape as
+# written, so a rule's '%7E' never matches a URL's '~'.
+validation_unreserved_bytes <- as.integer(charToRaw(paste(
+  c(LETTERS, letters, 0:9, "-", ".", "_", "~"), collapse = ""
+)))
+
+# At most one finding per rule, naming each distinct escape (up to ten).
+# Escapes are read left to right without overlap, so '%257E' is the escape
+# '%25' and a literal '7E'. Returns a finding or NULL.
+rule_escaped_unreserved_diagnostic <- function(value) {
+  escapes <- regmatches(
+    value, gregexpr("%[0-9A-Fa-f]{2}", value, useBytes = TRUE)
+  )[[1L]]
+  codes <- strtoi(substr(escapes, 2L, 3L), 16L)
+  hit <- codes %in% validation_unreserved_bytes
+  escapes <- unique(escapes[hit])
+  if (length(escapes) == 0L) {
+    return(NULL)
+  }
+  chars <- rawToChar(
+    as.raw(strtoi(substr(escapes, 2L, 3L), 16L)), multiple = TRUE
+  )
+  if (length(escapes) == 1L) {
+    message <- sprintf(
+      paste0(
+        "'%s' escapes the unreserved character '%s'. Google matches it only ",
+        "against '%s' in the URL, never against '%s', though RFC 9309 ",
+        "section 2.2.2 decodes it."
+      ),
+      escapes, chars, escapes, chars
+    )
+  } else {
+    cap <- 10L
+    k <- length(escapes)
+    items <- sprintf("'%s' for '%s'", escapes, chars)[seq_len(min(k, cap))]
+    listed <- toString(items)
+    if (k > cap) {
+      listed <- sprintf("%s, and %d more", listed, k - cap)
+    }
+    message <- paste0(
+      "These escapes stand for unreserved characters: ", listed, ". Google ",
+      "matches each only against the same escape in the URL, never against ",
+      "the character, though RFC 9309 section 2.2.2 decodes them."
+    )
+  }
+  list(code = "rule_escaped_unreserved", message = message)
 }
 
 # A syntax-only check of a Sitemap value: an absolute http, https or ftp URL

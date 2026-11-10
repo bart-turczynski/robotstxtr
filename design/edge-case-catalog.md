@@ -166,7 +166,7 @@ catalog does not run the Yandex matcher.
 |---|---|---|---|---|---|
 | `esc-pct2f-rule-slash-url` — `Disallow: /a%2Fb` | `%2F` is reserved, stays encoded (§2.2.2): `/a/b` allow, `/a%2Fb` disallow | compared in encoded form | same | none | no |
 | `esc-slash-rule-pct2f-url` — `Disallow: /a/b`, URL `/a%2Fb` | allow | as above | allow | none | no |
-| `esc-pct7e-rule-tilde-url` — `Disallow: /%7Ejoe` | `~` is unreserved, so `%7E` is decoded: `/~joe` disallow (§2.2.2 states the decoding for the URI; its Figure 4 maps `/foo/bar/%62%61%7A` to `/foo/bar/baz`, which reads as the rule side too) | not documented for unreserved characters | `/~joe` **allow**, `/%7Ejoe` disallow | none | yes; **known gap**: nothing flags an escaped unreserved character |
+| `esc-pct7e-rule-tilde-url` — `Disallow: /%7Ejoe` | `~` is unreserved, so `%7E` is decoded: `/~joe` disallow (§2.2.2 states the decoding for the URI; its Figure 4 maps `/foo/bar/%62%61%7A` to `/foo/bar/baz`, which reads as the rule side too) | not documented for unreserved characters | `/~joe` **allow**, `/%7Ejoe` disallow | `rule_escaped_unreserved@2` | yes; covered by `rule_escaped_unreserved` |
 | `esc-tilde-rule-pct7e-url` — `Disallow: /~joe`, URL `/%7Ejoe` or `/%7ejoe` | the URI's `%7E` MUST be decoded (§2.2.2): disallow | not documented | allow for both | none | yes, but not a validator gap: the file is correct RFC syntax and nothing in it could be flagged; the difference is the URL's form. `allowed_by_robots_text()` passes the URL to the matcher unchanged and leaves supplying an appropriately `%`-escaped URL to the caller ("R does not clean, decode, canonicalize, or reserialize the URL"), and the PRD's R-package rules say "do not normalize Unicode or percent escapes on the matcher side" (`design/PRD.md`) |
 | `esc-lower-hex-rule` — `Disallow: /a%3cb` | `<` is neither reserved nor unreserved, so `%3c` stays encoded on both sides (§2.2.2): `/a%3cb` matches octet for octet, disallow; `/a%3Cb` hinges on whether `%3c` equals `%3C`, which the RFC does not say: unspecified | not documented | `/a%3Cb` disallow (rule upper-cased), `/a%3cb` **allow** (URL not normalized): the exact path the owner wrote is not blocked | none | yes; **known gap**: ROBO-kormmfyg |
 | `esc-path-letter-case` — `Disallow: /Private` | SHOULD be case-sensitive | case-sensitive | `/Private` disallow, `/private` allow | none | no |
@@ -267,7 +267,8 @@ block red. An item marked fixed names the diagnostic that now covers it.
 3. ROBO-sniltuap — `enc-latin1-comment`: `invalid_utf8` has no line and is an error even when
    only a comment holds the byte.
 4. ROBO-gaczsrgj — `esc-pct7e-rule-tilde-url`: no diagnostic for an escaped unreserved
-   character, which Google never matches against the raw form.
+   character, which Google never matches against the raw form. Fixed:
+   `rule_escaped_unreserved`.
 5. ROBO-dlgeqluf — `esc-space-in-rule`: no diagnostic for a raw space inside a rule.
 6. ROBO-gjhpykcj — `cmt-hash-in-rule`: no diagnostic for a `#` that cuts a rule into a wider
    prefix.
