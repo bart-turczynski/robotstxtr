@@ -348,9 +348,9 @@ test_that("ROBO-etlkvljs: a supplied body whose last line ends at the limits", {
   dropped <- stats::setNames(c("allow", "allow"), ss_urls(paths))
   # One ruleset per backend at each size; at the first, every ruleset with
   # the google and rfc9309 backends too. yandex and bing rows on a body this
-  # size cost the most; a supplied body resolves use_rules before the
-  # ruleset is read, and the status-class test below runs those two backends
-  # under every ruleset on a small body.
+  # size cost the most, and a supplied body resolves use_rules before the
+  # ruleset is read. Off-diagonal yandex and bing pairs (google/yandex,
+  # rfc9309/bing and the like) therefore get no large supplied body here.
   wide <- ss_grid[ss_grid$backend %in% c("google", "rfc9309") |
                     ss_grid$ruleset == ss_grid$backend, ]
   for (size in c(511999L, 512000L, 512001L, 512002L)) {
@@ -373,7 +373,8 @@ test_that("ROBO-etlkvljs: a supplied body over 500,000 bytes keeps use_rules", {
   # contract mismatch: engine-contract-v1.md says bodies over 500,000 bytes
   # resolve allow_all under yandex, without limiting that to fetched bodies.
   # The yandex ruleset alone: the test above runs a 511,999-byte supplied
-  # body through every pair, each use_rules (supplied_body_use_rules).
+  # body through the google and rfc9309 backends and the diagonal, each
+  # use_rules (supplied_body_use_rules).
   body <- ss_body(charToRaw("Disallow: /private\n"), 1000L, 500001L)
   x <- ss_eval_text(body, "/private", ss_grid[ss_grid$ruleset == "yandex", ])
   r <- x$results
