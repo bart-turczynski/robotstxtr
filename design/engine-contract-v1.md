@@ -136,9 +136,11 @@ Yandex row the matcher status is `not_evaluated` with either
 `reason = "invalid_request_target"`
 (`error_class = "robots_invalid_request_target"`), both at
 `error_stage = "input"`; `unsupported_crawler` takes precedence when both a
-target and a token are invalid. Bodies over 500,000 bytes resolve through the
-documented Yandex `allow_all` policy (`matcher_status = "not_needed"`) before
-the matcher runs. A 2xx cut at `max_bytes` that stored at least 512,000 bytes
+target and a token are invalid. A fetched body over 500,000 bytes resolves
+through the documented Yandex `allow_all` policy before the matcher runs
+(`matcher_status = "not_needed"`); a supplied or local body stays `use_rules`
+(`supplied_body_use_rules`) at any size. A 2xx cut at `max_bytes` that stored at
+least 512,000 bytes
 is a file over 500 KB under either reading of the unit, so it resolves
 `allow_all` too, while its `evidence_status` stays `incomplete`
 (ROBO-arrtietl): a cut 200 with the same `yandex_file_over_500000_bytes`
