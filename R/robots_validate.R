@@ -755,7 +755,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     # Google upper-cases a rule's escapes but never the URL's, so a
     # lower-case one misses the path written (ROBO-kormmfyg). The parser's
     # value is already upper-cased, so the check reads the raw line.
-    if (type %in% c("allow", "disallow") && nzchar(value)) {
+    if (type %in% c("allow", "disallow")) {
       escapes <- rule_lowercase_escapes(
         raw_lines[[line]], line == 1L, parsed$missing_colon[[i]]
       )
@@ -1523,20 +1523,13 @@ rule_lowercase_escapes <- function(line_bytes, first_line, missing_colon) {
   if (missing_colon) {
     blank <- as.raw(c(0x20, 0x09, 0x0a, 0x0b, 0x0c, 0x0d))
     lead <- which(!bytes %in% blank)
-    if (length(lead) == 0L) {
-      return(character())
-    }
     bytes <- bytes[lead[[1L]]:length(bytes)]
     stop_at <- which(bytes %in% as.raw(c(0x20, 0x09)))
   } else {
     stop_at <- which(bytes == as.raw(0x3a))
   }
-  if (length(stop_at) == 0L) {
-    return(character())
-  }
   value <- bytes[-seq_len(stop_at[[1L]])]
   pct <- which(value == as.raw(0x25))
-  pct <- pct[pct + 2L <= length(value)]
   hex <- as.raw(c(0x30:0x39, 0x41:0x46, 0x61:0x66))
   pct <- pct[value[pct + 1L] %in% hex & value[pct + 2L] %in% hex]
   lower <- as.raw(0x61:0x66)
