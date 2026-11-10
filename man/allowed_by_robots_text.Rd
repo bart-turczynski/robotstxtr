@@ -8,9 +8,13 @@ allowed_by_robots_text(robots_txt, url, user_agent, source_id = "supplied")
 }
 \arguments{
 \item{robots_txt}{A single, non-missing character scalar holding the
-robots.txt body. An empty body is valid. It is converted to UTF-8 once and
-the exact bytes are stored in the returned \code{robots$body} and passed to the
-matcher; a body already carrying \code{Encoding = "bytes"} is used verbatim.}
+robots.txt body. An empty body is valid. A body marked UTF-8 is used as
+written. An unmarked body (as \code{rawToChar()} gives) is taken as UTF-8 bytes
+as written when the session's native encoding is UTF-8 or ASCII (the C
+locale), and converted from the native encoding otherwise; one marked
+\code{"latin1"} is converted, and one marked \code{Encoding = "bytes"} is used
+verbatim. Those exact bytes are stored in the returned \code{robots$body} and
+passed to the matcher.}
 
 \item{url}{A character vector of URL strings to match, passed to the matcher
 unchanged. May have length zero.}

@@ -15,7 +15,11 @@ robots_evaluate_text_v1(
 }
 \arguments{
 \item{robots_txt}{A single, non-missing character value containing the
-robots.txt body.}
+robots.txt body. A body marked UTF-8 is used as written. An unmarked body
+(as \code{rawToChar()} gives) is taken as UTF-8 bytes as written when the
+session's native encoding is UTF-8 or ASCII (the C locale), and converted
+from the native encoding otherwise; one marked \code{"latin1"} is converted,
+and one marked \code{Encoding = "bytes"} is used verbatim.}
 
 \item{url}{A character vector of URLs to evaluate.}
 

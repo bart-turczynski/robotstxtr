@@ -31,8 +31,11 @@ is not a claim of universal crawler behavior or complete RFC 9309 validity.
 
 \code{robots_txt} may be text or a raw vector. Raw input is useful when validating
 acquisition bytes that contain malformed UTF-8, a byte-order mark, or NUL
-bytes. Character input marked with \code{Encoding = "bytes"} is used verbatim;
-other character input is converted to UTF-8 once.
+bytes. Character input marked UTF-8 is used as written. Unmarked input (as
+\code{rawToChar()} gives) is taken as UTF-8 bytes as written when the session's
+native encoding is UTF-8 or ASCII (the C locale), and converted from the
+native encoding otherwise; input marked \code{"latin1"} is converted, and input
+marked \code{Encoding = "bytes"} is used verbatim.
 
 The result contains three typed data frames: \code{map} (the validation target),
 \code{documents} (one summary row per document), and \code{diagnostics} (zero or more
