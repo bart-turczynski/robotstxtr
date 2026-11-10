@@ -1,6 +1,6 @@
-# ROBO-igrkabdb: the validator's rule count against the matchers' NUL drop.
-# Every matcher removes the NUL bytes and reads on (R/body-decode.R), while
-# the validation parser ends a line at its first NUL.
+# ROBO-igrkabdb: the validator's rule count against the Google matcher's NUL
+# drop. That matcher removes the NUL bytes and reads on (R/body-decode.R),
+# while the validation parser ends a line at its first NUL.
 
 # `text` as UTF-16LE bytes with no BOM: each ASCII byte followed by a NUL.
 nr_utf16le <- function(text) {
@@ -23,9 +23,9 @@ nr_allowed <- function(bytes, path) {
 nr_message <- function(n) {
   sprintf(
     paste0(
-      "With its NUL bytes removed, as the matchers read it, the document ",
-      "has %d Allow or Disallow rule(s); a UTF-16 file must be re-saved ",
-      "as UTF-8 (RFC 9309 section 2.3)."
+      "With its NUL bytes removed, as Google's matcher reads it, the ",
+      "document has %d Allow or Disallow rule(s); if this is a UTF-16 ",
+      "file, re-save it as UTF-8 (RFC 9309 section 2.3)."
     ),
     n
   )
@@ -45,7 +45,7 @@ expect_rules_after_nul <- function(x, n, label) {
   expect_false("no_rules" %in% d$code, label = label)
 }
 
-test_that("a NUL-split body reports the rules the matchers read", {
+test_that("a NUL-split body reports the rules Google's matcher reads", {
   bytes <- nr_utf16le("User-agent: *\nDisallow: /a\n")
   expect_false(nr_allowed(bytes, "/a"))
   x <- robots_validate_text(bytes)
