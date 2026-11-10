@@ -33,19 +33,30 @@ matcher_target_bytes_v1 <- function(url, extract_target) {
 }
 
 # Group per-row raw bodies into the distinct-body list + 1-based index the
-# native batch bindings take. Keys are the full byte sequence rendered as hex,
-# so embedded NUL and invalid UTF-8 compare safely and dedupe exactly.
+# native batch bindings take, distinct bodies in order of first appearance.
+# duplicated() hashes and compares the raw vectors byte for byte, so embedded
+# NUL and invalid UTF-8 dedupe exactly. Each later row is then matched to its
+# body among the distinct bodies of its length with identical(), which is
+# immediate when rows share one R object, as an evaluator source's rows do.
+# Rendering every byte as hex for a key (the earlier helper) cost more than the
+# Google matcher's parses on a large body (ROBO-iooslxvj,
+# dev/bench-google-batch.R), and match() on a list of bodies was as slow.
 matcher_body_groups_v1 <- function(bodies) {
-  keys <- vapply(
-    bodies,
-    function(b) paste(as.character(b), collapse = ""),
-    character(1L)
-  )
-  first <- !duplicated(keys)
-  list(
-    distinct_bodies = bodies[first],
-    body_index = match(keys, keys[first])
-  )
+  first <- !duplicated(bodies)
+  distinct_bodies <- bodies[first]
+  body_index <- integer(length(bodies))
+  body_index[first] <- seq_along(distinct_bodies)
+  distinct_lengths <- lengths(distinct_bodies)
+  for (i in which(!first)) {
+    body <- bodies[[i]]
+    for (j in which(distinct_lengths == length(body))) {
+      if (identical(body, distinct_bodies[[j]])) {
+        body_index[[i]] <- j
+        break
+      }
+    }
+  }
+  list(distinct_bodies = distinct_bodies, body_index = body_index)
 }
 
 # The one list of the atomic decision columns the module builds, in frame
