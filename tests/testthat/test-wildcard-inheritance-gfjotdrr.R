@@ -386,14 +386,15 @@ test_that("a large document keeps every message capped", {
 })
 
 test_that("a * group's blanket Allow is not listed as lost (ROBO-gkuuwbgc)", {
-  # `Allow: /` grants only the default, so a named group that does not
-  # inherit it loses nothing.
+  # A `*` Allow that matches every path is not compared: a named group that
+  # does not inherit it loses nothing it could use (the tie case is below).
   rows <- wi_rows(wi_lines(
     "User-agent: *", "Allow: /", "User-agent: ExampleBot",
     "Disallow: /private/"
   ))
   expect_identical(nrow(rows), 0L)
-  for (value in c("Allow: /*", "Allow: /**", "Allow: *", "Allow: **")) {
+  for (value in c("Allow: /*", "Allow: /**", "Allow: *", "Allow: **",
+                  "Allow: /*$", "Allow: *$", "Allow: /**$")) {
     body <- wi_lines("User-agent: *", value, "User-agent: ExampleBot",
                      "Disallow: /private/")
     expect_identical(nrow(wi_rows(body)), 0L, label = body)
@@ -402,12 +403,25 @@ test_that("a * group's blanket Allow is not listed as lost (ROBO-gkuuwbgc)", {
   rows <- wi_rows(wi_lines("User-agent: *", "Allow: /",
                            "User-agent: ExampleBot", "Allow:"))
   expect_identical(nrow(rows), 0L)
-  # `$` after `/` keeps this Allow to `/` only, so it is still compared.
+  # `/$` matches only `/`, so it is still compared.
   body <- wi_lines("User-agent: *", "Allow: /$", "User-agent: ExampleBot",
                    "Disallow: /private/")
   rows <- wi_rows(body)
   expect_identical(nrow(rows), 1L)
   expect_match(rows$message, "Allow: /$ (line 2).", fixed = TRUE)
+})
+
+test_that("a named Disallow: / keeps a * blanket Allow silent", {
+  # Inherited, `Allow: /` would win the tie with `Disallow: /` and open every
+  # path. ExampleBot does not inherit it, so its own block holds: nothing is
+  # listed and the path stays blocked.
+  for (value in c("Allow: /", "Allow: /*$")) {
+    body <- wi_lines("User-agent: *", value, "User-agent: ExampleBot",
+                     "Disallow: /")
+    expect_identical(nrow(wi_rows(body)), 0L, label = body)
+    x <- allowed_by_robots_text(body, "https://x.com/abc", "ExampleBot")
+    expect_false(x$results$allowed, label = body)
+  }
 })
 
 test_that("a real * rule beside a blanket * Allow is still listed", {

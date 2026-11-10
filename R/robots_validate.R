@@ -199,14 +199,14 @@ validation_unsupported <- c(
 #' For `wildcard_rules_not_inherited`, a crawler obeys only the groups that
 #' name it (combined when several do) and ignores the `User-agent: *` group,
 #' as RFC 9309 section 2.2.1 says. Each `*` Allow or Disallow is compared
-#' with the named crawler's rules by type and value, except a `*` Allow of
-#' every path (`Allow: /`, `/*` or `*`), which adds nothing to the default; a
-#' trailing `*` is ignored (`/x` equals `/x*`, and `*` and `/*` equal `/`), `$`
-#' is not, and empty values are left out. The message lists the missing `*`
-#' rules, ten at most. A crawler whose rules are all explicit allow-all (an
-#' empty `Disallow:`, `Allow: /`, `Allow: /*` or `Allow: *`) is not reported;
-#' an empty `Allow:` is ignored, and a crawler whose groups have no other rule
-#' is reported.
+#' with the named crawler's rules by type and value, except that a `*` Allow
+#' matching every path (`Allow: /`, `/*`, `*`, or any of these with a final
+#' `$`, such as `/*$`) is not listed; a trailing `*` is ignored (`/x` equals
+#' `/x*`, and `*` and `/*` equal `/`), `$` is not, and empty values are left
+#' out. The message lists the missing `*` rules, ten at most. A crawler whose
+#' rules are all explicit allow-all (an empty `Disallow:`, `Allow: /`,
+#' `Allow: /*` or `Allow: *`) is not reported; an empty `Allow:` is ignored,
+#' and a crawler whose groups have no other rule is reported.
 #'
 #' For `disallow_tied_by_allow`, an Allow and a Disallow with the same
 #' pattern match the same paths with the same priority, and Allow wins the
@@ -967,18 +967,20 @@ validation_groups <- function(parsed) {
 # every missing `*` rule (uncapped) and `message` the capped text. An agent
 # whose rules are all explicit allow-all (an empty Disallow, or an Allow
 # keyed `/`) is exempt; an empty Allow is a no-op and is not counted, so an
-# agent with no other rule is not exempt. A `*` Allow keyed `/` matches every
-# path and adds nothing to the default, so it is never a missing rule
-# (ROBO-gkuuwbgc). Rows come in anchor-line order: agents are visited in the
-# order they are first named.
+# agent with no other rule is not exempt. A `*` Allow that matches every path
+# (ROBO-gkuuwbgc) is never a missing rule. Rows come in anchor-line order:
+# agents are visited in the order they are first named.
 wildcard_inheritance_diagnostics <- function(groups) {
   rules <- groups$rules
   # An empty key (a global line, or one led by a byte outside [A-Za-z_-])
   # names no crawler.
   agents <- groups$agents[nzchar(groups$agents$key), , drop = FALSE]
-  # A `*` Allow keyed `/` matches every path and adds nothing to the default
-  # (ROBO-gkuuwbgc), so it is not compared.
-  global <- rules[!rules$empty & rules$key != "allow /" &
+  # A `*` Allow that matches every path is not compared (ROBO-gkuuwbgc). Its
+  # key drops a trailing `*` run, so `/`, `/*`, `*` and `/**` all read as
+  # `allow /`; a final `$` stays in the key, so `allow /*$` and `allow *$` are
+  # matched here by the `\*+\$?` tail. `allow /$` matches only `/`.
+  every_path <- grepl("^allow (/|/?\\*+\\$?)$", rules$key)
+  global <- rules[!rules$empty & !every_path &
                     rules$group %in% groups$groups$group[groups$groups$global],
                   , drop = FALSE]
   global <- global[!duplicated(global$key), , drop = FALSE]
