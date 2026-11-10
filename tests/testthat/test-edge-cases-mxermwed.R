@@ -281,7 +281,7 @@ test_that("ROBO-mxermwed: every known_gap row is restated above", {
     c("enc-utf16le-no-bom",
       "esc-space-in-rule",
       "esc-lower-hex-rule",
-      "grp-googlebot-image-fallback", "redirect-cross-host-html")
+      "grp-googlebot-image-fallback")
   )
 })
 
@@ -305,7 +305,10 @@ edge_covering_code <- c(
   "content-spam-html" = "html_body",
   "grp-user-agent-with-space" = "user_agent_cut",
   "grp-digit-in-token" = "user_agent_cut",
-  "grp-star-prefixed-token" = "user_agent_cut"
+  "grp-star-prefixed-token" = "user_agent_cut",
+  # The body's own code; redirect_cross_site, which needs the fetch, is
+  # asserted in "the validator reports the cross-site redirect" below.
+  "redirect-cross-host-html" = "html_body"
 )
 edge_caller_side <- "esc-tilde-rule-pct7e-url"
 
@@ -391,9 +394,9 @@ test_that("ROBO-mxermwed: a cross-host redirect to HTML is fetched and used", {
   expect_identical(state$seen, rep(edge_redirect_hops, 3L))
 })
 
-test_that("ROBO-mxermwed: the validator reports no redirect", {
-  # known gap (ROBO-gokbvzcb): no diagnostic for a successful cross-host
-  # redirect; the document validates the landing page's lines only
+test_that("ROBO-mxermwed: the validator reports the cross-site redirect", {
+  # fixed by ROBO-gokbvzcb: after the landing page's own lines, one
+  # redirect_cross_site warning says the robots.txt is effectively missing
   state <- new.env(parent = emptyenv())
   local_fake_ssrfr(edge_redirect_handler(state))
   v <- robots_validate_url("http://a.example/page")
@@ -403,6 +406,12 @@ test_that("ROBO-mxermwed: the validator reports no redirect", {
   m <- edge_manifest
   expect_identical(
     edge_format_codes(v$diagnostics),
-    m$validator_codes[m$id == "redirect-cross-host-html"][[1L]]
+    paste0(
+      m$validator_codes[m$id == "redirect-cross-host-html"][[1L]],
+      ";redirect_cross_site@NA"
+    )
   )
+  d <- v$diagnostics[v$diagnostics$code == "redirect_cross_site", ]
+  expect_identical(d$severity, "warning")
+  expect_match(d$message, "effectively missing", fixed = TRUE)
 })
