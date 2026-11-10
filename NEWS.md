@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* `robots_validate_text()` and `robots_validate_url()` warn `user_agent_cut` when a non-global User-agent value holds a character outside letters, `_` and `-`, naming the token Google's matcher reads (RFC 9309 §2.2.1) (ROBO-zvhrayhx).
+
 * `robots_validate_text()` and `robots_validate_url()` warn (`accepted_directive_prefix`) on a key such as `DisallowAITraining`, which Google reads as Disallow by prefix (ROBO-xglcoagv).
 
 * `robots_validate_text()` and `robots_validate_url()` warn with `misplaced_byte_order_mark` on a byte-order mark after the start of the file, which hides the directive on its line (ROBO-atkmqcov).
