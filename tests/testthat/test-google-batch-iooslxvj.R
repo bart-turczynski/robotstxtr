@@ -24,7 +24,7 @@ gb_bytes <- function(...) {
 
 gb_window <- 512000L
 
-# A body of `size` bytes whose comment filler puts `edge` at byte `at`.
+# `head`, a comment line filling up to byte `at`, then `edge` from there.
 gb_filled <- function(head, at, edge) {
   head <- charToRaw(head)
   filler <- rep(charToRaw("#"), at - length(head) - 1L)
@@ -177,7 +177,7 @@ test_that("the Google frame has the decision columns and no native ones", {
   out <- match_google_batch_v1(
     list(gb_bodies$groups), "https://example.com/", "FooBot"
   )
-  expect_identical(names(out), matcher_decision_columns_v1())
+  expect_named(out, matcher_decision_columns_v1())
   expect_identical(
     match_google_batch_v1(list(), character(), character()),
     matcher_batch_empty_frame_v1(character())
