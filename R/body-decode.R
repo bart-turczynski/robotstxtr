@@ -17,10 +17,11 @@
 # `nul_free_bytes()` there) before checking encoding validity.
 #
 # How this differs from the reference matcher, deliberately. Google's C++
-# matcher is byte-transparent and does not stop at a NUL, so it reads
-# "\0Disallow: /x" as the unknown directive "\0disallow" and IGNORES the line,
-# where robotstxtr -- the NUL dropped -- reads an active "Disallow: /x". Byte
-# transparency is not reachable through R's character type, and of the two
+# matcher parses each line as a NUL-terminated C string, so it reads
+# "\0Disallow: /x" as an empty line and IGNORES it, and cuts "Disallow: /a\0b"
+# to the rule "/a"; robotstxtr -- the NUL dropped -- reads an active
+# "Disallow: /x" and the rule "/ab" (design/engine-profiles.md §5b, class 5).
+# Neither reading is reachable through R's character type, and of the two
 # representable options (drop the NUL, or truncate the document at it) dropping
 # preserves every directive the document actually spells out; truncating would
 # silently discard the rest of the file. The divergence is confined to
