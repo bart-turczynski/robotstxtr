@@ -9,8 +9,10 @@
 # (`RobotsMatcher::OneAgentAllowedByRobots()` on the raw body bytes, then
 # `matching_line()`): `ref_allowed` and `ref_line`, 0 when no rule matched.
 # The differential re-derives both from the reference binary and fails on any
-# drift, so the recorded answers stay the reference's, not robotstxtr's, and on
-# any difference gf_expected_difference() below does not list.
+# drift, so the recorded answers stay the reference's, not robotstxtr's. It
+# also fails where gf_check_rows() below finds a row that differs outside the
+# gf_expected table, differs from the answer the table lists, or agrees with
+# the reference where the table lists a difference.
 #
 # `paths` names the robotstxtr entry points a case can reach: a body with a
 # NUL byte cannot be an R string, so it reaches only the fetched paths.
@@ -369,46 +371,92 @@ gf_cases <- function() {
 
 gf_v1_path <- function(path) startsWith(path, "v1_")
 
-# What robotstxtr returns where it differs from the reference, by case and
-# path: list(class, allowed, line, reason), or NULL where it must agree. The
-# classes are design/engine-profiles.md §5b's. The pinned test and the
-# differential both read this table.
-gf_expected_difference <- function(id, path) {
-  empty_value <- c(
-    "ev-disallow", "ev-allow", "ev-both", "ev-comment", "ev-beside-rule-miss"
+# The entry point of a row's path: "v1_text:bing" -> "v1_text".
+gf_entry_point <- function(path) sub(":.*$", "", path)
+
+gf_expect <- function(class, ids, paths, allowed, line, reason,
+                      v1_reason = reason) {
+  list(
+    class = class, ids = ids, paths = paths, allowed = allowed,
+    line = as.integer(line), reason = reason, v1_reason = v1_reason
   )
-  invalid_reason <- if (gf_v1_path(path)) "input_invalid" else "input_unknown"
-  if (id %in% empty_value) {
-    return(list(class = 1L, allowed = TRUE, line = NA_integer_,
-                reason = "default_allow"))
-  }
-  if (id %in% c("win-after", "win-after-ceiling", "win-straddle") &&
-        gf_v1_path(path)) {
-    return(list(class = 2L, allowed = TRUE, line = NA_integer_,
-                reason = "default_allow"))
-  }
-  if (identical(id, "win-after-ceiling") && identical(path, "url")) {
-    return(list(class = 3L, allowed = TRUE, line = NA_integer_,
-                reason = "default_allow"))
-  }
-  if (id %in% c("in-empty-url", "in-empty-token")) {
-    return(list(class = 4L, allowed = NA, line = NA_integer_,
-                reason = invalid_reason))
-  }
-  if (id %in% c("in-schemeless-url", "in-ftp-url") &&
-        path %in% c("url", "v1_url:google")) {
-    return(list(class = 4L, allowed = NA, line = NA_integer_,
-                reason = invalid_reason))
-  }
-  if (identical(id, "nul-before-key")) {
-    return(list(class = 5L, allowed = FALSE, line = 2L,
-                reason = "rule_disallow"))
-  }
-  if (id %in% c("nul-in-rule-prefix", "nul-in-rule-other")) {
-    return(list(class = 5L, allowed = TRUE, line = NA_integer_,
-                reason = "default_allow"))
+}
+
+# What robotstxtr returns where it differs from the reference: one entry per
+# set of cases, with the entry points (`paths`) where they differ and the
+# answer there. `reason` is the legacy paths' `decision_source`, `v1_reason`
+# the v1 paths' `reason`. The classes are design/engine-profiles.md §5b's.
+# The pinned test, gf_check_rows() and the differential all read this table;
+# it is the only list of the differing case ids.
+gf_expected <- list(
+  gf_expect(1L, c("ev-disallow", "ev-allow", "ev-both", "ev-comment",
+                  "ev-beside-rule-miss"),
+            gf_all_paths, TRUE, NA, "default_allow"),
+  gf_expect(2L, c("win-after", "win-after-ceiling", "win-straddle"),
+            c("v1_text", "v1_url"), TRUE, NA, "default_allow"),
+  gf_expect(3L, "win-after-ceiling", "url", TRUE, NA, "default_allow"),
+  gf_expect(4L, c("in-empty-url", "in-empty-token"), gf_all_paths,
+            NA, NA, "input_unknown", "input_invalid"),
+  gf_expect(4L, c("in-schemeless-url", "in-ftp-url"), gf_url_paths,
+            NA, NA, "input_unknown", "input_invalid"),
+  gf_expect(5L, "nul-before-key", gf_all_paths, FALSE, 2L, "rule_disallow"),
+  gf_expect(5L, c("nul-in-rule-prefix", "nul-in-rule-other"), gf_all_paths,
+            TRUE, NA, "default_allow")
+)
+
+# Every case id gf_expected lists.
+gf_expected_ids <- function() {
+  unique(unlist(lapply(gf_expected, `[[`, "ids")))
+}
+
+# robotstxtr's answer where it differs from the reference, by case and path:
+# list(class, allowed, line, reason), or NULL where it must agree.
+gf_expected_difference <- function(id, path) {
+  for (e in gf_expected) {
+    if (id %in% e$ids && gf_entry_point(path) %in% e$paths) {
+      reason <- if (gf_v1_path(path)) e$v1_reason else e$reason
+      return(list(class = e$class, allowed = e$allowed, line = e$line,
+                  reason = reason))
+    }
   }
   NULL
+}
+
+# Checks robotstxtr's rows (gf_run_case()) against the reference's answers,
+# `ref_allowed` (logical) and `ref_line` (integer, 0 for no line), one of each
+# per row. A row differs from the reference when its decision does, or its
+# line does (NA counts as 0). Returns three row subsets, each with a `class`
+# column (NA where gf_expected lists nothing):
+# - `unexpected`: differs, and gf_expected lists nothing for it;
+# - `mismatched`: differs, is listed, but its allowed, line or reason is not
+#   the listed one;
+# - `stale`: is listed, but agrees with the reference.
+# All three are empty when robotstxtr matches the reference and the table.
+gf_check_rows <- function(rows, ref_allowed, ref_line) {
+  n <- nrow(rows)
+  stopifnot(length(ref_allowed) == n, length(ref_line) == n)
+  our_line <- ifelse(is.na(rows$line), 0L, rows$line)
+  differs <- is.na(rows$allowed) | rows$allowed != ref_allowed |
+    our_line != ref_line
+  wants <- lapply(seq_len(n), function(k) {
+    gf_expected_difference(rows$id[[k]], rows$path[[k]])
+  })
+  listed <- !vapply(wants, is.null, logical(1L))
+  matches_want <- vapply(seq_len(n), function(k) {
+    want <- wants[[k]]
+    !is.null(want) &&
+      identical(rows$allowed[[k]], want$allowed) &&
+      identical(rows$line[[k]], want$line) &&
+      identical(rows$reason[[k]], want$reason)
+  }, logical(1L))
+  rows$class <- vapply(wants, function(want) {
+    if (is.null(want)) NA_integer_ else want$class
+  }, integer(1L))
+  list(
+    unexpected = rows[differs & !listed, , drop = FALSE],
+    mismatched = rows[differs & listed & !matches_want, , drop = FALSE],
+    stale = rows[!differs & listed, , drop = FALSE]
+  )
 }
 
 # --- robotstxtr's side --------------------------------------------------------

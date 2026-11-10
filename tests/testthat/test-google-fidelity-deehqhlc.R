@@ -26,11 +26,32 @@ source(
   test_path("fixtures", "google-fidelity-deehqhlc", "cases.R"), local = TRUE
 )
 
+# Every case runs once, here; the tests below read these rows. A case is keyed
+# by its id: a NUL body never becomes an R string.
+gf_case_list <- gf_cases()
+names(gf_case_list) <- vapply(gf_case_list, `[[`, character(1L), "id")
+gf_results <- lapply(gf_case_list, gf_run_case)
+
+# One case's row on one path.
+gf_result <- function(id, path) {
+  got <- gf_results[[id]]
+  got[got$path == path, , drop = FALSE]
+}
+
+# All rows, with the reference's recorded answers beside them.
+gf_all_rows <- function() {
+  rows <- do.call(rbind, unname(gf_results))
+  case <- gf_case_list[rows$id]
+  rows$ref_allowed <- vapply(case, `[[`, logical(1L), "ref_allowed")
+  rows$ref_line <- vapply(case, `[[`, integer(1L), "ref_line")
+  rows
+}
+
 test_that("ROBO-deehqhlc: every path agrees with the reference outside 1-5", {
   seen <- integer()
   differing <- character()
-  for (case in gf_cases()) {
-    got <- gf_run_case(case)
+  for (case in gf_case_list) {
+    got <- gf_results[[case$id]]
     for (k in seq_len(nrow(got))) {
       label <- paste(case$id, got$path[[k]])
       want <- gf_expected_difference(case$id, got$path[[k]])
@@ -52,13 +73,56 @@ test_that("ROBO-deehqhlc: every path agrees with the reference outside 1-5", {
     }
   }
   expect_setequal(seen, 1:5)
-  # Every case the table lists reaches a path where it differs.
-  expect_setequal(differing, c(
-    "ev-disallow", "ev-allow", "ev-both", "ev-comment", "ev-beside-rule-miss",
-    "win-after", "win-after-ceiling", "win-straddle",
-    "in-empty-url", "in-empty-token", "in-schemeless-url", "in-ftp-url",
-    "nul-before-key", "nul-in-rule-prefix", "nul-in-rule-other"
-  ))
+  # Every case the table lists names a case and reaches a path where it
+  # differs.
+  expect_setequal(differing, gf_expected_ids())
+})
+
+test_that("ROBO-oxjmtaon: gf_check_rows() checks each row's listed answer", {
+  rows <- gf_all_rows()
+  check <- function(rows) {
+    vapply(
+      gf_check_rows(rows, rows$ref_allowed, rows$ref_line), nrow, integer(1L)
+    )
+  }
+  none <- c(unexpected = 0L, mismatched = 0L, stale = 0L)
+  expect_identical(check(rows), none)
+
+  # A class-5 row whose line or reason moves is not the listed answer.
+  k <- which(rows$id == "nul-before-key" & rows$path == "url")
+  expect_length(k, 1L)
+  moved <- rows
+  moved$line[[k]] <- 3L
+  expect_identical(check(moved), replace(none, "mismatched", 1L))
+  moved <- rows
+  moved$reason[[k]] <- "rule_allow"
+  expect_identical(check(moved), replace(none, "mismatched", 1L))
+
+  # A listed row that now gives the reference's answer is a stale entry.
+  k <- which(rows$id == "nul-in-rule-prefix" & rows$path == "url")
+  expect_length(k, 1L)
+  agrees <- rows
+  agrees$allowed[[k]] <- rows$ref_allowed[[k]]
+  agrees$line[[k]] <- rows$ref_line[[k]]
+  agrees$reason[[k]] <- "rule_disallow"
+  out <- gf_check_rows(agrees, agrees$ref_allowed, agrees$ref_line)
+  expect_identical(out$stale$id, "nul-in-rule-prefix")
+  expect_identical(out$stale$class, 5L)
+  expect_identical(nrow(out$mismatched), 0L)
+
+  # A differing row the table does not list is unexpected.
+  k <- which(rows$id == "url-root" & rows$path == "text")
+  expect_length(k, 1L)
+  off <- rows
+  off$allowed[[k]] <- !rows$ref_allowed[[k]]
+  out <- gf_check_rows(off, off$ref_allowed, off$ref_line)
+  expect_identical(out$unexpected$id, "url-root")
+  expect_identical(out$unexpected$class, NA_integer_)
+  expect_identical(check(off), replace(none, "unexpected", 1L))
+  # So is a line-only difference.
+  off <- rows
+  off$line[[k]] <- rows$ref_line[[k]] + 1L
+  expect_identical(check(off), replace(none, "unexpected", 1L))
 })
 
 test_that("ROBO-deehqhlc: the fixtures reach every path and family", {
