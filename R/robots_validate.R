@@ -77,6 +77,12 @@ validation_unsupported <- c(
 #'     A directive this profile does not recognize. \cr
 #'   \code{empty_user_agent} \tab error \tab
 #'     A User-agent line with an empty value. \cr
+#'   \code{user_agent_cut} \tab warning \tab
+#'     A User-agent value Google's matcher reads only up to its first
+#'     character outside letters, \code{_} and \code{-}, such as
+#'     \code{Foo Bot} or \code{Googlebot/2.1}; the message names the token
+#'     read, or says it names no crawler (\code{*bot}). The Bing and Yandex
+#'     matchers do not cut the value. \cr
 #'   \code{rule_without_user_agent} \tab error \tab
 #'     An Allow or Disallow in no group a non-empty User-agent opened: before
 #'     any, or after an empty User-agent that follows a rule. \cr
@@ -644,6 +650,26 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # checks.
   if (length(nul_lines) == 0L) {
     groups <- validation_groups(parsed)
+    # Google's matcher reads a User-agent value only up to its first byte
+    # outside [A-Za-z_-], so the group names another crawler than written,
+    # or none (ROBO-zvhrayhx). The message names the token only (ASCII):
+    # the value may not be valid UTF-8, and `raw_text` carries it.
+    agents <- groups$agents
+    for (i in which(agents$cut)) {
+      token <- agents$token[[i]]
+      add_diagnostic(
+        agents$line[[i]], "warning", "user_agent_cut", "user-agent",
+        if (nzchar(token)) {
+          sprintf(paste0("User-agent value is read as '%s' by Google's ",
+                         "matcher, which stops at the first character ",
+                         "outside letters, '_' and '-'."), token)
+        } else {
+          paste0("User-agent value names no crawler: Google's matcher ",
+                 "reads a product token only from a leading run of letters, ",
+                 "'_' and '-'.")
+        }
+      )
+    }
     # A named group drops the `*` rules for its crawlers (ROBO-gfjotdrr). On
     # a cut body a group's rules may lie past the cut, so it is skipped.
     if (!body_truncated) {
@@ -801,8 +827,10 @@ directive_value_diagnostics <- function(type, value) {
 #   its User-agent lines is `*`, alone or followed by whitespace).
 # - `agents`: one row per User-agent line: `group`, `line`, `global`,
 #   `token` (the ExtractUserAgent run of [A-Za-z_-] as spelled, ASCII; ""
-#   for a global line or one led by any other byte) and `key`
-#   (`ascii_lower(token)`, the merge key).
+#   for a global line or one led by any other byte), `key`
+#   (`ascii_lower(token)`, the merge key) and `cut` (a non-empty, non-global
+#   value the token does not spell whole: the matcher reads less than was
+#   written, or nothing; ROBO-zvhrayhx).
 # - `rules`: one row per Allow or Disallow inside a group (rules before the
 #   first User-agent are dropped): `group`, `line`, `type` ("allow" or
 #   "disallow"), `value` (canonical, as parsed), `empty` and `key` (type and
@@ -837,6 +865,7 @@ validation_groups <- function(parsed) {
     global = agent_global,
     token = agent_token,
     key = ascii_lower(agent_token),
+    cut = !agent_global & lengths(agent_bytes) > nchar(agent_token, "bytes"),
     stringsAsFactors = FALSE
   )
 

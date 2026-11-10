@@ -259,22 +259,22 @@ test_that("ROBO-mxermwed: Googlebot-Image does not fall back to Googlebot", {
   expect_identical(edge_decision(bytes, "/y", "Googlebot-Image"), "disallow")
 })
 
-test_that("ROBO-mxermwed: a User-agent value is cut to its token, unflagged", {
-  # known gap (ROBO-zvhrayhx): User-agent: Foo Bot names Foo, not FooBot; no
-  # diagnostic
+test_that("ROBO-mxermwed: a User-agent value cut to its token is flagged", {
+  # Fixed by ROBO-zvhrayhx: the matcher still reads only the token, and
+  # user_agent_cut now says so.
+  # User-agent: Foo Bot names Foo, not FooBot.
   bytes <- edge_case("grp-user-agent-with-space")
-  expect_identical(edge_codes(bytes), "")
+  expect_identical(edge_codes(bytes), "user_agent_cut@1")
   expect_identical(edge_decision(bytes, "/x", "Foo"), "disallow")
   expect_identical(edge_decision(bytes, "/x", "FooBot"), "allow")
-  # known gap (ROBO-zvhrayhx): User-agent: Bot2 names Bot, not Bot2; no
-  # diagnostic
+  # User-agent: Bot2 names Bot, not Bot2.
   bytes <- edge_case("grp-digit-in-token")
-  expect_identical(edge_codes(bytes), "")
+  expect_identical(edge_codes(bytes), "user_agent_cut@1")
   expect_identical(edge_decision(bytes, "/x", "Bot2"), "allow")
   expect_identical(edge_decision(bytes, "/x", "Bot"), "disallow")
-  # known gap (ROBO-zvhrayhx): User-agent: *bot names no crawler; no diagnostic
+  # User-agent: *bot names no crawler.
   bytes <- edge_case("grp-star-prefixed-token")
-  expect_identical(edge_codes(bytes), "")
+  expect_identical(edge_codes(bytes), "user_agent_cut@1")
   expect_identical(edge_decision(bytes, "/x", "FooBot"), "allow")
 })
 
@@ -294,8 +294,7 @@ test_that("ROBO-mxermwed: every known_gap row is restated above", {
     unique(m$id[nzchar(m$known_gap)]),
     c("enc-utf16le-no-bom",
       "enc-latin1-comment", "esc-space-in-rule",
-      "esc-lower-hex-rule", "cmt-hash-in-rule", "grp-user-agent-with-space",
-      "grp-digit-in-token", "grp-star-prefixed-token",
+      "esc-lower-hex-rule", "cmt-hash-in-rule",
       "grp-googlebot-image-fallback", "redirect-cross-host-html")
   )
 })
@@ -316,7 +315,10 @@ edge_covering_code <- c(
   "esc-lone-dollar" = "rule_missing_leading_slash",
   "esc-pct7e-rule-tilde-url" = "rule_escaped_unreserved",
   "size-long-line" = "line_too_long",
-  "content-spam-html" = "html_body"
+  "content-spam-html" = "html_body",
+  "grp-user-agent-with-space" = "user_agent_cut",
+  "grp-digit-in-token" = "user_agent_cut",
+  "grp-star-prefixed-token" = "user_agent_cut"
 )
 edge_caller_side <- "esc-tilde-rule-pct7e-url"
 

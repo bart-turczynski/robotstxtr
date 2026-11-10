@@ -86,6 +86,12 @@ A known directive this profile ignores, such as \code{crawl-delay}. \cr
 A directive this profile does not recognize. \cr
 \code{empty_user_agent} \tab error \tab
 A User-agent line with an empty value. \cr
+\code{user_agent_cut} \tab warning \tab
+A User-agent value Google's matcher reads only up to its first
+character outside letters, \code{_} and \code{-}, such as
+\code{Foo Bot} or \code{Googlebot/2.1}; the message names the token
+read, or says it names no crawler (\code{*bot}). The Bing and Yandex
+matchers do not cut the value. \cr
 \code{rule_without_user_agent} \tab error \tab
 An Allow or Disallow in no group a non-empty User-agent opened: before
 any, or after an empty User-agent that follows a rule. \cr
