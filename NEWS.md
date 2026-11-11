@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* `robots_fetch()`'s `content_flag` and `html_body` warning no longer read SVG, RSS or Atom roots, or a comment-led robots.txt, as HTML unless an `<!doctype html` or a line opens with `<html`, `<head` or `<body` (ROBO-isbpzgqn).
+
 * Under `safety_level = "crawler"`, a refused internal address is now `evidence_status = "unreachable_local"`, which no ruleset reads as allow or deny; schema revision `2026-11-11.1` (ROBO-jqwukcog).
 
 * `robots_validate_text()` and `robots_validate_url()` say Google's matcher reads the path behind a NUL right after an Allow or Disallow colon, not that the matcher ignores the line (ROBO-nrnucnru).

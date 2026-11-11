@@ -262,15 +262,33 @@ write `NA` in both.
    `<!doctype html`, `<html`, `<head` or `<body`, in any letter case,
    possibly after `<?...?>` declarations and `<!--...-->` comments that close
    on that same line. An HTML error page lands here. So does a body whose
-   first non-whitespace byte is `<` and whose window holds `<!doctype html`,
-   `<html`, `<head`, `<body`, `<script` or `<style` anywhere, in any letter
-   case, followed by whitespace, `>`, `/` or the window's end: a minified
-   page opening with inline script or style (ROBO-qquftxcx). `<title`,
-   `<link` and `<meta` are left out, since RSS and Atom feeds use them.
+   first non-whitespace byte is `<`, whose root is HTML, and whose window
+   holds `<!doctype html`, `<html`, `<head`, `<body`, `<script` or `<style`
+   anywhere, in any letter case, followed by whitespace, `>`, `/` or the
+   window's end: a minified page opening with inline script or style
+   (ROBO-qquftxcx). The root is the first start tag after any number of
+   leading items, each skipped whole (ROBO-isbpzgqn): `<?...?>` declarations;
+   comments, including the abrupt `<!-->` and `<!--->` and a `--!>` closer;
+   markup declarations `<!...>`, with a doctype of any kind, an internal subset
+   in `[...]`, and the `<![if ...]>`, `<![endif]>` and `<![CDATA[...]]>`
+   sections; and end tags. A `<!doctype html` among those items makes the root
+   HTML by itself. The root's name, after any namespace prefix and in any
+   letter case, is an HTML element name (the WHATWG element names, obsolete
+   ones included, and the parser alias `image`, with `svg` and `math` left
+   out) or a custom element name with no prefix: a letter, then a hyphen, and
+   not a reserved SVG or MathML name. A name must end in whitespace, `/` or
+   `>`, so a root cut right after its name at the window's end reads `xml`.
+   `<title`, `<link` and `<meta` are left out, since RSS and Atom feeds use
+   them. Two known limits hide the root, as no item skips them: an unclosed
+   `<?php`, and a server template such as `<%@ page %>`.
 3. `xml`: the first non-whitespace byte is `<`. No robots.txt line starts
-   with `<`; a `<` inside a comment or a value never flags. Markup without
-   any of the six markers above, such as a feed or tag soup, lands here, not
-   in `html`.
+   with `<`; a `<` inside a comment or a value never flags. Markup whose root
+   is not HTML (an SVG, a KML, a feed, an S3 error) lands here even when it
+   holds `<style` or another marker, unless a line starts with `<!doctype
+   html`, `<html`, `<head` or `<body`, which item 2 matches first. Markup
+   without any of the six markers above, such as tag soup, lands here too.
+   A robots.txt that opens with a markup comment and then rules is `xml`
+   too: no root follows the comment.
 4. `json`: the body opens with a JSON object (`{` then `"` or `}`) or array
    (`[` then a value or `]`).
 

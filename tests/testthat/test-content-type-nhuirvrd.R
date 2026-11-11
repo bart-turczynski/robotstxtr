@@ -226,6 +226,158 @@ test_that("ROBO-qquftxcx: feeds and title, link or meta tags stay xml", {
   expect_identical(ct_flag("<div><scripts/><styles/></div>"), "xml")
 })
 
+test_that("ROBO-isbpzgqn: markup whose root is not HTML stays xml", {
+  # HTML's markers, used by an SVG, a KML or an S3 error by design, and in
+  # feeds that embed markup: none of these roots is an HTML element.
+  expect_identical(ct_flag("<svg><style>p{}</style></svg>"), "xml")
+  expect_identical(ct_flag("<!DOCTYPE svg><svg><style/></svg>"), "xml")
+  expect_identical(
+    ct_flag("<kml><Document><Style id=\"a\"/></Document></kml>"), "xml"
+  )
+  expect_identical(
+    ct_flag("<Error><Message>x <style> y</Message></Error>"), "xml"
+  )
+  expect_identical(ct_flag(paste0(
+    "<rss><channel><item><description><![CDATA[<script>a()</script>]]>",
+    "</description></item></channel></rss>"
+  )), "xml")
+  expect_identical(ct_flag(paste0(
+    "<?xml version=\"1.0\"?>\n<feed xmlns=\"http://www.w3.org/2005/Atom\">",
+    "<entry><content type=\"xhtml\"><div><style>p{}</style></div></content>",
+    "</entry></feed>\n"
+  )), "xml")
+  # A robots.txt that opens with a markup comment is not an HTML page, even
+  # when a rule or the comment itself holds a marker.
+  expect_identical(
+    ct_flag("<!-- generated -->\nUser-agent: *\nDisallow: /*<script\n"), "xml"
+  )
+  expect_identical(
+    ct_flag("<!-- <script> -->\nUser-agent: *\nDisallow: /\n"), "xml"
+  )
+})
+
+test_that("ROBO-isbpzgqn: the root decides which markers count", {
+  bom <- as.raw(c(0xef, 0xbb, 0xbf))
+  # A UTF-8 BOM, or an XML declaration, before a non-HTML root.
+  expect_identical(ct_flag(c(bom, charToRaw("<svg><style/></svg>"))), "xml")
+  expect_identical(
+    ct_flag(c(bom, charToRaw("<!-- x --><svg><style/></svg>"))), "xml"
+  )
+  expect_identical(
+    ct_flag("<?xml version=\"1.0\"?><svg><style/></svg>"), "xml"
+  )
+  # An XML declaration before an HTML root.
+  expect_identical(
+    ct_flag("<?xml version=\"1.0\"?><html><style/></html>"), "html"
+  )
+  # The root's name is matched in any letter case.
+  expect_identical(ct_flag("<HTML><STYLE/></HTML>"), "html")
+  expect_identical(ct_flag("<SVG><STYLE/></SVG>"), "xml")
+  # An HTML doctype, in any case, makes the page HTML, inline SVG and all. The
+  # doctype follows a comment that spans lines, so no line starts with it.
+  expect_identical(
+    ct_flag("<!-- saved\nfrom --> <!DOCTYPE HTML><svg><style/></svg>"), "html"
+  )
+  # A namespace prefix does not change the root's local name.
+  expect_identical(
+    ct_flag(paste0(
+      "<html:html xmlns:html=\"http://www.w3.org/1999/xhtml\">",
+      "<style/></html:html>"
+    )), "html"
+  )
+  expect_identical(
+    ct_flag(paste0(
+      "<svg:svg xmlns:svg=\"http://www.w3.org/2000/svg\">",
+      "<style/></svg:svg>"
+    )), "xml"
+  )
+  expect_identical(
+    ct_flag("<svg xmlns=\"http://www.w3.org/2000/svg\"><style/></svg>"), "xml"
+  )
+  # A root tag cut at the window's end: no error, and its name still decides.
+  expect_identical(
+    ct_flag(paste0("<svg xmlns=\"", strrep("a", content_check_bytes))), "xml"
+  )
+  expect_identical(
+    ct_flag(paste0(strrep(" ", content_check_bytes - 2L), "<s")), "xml"
+  )
+  # A comment that never closes has no root, so its markers are not read.
+  expect_identical(ct_flag("<!-- x <script>a()</script>"), "xml")
+  # Bytes that are not UTF-8 after the root do not error.
+  svg_latin1 <- c(charToRaw("<svg><style/>"), as.raw(0xe9),
+                  charToRaw("</svg>"))
+  div_latin1 <- c(charToRaw("<div><style/>caf"), as.raw(0xe9),
+                  charToRaw("</div>"))
+  expect_identical(ct_flag(svg_latin1), "xml")
+  expect_identical(ct_flag(div_latin1), "html")
+  # The empty body stays NA.
+  expect_identical(robots_content_flag(raw()), NA_character_)
+})
+
+test_that("ROBO-isbpzgqn: leading items before the root are skipped", {
+  # An XML declaration, then an HTML root: only the PI skip reads the root.
+  expect_identical(
+    ct_flag("<?xml version=\"1.0\"?>\n<div><script>a()</script></div>"),
+    "html"
+  )
+  # A stray end tag before the root.
+  expect_identical(ct_flag("</div><html><body>x</body></html>"), "html")
+  # A custom element: a name that starts with a letter and holds a hyphen.
+  expect_identical(
+    ct_flag("<app-root></app-root><script src=\"a.js\"></script>"), "html"
+  )
+  # The abrupt comment closes, which HTML allows.
+  expect_identical(ct_flag("<!--><html><style>"), "html")
+  expect_identical(ct_flag("<!---><html><style>"), "html")
+  # A doctype other than exactly html is skipped, and the search goes on.
+  expect_identical(ct_flag("<!DOCTYPE foo><div><script>"), "html")
+  expect_identical(ct_flag("<!DOCTYPE html5><head><style>"), "html")
+  # font-face is an SVG element, a reserved name, not a custom element.
+  expect_identical(ct_flag("<font-face><style/></font-face>"), "xml")
+  # A root name cut at the window's end is not read as a root, even after a
+  # marker: the window cannot tell `<s` of `<svg` from a shorter name.
+  cut <- paste0("<!-- <script> -->", strrep(" ", 4077L), "<svg>")
+  expect_identical(regexpr("<svg", cut, fixed = TRUE)[[1L]], 4095L)
+  expect_identical(ct_flag(cut), "xml")
+})
+
+test_that("ROBO-isbpzgqn: the comment, name and declaration edges", {
+  # A `--!>` closer ends a comment, as HTML's does.
+  expect_identical(ct_flag("<!-- a --!><html><style>"), "html")
+  # A namespace prefix is no part of a custom element name.
+  expect_identical(ct_flag("<ns:my-el><style/>"), "xml")
+  # The reserved SVG and MathML names are not custom elements.
+  expect_identical(ct_flag("<annotation-xml><style/>"), "xml")
+  expect_identical(ct_flag("<color-profile><style/>"), "xml")
+  expect_identical(ct_flag("<font-face-src><style/>"), "xml")
+  expect_identical(ct_flag("<font-face-uri><style/>"), "xml")
+  expect_identical(ct_flag("<font-face-format><style/>"), "xml")
+  expect_identical(ct_flag("<font-face-name><style/>"), "xml")
+  expect_identical(ct_flag("<missing-glyph><style/>"), "xml")
+  # Markup declarations and sections, and a doctype's internal subset, are
+  # skipped before the root.
+  expect_identical(
+    ct_flag("<![if !IE]><html><![endif]><head><style>"), "html"
+  )
+  expect_identical(ct_flag("<![CDATA[x]]><div><script>"), "html")
+  expect_identical(
+    ct_flag("<!DOCTYPE x [<!ELEMENT div ANY>]><div><style>"), "html"
+  )
+  # An unclosed comment is no declaration, so it hides no root.
+  expect_identical(ct_flag("<!-- x <html><style>"), "xml")
+  # `image` and `selectedcontent` are HTML element names.
+  expect_identical(ct_flag("<image><script>"), "html")
+  expect_identical(ct_flag("<selectedcontent><style/>"), "html")
+})
+
+test_that("ROBO-isbpzgqn: a long run of abrupt comments hits no limit", {
+  # Each leading item is atomic: no backtracking through the run, and no
+  # PCRE match-limit warning.
+  body <- charToRaw(paste0(strrep("<!-->\n", 22L), "<svg><style/>"))
+  expect_no_warning(flag <- robots_content_flag(body))
+  expect_identical(flag, "xml")
+})
+
 test_that("ROBO-nhuirvrd: JSON objects and arrays", {
   expect_identical(ct_flag("{\"error\": \"not found\"}"), "json")
   expect_identical(ct_flag(" {\n}"), "json")

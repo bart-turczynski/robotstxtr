@@ -22,6 +22,24 @@ test_that("an HTML marker that does not start a line draws no html_body", {
   }
 })
 
+test_that("ROBO-isbpzgqn: a comment-led robots.txt draws no html_body", {
+  # A markup comment opens the file; its rules after it are still read, and a
+  # marker in a rule or the comment does not make the body a page. The comment
+  # line keeps its own malformed_line row; no html_body is drawn.
+  bodies <- list(
+    generated = "<!-- generated -->\nUser-agent: *\nDisallow: /*<script\n",
+    commented = "<!-- <script> -->\nUser-agent: *\nDisallow: /\n"
+  )
+  for (label in names(bodies)) {
+    x <- robots_validate_text(bodies[[label]])
+    expect_false("html_body" %in% x$diagnostics$code, label = label)
+    expect_identical(
+      paste0(x$diagnostics$code, "@", x$diagnostics$line), "malformed_line@1",
+      label = label
+    )
+  }
+})
+
 test_that("an XML or JSON body draws no html_body", {
   xml <- paste0('<?xml version="1.0"?>\n<Error><Code>NoSuchKey</Code>',
                 "</Error>\n")
