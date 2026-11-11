@@ -266,8 +266,17 @@ oss_index_allowlist_violations <- function(rows) {
 }
 
 # What the audit queries: the recursive Depends + Imports + LinkingTo closure
-# of `pkg` (the fields oysteR itself expands), resolved against `db`, without
-# base packages, R and `pkg` itself, one row per package with its version.
+# of the package `description` describes, resolved against `db`, without base
+# packages, one row per package with its version. LinkingTo is followed at
+# every level, the root's included (so header-only packages such as cpp11 are
+# audited too); oysteR's audit_description() took only Depends and Imports
+# from the root and added LinkingTo below it.
+#
+# `description` is the package's DESCRIPTION as read.dcf() returns it. Its row
+# goes ahead of `db`'s, and package_dependencies() keeps the first of
+# duplicate rows, so the root's own dependencies are the DESCRIPTION's: an
+# installed robotstxtr can be an older build (one still importing httr2
+# reaches curl by the old path and never audits ssrfr).
 #
 # `db` is `installed.packages()` in the live test, not CRAN's
 # `available.packages()`. oysteR's audit_description() expands dependencies
@@ -281,7 +290,36 @@ oss_index_allowlist_violations <- function(rows) {
 #
 # A package the closure names but `db` lacks keeps its row with an NA
 # version, so the caller can fail on it instead of auditing less silently.
-oss_index_audit_targets <- function(pkg, db) {
+oss_index_audit_targets <- function(description, db) {
+  if (
+    nrow(description) != 1L ||
+      !"Package" %in% colnames(description) ||
+      is.na(description[1L, "Package"])
+  ) {
+    stop(
+      "`description` must be one DESCRIPTION row naming a single package.",
+      call. = FALSE
+    )
+  }
+  pkg <- unname(description[1L, "Package"])
+  fields <- c(
+    "Package",
+    "Version",
+    "Priority",
+    "Depends",
+    "Imports",
+    "LinkingTo"
+  )
+  root <- matrix(
+    NA_character_,
+    nrow = 1L,
+    ncol = length(fields),
+    dimnames = list(pkg, fields)
+  )
+  given <- intersect(fields, colnames(description))
+  root[1L, given] <- description[1L, given]
+  db <- rbind(root, db[, fields, drop = FALSE])
+
   priority <- db[, "Priority"]
   base_pkgs <- rownames(db)[!is.na(priority) & priority == "base"]
   closure <- tools::package_dependencies(
@@ -290,7 +328,7 @@ oss_index_audit_targets <- function(pkg, db) {
     which = c("Depends", "Imports", "LinkingTo"),
     recursive = TRUE
   )[[1]]
-  deps <- sort(setdiff(unique(closure), c(base_pkgs, "R", pkg)))
+  deps <- sort(setdiff(unique(closure), base_pkgs))
   data.frame(
     package = deps,
     version = unname(db[match(deps, rownames(db)), "Version"]),
@@ -300,10 +338,16 @@ oss_index_audit_targets <- function(pkg, db) {
 
 # Packages the audit should have checked and did not: every target, and every
 # package an allow-list row names, that is absent from `audit$package` or
-# present only with no version (oysteR returns those rows unchecked). Run it
-# before rules A and B: a package missing from the audit satisfies rule A
-# vacuously and fails rule B for the wrong reason, which is how this file
-# came to report six live advisories as stale.
+# present only with an NA version (a purl with no version matches no advisory
+# range). Run it before rules A and B: a package missing from the audit
+# satisfies rule A vacuously and fails rule B for the wrong reason, which is
+# how this file came to report six live advisories as stale.
+#
+# What it does not catch: oysteR::audit() builds `audit$package` from the
+# packages it is given, so against the live audit the targets half cannot
+# fail. The live check is the allow-list half (an allow-listed package that
+# dropped out of the closure); that the closure itself is complete rests on
+# oss_index_audit_targets() and its fixtures.
 oss_index_unaudited <- function(audit, targets, allowlist) {
   wanted <- unique(c(
     targets$package,
