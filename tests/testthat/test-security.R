@@ -1,20 +1,22 @@
 # OSS Index dependency vulnerability audit (oysteR / Sonatype).
 #
-# `oysteR::audit_description()` resolves the installed DESCRIPTION and audits
-# robotstxtr's hard dependencies against the Sonatype OSS Index. It is a
-# network test that requires OSS Index credentials (OSSINDEX_USER /
-# OSSINDEX_TOKEN): the API rejects unauthenticated requests with HTTP 401.
+# `oysteR::audit()` checks robotstxtr's installed hard-dependency closure
+# against the Sonatype OSS Index. It is a network test that requires OSS Index
+# credentials (OSSINDEX_USER / OSSINDEX_TOKEN): the API rejects
+# unauthenticated requests with HTTP 401.
 #
-# Scope: hard dependencies only -- `Depends` + `Imports`, never `Suggests`.
+# Scope: hard dependencies only -- the recursive `Depends` + `Imports` (+
+# `LinkingTo`) closure, never `Suggests`.
 #
 # `oysteR::expect_secure()` audits `Suggests` as well, which drags in the
 # recursive dependency trees of the dev tooling -- including oysteR's own. A
 # vulnerability in the auditor is not a vulnerability in what robotstxtr makes
 # users install, and a package's security posture is the latter. Measured
 # 2026-09-10: `Depends` + `Imports` audits 25 packages, the Suggests-inclusive
-# scope 84. `audit_description()` is called directly because only it exposes
-# `fields`; `expect_secure()` sets a CRAN mirror internally and
-# `audit_description()` does not, hence the explicit `repos` option.
+# scope 84. Neither `expect_secure()` nor `audit_description()` is used: both
+# expand dependencies against CRAN's index, which does not carry ssrfr, so
+# they stopped auditing curl (ROBO-jvcpjstv). oss_index_audit_targets() in
+# helper-security.R resolves the closure from the installed library instead.
 #
 # The allow-list and rules A/B/C live in helper-security.R, next to the data
 # they govern. Read that file before adding a row.
@@ -32,18 +34,16 @@
 # asked. So under OSSINDEX_AUDIT_REQUIRED=true every precondition below
 # becomes a hard failure with a message naming what is missing.
 #
-# That job is `security-audit` in .gitlab-ci.yml, run on the dependency-audit
-# schedule or a hand-started pipeline. It cannot go green on nothing because
-# it sets OSSINDEX_AUDIT_REQUIRED=true and fails when any test in this file
-# was skipped (SEOR-fftbjnpl). Everywhere else the flag is unset and the
-# preconditions stay skips.
+# That job is fleet-ci's T2 `security-audit` (the weekly deep-check schedule,
+# or a T3 run). It cannot go green on nothing because it sets
+# OSSINDEX_AUDIT_REQUIRED=true (SEOR-fftbjnpl). Everywhere else the flag is
+# unset and the preconditions stay skips.
 #
-# NOTE ON THE PRE-PUSH HOOK. Measured 2026-09-24, the audit does not run on
-# push. robotstxtr's pre-push gate is `dev/verify.sh`: lint, a docs-drift
-# check, and `rcmdcheck::rcmdcheck(args = "--as-cran")` on a `git archive
-# HEAD` export. No stage calls `testthat::test_local()`, and rcmdcheck does not
-# set NOT_CRAN, so `skip_on_cran()` below fires before the credential guard is
-# reached, even though `~/.Renviron` puts the credentials in scope inside R.
+# NOTE ON THE PRE-PUSH GATE. The audit does not run on push. The gate is
+# fleet-ci's local gate, and `.fleet-ci.yml` lists this whole file under
+# `exclude_tests`, so neither the live audit nor the offline fixture tests
+# below run there (design/ci.md). They run under a local
+# `devtools::test(filter = "security")` and in the T2 jobs that set NOT_CRAN.
 
 test_that("the OSS Index allow-list is well formed", {
   # No `expect_gt(length(oss_index_allowlist), 0)` here, although this repo
@@ -169,11 +169,9 @@ test_that("the coverage check names every package the audit did not see", {
   audit <- function(package, version = rep("1", length(package))) {
     data.frame(package = package, version = version, stringsAsFactors = FALSE)
   }
+  complete <- audit(c("ssrfr", "hdronly", "curl"))
 
-  expect_equal(
-    oss_index_unaudited(audit(c("ssrfr", "hdronly", "curl")), targets, curl_row),
-    character()
-  )
+  expect_equal(oss_index_unaudited(complete, targets, curl_row), character())
   # The shape of this ticket: curl absent from the audit while allow-list
   # rows name it.
   expect_equal(
@@ -183,11 +181,7 @@ test_that("the coverage check names every package the audit did not see", {
   # An allow-listed package outside the closure is reported too, so a row can
   # never be kept alive, or retired, by an audit that never looked.
   expect_equal(
-    oss_index_unaudited(
-      audit(c("ssrfr", "hdronly", "curl")),
-      targets,
-      list(list(package = "openssl"))
-    ),
+    oss_index_unaudited(complete, targets, list(list(package = "openssl"))),
     "openssl"
   )
   # A row with no version was not checked: oysteR returns it unaudited.
@@ -238,23 +232,37 @@ test_that("hard dependencies report only allow-listed OSS Index advisories", {
     )
   }
 
-  old_repos <- getOption("repos")
-  on.exit(options(repos = old_repos), add = TRUE)
-  options(repos = c(CRAN = "https://cran.rstudio.com"))
+  # The closure comes from the installed library, not from CRAN's index: see
+  # oss_index_audit_targets() for why audit_description() stopped seeing curl.
+  targets <- oss_index_audit_targets(
+    "robotstxtr",
+    db = utils::installed.packages() # nolint: installed_packages_linter.
+  )
 
-  audit <- oysteR::audit_description(
-    dirname(system.file("DESCRIPTION", package = "robotstxtr")),
-    fields = c("Depends", "Imports"),
+  # A hard dependency that is not installed cannot be audited at its version.
+  # Fail rather than audit less: that is the vacuous green this file exists to
+  # refuse.
+  expect_equal(targets$package[is.na(targets$version)], character())
+  targets <- targets[!is.na(targets$version), ]
+
+  audit <- oysteR::audit(
+    targets$package,
+    targets$version,
+    type = "cran",
     verbose = FALSE
   )
   found <- oss_index_reported(audit)
   allowed <- vapply(oss_index_allowlist, function(row) row$id, character(1))
 
-  # An audit that resolved nothing is not a clean audit. Without this an empty
-  # result satisfies rule A vacuously, which is the same green-on-nothing
-  # failure the credential guard above exists to stop. (Rule B would also fail
-  # here while this repo has rows, but only by accident of the rows existing.)
+  # An audit that resolved nothing, or less than the closure, is not a clean
+  # audit. A package missing here satisfies rule A vacuously and fails rule B
+  # for the wrong reason (ROBO-jvcpjstv), so coverage is checked first, by
+  # name: every target and every package an allow-list row names.
   expect_gt(nrow(audit), 0)
+  expect_equal(
+    oss_index_unaudited(audit, targets, oss_index_allowlist),
+    character()
+  )
 
   # Rule A -- an advisory reported and not allow-listed.
   expect_equal(sort(setdiff(found$id, allowed)), character())

@@ -6,11 +6,12 @@
 # Narrowing the audit to hard dependencies cleared five of the seven repos in
 # this fleet. It does NOT clear robotstxtr: `curl` is a genuine hard
 # dependency here, reached through ssrfr (which is why the audit's input is
-# resolved from the installed library: see oss_index_audit_targets()). The six advisories below name
-# libcurl version ranges that include CRAN's current `curl` 8.1.0: OSS Index
-# matches the R package's version against libcurl's, and the earliest fixed
-# libcurl in each range is 8.14.x or later, so no R package version clears
-# them and no local change makes the audit clean. What actually runs is the
+# resolved from the installed library: see oss_index_audit_targets()). The
+# six advisories below name libcurl version ranges that include CRAN's
+# current `curl` 8.1.0: OSS Index matches the R package's version against
+# libcurl's, and the earliest fixed libcurl in each range is 8.14.x or later,
+# so no R package version clears them and no local change makes the audit
+# clean. What actually runs is the
 # libcurl the package links: the Windows and macOS CRAN binaries bundle one
 # with CVE backports (curl 8.1.0's NEWS), on Linux it is the system's. So a
 # row here is OSS Index's attribution, and each reason argues reachability.
