@@ -349,8 +349,8 @@ gf_cases <- function() {
 
     # --- A NUL byte (only a fetched body can carry one) -------------------
     # The reference reads each line as a NUL-terminated C string, so the
-    # rule is "/a"; robotstxtr removes the NUL, so the rule is "/ab". Both
-    # disallow /ab on line 2; only the reference disallows /a and /ac.
+    # rule is "/a", which disallows /a, /ab and /ac on line 2; robotstxtr's
+    # Google paths cut each line at its first NUL too (ROBO-pvqrfvol).
     gf_case("nul-in-rule", "nul",
             c(gf_b("User-agent: *\nDisallow: /a"), as.raw(0), gf_b("b\n")),
             "FooBot", "https://example.com/ab", 0, 2, gf_url_paths),
@@ -398,10 +398,7 @@ gf_expected <- list(
   gf_expect(4L, c("in-empty-url", "in-empty-token"), gf_all_paths,
             NA, NA, "input_unknown", "input_invalid"),
   gf_expect(4L, c("in-schemeless-url", "in-ftp-url"), gf_url_paths,
-            NA, NA, "input_unknown", "input_invalid"),
-  gf_expect(5L, "nul-before-key", gf_all_paths, FALSE, 2L, "rule_disallow"),
-  gf_expect(5L, c("nul-in-rule-prefix", "nul-in-rule-other"), gf_all_paths,
-            TRUE, NA, "default_allow")
+            NA, NA, "input_unknown", "input_invalid")
 )
 
 # Every case id gf_expected lists.

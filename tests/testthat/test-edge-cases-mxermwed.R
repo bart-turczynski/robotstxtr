@@ -191,11 +191,12 @@ test_that("ROBO-mxermwed: a BOM inside the file is named on its line", {
 })
 
 test_that("ROBO-mxermwed: UTF-16 without a BOM names the rules it holds", {
-  # Fixed by ROBO-igrkabdb: the matcher still drops the NULs and enforces
-  # Disallow: /a, and rules_after_nul_removal now says so in place of
-  # no_rules ("places no restrictions")
+  # ROBO-igrkabdb named the hidden rules in place of no_rules. Since
+  # ROBO-pvqrfvol the Google matcher ends each line at its first NUL, as
+  # upstream does, so it reads no rule and allows /a; rules_after_nul_removal
+  # still names the rules the NULs hide and asks for a UTF-8 file
   bytes <- edge_case("enc-utf16le-no-bom")
-  expect_identical(edge_decision(bytes, "/a", "FooBot"), "disallow")
+  expect_identical(edge_decision(bytes, "/a", "FooBot"), "allow")
   codes <- robots_validate_text(bytes)$diagnostics$code
   expect_true("rules_after_nul_removal" %in% codes)
   expect_false("no_rules" %in% codes)

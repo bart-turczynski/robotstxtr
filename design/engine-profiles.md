@@ -342,7 +342,7 @@ Every path agrees with the reference on decision and line, outside these classes
 | 2 | the 512,000-byte window (v1 paths) | a rule starting at byte 520,001; `Disallow: /private-drafts/` across byte 512,000 | disallowed, line 3 (no window) | allowed, `default_allow` | DELIBERATE: §7, the window `[documented]`, the cut line dropped `[application_choice]` (ROBO-phfbpfiy) |
 | 3 | the `max_bytes` cut (`allowed_by_robots_url()`) | a rule starting at byte 530,001 | disallowed, line 3 | allowed, `default_allow`, `body_truncated` | DELIBERATE: `allowed_by_robots_url()` `max_bytes` (524,288 by default; complete lines, ROBO-ldpahknv); §9 delta (c) |
 | 4 | input screening | URL `""`, token `""`; on the URL paths also `example.com/private`, `ftp://example.com/private` | a decision (`""` is path `/`; `""` as agent reads `*`) | no decision, `input_unknown` / `input_invalid` | DELIBERATE: PRD §6.6 input rules; the roxygen of `allowed_by_robots_text()` and `allowed_by_robots_url()` (HTTP(S) only) |
-| 5 | a NUL byte in a fetched body: upstream parses each line as a NUL-terminated C string, so the line ends at its first NUL; robotstxtr removes the NUL and reads the rest | `User-agent: *` / `\0Disallow: /x`, URL `/x`; `User-agent: *` / `Disallow: /a\0b`, URLs `/a` and `/ac` (`/ab` agrees) | `/x` allowed, no line (an empty line); `/a`, `/ac` disallowed, line 2 (the rule `/a`) | `/x` disallowed, line 2; `/a`, `/ac` allowed, `default_allow` (the rule `/ab`) | DELIBERATE: PRD §6.6, acquired bytes carrying a NUL (every NUL removed, the document never truncated at one: a NUL inside a value included); `R/body-decode.R` (ROBO-hcqrzikz) |
+| 5 | a NUL byte in a fetched body: upstream parses each line as a NUL-terminated C string, so the line ends at its first NUL | `User-agent: *` / `\0Disallow: /x`, URL `/x`; `User-agent: *` / `Disallow: /a\0b`, URLs `/a`, `/ab` and `/ac` | `/x` allowed, no line (an empty line); `/a`, `/ab`, `/ac` disallowed, line 2 (the rule `/a`) | the same: the Google backend cuts each line at its first NUL (`R/body-decode.R`). Until ROBO-pvqrfvol it removed every NUL and read on (ROBO-hcqrzikz): `/x` disallowed, `/a` and `/ac` allowed | RESOLVED (ROBO-pvqrfvol): upstream parity; the cases stay in the fixtures as agreeing cases, out of `gf_expected`. What Googlebot does in production is unverified |
 
 Classes 2 and 3 split the entry points. `allowed_by_robots_text()` has no window, so it agrees with
 the reference on any over-window body. `allowed_by_robots_url()` reads a fetched body up to its
@@ -397,7 +397,8 @@ elided past 64 characters (its first 60 and `...`), so message size stays linear
 
 The token is never reported as `wildcard_rules_not_inherited`, and neither is a value Google's
 matcher reads as the token. All four codes are skipped for a body holding a NUL byte, like the
-other group checks, and kept for a body cut at `max_bytes`, where the info says lines past the cut
+other group checks (it is a `nul_byte` error, and Bing and Yandex read the NUL as a byte where
+Google ends the line at it), and kept for a body cut at `max_bytes`, where the info says lines past the cut
 were not read; a User-agent line past the cut could still join the last group. A
 `DisallowAITraining:`-style key is a different mistake, read by Google as `Disallow` for the whole
 group: `accepted_directive_prefix` (ROBO-xglcoagv) reports it, and its message points to the

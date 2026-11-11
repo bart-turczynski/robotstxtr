@@ -106,8 +106,9 @@ An Allow or Disallow in no group a non-empty User-agent opened: before
 any, or after an empty User-agent that follows a rule. \cr
 \code{empty_rule_value} \tab warning \tab
 An empty Allow or Disallow value, which the matcher ignores. When a NUL
-byte right after the colon hides the path, the message says that
-Google's matcher reads the rule after the NUL instead. \cr
+byte right after the colon hides the path, the message says that the
+first NUL ends the line, so the directive imposes no restriction and
+the text after the NUL is ignored. \cr
 \code{rule_missing_leading_slash} \tab warning \tab
 A pattern not led by \code{/} or \code{*}; it never matches. \cr
 \code{rule_cut_by_comment} \tab warning \tab
@@ -177,18 +178,19 @@ The body looks like an HTML page, not a robots.txt; its lines are still
 read and reported one by one. \cr
 \code{no_rules} \tab info \tab
 The parser read no Allow or Disallow rule, so the document restricts
-nothing (see \code{rules_after_nul_removal}).
+nothing; when NUL bytes hide rules, \code{rules_after_nul_removal} is
+reported instead.
 Not reported for a body cut at \code{max_bytes}. \cr
 \code{rules_after_nul_removal} \tab warning \tab
-With the NUL bytes removed, as Google's matcher reads the body, it
-holds Allow or Disallow rules the parser, which ends a line at its
-first NUL, does not read. When the parser read no rule, every
-NUL-free rule is counted; UTF-16 text does this, and should be
+The NUL bytes hide Allow or Disallow rules: with them removed, the
+body holds rules that the parser and Google's matcher, which both end
+a line at its first NUL, never read. When the parser read no rule,
+every NUL-free rule is counted; UTF-16 text does this, and should be
 re-saved as UTF-8; reported in place of \code{no_rules}. Otherwise
-only grouped rules (after a User-agent line, as Google's matcher
-reads them) on lines the parser does not read as rules, or in a group
-the NUL changes, are counted; a value the NUL only shortens is not.
-Reported even for a body cut at \code{max_bytes}. \cr
+only grouped rules (after a User-agent line) on lines the parser does
+not read as rules, or in a group the NUL changes, are counted; a value
+the NUL only shortens is not. Reported even for a body cut at
+\code{max_bytes}. \cr
 \code{body_truncated} \tab warning \tab
 The body exceeded \code{max_bytes}; only lines before the cut were read.
 \cr
@@ -340,8 +342,10 @@ reported when a User-agent line follows it: that line keeps the next
 User-agent line from joining its group.
 
 A document holding a NUL byte gets none of \code{wildcard_rules_not_inherited},
-\code{disallow_tied_by_allow} or \code{duplicate_rule}, because the parser stops a
-value at the NUL while Google's matcher drops it and reads on.
+\code{disallow_tied_by_allow} or \code{duplicate_rule}: it is already a \code{nul_byte}
+error, and while the parser and Google's matcher end a line at its first
+NUL, the Bing and Yandex matchers read the NUL as an ordinary byte, so its
+groups depend on the engine.
 }
 
 \examples{

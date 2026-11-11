@@ -1,18 +1,16 @@
 # ROBO-nrnucnru: a NUL right after an Allow or Disallow colon leaves the
 # validation parser an empty value, which empty_rule_value reports as ignored.
-# The parser ends a line at its first NUL; Google's matcher drops the NUL and
-# reads the path (R/body-decode.R). The row must say, on that line, that
-# Google's matcher reads the rule after the NUL: it names Google's matcher
-# alone, quotes no value, and keeps its raw_text. A plain empty rule keeps
-# today's message.
-#
-# The wording follows the PRD 6.6 rule as R/body-decode.R records it today. It
-# flips if ROBO-pvqrfvol picks option (B), where Google's backend ends a line at
-# its first NUL; then this message reverts with it.
+# Since ROBO-pvqrfvol Google's matcher, like the parser, ends the line at its
+# first NUL (R/body-decode.R), so the path after it is never read. The row
+# says, on that line, that the first NUL ends it, the value is empty, the
+# directive imposes no restriction and the text after the NUL is ignored. It
+# quotes no value, names no decision and keeps its raw_text. A plain empty
+# rule keeps today's message.
 
 nr_nul <- as.raw(0)
 
-# Google's matcher decision on `bytes` for FooBot on example.com, NULs dropped.
+# Google's matcher decision on `bytes` for FooBot on example.com, each line
+# cut at its first NUL as the fetch path decodes it.
 nr_allowed <- function(bytes, path) {
   url <- paste0("https://example.com", path)
   Encoding(url) <- "UTF-8"
@@ -36,16 +34,16 @@ nr_empty_row <- function(x, line) {
 }
 
 nr_hidden_message <- paste0(
-  "The parser ends this line at its NUL and reads an empty value, which it ",
-  "ignores; Google's matcher drops the NUL and reads the rule after it."
+  "The first NUL ends this line, so the value is empty and the directive ",
+  "imposes no restriction; the text after the NUL is ignored."
 )
 
 nr_plain_message <- "Empty Allow or Disallow value is ignored by the matcher."
 
-test_that("a NUL after the colon names Google's matcher and keeps the line", {
+test_that("a NUL after the colon says the line ends there, no decision", {
   bytes <- c(charToRaw("User-agent: *\nDisallow: "), nr_nul,
              charToRaw("/private\n"))
-  expect_false(nr_allowed(bytes, "/private"))
+  expect_true(nr_allowed(bytes, "/private"))
   x <- robots_validate_text(bytes)
   expect_identical(nr_codes(x), c("nul_byte@2", "empty_rule_value@2"))
   row <- nr_empty_row(x, 2L)
@@ -54,6 +52,8 @@ test_that("a NUL after the colon names Google's matcher and keeps the line", {
   expect_identical(row$message, nr_hidden_message)
   expect_no_match(row$message, "/private", fixed = TRUE)
   expect_no_match(row$message, "Bing|Yandex|matchers")
+  # It announces no overall decision.
+  expect_no_match(row$message, "allow|block|crawl", ignore.case = TRUE)
   expect_false("rules_after_nul_removal" %in% x$diagnostics$code)
 })
 
@@ -115,7 +115,7 @@ test_that("a NUL inside the key is no empty rule, so no reworded row", {
   # path is counted by rules_after_nul_removal as before.
   bytes <- c(charToRaw("User-agent: *\nDisallow"), nr_nul,
              charToRaw(": /x\n"))
-  expect_false(nr_allowed(bytes, "/x"))
+  expect_true(nr_allowed(bytes, "/x"))
   x <- robots_validate_text(bytes)
   expect_identical(
     nr_codes(x),

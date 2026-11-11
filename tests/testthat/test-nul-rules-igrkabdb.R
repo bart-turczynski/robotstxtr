@@ -1,6 +1,7 @@
-# ROBO-igrkabdb: the validator's rule count against the Google matcher's NUL
-# drop. That matcher removes the NUL bytes and reads on (R/body-decode.R),
-# while the validation parser ends a line at its first NUL.
+# ROBO-igrkabdb: the rules NUL bytes hide, as in UTF-16 text. The validation
+# parser ends a line at its first NUL, and since ROBO-pvqrfvol Google's
+# matcher does too (R/body-decode.R), so neither reads them; the validator
+# names them in place of no_rules.
 
 # `text` as UTF-16LE bytes with no BOM: each ASCII byte followed by a NUL.
 nr_utf16le <- function(text) {
@@ -12,8 +13,8 @@ nr_ascii_nul <- c(charToRaw("User-agent: *\n"), as.raw(0),
                   charToRaw("Disallow: /x\n"))
 
 # The Google matcher's decision on `bytes`. R strings cannot hold a NUL, so
-# the body is decoded as the fetch path decodes it (NULs dropped) and handed
-# to the binding allowed_by_robots_text() uses.
+# the body is decoded as the fetch path decodes it (each line cut at its first
+# NUL) and handed to the binding allowed_by_robots_text() uses.
 nr_allowed <- function(bytes, path) {
   url <- paste0("https://example.com", path)
   Encoding(url) <- "UTF-8"
@@ -23,9 +24,9 @@ nr_allowed <- function(bytes, path) {
 nr_message <- function(n) {
   sprintf(
     paste0(
-      "With its NUL bytes removed, as Google's matcher reads it, the ",
-      "document has %d Allow or Disallow rule(s); if this is a UTF-16 ",
-      "file, re-save it as UTF-8 (RFC 9309 section 2.3)."
+      "The NUL bytes hide %d Allow or Disallow rule(s): Google's matcher ",
+      "ends each line at its first NUL and never reads them; if this is ",
+      "a UTF-16 file, re-save it as UTF-8 (RFC 9309 section 2.3)."
     ),
     n
   )
@@ -45,9 +46,9 @@ expect_rules_after_nul <- function(x, n, label) {
   expect_false("no_rules" %in% d$code, label = label)
 }
 
-test_that("a NUL-split body reports the rules Google's matcher reads", {
+test_that("a NUL-split body reports the rules the NULs hide", {
   bytes <- nr_utf16le("User-agent: *\nDisallow: /a\n")
-  expect_false(nr_allowed(bytes, "/a"))
+  expect_true(nr_allowed(bytes, "/a"))
   x <- robots_validate_text(bytes)
   expect_rules_after_nul(x, 1L, "UTF-16LE")
   expect_identical(x$documents$validation_status, "error")
@@ -56,7 +57,7 @@ test_that("a NUL-split body reports the rules Google's matcher reads", {
                    1:3)
   expect_identical(x$documents$disallow_directives, 0L)
 
-  expect_false(nr_allowed(nr_ascii_nul, "/x"))
+  expect_true(nr_allowed(nr_ascii_nul, "/x"))
   expect_rules_after_nul(robots_validate_text(nr_ascii_nul), 1L, "ASCII")
 
   bytes <- nr_utf16le("User-agent: *\nAllow: /a\nDisallow: /\n")

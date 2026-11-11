@@ -59,11 +59,11 @@ test_that("ROBO-nhuirvrd: an HTML body is flagged and still matched", {
 })
 
 test_that("ROBO-nhuirvrd: a flagged body keeps the rules it spells out", {
-  # A NUL-bearing body is "binary", and its rules still match (NUL removed,
-  # R/body-decode.R): the flag decides nothing.
+  # A NUL-bearing body is "binary", and its rules still match (a line ends
+  # at its first NUL, R/body-decode.R): the flag decides nothing.
   local_fake_ssrfr(ct_router(list(
     "http://a/robots.txt" = fake_response(200L, body = c(
-      charToRaw("user-agent: *\n"), as.raw(0), charToRaw("disallow: /x\n")
+      charToRaw("user-agent: *\ndisallow: /x"), as.raw(0), charToRaw("\n")
     ))
   )))
   x <- allowed_by_robots_url(c("http://a/x", "http://a/y"), "bot")

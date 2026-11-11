@@ -683,7 +683,8 @@ means neither rule matches.
 
 Verdicts. Google: the vendored matcher, which `design/engine-profiles.md` §5b
 checks against the pinned upstream; no shape here is in a §5b difference class
-(empty value, window, `max_bytes` cut, input screening, NUL). Yandex:
+(empty value, window, `max_bytes` cut, input screening; the NUL class is
+resolved, ROBO-pvqrfvol). Yandex:
 EXPECTED-SOURCED for the wildcard and `$` ties, which compose class 10 with the
 accepted `ydx-05-ties-wildcards` cases (`ydx-05-yandex-wild-root`:
 `/wild/root*` against `/wild/root$` goes to Allow); the normalization shapes

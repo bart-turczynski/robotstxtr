@@ -106,7 +106,7 @@ The fetch arguments map as follows:
 | `force`, and the session cache | none: no cache across calls, and each call fetches each origin once |
 | `ssl_verifypeer` | none: TLS is always verified with the platform defaults |
 | `use_futures` | none: origins are fetched one after another |
-| `encoding` | none: the body's bytes are matched as received, with NUL bytes dropped |
+| `encoding` | none: the body's bytes are matched as received; the Google matcher ends each line at its first NUL byte, as Google's parser does |
 | `warn`, `verbose` | none: fetch outcomes are columns, not warnings |
 | `on_server_error`, `on_not_found`, `on_redirect` and the other handlers | a fixed policy in `allowed_by_robots_url()`; per-engine status rules in `robots_evaluate_url_v1()` |
 

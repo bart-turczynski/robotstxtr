@@ -18,8 +18,8 @@
 #   2. the 512,000-byte window (v1 paths): a rule after it, or a line it cuts;
 #   3. the max_bytes cut (allowed_by_robots_url()): a rule past the cut;
 #   4. input screening: an empty URL or token, a URL that is not HTTP(S);
-#   5. a NUL byte in a fetched body: the reference reads a line only up to
-#      its first NUL, robotstxtr removes the NUL.
+#   5. a NUL byte in a fetched body: resolved (ROBO-pvqrfvol). Both read a
+#      line only up to its first NUL; the nul cases now agree.
 
 # Into this file's environment, which sees helper-fake-ssrfr.R and the
 # namespace; globalenv sees neither under an installed-package check.
@@ -67,7 +67,7 @@ test_that("ROBO-oxjmtaon: every fidelity case runs", {
   }
 })
 
-test_that("ROBO-deehqhlc: every path agrees with the reference outside 1-5", {
+test_that("ROBO-deehqhlc: every path agrees with the reference outside 1-4", {
   seen <- integer()
   differing <- character()
   for (case in gf_case_list) {
@@ -96,7 +96,7 @@ test_that("ROBO-deehqhlc: every path agrees with the reference outside 1-5", {
       }
     }
   }
-  expect_setequal(seen, 1:5)
+  expect_setequal(seen, 1:4)
   # Every case the table lists names a case and reaches a path where it
   # differs.
   expect_setequal(differing, gf_expected_ids())
@@ -111,13 +111,13 @@ test_that("ROBO-oxjmtaon: gf_check_rows() checks each row's listed answer", {
   none <- c(unexpected = 0L, mismatched = 0L, stale = 0L)
   expect_identical(check(rows), none)
 
-  # A class-5 row whose decision, line or reason moves is not the listed
-  # answer. Allowed with line 2 kept still differs from the reference
-  # (allowed, no line).
-  k <- which(rows$id == "nul-before-key" & rows$path == "url")
+  # A class-1 row whose decision, line or reason moves is not the listed
+  # answer. Line 3, or the listed line with another reason, still differs
+  # from the reference (allowed on line 2).
+  k <- which(rows$id == "ev-disallow" & rows$path == "url")
   expect_length(k, 1L)
   moved <- rows
-  moved$allowed[[k]] <- TRUE
+  moved$allowed[[k]] <- FALSE
   expect_identical(check(moved), replace(none, "mismatched", 1L))
   moved <- rows
   moved$line[[k]] <- 3L
@@ -127,15 +127,14 @@ test_that("ROBO-oxjmtaon: gf_check_rows() checks each row's listed answer", {
   expect_identical(check(moved), replace(none, "mismatched", 1L))
 
   # A listed row that now gives the reference's answer is a stale entry.
-  k <- which(rows$id == "nul-in-rule-prefix" & rows$path == "url")
+  k <- which(rows$id == "ev-disallow" & rows$path == "url")
   expect_length(k, 1L)
   agrees <- rows
   agrees$allowed[[k]] <- rows$ref_allowed[[k]]
   agrees$line[[k]] <- rows$ref_line[[k]]
-  agrees$reason[[k]] <- "rule_disallow"
   out <- gf_check_rows(agrees, agrees$ref_allowed, agrees$ref_line)
-  expect_identical(out$stale$id, "nul-in-rule-prefix")
-  expect_identical(out$stale$class, 5L)
+  expect_identical(out$stale$id, "ev-disallow")
+  expect_identical(out$stale$class, 1L)
   expect_identical(nrow(out$mismatched), 0L)
 
   # A differing row the table does not list is unexpected.
@@ -368,14 +367,13 @@ test_that("ROBO-deehqhlc class 4: the URL paths need an HTTP(S) URL", {
   expect_identical(t$matched_line, c(2L, 2L))
 })
 
-# --- Class 5: a NUL byte ------------------------------------------------------
+# --- Class 5, resolved: a NUL byte ends its line (ROBO-pvqrfvol) -------------
 
-test_that("ROBO-deehqhlc class 5: a NUL before a key is dropped, not read", {
-  # Reference: the parser reads each line as a NUL-terminated C string
-  # (src/robots.cc, GetKeyAndValueFrom()), so "\0Disallow: /x" is an empty
-  # line and /x is allowed, no line. robotstxtr removes NUL bytes before
-  # matching (PRD §6.6, NUL rule; R/body-decode.R; ROBO-hcqrzikz), so the
-  # line is a Disallow.
+test_that("ROBO-pvqrfvol class 5: a NUL before a key leaves an empty line", {
+  # The reference reads each line as a NUL-terminated C string
+  # (src/robots.cc, RobotsTxtParser::Parse()), so "\0Disallow: /x" is an
+  # empty line and /x is allowed, no line. robotstxtr's Google paths cut
+  # each line at its first NUL too (R/body-decode.R).
   body <- c(
     charToRaw("User-agent: *\n"), as.raw(0), charToRaw("Disallow: /x\n")
   )
@@ -384,17 +382,15 @@ test_that("ROBO-deehqhlc class 5: a NUL before a key is dropped, not read", {
     u <- allowed_by_robots_url(url, "FooBot")$results
     v <- robots_evaluate_url_v1(url, "FooBot", "google", "google")$results
   })
-  expect_false(u$allowed)
-  expect_identical(u$matched_line, 2L)
-  expect_identical(v$url_decision, "disallow")
-  expect_identical(v$matched_line, 2L)
+  expect_true(u$allowed)
+  expect_identical(u$matched_line, NA_integer_)
+  expect_identical(v$url_decision, "allow")
+  expect_identical(v$matched_line, NA_integer_)
 })
 
-test_that("ROBO-deehqhlc class 5: a NUL inside a value is removed, not a cut", {
-  # Reference: the same C string ends the value at the NUL, so the rule is
-  # "/a": /a, /ac and /ab are all disallowed on line 2. robotstxtr removes
-  # the NUL, so the rule is "/ab": only /ab is disallowed (PRD §6.6: the
-  # document is not truncated at the NUL; R/body-decode.R).
+test_that("ROBO-pvqrfvol class 5: a NUL inside a value ends the rule", {
+  # The same C string ends the value at the NUL, so the rule is "/a": /a,
+  # /ac and /ab are all disallowed on line 2, as the reference has them.
   body <- c(
     charToRaw("User-agent: *\nDisallow: /a"), as.raw(0), charToRaw("b\n")
   )
@@ -405,9 +401,9 @@ test_that("ROBO-deehqhlc class 5: a NUL inside a value is removed, not a cut", {
     u <- allowed_by_robots_url(urls, "FooBot")$results
     v <- robots_evaluate_url_v1(urls, "FooBot", "google", "google")$results
   })
-  expect_identical(u$allowed, c(TRUE, TRUE, FALSE))
-  expect_identical(u$matched_line, c(NA_integer_, NA_integer_, 2L))
-  expect_identical(v$url_decision, c("allow", "allow", "disallow"))
-  expect_identical(v$matched_line, c(NA_integer_, NA_integer_, 2L))
-  expect_identical(v$matched_rule_value[[3L]], "/ab")
+  expect_identical(u$allowed, c(FALSE, FALSE, FALSE))
+  expect_identical(u$matched_line, c(2L, 2L, 2L))
+  expect_identical(v$url_decision, rep("disallow", 3L))
+  expect_identical(v$matched_line, c(2L, 2L, 2L))
+  expect_identical(v$matched_rule_value, rep("/a", 3L))
 })

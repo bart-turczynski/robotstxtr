@@ -167,8 +167,8 @@ for (id in libs) {
 # --- robotstxtr ---------------------------------------------------------------
 
 # R strings cannot hold a NUL: a NUL-bearing body is decoded the way the fetch
-# path decodes one (R/body-decode.R, NUL bytes dropped). Every other body goes
-# to the text entry points byte for byte.
+# path decodes one (R/body-decode.R, each line cut at its first NUL). Every
+# other body goes to the text entry points byte for byte.
 body_text <- function(bytes) {
   if (any(bytes == as.raw(0))) {
     return(asNamespace("robotstxtr")$decode_matcher_body(bytes))
@@ -246,13 +246,13 @@ cat("output in", out_dir, "\n")
 
 failed <- FALSE
 # The rows where robotstxtr deliberately differs from the reference, as
-# (id, path). The NUL-bearing UTF-16LE body without a BOM: upstream ends a
-# line at its first NUL, robotstxtr drops every NUL, so it reads the rules
-# upstream never sees (design/engine-profiles.md section 5b, class 5). The
-# two UTF-16 bodies with a BOM bear NULs too but must agree.
+# (id, path): none. The NUL-bearing UTF-16LE body without a BOM was one
+# until ROBO-pvqrfvol, when robotstxtr's Google backend began to end a line
+# at its first NUL as upstream does (design/engine-profiles.md section 5b,
+# class 5, resolved); all three UTF-16 bodies must now agree.
 expected_split <- data.frame(
-  id = "enc-utf16le-no-bom",
-  path = "/a"
+  id = character(),
+  path = character()
 )
 splits <- cases$robotstxtr_v1 != cases$google_ref |
   cases$robotstxtr_text != cases$google_ref

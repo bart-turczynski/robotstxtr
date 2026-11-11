@@ -14,9 +14,10 @@
 # - "binary": the window holds a NUL byte, or at least
 #   `content_min_invalid_bytes` of its bytes, and more than
 #   `content_invalid_utf8_share` of them, are not part of valid UTF-8, so a
-#   short Latin-1 robots.txt is not binary. NULs are still dropped before
-#   matching (R/body-decode.R); the flag only makes them visible on the fetch
-#   row.
+#   short Latin-1 robots.txt is not binary. The Google matcher still ends
+#   each line at its first NUL (R/body-decode.R) and the Bing and Yandex
+#   matchers read a NUL as a byte; the flag only makes them visible on the
+#   fetch row.
 # - "html": a line in the window starts, after optional whitespace (and a
 #   UTF-8 BOM), with `<!doctype html`, `<html`, `<head` or `<body`, in any
 #   letter case, possibly after XML declarations or processing instructions

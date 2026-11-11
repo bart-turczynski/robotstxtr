@@ -158,7 +158,8 @@ test_that("a NUL on the line leaves the key and the warning unchanged", {
                    c("nul_byte", "accepted_directive_prefix"))
   body <- c(charToRaw("User-agent: *\nDisallow-x"), as.raw(0),
             charToRaw(": /\n"))
-  # NUL-free, the line is a rule Google's matcher reads (ROBO-igrkabdb).
+  # The line ends at its first NUL, for Google's matcher too, so the rule it
+  # spells out NUL-free is hidden (ROBO-igrkabdb, ROBO-pvqrfvol).
   expect_identical(robots_validate_text(body)$diagnostics$code,
                    c("nul_byte", "malformed_line", "rules_after_nul_removal"))
   # An exact key whose line holds a NUL after the colon does not warn.

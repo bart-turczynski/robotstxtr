@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* On the Google backend a NUL byte in a fetched robots.txt now ends its line, as in Google's open-source parser, instead of being removed (ROBO-pvqrfvol).
+
 * `robots_validate_text()` and `robots_validate_url()` list only the lost `User-agent: *` Allow rules, which may be exceptions, in `wildcard_rules_not_inherited` when the merged named groups disallow `/` and hold no non-empty `Allow` (ROBO-bwpacxtq).
 
 * Under `safety_level = "crawler"`, a refused 6to4, Teredo or ISATAP address is now `evidence_status = "safety_refused"`, not `"unreachable_local"`: the refusal does not show the target is internal (ROBO-aoslfvnx).
@@ -12,13 +14,11 @@
 
 * Under `safety_level = "crawler"`, a refused internal address is now `evidence_status = "unreachable_local"`, which no ruleset reads as allow or deny; schema revision `2026-11-11.1` (ROBO-jqwukcog).
 
-* `robots_validate_text()` and `robots_validate_url()` say Google's matcher reads the path behind a NUL right after an Allow or Disallow colon, not that the matcher ignores the line (ROBO-nrnucnru).
-
 * `safety_level = "crawler"` is now available: it follows an `https` to `http` redirect as an ordinary hop, and needs ssrfr 1.0.0.9001 (ROBO-lwdxzdhw).
 
 * `robots_fetch()`'s `content_flag` and the `html_body` warning now catch an HTML page opening with inline script or style, or cut at `max_bytes` on its first line (ROBO-qquftxcx).
 
-* `robots_validate_text()` now warns `rules_after_nul_removal` when NUL bytes hide rules from its parser that Google's matcher reads, even beside other rules (ROBO-ctdkqawi).
+* `robots_validate_text()` now warns `rules_after_nul_removal` when NUL bytes hide rules, even beside other rules (ROBO-ctdkqawi).
 
 * `robots_validate_text()` and `robots_validate_url()` now take time linear in the number of diagnostics (ROBO-dbvmxcfw).
 

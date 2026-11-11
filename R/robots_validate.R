@@ -97,8 +97,9 @@ validation_unsupported <- c(
 #'     any, or after an empty User-agent that follows a rule. \cr
 #'   \code{empty_rule_value} \tab warning \tab
 #'     An empty Allow or Disallow value, which the matcher ignores. When a NUL
-#'     byte right after the colon hides the path, the message says that
-#'     Google's matcher reads the rule after the NUL instead. \cr
+#'     byte right after the colon hides the path, the message says that the
+#'     first NUL ends the line, so the directive imposes no restriction and
+#'     the text after the NUL is ignored. \cr
 #'   \code{rule_missing_leading_slash} \tab warning \tab
 #'     A pattern not led by \code{/} or \code{*}; it never matches. \cr
 #'   \code{rule_cut_by_comment} \tab warning \tab
@@ -168,18 +169,19 @@ validation_unsupported <- c(
 #'     read and reported one by one. \cr
 #'   \code{no_rules} \tab info \tab
 #'     The parser read no Allow or Disallow rule, so the document restricts
-#'     nothing (see \code{rules_after_nul_removal}).
+#'     nothing; when NUL bytes hide rules, \code{rules_after_nul_removal} is
+#'     reported instead.
 #'     Not reported for a body cut at \code{max_bytes}. \cr
 #'   \code{rules_after_nul_removal} \tab warning \tab
-#'     With the NUL bytes removed, as Google's matcher reads the body, it
-#'     holds Allow or Disallow rules the parser, which ends a line at its
-#'     first NUL, does not read. When the parser read no rule, every
-#'     NUL-free rule is counted; UTF-16 text does this, and should be
+#'     The NUL bytes hide Allow or Disallow rules: with them removed, the
+#'     body holds rules that the parser and Google's matcher, which both end
+#'     a line at its first NUL, never read. When the parser read no rule,
+#'     every NUL-free rule is counted; UTF-16 text does this, and should be
 #'     re-saved as UTF-8; reported in place of \code{no_rules}. Otherwise
-#'     only grouped rules (after a User-agent line, as Google's matcher
-#'     reads them) on lines the parser does not read as rules, or in a group
-#'     the NUL changes, are counted; a value the NUL only shortens is not.
-#'     Reported even for a body cut at \code{max_bytes}. \cr
+#'     only grouped rules (after a User-agent line) on lines the parser does
+#'     not read as rules, or in a group the NUL changes, are counted; a value
+#'     the NUL only shortens is not. Reported even for a body cut at
+#'     \code{max_bytes}. \cr
 #'   \code{body_truncated} \tab warning \tab
 #'     The body exceeded \code{max_bytes}; only lines before the cut were read.
 #'     \cr
@@ -331,8 +333,10 @@ validation_unsupported <- c(
 #' User-agent line from joining its group.
 #'
 #' A document holding a NUL byte gets none of `wildcard_rules_not_inherited`,
-#' `disallow_tied_by_allow` or `duplicate_rule`, because the parser stops a
-#' value at the NUL while Google's matcher drops it and reads on.
+#' `disallow_tied_by_allow` or `duplicate_rule`: it is already a `nul_byte`
+#' error, and while the parser and Google's matcher end a line at its first
+#' NUL, the Bing and Yandex matchers read the NUL as an ordinary byte, so its
+#' groups depend on the engine.
 #'
 #' @param robots_txt A single non-missing character string or a raw vector.
 #' @param source_id A single non-empty character string identifying the supplied
@@ -689,8 +693,9 @@ validate_document_bytes <- function(bytes, source_id, source_type,
 
   # RFC 9309 section 2.3: the file MUST be UTF-8. LF and CR are ASCII, so the
   # document is well-formed exactly when every line is. A line is checked
-  # without its NUL bytes, as Google's matcher reads it. The parser cuts a
-  # line at its first `#` (GetKeyAndValueFrom), and `#` is never part of a
+  # without its NUL bytes, which nul_byte already reports; the bytes on both
+  # sides of a NUL are still the file's, so they are checked. The parser cuts
+  # a line at its first `#` (GetKeyAndValueFrom), and `#` is never part of a
   # multi-byte sequence, so bad bytes only after it change no rule
   # (ROBO-sniltuap).
   # Its rows go in as one frame: a file can hold thousands of bad lines.
@@ -820,31 +825,28 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         )
       }
       if (!nzchar(value)) {
-        # ROBO-nrnucnru: a NUL right after the colon leaves the parser an empty
-        # value, but Google's matcher drops the NUL and reads the rule after it.
-        # The message says so and quotes no value; raw_text keeps the line.
+        # A NUL right after the colon empties the value: the parser and
+        # Google's matcher both end the line at its first NUL (ROBO-pvqrfvol),
+        # so the path after it is never read. The message says so, quotes no
+        # value and names no decision; raw_text keeps the line.
         add_diagnostic(
           line, "warning", "empty_rule_value", type,
           if (nul_counts[[line]] > 0L &&
                 nul_hidden_rule(nul_free_lines[[line]], type)) {
-            paste0("The parser ends this line at its NUL and reads an empty ",
-                   "value, which it ignores; Google's matcher drops the NUL ",
-                   "and reads the rule after it.")
+            paste0("The first NUL ends this line, so the value is empty and ",
+                   "the directive imposes no restriction; the text after the ",
+                   "NUL is ignored.")
           } else {
             "Empty Allow or Disallow value is ignored by the matcher."
           }
         )
       }
       # The parser cuts the line at its first `#` (ROBO-gjhpykcj), so
-      # `Disallow: /a#b` is the wider rule `/a`. The parser stops at a NUL,
-      # but Google's matcher drops NULs and reads on (R/body-decode.R), so a
-      # line with a NUL is checked NUL-free. Otherwise it is gated on
-      # has_comment: the parser never sees a `#` past its line buffer.
-      has_nul <- nul_counts[[line]] > 0L
-      if ((parsed$has_comment[[i]] ||
-             (has_nul && !parsed$line_too_long[[i]])) &&
-            nzchar(value) &&
-            rule_cut_by_comment(nul_free_bytes(raw_lines[[line]]))) {
+      # `Disallow: /a#b` is the wider rule `/a`. Gated on has_comment: the
+      # parser, like Google's matcher, never sees a `#` after a NUL
+      # (ROBO-pvqrfvol) or past its line buffer.
+      if (parsed$has_comment[[i]] && nzchar(value) &&
+            rule_cut_by_comment(raw_lines[[line]])) {
         add_diagnostic(
           line, "warning", "rule_cut_by_comment", type,
           paste0("A '#' with no space or tab before it starts a comment, ",
@@ -876,10 +878,10 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     }
   }
 
-  # The group checks need the values Google's matcher reads. The parser stops
-  # a value at a NUL, but that matcher drops the NULs and reads on, so a
-  # document with any NUL (already a `nul_byte` error) gets none of the group
-  # checks.
+  # A document with any NUL (already a `nul_byte` error) gets none of the
+  # group checks. The parser and Google's matcher both end a line at its first
+  # NUL, but the Bing and Yandex matchers read the NUL as an ordinary byte, so
+  # the groups depend on the engine.
   if (length(nul_lines) == 0L) {
     groups <- validation_groups(parsed)
     # Google's matcher reads a User-agent value only up to its first byte
@@ -978,19 +980,19 @@ validate_document_bytes <- function(bytes, source_id, source_type,
              "were read as directives anyway.")
     )
   }
-  # The parser ends a line at its first NUL, but Google's matcher drops the
-  # NULs and reads on (R/body-decode.R), so rules that appear only once the NULs
-  # are gone, as in UTF-16 text, are reported instead of no_rules
-  # (ROBO-igrkabdb). Rules read before a cut are real, so a cut body is
-  # checked too. When the parser reads rules of its own, the NUL-free read is
-  # reported only for the grouped rules it adds: a grouped rule on a line the
-  # parser does not read as one, or in a group the NUL changes
-  # (ROBO-ctdkqawi). A rule before the first User-agent is in no group, for
-  # Google's matcher too, and is not counted; nor is a value the NUL only
-  # shortens, which keeps its rule and group. That read is built line by
-  # line, each line NUL-free and ended by LF, so its line N is raw line N: a
-  # NUL dropped from the whole body would turn `\r\0\n` into one CRLF and
-  # move every later line up by one.
+  # The parser and Google's matcher both end a line at its first NUL
+  # (ROBO-pvqrfvol), so rules that appear only once the NULs are removed, as
+  # in UTF-16 text, are hidden from both; they are reported instead of
+  # no_rules (ROBO-igrkabdb), since the file's author most likely meant them.
+  # Rules read before a cut are real, so a cut body is checked too. When the
+  # parser reads rules of its own, the NUL-free read is reported only for the
+  # grouped rules it adds: a grouped rule on a line the parser does not read
+  # as one, or in a group the NUL changes (ROBO-ctdkqawi). A rule before the
+  # first User-agent is in no group and is not counted; nor is a value the
+  # NUL only shortens, which keeps its rule and group. That read is built
+  # line by line, each line NUL-free and ended by LF, so its line N is raw
+  # line N: a NUL dropped from the whole body would turn `\r\0\n` into one
+  # CRLF and move every later line up by one.
   nul_free_rules <- 0L
   hidden_rules <- 0L
   if (length(nul_lines) > 0L) {
@@ -1016,10 +1018,9 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       NA_integer_, "warning", "rules_after_nul_removal", NA_character_,
       sprintf(
         paste0(
-          "With its NUL bytes removed, as Google's matcher reads it, the ",
-          "document has %d Allow or Disallow rule(s) that the parser, which ",
-          "ends a line at its first NUL, does not read or reads in another ",
-          "group; remove the NUL bytes."
+          "The NUL bytes hide %d Allow or Disallow rule(s) or move them to ",
+          "another group: Google's matcher ends each line at its first NUL; ",
+          "remove the NUL bytes."
         ),
         hidden_rules
       )
@@ -1029,9 +1030,9 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       NA_integer_, "warning", "rules_after_nul_removal", NA_character_,
       sprintf(
         paste0(
-          "With its NUL bytes removed, as Google's matcher reads it, the ",
-          "document has %d Allow or Disallow rule(s); if this is a UTF-16 ",
-          "file, re-save it as UTF-8 (RFC 9309 section 2.3)."
+          "The NUL bytes hide %d Allow or Disallow rule(s): Google's matcher ",
+          "ends each line at its first NUL and never reads them; if this is ",
+          "a UTF-16 file, re-save it as UTF-8 (RFC 9309 section 2.3)."
         ),
         nul_free_rules
       )
@@ -1247,10 +1248,11 @@ validation_rule_keys <- function(parsed) {
         group_agents[as.character(rules$group)])
 }
 
-# ROBO-nrnucnru: TRUE when a line the parser reads as an empty rule of `type`
-# holds a value once its NUL bytes are dropped, as Google's matcher reads it:
-# the NUL right after the colon hid the value. `nul_free_line` is the line's
-# bytes without NULs (`nul_free_lines[[line]]`), parsed alone.
+# TRUE when a line the parser reads as an empty rule of `type` holds a value
+# once its NUL bytes are dropped: the NUL right after the colon ended the line
+# before the path, which neither the parser nor Google's matcher reads
+# (ROBO-nrnucnru, ROBO-pvqrfvol). `nul_free_line` is the line's bytes without
+# NULs (`nul_free_lines[[line]]`), parsed alone.
 nul_hidden_rule <- function(nul_free_line, type) {
   parsed <- robotstxtr_validation_parse_(c(nul_free_line, as.raw(0x0a)))
   identical(parsed$type[[1L]], type) && nzchar(parsed$value[[1L]])

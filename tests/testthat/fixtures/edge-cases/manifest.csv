@@ -6,7 +6,7 @@
 "enc-bom-before-user-agent","encoding","enc-bom-before-user-agent.hex","/b","FooBot","disallow","unspecified","misplaced_byte_order_mark@4;unknown_directive@4","yes",""
 "enc-bom-doubled","encoding","enc-bom-doubled.hex","/a","FooBot","allow","unspecified","byte_order_mark@1;misplaced_byte_order_mark@1;unknown_directive@1;rule_without_user_agent@2;missing_user_agent@NA","yes",""
 "enc-utf16le-bom","encoding","enc-utf16le-bom.hex","/a","FooBot","allow","unspecified","nul_byte@1;nul_byte@2;nul_byte@3;invalid_utf8@1;malformed_line@1;rules_after_nul_removal@NA","yes",""
-"enc-utf16le-no-bom","encoding","enc-utf16le-no-bom.hex","/a","FooBot","disallow","unspecified","nul_byte@1;nul_byte@2;nul_byte@3;malformed_line@1;rules_after_nul_removal@NA","yes",""
+"enc-utf16le-no-bom","encoding","enc-utf16le-no-bom.hex","/a","FooBot","allow","unspecified","nul_byte@1;nul_byte@2;nul_byte@3;malformed_line@1;rules_after_nul_removal@NA","yes",""
 "enc-utf16be-bom","encoding","enc-utf16be-bom.hex","/a","FooBot","allow","unspecified","nul_byte@1;nul_byte@2;invalid_utf8@1;malformed_line@1;rules_after_nul_removal@NA","yes",""
 "enc-latin1-rule","encoding","enc-latin1-rule.hex","/caf%E9","FooBot","disallow","unspecified","invalid_utf8@2","yes",""
 "enc-latin1-rule","encoding","enc-latin1-rule.hex","/caf%C3%A9","FooBot","allow","unspecified","invalid_utf8@2","yes",""

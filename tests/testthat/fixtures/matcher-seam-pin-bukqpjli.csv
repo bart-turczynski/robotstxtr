@@ -8,7 +8,7 @@
 "text:enc-bom-doubled.hex","2cfcfeb322aaab3913f74579c6a6bfc0"
 "url:enc-bom-doubled.hex","056eabc1ebbe9e95cb4b36237a12593c"
 "url:enc-utf16le-bom.hex","a54d1ffabc131d2bff40f5cbee565187"
-"url:enc-utf16le-no-bom.hex","8ae289f87d907eaa51dfcba3bc841b8d"
+"url:enc-utf16le-no-bom.hex","765a8b0b3b45b1a5328e9c66e3461d60"
 "url:enc-utf16be-bom.hex","a54d1ffabc131d2bff40f5cbee565187"
 "text:enc-latin1-rule.hex","5f194e5dd00b9e61ad29f69ab1e61b29"
 "url:enc-latin1-rule.hex","46bdd566821163765e815f9376ffd1e8"

@@ -7,9 +7,11 @@
 # response -- therefore aborted the whole call, and escaped downstream through
 # the v1 engine facade.
 #
-# These tests pin the fix at each public entry point AND pin the rule the fix
-# chose (R/body-decode.R): NUL bytes are REMOVED, the document is not truncated
-# at them, and the malformation stays visible through `robots_validate_text()`.
+# These tests pin the fix at each public entry point AND pin the rules
+# (R/body-decode.R): the body preview REMOVES the NUL bytes; the Google
+# matcher ends each line at its first NUL, as upstream does (ROBO-pvqrfvol),
+# and reads the lines after it; the malformation stays visible through
+# `robots_validate_text()`.
 
 # --- Test helpers (local to this file) --------------------------------------
 
@@ -36,8 +38,9 @@ nul_router <- function(routes) {
 }
 
 # "user-agent: *\n" + NUL + "disallow: /x\n" + "disallow: /y\n". The NUL sits at
-# the start of the first rule line, so a decode that truncated at it would lose
-# BOTH rules, and one that kept it would leave that line an unknown directive.
+# the start of the first rule line: the Google matcher ends that line at it, so
+# /x is never read, and reads the next line, so /y is. A decode that truncated
+# the whole document at the NUL would lose both rules.
 nul_body_bytes <- c(
   charToRaw("user-agent: *\n"),
   as.raw(0),
@@ -65,20 +68,24 @@ test_that("render_body_bytes() marks bytes for invalid UTF-8 past a NUL", {
 
 test_that("matcher_string_v1() decodes NUL-bearing bytes without erroring", {
   out <- matcher_string_v1(nul_body_bytes)
-  expect_identical(out, "user-agent: *\ndisallow: /x\ndisallow: /y\n")
+  expect_identical(out, "user-agent: *\n\ndisallow: /y\n")
 
   # The matcher input is marked UTF-8 so cpp11 forwards the exact bytes; a
   # non-ASCII body shows the mark (ASCII-only results stay "unknown" in R).
-  marked <- matcher_string_v1(c(as.raw(0), charToRaw("disallow: /café")))
+  marked <- matcher_string_v1(c(charToRaw("disallow: /café"), as.raw(0)))
   expect_identical(Encoding(marked), "UTF-8")
 })
 
-test_that("the NUL rule removes bytes rather than truncating the document", {
-  # Truncating at the NUL would drop both rules; keeping it would leave the
-  # first rule line an unknown "\0disallow" directive. Removal keeps both.
+test_that("the preview removes NUL bytes; the matcher ends a line at one", {
+  # The preview keeps every other byte; the matcher reads the line holding
+  # the NUL only up to it and every later line whole (ROBO-pvqrfvol).
   expect_identical(
     nul_free_bytes(nul_body_bytes),
     charToRaw("user-agent: *\ndisallow: /x\ndisallow: /y\n")
+  )
+  expect_identical(
+    nul_line_end_bytes(nul_body_bytes),
+    charToRaw("user-agent: *\n\ndisallow: /y\n")
   )
 })
 
@@ -108,18 +115,21 @@ test_that("allowed_by_robots_url() matches a NUL-bearing body, no abort", {
   urls <- c("http://a/x", "http://a/y", "http://a/z")
   x <- allowed_by_robots_url(urls, "TestBot")
 
-  # Both rules are live (NUL removed, nothing truncated) and the row keeps the
-  # ordinary fetched-source contract rather than an error.
-  expect_identical(x$results$allowed, c(FALSE, FALSE, TRUE))
+  # The NUL ends its line, so /x is unread while /y, on the next line, is
+  # live; the row keeps the ordinary fetched-source contract, not an error.
+  expect_identical(x$results$allowed, c(TRUE, FALSE, TRUE))
   expect_identical(
     x$results$decision_source,
-    c("rule_disallow", "rule_disallow", "default_allow")
+    c("default_allow", "rule_disallow", "default_allow")
   )
   expect_identical(x$robots$fetch_outcome, "fetched")
   expect_identical(x$robots$error_class, NA_character_)
   # Match-metadata correlation runs the parse collector over the same decoded
   # body; its value channel cannot carry a NUL either, so this pins that too.
-  expect_identical(x$results$matched_rule_value, c("/x", "/y", NA_character_))
+  expect_identical(
+    x$results$matched_rule_value, c(NA_character_, "/y", NA_character_)
+  )
+  expect_identical(x$results$matched_line, c(NA_integer_, 3L, NA_integer_))
 })
 
 # --- Entry point 3: robots_evaluate_url_v1() (and sitemapr's caller) ---------
@@ -129,13 +139,13 @@ test_that("robots_evaluate_url_v1() evaluates a NUL-bearing body", {
     "http://a/robots.txt" = nul_ok_bytes(nul_body_bytes)
   )))
   x <- robots_evaluate_url_v1(
-    "http://a/x", robots_product_token = "TestBot",
+    "http://a/y", robots_product_token = "TestBot",
     robots_policy_ruleset = "google", matcher_backend = "google"
   )
 
   expect_identical(x$results$url_decision, "disallow")
   expect_identical(x$results$reason, "rule_disallow")
-  expect_identical(x$results$matched_rule_value, "/x")
+  expect_identical(x$results$matched_rule_value, "/y")
   expect_identical(x$results$matcher_status, "evaluated")
 })
 
