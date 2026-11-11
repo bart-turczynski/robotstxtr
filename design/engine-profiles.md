@@ -69,7 +69,8 @@ mapping from ssrfr's reason codes is data in `R/acquire-map.R`; ssrfr's `host-de
 3xx, an unknown status or a status mismatch (libcurl and the status line
 disagree) over it is `body_too_large`; a 4xx/5xx keeps its status outcome. A set `safety_block_reason` means
 `evidence_status = safety_refused`, except an address-class code under `safety_level = crawler`, which
-means `unreachable_local` (§3a). `fetch_outcome` stays `ssrf_blocked` at both levels.
+means `unreachable_local` (§3a) once ROBO-jqwukcog lands; until then it is `safety_refused` at both levels.
+`fetch_outcome` stays `ssrf_blocked` at both levels.
 
 **`evidence_status` (exhaustive):**
 
@@ -83,7 +84,7 @@ means `unreachable_local` (§3a). `fetch_outcome` stays `ssrf_blocked` at both l
 | `redirect_over_budget` | `terminal_redirect_reason = over_budget` | §3 engine exhaustion rule |
 | `transport_fail` | DNS/connect/TLS/timeout/reset/chunk (`transport_error_kind` set); never with a `safety_block_reason` | §4 network row |
 | `unreachable_local` | not emitted yet (ROBO-jqwukcog). Under `safety_level = crawler` only: an address-class refusal (`safety_block_reason` kept; no connection made; §3a) | §4 `unreachable_local` row (same cells as the network row) |
-| `safety_refused` | under `safety_level = strict`: any ssrfr refusal incl. HTTPS→HTTP downgrade; under `crawler`: URL-shape refusals only (`scheme`, `userinfo`, `port`, `parse`, `numeric-literal`, `malformed-address`) | never allow/deny; §3a (ADR 0001); sitemapr ADR-003 governs the guard |
+| `safety_refused` | under `safety_level = strict`: any ssrfr refusal incl. HTTPS→HTTP downgrade; under `crawler`: URL-shape refusals only (`scheme`, `userinfo`, `port`, `parse`, `numeric-literal`, `malformed-address`), and every address-class refusal until ROBO-jqwukcog lands | never allow/deny; §3a (ADR 0001); sitemapr ADR-003 governs the guard |
 | `not_applicable` | no robots evaluation applies (no body and no status to interpret) | `policy_status` / `matcher_status` = `not_evaluated`; `url_decision` absent |
 
 `evidence_status` is the ADR-009 §2 versioned set; `source_kind` (a separate fact) distinguishes where
@@ -141,15 +142,16 @@ decides what an outcome means.
 | `safety_level` | HTTPS→HTTP redirect | address-class refusal | URL-shape refusal |
 |---|---|---|---|
 | `strict` (default) | refused → `safety_refused` / `https_downgrade` | `safety_refused` | `safety_refused` |
-| `crawler` | followed as an ordinary hop | not dialed → `unreachable_local`, `safety_block_reason` kept | `safety_refused` |
+| `crawler` | followed as an ordinary hop | not dialed → `unreachable_local`, `safety_block_reason` kept (`safety_refused` until ROBO-jqwukcog) | `safety_refused` |
 
 Address-class codes: `loopback`, `private`, `link-local`, `cloud-metadata`, `shared`, `unspecified`,
 `this-network`, `multicast`, `reserved`, `ipv4-mapped`, `ipv4-translated`, `ipv4-compatible`, `nat64`,
 `6to4`, `teredo`, `isatap`. URL-shape codes: `scheme`, `userinfo`, `port`, `parse`, `numeric-literal`,
 `malformed-address`. `fetch_allow_ranges` reopens the listed ranges at either level.
 
-`crawler` is in the published value set but refused as a call-level error until it lands
-(ROBO-lwdxzdhw, ROBO-jqwukcog), and `fetch_allow_ranges` is recorded as empty until ROBO-bamcjvwn.
+`crawler` follows downgrades (ROBO-lwdxzdhw). Until ROBO-jqwukcog lands, an address-class refusal under
+`crawler` is still `safety_refused`, as under `strict`. `fetch_allow_ranges` is recorded as empty until
+ROBO-bamcjvwn.
 
 <a id="status-policy"></a>
 

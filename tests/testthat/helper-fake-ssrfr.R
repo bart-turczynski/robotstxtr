@@ -7,7 +7,8 @@
 # What the fake keeps from ssrfr, so the loop sees what it would see live:
 # - every hop is checked by ssrfr itself, through ssrf_inspect_url() at layer
 #   L0 under the module's real policy: scheme, userinfo, port, parse, address
-#   literals, metadata names, and the downgrade of an https hop's redirect.
+#   literals, metadata names, and the downgrade of an https hop's redirect
+#   (lifted by the policy's `allow_downgrade`, as ssrfr lifts it).
 #   A name is not resolved, so "http://a/" passes.
 # - a relative Location is resolved against the previous hop (WHATWG), and
 #   the fragment dropped, as the binding's `url` is.
@@ -170,8 +171,9 @@ with_fake_ssrfr <- function(handler, code) {
 local_loopback_policy <- function(port, env = parent.frame()) {
   real <- acquire_policy
   testthat::local_mocked_bindings(
-    acquire_policy = function(timeout, fetch_ua, max_bytes, ssrf_guard = TRUE) {
-      policy <- real(timeout, fetch_ua, max_bytes, ssrf_guard)
+    acquire_policy = function(timeout, fetch_ua, max_bytes, ssrf_guard = TRUE,
+                              safety_level = "strict") {
+      policy <- real(timeout, fetch_ua, max_bytes, ssrf_guard, safety_level)
       ssrfr::ssrf_policy(
         allow_ports = port,
         allow_ranges = "127.0.0.0/8",
@@ -182,7 +184,8 @@ local_loopback_policy <- function(port, env = parent.frame()) {
         max_header_bytes = policy$max_header_bytes,
         max_header_fields = policy$max_header_fields,
         user_agent = policy$user_agent,
-        truncate_body = isTRUE(policy$truncate_body)
+        truncate_body = isTRUE(policy$truncate_body),
+        allow_downgrade = isTRUE(policy$allow_downgrade)
       )
     },
     .package = "robotstxtr",

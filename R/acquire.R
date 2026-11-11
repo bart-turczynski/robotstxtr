@@ -79,7 +79,12 @@ acquire_max_header_fields <- 256L
 #   becomes a permissive policy: every address range reopened, and the
 #   metadata host names. Exact provider endpoints, and the transition and
 #   embedded forms ssrfr refuses whatever the policy, stay refused.
-acquire_policy <- function(timeout, fetch_ua, max_bytes, ssrf_guard = TRUE) {
+# - `safety_level = "crawler"` sets `allow_downgrade = TRUE`: an https to http
+#   redirect is an ordinary hop within the budget, as public crawlers follow
+#   it (ADR 0001 section 3, ROBO-lwdxzdhw). Every other ssrfr check still
+#   applies. Under "strict" the downgrade stays refused.
+acquire_policy <- function(timeout, fetch_ua, max_bytes, ssrf_guard = TRUE,
+                           safety_level = "strict") {
   total <- max(1, ceiling(timeout))
   args <- list(
     allow_ports = 1:65535,
@@ -90,7 +95,8 @@ acquire_policy <- function(timeout, fetch_ua, max_bytes, ssrf_guard = TRUE) {
     max_header_bytes = acquire_max_header_bytes,
     max_header_fields = acquire_max_header_fields,
     user_agent = fetch_ua,
-    truncate_body = TRUE
+    truncate_body = TRUE,
+    allow_downgrade = identical(safety_level, "crawler")
   )
   if (!isTRUE(ssrf_guard)) {
     args$allow_ranges <- c("0.0.0.0/0", "::/0")
@@ -282,8 +288,10 @@ acquire_loop_result <- function(location, status, redirect_count,
 # not on where the redirects lead. `max_bytes` is the validated integer limit
 # on decoded body bytes.
 acquire_robots <- function(robots_url, timeout, fetch_ua, max_bytes,
-                           ssrf_guard = TRUE) {
-  policy <- acquire_policy(timeout, fetch_ua, max_bytes, ssrf_guard)
+                           ssrf_guard = TRUE, safety_level = "strict") {
+  policy <- acquire_policy(
+    timeout, fetch_ua, max_bytes, ssrf_guard, safety_level
+  )
   redirect_count <- 0L
   redirect_hops <- list()
   visited <- character(0)
@@ -337,7 +345,8 @@ acquire_robots <- function(robots_url, timeout, fetch_ua, max_bytes,
     }
 
     # The loop check runs after the hop is prepared, on the URL ssrfr will
-    # request, so a refusal of the target (a downgrade) wins over a loop.
+    # request, so a refusal of the target (a downgrade under "strict") wins
+    # over a loop.
     redirect <- list(status = status, location = location)
     following <- acquire_call(acquire_prepare_hop(
       location, policy, from = binding

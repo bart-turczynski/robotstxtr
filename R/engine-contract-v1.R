@@ -48,15 +48,11 @@ engine_matchers_v1 <- function() {
 
 # The `safety_level` value set (ADR 0001 section 1). It decides what the fetch
 # may do, never what an outcome means, and is independent of the ruleset.
-# "strict", the default, is today's acquisition. "crawler" is published but not
-# available yet: validate_safety_level() refuses it until it lands
-# (ROBO-lwdxzdhw).
+# "strict", the default, is today's acquisition. "crawler" follows an https to
+# http redirect as an ordinary hop (ROBO-lwdxzdhw); acquire_policy() turns it
+# into ssrfr's `allow_downgrade`.
 engine_safety_levels_v1 <- function() {
   c("strict", "crawler")
-}
-
-engine_available_safety_levels_v1 <- function() {
-  "strict"
 }
 
 # Authoritative enumeration of the robotstxtr.engine-aware/v2 matcher-status set
@@ -826,7 +822,8 @@ fetch_evidence_v1 <- function(url, timeout, max_bytes, fetch_ua, ssrf_guard,
   fetched <- vector("list", length(distinct_origins))
   for (i in seq_along(distinct_origins)) {
     fetched[[i]] <- acquire_robots(
-      distinct_origins[[i]], timeout, fetch_ua, max_bytes, ssrf_guard
+      distinct_origins[[i]], timeout, fetch_ua, max_bytes, ssrf_guard,
+      safety_level
     )
   }
   evidence <- source_results_to_evidence_v1(

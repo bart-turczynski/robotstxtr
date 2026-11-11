@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* `safety_level = "crawler"` is now available: it follows an `https` to `http` redirect as an ordinary hop, and needs ssrfr 1.0.0.9001 (ROBO-lwdxzdhw).
+
 * `robots_fetch()`'s `content_flag` and the `html_body` warning now catch an HTML page opening with inline script or style, or cut at `max_bytes` on its first line (ROBO-qquftxcx).
 
 * `robots_validate_text()` now warns `rules_after_nul_removal` when NUL bytes hide rules from its parser that Google's matcher reads, even beside other rules (ROBO-ctdkqawi).

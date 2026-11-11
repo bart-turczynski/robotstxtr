@@ -32,10 +32,11 @@
 #' `GET` over a new HTTP/1.1 connection; TLS verified with platform defaults;
 #' no proxy; one total timeout per origin, redirects included; at most five
 #' redirects; redirects allowed only to `http`/`https`; HTTP-to-HTTPS upgrades
-#' allowed but every HTTPS-to-HTTP downgrade rejected as `redirect_error`; no
-#' URL userinfo, authorization, cookies, or caller session state forwarded; a
-#' package fetch user agent (`robotstxtr/<version>`) unless the caller supplies
-#' one; and no automatic retries.
+#' allowed; every HTTPS-to-HTTP downgrade rejected as `redirect_error` under
+#' `safety_level = "strict"` and followed as an ordinary hop under
+#' `"crawler"`; no URL userinfo, authorization, cookies, or caller session
+#' state forwarded; a package fetch user agent (`robotstxtr/<version>`) unless
+#' the caller supplies one; and no automatic retries.
 #'
 #' Every request goes through the \pkg{ssrfr} guard, for the initial origin and
 #' for every redirect target. A host name is resolved once, every address it
@@ -113,7 +114,8 @@
 #' response, as `terminal_redirect_reason`: `"over_budget"` (a sixth
 #' redirect), `"no_location"` (a 3xx that names no target: not a 301, 302,
 #' 303, 307 or 308, or an empty or repeated `Location`), `"loop"` (a target
-#' already requested), `"downgrade"` (an `https` to `http` redirect, refused),
+#' already requested), `"downgrade"` (an `https` to `http` redirect, refused
+#' under `safety_level = "strict"`),
 #' `"non_http_target"` (a redirect to a scheme other than `http` or `https`,
 #' refused), or `"none"` for every other outcome, a redirect followed to its
 #' end included. A refusal by the guard sets `safety_block_reason` to its
@@ -152,11 +154,12 @@
 #'   `robots.txt` from a trusted intranet host. Known cloud-metadata endpoints
 #'   and the IPv6 transition forms that embed an address stay refused.
 #' @param safety_level A single string: what the fetch may do on the network,
-#'   whatever ruleset reads the outcome. `"strict"`, the default and the only
-#'   level available yet, refuses an `https` to `http` redirect and every
-#'   address the guard refuses. `"crawler"` is reserved for what a public
-#'   crawler experiences and is a call-level error until it lands; any other
-#'   value is a call-level error too.
+#'   whatever ruleset reads the outcome. `"strict"`, the default, refuses an
+#'   `https` to `http` redirect and every address the guard refuses.
+#'   `"crawler"` fetches as a public crawler does: it follows an `https` to
+#'   `http` redirect as an ordinary hop within the five-redirect budget, and
+#'   still refuses every address the guard refuses. Any other value is a
+#'   call-level error.
 #'
 #' @return An S3 object of class `robots_fetches`: a named list with two
 #'   components, `map` (one row per input URL, in input order) and `robots` (one
@@ -219,7 +222,8 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
   results <- vector("list", n_src)
   for (i in seq_len(n_src)) {
     results[[i]] <- acquire_robots(
-      distinct_origins[[i]], timeout, fetch_ua, max_bytes_int, ssrf_guard
+      distinct_origins[[i]], timeout, fetch_ua, max_bytes_int, ssrf_guard,
+      safety_level
     )
   }
 

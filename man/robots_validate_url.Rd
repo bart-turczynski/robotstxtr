@@ -42,11 +42,12 @@ internal address ranges and the metadata host names, for example to fetch
 and the IPv6 transition forms that embed an address stay refused.}
 
 \item{safety_level}{A single string: what the fetch may do on the network,
-whatever ruleset reads the outcome. \code{"strict"}, the default and the only
-level available yet, refuses an \code{https} to \code{http} redirect and every
-address the guard refuses. \code{"crawler"} is reserved for what a public
-crawler experiences and is a call-level error until it lands; any other
-value is a call-level error too.}
+whatever ruleset reads the outcome. \code{"strict"}, the default, refuses an
+\code{https} to \code{http} redirect and every address the guard refuses.
+\code{"crawler"} fetches as a public crawler does: it follows an \code{https} to
+\code{http} redirect as an ordinary hop within the five-redirect budget, and
+still refuses every address the guard refuses. Any other value is a
+call-level error.}
 }
 \value{
 An S3 object of class \code{robots_validations}, containing \code{map} (one row

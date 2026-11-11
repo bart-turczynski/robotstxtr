@@ -157,7 +157,7 @@
       "@type": "SoftwareApplication",
       "identifier": "ssrfr",
       "name": "ssrfr",
-      "version": ">= 1.0.0.9000",
+      "version": ">= 1.0.0.9001",
       "provider": {
         "@id": "https://gitlab.com",
         "@type": "Organization",
