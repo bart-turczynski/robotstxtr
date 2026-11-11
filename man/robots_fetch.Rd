@@ -56,8 +56,10 @@ row per fetched source, with the fetched body stored once as a raw vector
 in \code{robots$body}, and the final response's \code{Retry-After} as the character
 \code{retry_after} and the double \code{retry_after_seconds}, its \code{Content-Type} as
 the character \code{content_type}, the character \code{content_flag}, the logical
-\code{body_truncated}, and the character \code{terminal_redirect_reason} and
-\code{safety_block_reason}).
+\code{body_truncated}, the character \code{terminal_redirect_reason} and
+\code{safety_block_reason}, and the list \code{redirect_hops}, which holds one list
+per source of the redirects met, each a list of \code{from_url}, \code{status} and
+\code{location_target}; the first \code{redirect_count} of them were followed).
 }
 \description{
 Performs the grouped robots.txt fetch stage for one or more target URLs and

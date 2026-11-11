@@ -228,6 +228,10 @@ validation_unsupported <- c(
 #'   \code{redirect_cross_site} \tab warning \tab
 #'     The fetch redirected to another registrable domain, whose file is
 #'     applied to this host. \cr
+#'   \code{redirect_downgrade_followed} \tab info \tab
+#'     Under \code{safety_level = "crawler"}, the fetch followed an
+#'     \code{https} to \code{http} redirect, so part of the redirect chain
+#'     went over plain \code{http}; \code{message} names each such hop. \cr
 #'   \code{acquisition_transport_failed} \tab error \tab
 #'     A timeout, TLS, network or malformed-response failure, with each
 #'     engine's reading in
@@ -418,11 +422,15 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' info, or a warning when the page reached is HTML) and
 #' `redirect_cross_site` (another registrable domain; warning). A
 #' change of scheme or port alone, such as `http` to `https`, is not
-#' reported. The registrable domain comes from the Public Suffix List
-#' through `rurl::get_domain()`, so `a.example.co.uk` and `b.example.co.uk`
-#' are one site; an IP literal, or a host with no registrable domain, is
-#' compared whole. RFC 9309 section 2.3.1.2 and Yandex document applying
-#' the file reached to the requested host, Google is inferred to, and Bing
+#' reported by these, but an `https` to `http` redirect that was followed
+#' (only `safety_level = "crawler"` follows one), anywhere in the chain, is
+#' reported as `redirect_downgrade_followed` (info), naming each such hop,
+#' from the source row's `redirect_hops`. The registrable domain comes from
+#' the Public Suffix List through `rurl::get_domain()`, so
+#' `a.example.co.uk` and `b.example.co.uk` are one site; an IP literal, or a
+#' host with no registrable domain, is compared whole. RFC 9309 section
+#' 2.3.1.2 and Yandex document applying the file reached to the requested
+#' host, Google is inferred to, and Bing
 #' does not document it; when the page reached is HTML, the message says
 #' the robots.txt is effectively missing. The fetch itself is unchanged.
 #'
@@ -2212,6 +2220,10 @@ validate_fetched_documents <- function(fetched) {
       if (!is.null(redirect)) {
         validated <- add_document_diagnostic(validated, redirect)
       }
+      downgrade <- redirect_downgrade_diagnostic(source)
+      if (!is.null(downgrade)) {
+        validated <- add_document_diagnostic(validated, downgrade)
+      }
     } else {
       validated <- unavailable_validation(source)
     }
@@ -2497,6 +2509,66 @@ redirect_host_diagnostic <- function(source) {
     source$source_id, NA_integer_, severity, code, NA_character_,
     NA_character_, message
   )
+}
+
+# The diagnostic row for a fetch that followed at least one https to http
+# redirect (ROBO-cscdbael), or NULL. Only `safety_level = "crawler"` follows
+# one; `strict` refuses it as `acquisition_redirect_downgrade`, with no body.
+# It reads the source row's hop log, `redirect_hops`, so a downgrade in the
+# middle of the chain counts too. The log also holds a hop that was not
+# followed (a refused, over-budget or looping one), so only the first
+# `redirect_count` hops are read. One row names every followed downgrade as
+# "from -> to"; the URLs are printed as stored. Severity info: no engine
+# conditions a redirect on its scheme (design/engine-profiles.md, section 3,
+# "Within budget").
+redirect_downgrade_diagnostic <- function(source) {
+  hops <- source$redirect_hops[[1L]]
+  count <- source$redirect_count
+  if (length(hops) == 0L || length(count) != 1L || is.na(count)) {
+    return(NULL)
+  }
+  followed <- hops[seq_len(min(count, length(hops)))]
+  downgrades <- Filter(function(hop) {
+    identical(redirect_url_scheme(hop$from_url), "https") &&
+      identical(redirect_url_scheme(hop$location_target), "http")
+  }, followed)
+  if (length(downgrades) == 0L) {
+    return(NULL)
+  }
+  pairs <- vapply(downgrades, function(hop) {
+    paste(hop$from_url, "->", hop$location_target)
+  }, character(1L))
+  message <- sprintf(
+    paste0(
+      "The fetch followed an https to http redirect (%s), so part of the ",
+      "redirect chain went over plain http. RFC 9309, Google and Yandex ",
+      "place no scheme ",
+      "condition on a redirect and are inferred to follow it; Bing is not ",
+      "documented."
+    ),
+    toString(pairs)
+  )
+  validation_diagnostic(
+    source$source_id, NA_integer_, "info", "redirect_downgrade_followed",
+    NA_character_, NA_character_, message
+  )
+}
+
+# The ASCII-lowercased scheme of a URL, or NA when it has none.
+redirect_url_scheme <- function(url) {
+  if (!is.character(url) || length(url) != 1L || is.na(url)) {
+    return(NA_character_)
+  }
+  # Bytes, not characters: a raw Location may not be valid UTF-8.
+  # Leading C0 controls and spaces are stripped, as WHATWG URL parsing does.
+  url <- sub("^[\001-\040]+", "", url, useBytes = TRUE)
+  match <- regmatches(
+    url, regexec("^([A-Za-z][A-Za-z0-9+.-]*):", url, useBytes = TRUE)
+  )[[1L]]
+  if (length(match) != 2L) {
+    return(NA_character_)
+  }
+  ascii_lower(match[[2L]])
 }
 
 # The ASCII-lowercased idna host and the path of a URL, or NULL when it does

@@ -133,6 +133,8 @@ hop is followed `[inferred]` for `rfc9309`, `google` and `yandex`, and is `[docu
 The validator's redirect codes (ROBO-gokbvzcb) decide "same site" by the registrable domain from
 the Public Suffix List (`rurl::get_domain()`), comparing an IP literal or a host with none whole;
 this is reporting only and changes no fetch.
+A followed HTTPS→HTTP hop, anywhere in the chain, is reported as `redirect_downgrade_followed`
+(info; ROBO-cscdbael): only `crawler` follows one, and on the reading above no engine refuses it.
 
 ### 3a. Safety level (ADR 0001)
 

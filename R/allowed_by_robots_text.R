@@ -229,6 +229,8 @@ allowed_by_robots_text <- function(robots_txt, url, user_agent,
     safety_block_reason = NA_character_,
     stringsAsFactors = FALSE
   )
+  # No fetch, so no redirect hops (ROBO-cscdbael).
+  robots$redirect_hops <- list(list())
   # `body` is a list-of-raw column: the supplied body stored exactly once.
   robots$body <- list(raw_body)
 

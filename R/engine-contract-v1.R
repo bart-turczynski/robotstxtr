@@ -1960,6 +1960,8 @@ as_legacy_robots_decisions_v1 <- function(x) {
     safety_block_reason = evidence$safety_block_reason,
     stringsAsFactors = FALSE
   )
+  # The evidence's hop log, as robots_fetch() carries it (ROBO-cscdbael).
+  robots$redirect_hops <- evidence$redirect_hops
   robots$body <- evidence$body
   new_robots_decisions(results, robots)
 }

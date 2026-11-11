@@ -166,11 +166,13 @@ bsl_expected$network_error <- list(
 # --- the robots frame -------------------------------------------------------
 
 test_that("ROBO-bsloeclp: the robots frame ends with the two new columns", {
+  # `redirect_hops` sits between them and `body` (ROBO-cscdbael).
   x <- bsl_fetch(bsl_cases$over_budget$handler)
   n <- ncol(x$robots)
   expect_identical(
-    names(x$robots)[(n - 2L):n],
-    c("terminal_redirect_reason", "safety_block_reason", "body")
+    names(x$robots)[(n - 3L):n],
+    c("terminal_redirect_reason", "safety_block_reason", "redirect_hops",
+      "body")
   )
   expect_type(x$robots$terminal_redirect_reason, "character")
   expect_type(x$robots$safety_block_reason, "character")
