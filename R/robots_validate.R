@@ -96,7 +96,9 @@ validation_unsupported <- c(
 #'     An Allow or Disallow in no group a non-empty User-agent opened: before
 #'     any, or after an empty User-agent that follows a rule. \cr
 #'   \code{empty_rule_value} \tab warning \tab
-#'     An empty Allow or Disallow value, which the matcher ignores. \cr
+#'     An empty Allow or Disallow value, which the matcher ignores. When a NUL
+#'     byte right after the colon hides the path, the message says that
+#'     Google's matcher reads the rule after the NUL instead. \cr
 #'   \code{rule_missing_leading_slash} \tab warning \tab
 #'     A pattern not led by \code{/} or \code{*}; it never matches. \cr
 #'   \code{rule_cut_by_comment} \tab warning \tab
@@ -800,9 +802,19 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         )
       }
       if (!nzchar(value)) {
+        # ROBO-nrnucnru: a NUL right after the colon leaves the parser an empty
+        # value, but Google's matcher drops the NUL and reads the rule after it.
+        # The message says so and quotes no value; raw_text keeps the line.
         add_diagnostic(
           line, "warning", "empty_rule_value", type,
-          "Empty Allow or Disallow value is ignored by the matcher."
+          if (nul_counts[[line]] > 0L &&
+                nul_hidden_rule(nul_free_lines[[line]], type)) {
+            paste0("The parser ends this line at its NUL and reads an empty ",
+                   "value, which it ignores; Google's matcher drops the NUL ",
+                   "and reads the rule after it.")
+          } else {
+            "Empty Allow or Disallow value is ignored by the matcher."
+          }
         )
       }
       # The parser cuts the line at its first `#` (ROBO-gjhpykcj), so
@@ -1215,6 +1227,15 @@ validation_rule_keys <- function(parsed) {
   rules <- groups$rules
   paste(rules$line, rules$type,
         group_agents[as.character(rules$group)])
+}
+
+# ROBO-nrnucnru: TRUE when a line the parser reads as an empty rule of `type`
+# holds a value once its NUL bytes are dropped, as Google's matcher reads it:
+# the NUL right after the colon hid the value. `nul_free_line` is the line's
+# bytes without NULs (`nul_free_lines[[line]]`), parsed alone.
+nul_hidden_rule <- function(nul_free_line, type) {
+  parsed <- robotstxtr_validation_parse_(c(nul_free_line, as.raw(0x0a)))
+  identical(parsed$type[[1L]], type) && nzchar(parsed$value[[1L]])
 }
 
 # The AI-training policy token of draft-kelley-aipref-training-preference-
