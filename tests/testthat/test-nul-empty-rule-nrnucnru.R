@@ -1,9 +1,10 @@
 # ROBO-nrnucnru: a NUL right after an Allow or Disallow colon leaves the
 # validation parser an empty value, which empty_rule_value reports as ignored.
 # The parser ends a line at its first NUL; Google's matcher drops the NUL and
-# reads the path (R/body-decode.R). The row must say, on that line, that Google's
-# matcher reads the rule after the NUL: it names Google's matcher alone, quotes
-# no value, and keeps its raw_text. A plain empty rule keeps today's message.
+# reads the path (R/body-decode.R). The row must say, on that line, that
+# Google's matcher reads the rule after the NUL: it names Google's matcher
+# alone, quotes no value, and keeps its raw_text. A plain empty rule keeps
+# today's message.
 #
 # The wording follows the PRD 6.6 rule as R/body-decode.R records it today. It
 # flips if ROBO-pvqrfvol picks option (B), where Google's backend ends a line at
@@ -94,7 +95,7 @@ test_that("a NUL that hides no path keeps today's message", {
   }
 })
 
-test_that("a plain Disallow with nothing after the colon keeps today's message", {
+test_that("a plain empty Disallow keeps today's message", {
   x <- robots_validate_text(charToRaw("User-agent: *\nDisallow:\n"))
   expect_identical(nr_codes(x), "empty_rule_value@2")
   expect_identical(nr_empty_row(x, 2L)$message, nr_plain_message)
@@ -159,7 +160,7 @@ test_that("a hidden path past the line buffer keeps the reworded row", {
   expect_true(startsWith(row$raw_text, "Disallow: \\x00/private"))
 })
 
-test_that("invalid UTF-8 after the NUL keeps invalid_utf8 and an ASCII message", {
+test_that("invalid UTF-8 after the NUL keeps invalid_utf8, ASCII message", {
   bytes <- c(charToRaw("User-agent: *\nDisallow: "), nr_nul,
              charToRaw("/"), as.raw(0xff), charToRaw("\n"))
   x <- robots_validate_text(bytes)
