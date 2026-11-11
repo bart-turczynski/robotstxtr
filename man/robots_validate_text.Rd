@@ -239,8 +239,8 @@ The fetch redirected to another registrable domain, whose file is
 applied to this host. \cr
 \code{redirect_downgrade_followed} \tab info \tab
 Under \code{safety_level = "crawler"}, the fetch followed an
-\code{https} to \code{http} redirect, so the file was read over plain
-\code{http}; \code{message} names each such hop. \cr
+\code{https} to \code{http} redirect, so part of the redirect chain
+went over plain \code{http}; \code{message} names each such hop. \cr
 \code{acquisition_transport_failed} \tab error \tab
 A timeout, TLS, network or malformed-response failure, with each
 engine's reading in

@@ -80,6 +80,12 @@ test_that("crawler: a downgrade in the middle of the chain is noted", {
   expect_true(grepl("https://a/robots.txt -> http://a/r2", rows$message,
                     fixed = TRUE))
   expect_false(grepl("https://a/r3", rows$message, fixed = TRUE))
+  # The file itself came back over https: the row says the chain, not the
+  # file, went over plain http.
+  expect_true(grepl("part of the redirect chain went over plain http",
+                    rows$message, fixed = TRUE))
+  expect_false(grepl("file was read over plain http", rows$message,
+                     fixed = TRUE))
 })
 
 test_that("crawler: two downgrades make one row naming both hops", {
@@ -188,6 +194,17 @@ test_that("schemes compare case-insensitively; odd hops do not error", {
     "https://[2001:db8::1]/robots.txt -> http://xn--bcher-kva.de/r",
     row$message, fixed = TRUE
   ))
+})
+
+test_that("a raw Location with invalid UTF-8 or leading space has a scheme", {
+  expect_identical(redirect_url_scheme("http://a/\xff\xfe"), "http")
+  expect_identical(redirect_url_scheme(" http://a/r"), "http")
+  expect_identical(redirect_url_scheme("\thttps://a/r"), "https")
+  expect_identical(redirect_url_scheme("/relative"), NA_character_)
+  row <- redirect_downgrade_diagnostic(rdf_source(
+    list(rdf_hop("https://a/robots.txt", "http://a/\xff")), 1L
+  ))
+  expect_identical(row$code, "redirect_downgrade_followed")
 })
 
 # --- the robots frame --------------------------------------------------------
