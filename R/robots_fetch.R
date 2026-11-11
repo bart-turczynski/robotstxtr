@@ -105,7 +105,7 @@
 #' with `<!doctype html`, `<html`, `<head` or `<body`, possibly after an
 #' `<?xml ...?>` or `<!-- ... -->` on that line; or a body starting with `<`
 #' whose root element, after any leading declarations, comments, end tags and
-#' `<!doctype` declarations, is an HTML or custom element (or is a
+#' markup declarations, is an HTML or custom element (or is a
 #' `<!doctype html`), and that holds `<!doctype html`, `<html`, `<head`,
 #' `<body`, `<script` or `<style`
 #' anywhere), `"xml"` (any other body starting with `<`, such as a feed or an
