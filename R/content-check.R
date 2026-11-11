@@ -23,9 +23,9 @@
 #   (`<?...?>`) and markup comments (`<!--...-->`) that each close on their
 #   own line. A `<` inside a robots.txt comment line never starts a line.
 #   Or the first non-whitespace byte is `<`, the root is HTML (ROBO-isbpzgqn:
-#   after `<?...?>` and `<!--...-->` items, an html doctype or a first start
-#   tag whose name, after any namespace prefix, is in
-#   `content_html_element_names`), and `<!doctype html`, `<html`, `<head`,
+#   after leading `<?...?>` declarations, comments, doctypes and end tags, an
+#   html doctype or a start tag named as an HTML element or a custom element;
+#   see `content_html_root_pattern`), and `<!doctype html`, `<html`, `<head`,
 #   `<body`, `<script` or `<style` appears anywhere in the window, as a
 #   minified page puts them mid-line (ROBO-qquftxcx). `<title`, `<link` and
 #   `<meta` are left out: RSS and Atom feeds use them.
@@ -64,12 +64,13 @@ robots_content_flag <- function(body) {
     return("html")
   }
   if (grepl("^\\s*<", text, perl = TRUE, useBytes = TRUE)) {
-    # The anywhere markers count only under an HTML root (ROBO-isbpzgqn).
-    if (grepl(content_html_root_pattern, text, perl = TRUE, useBytes = TRUE)) {
-      if (grepl(content_html_tag_pattern, text, perl = TRUE,
-                useBytes = TRUE)) {
-        return("html")
-      }
+    # The anywhere markers count only under an HTML root (ROBO-isbpzgqn). The
+    # cheap marker test goes first; the root test confirms it.
+    marker <- grepl(content_html_tag_pattern, text, perl = TRUE,
+                    useBytes = TRUE)
+    if (marker && grepl(content_html_root_pattern, text, perl = TRUE,
+                        useBytes = TRUE)) {
+      return("html")
     }
     return("xml")
   }
@@ -112,18 +113,33 @@ content_html_element_names <- c(
   "video", "wbr", "xmp"
 )
 
-# The root of a body that opens with markup (ROBO-isbpzgqn). After any
-# `<?...?>` and `<!--...-->` items, it is an html doctype, or a first start tag
-# whose local name (after an optional namespace prefix) is an HTML element
-# name. Any other doctype, or a root that is not HTML, is no match, so the
-# anywhere rule below stays off. Each item ends at its own closing marker.
+# The root of a body that opens with markup (ROBO-isbpzgqn). Before it, any
+# number of items are skipped: `<?...?>` declarations, comments (the abrupt
+# `<!-->` and `<!--->` too, and the `--!>` closer), doctypes of any kind, and
+# end tags. The root is then an html doctype, or a start tag whose local name
+# (after an optional namespace prefix, in any letter case) is an HTML element
+# name, or a custom element name: a letter, then a hyphen, and not one of the
+# reserved SVG and MathML names. svg and math are not HTML, so their roots
+# never count. A name must end in whitespace, `/` or `>`, so a root cut at the
+# window's end is not read. Each item ends at its own closing marker. Known
+# limit: an unclosed `<?php ...` before the root hides the root, as the PI item
+# needs its `?>`; the anywhere rule is then off.
 content_html_root_pattern <- paste0(
-  "(?i)^\\s*(?:(?:<\\?(?:(?!\\?>)[\\s\\S])*\\?>",
-  "|<!--(?:(?!-->)[\\s\\S])*-->)\\s*)*",
-  "(?:<!doctype\\s+html(?=[\\s>/]|\\z)",
+  "(?i)^\\s*(?:(?:",
+  "<\\?(?:(?!\\?>)[\\s\\S])*\\?>",
+  "|<!--(?:-?>|(?:(?!--!?>)[\\s\\S])*--!?>)",
+  "|<!doctype(?:(?!>)[\\s\\S])*>",
+  "|</(?:(?!>)[\\s\\S])*>",
+  ")\\s*)*",
+  "(?:<!doctype\\s+html(?=[\\s>/])",
   "|<(?:[a-z_][\\w.-]*:)?(?:",
   paste(content_html_element_names, collapse = "|"),
-  ")(?=[\\s/>]|\\z))"
+  ")(?=[\\s/>])",
+  "|<(?:[a-z_][\\w.-]*:)?(?!(?:",
+  "annotation-xml|color-profile|font-face(?:-src|-uri|-format|-name)?",
+  "|missing-glyph)(?=[\\s/>]))",
+  "[a-z][\\w.]*-[\\w.-]*(?=[\\s/>])",
+  ")"
 )
 
 # Anywhere in a window whose root is HTML: an HTML doctype or one of the

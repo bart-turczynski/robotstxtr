@@ -104,9 +104,10 @@
 #' and more than 10% of them, not valid UTF-8), `"html"` (a line starting
 #' with `<!doctype html`, `<html`, `<head` or `<body`, possibly after an
 #' `<?xml ...?>` or `<!-- ... -->` on that line; or a body starting with `<`
-#' whose root element is an HTML element or `<!doctype html`, and that holds
-#' `<!doctype html`, `<html`, `<head`, `<body`, `<script` or `<style` anywhere),
-#' `"xml"` (any other body starting with `<`, such as a feed or an
+#' whose root element, after any leading declarations, comments, doctypes and
+#' end tags, is an HTML or custom element (or is a `<!doctype html`), and that
+#' holds `<!doctype html`, `<html`, `<head`, `<body`, `<script` or `<style`
+#' anywhere), `"xml"` (any other body starting with `<`, such as a feed or an
 #' XML error), `"json"` (the body starts with a JSON object or array), or `NA`.
 #' The flag comes from the body alone, never from `content_type`, and changes
 #' nothing: the body is matched as it is either way.
