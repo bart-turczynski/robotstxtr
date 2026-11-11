@@ -84,7 +84,7 @@ means `unreachable_local` (§3a; schema revision `2026-11-11.1`, ROBO-jqwukcog).
 | `redirect_over_budget` | `terminal_redirect_reason = over_budget` | §3 engine exhaustion rule |
 | `transport_fail` | DNS/connect/TLS/timeout/reset/chunk (`transport_error_kind` set); never with a `safety_block_reason` | §4 network row |
 | `unreachable_local` | under `safety_level = crawler` only: an address-class refusal (`safety_block_reason` kept; no connection made; §3a) | §4 `unreachable_local` row (same cells as the network row) |
-| `safety_refused` | under `safety_level = strict`: any ssrfr refusal incl. HTTPS→HTTP downgrade; under `crawler`: URL-shape refusals only (`scheme`, `userinfo`, `port`, `parse`, `numeric-literal`, `malformed-address`) | never allow/deny; §3a (ADR 0001); sitemapr ADR-003 governs the guard |
+| `safety_refused` | refused for safety, reachability unknown. Under `safety_level = strict`: any ssrfr refusal incl. HTTPS→HTTP downgrade; under `crawler`: URL-shape refusals (`scheme`, `userinfo`, `port`, `parse`, `numeric-literal`, `malformed-address`) and the transition codes `6to4`, `teredo` (ROBO-aoslfvnx) | never allow/deny; §3a (ADR 0001); sitemapr ADR-003 governs the guard |
 | `not_applicable` | no robots evaluation applies (no body and no status to interpret) | `policy_status` / `matcher_status` = `not_evaluated`; `url_decision` absent |
 
 `evidence_status` is the ADR-009 §2 versioned set; `source_kind` (a separate fact) distinguishes where
@@ -141,15 +141,22 @@ A followed HTTPS→HTTP hop, anywhere in the chain, is reported as `redirect_dow
 `safety_level` is independent of `robots_policy_ruleset`. It decides what the fetch may do; the ruleset
 decides what an outcome means.
 
-| `safety_level` | HTTPS→HTTP redirect | address-class refusal | URL-shape refusal |
+| `safety_level` | HTTPS→HTTP redirect | address-class refusal | transition or URL-shape refusal |
 |---|---|---|---|
 | `strict` (default) | refused → `safety_refused` / `https_downgrade` | `safety_refused` | `safety_refused` |
 | `crawler` | followed as an ordinary hop | not dialed → `unreachable_local`, `safety_block_reason` kept | `safety_refused` |
 
 Address-class codes: `loopback`, `private`, `link-local`, `cloud-metadata`, `shared`, `unspecified`,
 `this-network`, `multicast`, `reserved`, `ipv4-mapped`, `ipv4-translated`, `ipv4-compatible`, `nat64`,
-`6to4`, `teredo`, `isatap`. URL-shape codes: `scheme`, `userinfo`, `port`, `parse`, `numeric-literal`,
-`malformed-address`. `fetch_allow_ranges` reopens the listed ranges at either level.
+`isatap`. Transition codes: `6to4`, `teredo`. URL-shape codes: `scheme`, `userinfo`, `port`, `parse`,
+`numeric-literal`, `malformed-address`. `fetch_allow_ranges` reopens the listed ranges at either level
+(it cannot reopen a transition code).
+
+ssrfr refuses every 6to4 (2002::/16) and Teredo (2001::/32) address whatever IPv4 it wraps, because its
+reachability is unknown, so such a refusal says nothing about whether the target is internal: `crawler`
+records it as `safety_refused`, not `unreachable_local`, even when the wrapped IPv4 is loopback
+(robotstxtr does not unwrap it). ISATAP stays address-class: ssrfr refuses it only under a non-global
+outer prefix or around a prohibited IPv4, both internal facts (ROBO-aoslfvnx).
 
 `crawler` follows downgrades (ROBO-lwdxzdhw) and records an address-class refusal as `unreachable_local`
 (ROBO-jqwukcog); the class of each ssrfr code is data in `R/acquire-map.R`. `fetch_allow_ranges` is recorded

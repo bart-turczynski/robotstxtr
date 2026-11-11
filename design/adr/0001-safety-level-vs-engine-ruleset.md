@@ -3,7 +3,7 @@ status: accepted
 date: 2026-11-05
 accepted: 2026-11-05
 tracking: ROBO-xdlzicrq
-amended: 2026-11-09 (ROBO-phfbpfiy, Google's window is 512,000 bytes, not 524,288)
+amended: 2026-11-09 (ROBO-phfbpfiy, Google's window is 512,000 bytes, not 524,288); 2026-11-11 (ROBO-aoslfvnx, 6to4 and Teredo leave the address class)
 ---
 
 # ADR 0001: The safety level and the engine ruleset are separate settings
@@ -117,18 +117,19 @@ trust. Under `strict`, sitemapr ADR-009 §3 holds unchanged.
   resolves to, an address-class refusal (`loopback`, `private`, `link-local`,
   `cloud-metadata`, `shared`, `unspecified`, `this-network`, `multicast`, `reserved`, and the
   IPv6 forms that embed one: `ipv4-mapped`, `ipv4-translated`, `ipv4-compatible`, `nat64`,
-  `6to4`, `teredo`, `isatap`) is never dialed. As before, no packet leaves the machine. The L0
+  `isatap`) is never dialed. As before, no packet leaves the machine. The L0
   record is unchanged from `strict`: `fetch_outcome = ssrf_blocked` and `safety_block_reason`
   set to the code. What changes is the `evidence_status` derived from it: a new value,
   **`unreachable_local`**, "not dialed: the address is internal, so a public crawler could not
   reach it either". It is neither `safety_refused` nor `transport_fail`.
 
   **Every `evidence_status` keeps one meaning at both levels.** `safety_refused` stays "refused
-  for safety, no crawler would" and `transport_fail` stays "a connection was tried and failed";
+  for safety; whether a public crawler could reach the target is not known" and
+  `transport_fail` stays "a connection was tried and failed";
   a row never carries `transport_fail` with a `safety_block_reason`. Today
   `source_evidence_status_v1()` tests `safety_block_reason` first and returns `safety_refused`
   whenever it is set. Under `crawler` that test becomes class-aware: an address-class code
-  returns `unreachable_local`, a URL-shape code `safety_refused`. The published invariant widens
+  returns `unreachable_local`, a URL-shape or transition code `safety_refused`. The published invariant widens
   from "`safety_block_reason` set ⇒ `safety_refused`" to "`safety_block_reason` set ⇒
   `safety_refused` or `unreachable_local`", and `unreachable_local` occurs under `crawler` only.
   Under `strict` every row reads exactly as today. A consumer that wants "the crawler could not
@@ -148,6 +149,18 @@ trust. Under `strict`, sitemapr ADR-009 §3 holds unchanged.
   `malformed-address`. They are refusals of how the URL is spelled, not of where it points, and
   no engine documents a behavior for them. `host-denied` and `range-denied` are still not
   admitted (robotstxtr sets no deny rules).
+- **6to4 and Teredo refusals stay `safety_refused` at both levels.** ssrfr refuses every
+  2002::/16 (`6to4`) and 2001::/32 (`teredo`) address whatever IPv4 it wraps: raddr leaves
+  their global reachability unknown, and no allow range reopens them. A refusal of
+  `2002:808:808::1` (8.8.8.8 inside) is therefore no statement that the target is internal,
+  and `unreachable_local` would be false. They are refused for safety with reachability
+  unknown, which is what `safety_refused` means. robotstxtr does not unwrap the IPv4 to tell
+  the cases apart, because classifying addresses is ssrfr's job; so a 6to4 literal around
+  loopback (`2002:7f00:1::1`) is `safety_refused` too. RFC 7526 §4 deprecates only anycast
+  6to4, so deprecation does not make such a target unreachable either. `isatap` stays in the
+  address class: ssrfr admits ISATAP under a global prefix around a routable IPv4 and refuses
+  it only under a non-global outer prefix or around a prohibited IPv4, both internal facts.
+  (Amended 2026-11-11, ROBO-aoslfvnx; slice 4 had classed all three as address codes.)
 
 ### 4. The hop budget stays one fetch setting
 
@@ -364,7 +377,7 @@ before then.
    | `http_protocol_error` | 1xx received, or malformed redirect (`no_location`/`loop`) | §3 terminal-reason handling |
    | `transport_fail` | DNS/connect/TLS/timeout/reset/chunk (`transport_error_kind` set); never with a `safety_block_reason` | §4 network row |
    | `unreachable_local` | under `safety_level = crawler` only: an address-class refusal (`safety_block_reason` kept; no connection made; §3a) | §4 `unreachable_local` row (same cells as the network row) |
-   | `safety_refused` | under `safety_level = strict`: any ssrfr refusal incl. HTTPS→HTTP downgrade; under `crawler`: URL-shape refusals only (`scheme`, `userinfo`, `port`, `parse`, `numeric-literal`, `malformed-address`) | never allow/deny; §3a (ADR 0001); sitemapr ADR-003 governs the guard |
+   | `safety_refused` | under `safety_level = strict`: any ssrfr refusal incl. HTTPS→HTTP downgrade; under `crawler`: URL-shape refusals (`scheme`, `userinfo`, `port`, `parse`, `numeric-literal`, `malformed-address`) and the transition codes `6to4`, `teredo` | never allow/deny; §3a (ADR 0001); sitemapr ADR-003 governs the guard |
 
    (`non_http_target` leaves the `http_protocol_error` trigger: the code has always made it
    `safety_refused` through `safety_block_reason = scheme`.)
@@ -404,15 +417,16 @@ before then.
    > `safety_level` is independent of `robots_policy_ruleset`. It decides what the fetch may
    > do; the ruleset decides what an outcome means.
    >
-   > | `safety_level` | HTTPS→HTTP redirect | address-class refusal | URL-shape refusal |
+   > | `safety_level` | HTTPS→HTTP redirect | address-class refusal | transition or URL-shape refusal |
    > |---|---|---|---|
    > | `strict` (default) | refused → `safety_refused` / `https_downgrade` | `safety_refused` | `safety_refused` |
    > | `crawler` | followed as an ordinary hop | not dialed → `unreachable_local`, `safety_block_reason` kept | `safety_refused` |
    >
    > Address-class codes: `loopback`, `private`, `link-local`, `cloud-metadata`, `shared`,
    > `unspecified`, `this-network`, `multicast`, `reserved`, `ipv4-mapped`, `ipv4-translated`,
-   > `ipv4-compatible`, `nat64`, `6to4`, `teredo`, `isatap`. URL-shape codes: `scheme`,
-   > `userinfo`, `port`, `parse`, `numeric-literal`, `malformed-address`.
+   > `ipv4-compatible`, `nat64`, `isatap`. Transition codes: `6to4`, `teredo` (refused whatever
+   > IPv4 they wrap, so reachability is unknown). URL-shape codes: `scheme`, `userinfo`, `port`,
+   > `parse`, `numeric-literal`, `malformed-address`.
    > `fetch_allow_ranges` reopens the listed ranges at either level.
 
 7. **§3, "Within budget" paragraph.** Append: "None of the engines conditions a redirect on its
@@ -474,6 +488,8 @@ acceptance test.
    `context_required`; `yandex` and `bing` resolve to `documentation_gap`; none to `allow` or
    `deny`. `as_legacy_robots_decisions_v1()` reports `ssrf_blocked`. URL-shape codes stay
    `safety_refused`. A test walks the vocabulary, so a new code fails until it is classed.
+   (Amended 2026-11-11, ROBO-aoslfvnx: `6to4` and `teredo` left the address class for a
+   `transition` class that is `safety_refused` at both levels; §3.)
 5. **`fetch_allow_ranges` replaces `ssrf_guard = FALSE`** (robotstxtr). Depends on 3 (its
    acceptance covers `crawler`). Acceptance: a listed range is fetched at both levels, and an
    unlisted one is not. The metadata names stay refused. `ssrf_guard = FALSE` still behaves as
