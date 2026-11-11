@@ -5,7 +5,8 @@
 #
 # Narrowing the audit to hard dependencies cleared five of the seven repos in
 # this fleet. It does NOT clear robotstxtr: `curl` is a genuine hard
-# dependency here, reached through ssrfr. The six advisories below name
+# dependency here, reached through ssrfr (which is why the audit's input is
+# resolved from the installed library: see oss_index_audit_targets()). The six advisories below name
 # libcurl version ranges that include CRAN's current `curl` 8.1.0: OSS Index
 # matches the R package's version against libcurl's, and the earliest fixed
 # libcurl in each range is 8.14.x or later, so no R package version clears
@@ -263,7 +264,55 @@ oss_index_allowlist_violations <- function(rows) {
   out
 }
 
-# Flatten an oysteR::audit_description() result to one row per reported
+# What the audit queries: the recursive Depends + Imports + LinkingTo closure
+# of `pkg` (the fields oysteR itself expands), resolved against `db`, without
+# base packages, R and `pkg` itself, one row per package with its version.
+#
+# `db` is `installed.packages()` in the live test, not CRAN's
+# `available.packages()`. oysteR's audit_description() expands dependencies
+# with `tools::package_dependencies()` and no `db`, which means the CRAN
+# index. ssrfr is not on CRAN (DESCRIPTION reaches it through Remotes), so
+# that expansion stops at ssrfr and never sees curl, pslr or raddr. Once
+# httr2 was dropped (0b78b5d) that took curl out of the audit, and rule B
+# failed on all six rows below for an audit that had stopped looking
+# (ROBO-jvcpjstv). The installed library is what the user's robotstxtr
+# actually loads, and it needs no network.
+#
+# A package the closure names but `db` lacks keeps its row with an NA
+# version, so the caller can fail on it instead of auditing less silently.
+oss_index_audit_targets <- function(pkg, db) {
+  priority <- db[, "Priority"]
+  base_pkgs <- rownames(db)[!is.na(priority) & priority == "base"]
+  closure <- tools::package_dependencies(
+    pkg,
+    db = db,
+    which = c("Depends", "Imports", "LinkingTo"),
+    recursive = TRUE
+  )[[1]]
+  deps <- sort(setdiff(unique(closure), c(base_pkgs, "R", pkg)))
+  data.frame(
+    package = deps,
+    version = unname(db[match(deps, rownames(db)), "Version"]),
+    stringsAsFactors = FALSE
+  )
+}
+
+# Packages the audit should have checked and did not: every target, and every
+# package an allow-list row names, that is absent from `audit$package` or
+# present only with no version (oysteR returns those rows unchecked). Run it
+# before rules A and B: a package missing from the audit satisfies rule A
+# vacuously and fails rule B for the wrong reason, which is how this file
+# came to report six live advisories as stale.
+oss_index_unaudited <- function(audit, targets, allowlist) {
+  wanted <- unique(c(
+    targets$package,
+    vapply(allowlist, function(row) row$package, character(1))
+  ))
+  seen <- as.character(audit$package)[!is.na(audit$version)]
+  setdiff(wanted, seen)
+}
+
+# Flatten an oysteR::audit() result to one row per reported
 # advisory. The `vulnerabilities` column is a list of per-package lists, empty
 # for a clean package, so the zero-advisory case has to survive unlist().
 oss_index_reported <- function(audit) {

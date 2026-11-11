@@ -109,6 +109,98 @@ test_that("the allow-list validator rejects rows that are not decisions", {
   )
 })
 
+# A fixture shaped like `installed.packages()`: robotstxtr imports ssrfr,
+# ssrfr imports curl and links a header-only package, and robotstxtr also
+# depends on a base package. It is the shape of the real closure since
+# 0b78b5d, in which curl is reachable only through ssrfr.
+oss_index_fixture_db <- function(drop = character()) {
+  rows <- list(
+    c("robotstxtr", "0.0.0.9000", NA, "R (>= 4.1), utils", "ssrfr", NA),
+    c("ssrfr", "1.0.0.9001", NA, NA, "curl (>= 7.0.0)", "hdronly"),
+    c("curl", "8.1.0", NA, NA, NA, NA),
+    c("hdronly", "1.2.3", NA, NA, NA, NA),
+    c("utils", "4.6.2", "base", NA, NA, NA)
+  )
+  db <- do.call(rbind, rows)
+  colnames(db) <- c(
+    "Package",
+    "Version",
+    "Priority",
+    "Depends",
+    "Imports",
+    "LinkingTo"
+  )
+  rownames(db) <- db[, "Package"]
+  db[!rownames(db) %in% drop, , drop = FALSE]
+}
+
+test_that("the audit targets are the installed hard-dependency closure", {
+  targets <- oss_index_audit_targets("robotstxtr", db = oss_index_fixture_db())
+
+  # curl is two hops away, through a package CRAN does not serve. The
+  # expansion has to be recursive and has to read the installed db.
+  expect_equal(
+    targets[order(targets$package), ],
+    data.frame(
+      package = c("curl", "hdronly", "ssrfr"),
+      version = c("8.1.0", "1.2.3", "1.0.0.9001"),
+      stringsAsFactors = FALSE
+    ),
+    ignore_attr = "row.names"
+  )
+
+  # Base packages and R itself are not audited.
+  expect_false(any(c("utils", "R", "robotstxtr") %in% targets$package))
+
+  # What a CRAN-only `available.packages()` amounted to: a db that cannot
+  # expand ssrfr. ssrfr is still named, as a direct import, but nothing it
+  # imports is, and it is reported as not installed rather than dropped.
+  blind <- oss_index_audit_targets(
+    "robotstxtr",
+    db = oss_index_fixture_db(drop = "ssrfr")
+  )
+  expect_false("curl" %in% blind$package)
+  expect_equal(blind$package[is.na(blind$version)], "ssrfr")
+})
+
+test_that("the coverage check names every package the audit did not see", {
+  targets <- oss_index_audit_targets("robotstxtr", db = oss_index_fixture_db())
+  curl_row <- list(list(package = "curl"))
+  audit <- function(package, version = rep("1", length(package))) {
+    data.frame(package = package, version = version, stringsAsFactors = FALSE)
+  }
+
+  expect_equal(
+    oss_index_unaudited(audit(c("ssrfr", "hdronly", "curl")), targets, curl_row),
+    character()
+  )
+  # The shape of this ticket: curl absent from the audit while allow-list
+  # rows name it.
+  expect_equal(
+    oss_index_unaudited(audit(c("ssrfr", "hdronly")), targets, curl_row),
+    "curl"
+  )
+  # An allow-listed package outside the closure is reported too, so a row can
+  # never be kept alive, or retired, by an audit that never looked.
+  expect_equal(
+    oss_index_unaudited(
+      audit(c("ssrfr", "hdronly", "curl")),
+      targets,
+      list(list(package = "openssl"))
+    ),
+    "openssl"
+  )
+  # A row with no version was not checked: oysteR returns it unaudited.
+  expect_equal(
+    oss_index_unaudited(
+      audit(c("ssrfr", "hdronly", "curl"), c("1", "1", NA)),
+      targets,
+      curl_row
+    ),
+    "curl"
+  )
+})
+
 test_that("hard dependencies report only allow-listed OSS Index advisories", {
   # The dedicated, credentialed audit job. A precondition it cannot meet is a
   # failure there, never a skip -- see the header.
