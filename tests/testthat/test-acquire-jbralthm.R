@@ -49,7 +49,8 @@ test_that("every ssrfr reason code has exactly one refusal-table row", {
   # unreachable_local; a row with none has no class.
   reasoned <- !is.na(admitted$safety_block_reason)
   expect_true(
-    all(admitted$class[reasoned] %in% c("address", "url_shape", "redirect")),
+    all(admitted$class[reasoned] %in%
+          c("address", "transition", "url_shape", "redirect")),
     info = toString(admitted$code[reasoned & is.na(admitted$class)])
   )
   expect_true(all(is.na(table$class[is.na(table$safety_block_reason)])))

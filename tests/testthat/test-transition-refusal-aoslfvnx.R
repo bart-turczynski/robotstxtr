@@ -1,6 +1,8 @@
 # ROBO-aoslfvnx: the evidence a crawler records for an IPv6 transition
-# literal ssrfr refuses. The real ssrfr classifies each literal
-# (helper-fake-ssrfr.R, fake_prepare_hop()); nothing is dialed.
+# literal ssrfr refuses. 6to4 and Teredo are `safety_refused` at both levels
+# (ADR 0001 section 3); ISATAP and NAT64 stay `unreachable_local` under
+# crawler. The real ssrfr classifies each literal (helper-fake-ssrfr.R,
+# fake_prepare_hop()); nothing is dialed.
 
 tr_public_6to4 <- "http://[2002:808:808::1]/x"
 tr_loopback_6to4 <- "http://[2002:7f00:1::1]/x"
@@ -41,7 +43,9 @@ test_that("ssrfr refuses each literal with the code these tests assume", {
   expect_true(is.na(tr_code("http://[2600::5efe:a83f:8110]/x")))
 })
 
-test_that("6to4 and Teredo targets are unreachable_local under crawler", {
+# ssrfr refuses 6to4 and Teredo whatever IPv4 they wrap (reachability
+# unknown), so calling 8.8.8.8 behind 2002::/16 internal would be false.
+test_that("6to4 and Teredo targets are safety_refused under crawler", {
   cases <- list(
     list(url = tr_public_6to4, code = "6to4"),
     list(url = tr_teredo, code = "teredo")
@@ -52,7 +56,7 @@ test_that("6to4 and Teredo targets are unreachable_local under crawler", {
         calls <- tr_local_target(case$url, on_hop = hop)
         e <- tr_evidence(calls, "crawler")
         label <- paste(case$code, "hop", hop)
-        expect_identical(e$evidence_status, "unreachable_local", info = label)
+        expect_identical(e$evidence_status, "safety_refused", info = label)
         expect_identical(e$safety_block_reason, case$code, info = label)
         expect_identical(e$legacy_fetch_outcome, "ssrf_blocked", info = label)
         expect_identical(calls$fetches, hop - 1L, info = label)
@@ -61,14 +65,21 @@ test_that("6to4 and Teredo targets are unreachable_local under crawler", {
   }
 })
 
-test_that("a 6to4 literal wrapping loopback is unreachable_local", {
+# Accepted consequence: robotstxtr does not unwrap the IPv4 itself, so a 6to4
+# literal around loopback is safety_refused too.
+test_that("a 6to4 literal wrapping loopback is safety_refused", {
   calls <- tr_local_target(tr_loopback_6to4)
   e <- tr_evidence(calls, "crawler")
-  expect_identical(e$evidence_status, "unreachable_local")
+  expect_identical(e$evidence_status, "safety_refused")
   expect_identical(e$safety_block_reason, "6to4")
 })
 
+# ssrfr refuses ISATAP only under a non-global prefix or around a prohibited
+# IPv4, both internal facts, so it keeps the address class.
 test_that("ISATAP and NAT64 refusals stay unreachable_local under crawler", {
+  classed <- acquire_address_class_reasons()
+  expect_true(all(c("isatap", "nat64") %in% classed))
+  expect_false(any(c("6to4", "teredo") %in% classed))
   cases <- list(
     list(url = tr_local_isatap, code = "isatap"),
     list(url = tr_local_nat64, code = "nat64")
