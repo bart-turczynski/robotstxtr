@@ -423,6 +423,24 @@ schema revision does not move. `robots_validate_url()` reads the two columns to
 give redirect, transport and safety outcomes their own diagnostic codes;
 `acquisition_failed` stays the code for an outcome no class covers.
 
+### Redirect hops in the legacy frame (ROBO-cscdbael)
+
+Every legacy `robots` frame gains a list column, `redirect_hops`, between
+`safety_block_reason` and `body`, under the same one-schema rule. Each element
+is the hop log of one source, with the name and shape of the v1 evidence
+column: a list with one entry per 3xx met, each a list of `from_url`
+(character), `status` (integer) and `location_target` (character, `NA` when
+the response named no target). The log also records a hop that was not
+followed (a refused downgrade under `strict`, the over-budget hop, a loop's
+closing hop, a refused scheme); the first `redirect_count` hops are the ones
+followed. `robots_fetch()` and `allowed_by_robots_url()` fill it from the
+fetch, `allowed_by_robots_text()` writes `list(list())` (no fetch took place),
+and `as_legacy_robots_decisions_v1()` copies the evidence's `redirect_hops`. No
+v1 enum or column changes, so the engine schema revision does not move.
+`robots_validate_url()` reads the followed hops to report an `https` to `http`
+redirect that `safety_level = "crawler"` followed as
+`redirect_downgrade_followed` (info), for a fetch that reached a body.
+
 ## Sibling compatibility
 
 The supported first-release ranges are:
