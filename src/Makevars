@@ -56,6 +56,11 @@ CXX_STD = CXX17
 .PHONY: all
 all: $(SHLIB)
 
+# The bindings that include the shared byte-helper header rebuild when it
+# changes. A prerequisite-only rule: the implicit .cpp.o rule still compiles.
+collector_binding.o matcher_binding.o yandex_matcher_binding.o \
+	bing_binding.o: binding_bytes.h
+
 BING_DEFS = \
 	-DROBOTSTXTBING_BUILDING_LIBRARY \
 	-DROBOTSTXTBING_LIBRARY_VERSION='"0.1.0"' \

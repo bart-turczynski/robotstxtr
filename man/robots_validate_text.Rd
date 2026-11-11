@@ -31,8 +31,11 @@ is not a claim of universal crawler behavior or complete RFC 9309 validity.
 
 \code{robots_txt} may be text or a raw vector. Raw input is useful when validating
 acquisition bytes that contain malformed UTF-8, a byte-order mark, or NUL
-bytes. Character input marked with \code{Encoding = "bytes"} is used verbatim;
-other character input is converted to UTF-8 once.
+bytes. Character input marked UTF-8 is used as written. Unmarked input (as
+\code{rawToChar()} gives) is taken as UTF-8 bytes as written when the session's
+native encoding is UTF-8 or ASCII (the C locale), and converted from the
+native encoding otherwise; input marked \code{"latin1"} is converted, and input
+marked \code{Encoding = "bytes"} is used verbatim.
 
 The result contains three typed data frames: \code{map} (the validation target),
 \code{documents} (one summary row per document), and \code{diagnostics} (zero or more
@@ -48,18 +51,28 @@ checks describe the Google-compatible parser; the package's Bing and Yandex
 matchers agree on both pattern effects (a pattern not led by \code{/} or \code{*}
 never matches, and \code{$} anchors only as the last character). The sitemap
 checks are syntax-only: no sitemap is fetched, which is the \code{sitemapr}
-package's job. \code{body_truncated} and the codes starting \code{acquisition_} come
-only from \code{\link[=robots_validate_url]{robots_validate_url()}}.
+package's job. \code{body_truncated} and the codes starting \code{acquisition_} or
+\code{redirect_} come only from \code{\link[=robots_validate_url]{robots_validate_url()}}; a \code{redirect_} row
+follows the body's own rows.
 
 \tabular{lll}{
 \strong{Code} \tab \strong{Severity} \tab \strong{Meaning} \cr
 \code{byte_order_mark} \tab warning \tab
 The document starts with a UTF-8 byte-order mark; the parser skips it.
 \cr
+\code{misplaced_byte_order_mark} \tab warning \tab
+A UTF-8 byte-order mark after the start of the file begins a line, so
+the parser reads it as part of the key and ignores that line's
+directive. A hidden User-agent line starts no group: the lines after
+it stay with the group before it until the next User-agent line. \cr
 \code{nul_byte} \tab error \tab
 A line holds NUL bytes, which can truncate parsing. \cr
 \code{invalid_utf8} \tab error \tab
-The document bytes are not well-formed UTF-8. \cr
+A line holds bytes that are not well-formed UTF-8 before the line's
+first \code{#}. \cr
+\code{invalid_utf8_comment} \tab warning \tab
+A line's bytes that are not well-formed UTF-8 all sit in its comment,
+after the first \code{#}; no rule changes. \cr
 \code{malformed_line} \tab error \tab
 An active line is not a key-value directive. \cr
 \code{line_too_long} \tab error \tab
@@ -68,12 +81,26 @@ A line exceeds the parser's 16,663-byte buffer and is truncated. \cr
 A directive without a colon, which the parser accepts. \cr
 \code{accepted_directive_typo} \tab warning \tab
 A directive name in an accepted typo spelling. \cr
+\code{accepted_directive_prefix} \tab warning \tab
+A key such as \code{DisallowAITraining} that only starts with
+\code{allow} or \code{disallow}, which the parser reads as that rule.
+\cr
 \code{unsupported_directive} \tab warning \tab
 A known directive this profile ignores, such as \code{crawl-delay}. \cr
+\code{content_signal_directive} \tab warning \tab
+A \code{Content-Signal} line, from an expired Internet-Draft that no
+crawler operator documents honoring; it counts as an unsupported
+directive. \cr
 \code{unknown_directive} \tab warning \tab
 A directive this profile does not recognize. \cr
 \code{empty_user_agent} \tab error \tab
 A User-agent line with an empty value. \cr
+\code{user_agent_cut} \tab warning \tab
+A User-agent value Google's matcher reads only up to its first
+character outside letters, \code{_} and \code{-}, such as
+\code{Foo Bot} or \code{Googlebot/2.1}; the message names the token
+read, or says it names no crawler (\code{*bot}). The Bing and Yandex
+matchers do not cut the value. \cr
 \code{rule_without_user_agent} \tab error \tab
 An Allow or Disallow in no group a non-empty User-agent opened: before
 any, or after an empty User-agent that follows a rule. \cr
@@ -81,8 +108,25 @@ any, or after an empty User-agent that follows a rule. \cr
 An empty Allow or Disallow value, which the matcher ignores. \cr
 \code{rule_missing_leading_slash} \tab warning \tab
 A pattern not led by \code{/} or \code{*}; it never matches. \cr
+\code{rule_cut_by_comment} \tab warning \tab
+A \code{#} with no space or tab before it starts a comment inside an
+Allow or Disallow value, cutting the rule at the \code{#}. A vertical
+tab or form feed before the \code{#} still counts as no space. \cr
 \code{rule_inner_dollar} \tab warning \tab
 A \code{$} before a pattern's end; it matches a literal \code{$}. \cr
+\code{rule_inner_whitespace} \tab warning \tab
+A pattern holds a space, tab, vertical tab or form feed; crawlers
+request URLs with it percent-encoded, so the rule never matches. \cr
+\code{rule_escaped_unreserved} \tab warning \tab
+A pattern percent-escapes an unreserved character, such as \code{\%7E}
+for \code{~}. Google matches only the escape, never the character,
+though RFC 9309 section 2.2.2 decodes it. One per rule line. \cr
+\code{rule_lowercase_escape} \tab warning \tab
+A pattern holds a lower-case percent-escape, such as \code{\%3c}.
+Google upper-cases the escape in a pattern but not in the URL, so a URL
+written with it never matches the rule; Bing upper-cases it too, and
+the package's Yandex matcher compares the pattern as written. One per
+rule line. \cr
 \code{empty_sitemap_value} \tab warning \tab
 A Sitemap line with an empty value. \cr
 \code{invalid_sitemap_url} \tab warning \tab
@@ -93,6 +137,25 @@ A Sitemap scheme other than \code{http}, \code{https} or \code{ftp}. \cr
 A named User-agent group lacks some \code{User-agent: *} rules, which
 its crawlers therefore do not obey. Anchored on the group's first
 User-agent line. Not reported for a body cut at \code{max_bytes}. \cr
+\code{ai_training_preference} \tab info \tab
+A User-agent line names the AI-training policy token
+\code{__usage_ai-training}; the message lists its group's own rules.
+One per group, on its first such line. \cr
+\code{ai_training_token_near_miss} \tab warning \tab
+A User-agent value close to the policy token that does not match it
+exactly, such as \code{__usage_ai_training} or
+\code{__usage_ai-training/1.0}. \cr
+\code{ai_training_group_extra_line} \tab warning \tab
+A directive such as \code{Crawl-delay} in a group that names only the
+policy token, before its last rule or anywhere in the file's last
+group; file-level Sitemap, Host and \code{Clean-param} lines are left
+out.
+\cr
+\code{ai_training_token_stacked} \tab warning \tab
+A policy-token User-agent line (\code{__usage_}, or a near miss)
+shares a group with \code{User-agent: *}, or with a crawler or other
+policy token from which a directive line separates it, so the group's
+rules reach them too. \cr
 \code{disallow_tied_by_allow} \tab warning \tab
 A Disallow never takes effect: an Allow with the identical pattern
 applies to the same crawlers and wins the tie. Anchored on the
@@ -104,10 +167,23 @@ repeat; the message names the earlier line. \cr
 \code{missing_user_agent} \tab error \tab
 Allow or Disallow rules exist but no line names a non-empty
 User-agent. \cr
+\code{html_body} \tab warning \tab
+The body looks like an HTML page, not a robots.txt; its lines are still
+read and reported one by one. \cr
 \code{no_rules} \tab info \tab
 The parser read no Allow or Disallow rule, so the document restricts
-nothing.
+nothing (see \code{rules_after_nul_removal}).
 Not reported for a body cut at \code{max_bytes}. \cr
+\code{rules_after_nul_removal} \tab warning \tab
+With the NUL bytes removed, as Google's matcher reads the body, it
+holds Allow or Disallow rules the parser, which ends a line at its
+first NUL, does not read. When the parser read no rule, every
+NUL-free rule is counted; UTF-16 text does this, and should be
+re-saved as UTF-8; reported in place of \code{no_rules}. Otherwise
+only grouped rules (after a User-agent line, as Google's matcher
+reads them) on lines the parser does not read as rules, or in a group
+the NUL changes, are counted; a value the NUL only shortens is not.
+Reported even for a body cut at \code{max_bytes}. \cr
 \code{body_truncated} \tab warning \tab
 The body exceeded \code{max_bytes}; only lines before the cut were read.
 \cr
@@ -126,8 +202,13 @@ A 429 Too Many Requests, with each engine's reading in
 A 5xx, with each engine's reading in \code{message}. \cr
 \code{acquisition_http_protocol} \tab error \tab
 A 1xx or a status outside 100 to 599. \cr
+\code{acquisition_http_other_2xx} \tab info \tab
+A 2xx other than 200, such as 203 or 204; the body is still validated.
+\code{message} names how Google, Yandex and Bing read the status. \cr
 \code{acquisition_limit_exceeded} \tab error \tab
-A 3xx body exceeded \code{max_bytes} and was refused whole. \cr
+A body with a 3xx status, an unknown status, or a 2xx whose libcurl and
+status-line statuses disagree exceeded \code{max_bytes} and was refused
+whole. \cr
 \code{acquisition_partial_response} \tab error \tab
 A partial HTTP response was rejected. \cr
 \code{acquisition_redirect_over_budget} \tab error \tab
@@ -144,6 +225,16 @@ no engine documents doing. \cr
 \code{acquisition_redirect_non_http} \tab error \tab
 A redirect to a scheme other than \code{http} or \code{https} was
 refused for safety. \cr
+\code{redirect_other_path} \tab info \tab
+The fetch redirected to another path on the same host, such as the
+home page; a warning when the page reached is HTML. \cr
+\code{redirect_same_site} \tab info \tab
+The fetch redirected to another host of the same registrable domain,
+such as \code{www} and the bare domain; a warning when the page
+reached is HTML. \cr
+\code{redirect_cross_site} \tab warning \tab
+The fetch redirected to another registrable domain, whose file is
+applied to this host. \cr
 \code{acquisition_transport_failed} \tab error \tab
 A timeout, TLS, network or malformed-response failure, with each
 engine's reading in
@@ -156,16 +247,60 @@ Any other outcome that left no body; the reason is in
 \code{message}.
 }
 
+For \code{accepted_directive_prefix}, Google's parser accepts any key that
+starts with \code{allow} or \code{disallow}, ignoring ASCII case, so
+\verb{DisallowAITraining: /} is read as \verb{Disallow: /} and blocks the group's
+crawlers. The Bing and Yandex matchers compare the whole field name and
+ignore the line, and RFC 9309's grammar (section 2.2) has only \code{allow} and
+\code{disallow} rule records, leaving other records to the crawler (section
+2.2.4). The message names the key as written; for a Disallow key it points
+to a separate \verb{User-agent: __usage_ai-training} group, not stacked under
+another User-agent line, as the AI-training opt-out.
+An accepted typo such as \code{Dissallow} is reported as
+\code{accepted_directive_typo} only.
+
 For \code{wildcard_rules_not_inherited}, a crawler obeys only the groups that
 name it (combined when several do) and ignores the \verb{User-agent: *} group,
 as RFC 9309 section 2.2.1 says. Each \code{*} Allow or Disallow is compared
-with the named crawler's rules by type and value; a trailing \code{*} is
-ignored (\verb{/x} equals \verb{/x*}, and \code{*} and \verb{/*} equal \code{/}), \code{$} is not, and
-empty values are left out. The message lists the missing \code{*} rules, ten at
-most. A crawler whose rules are all explicit allow-all (an empty
-\verb{Disallow:}, \verb{Allow: /}, \verb{Allow: /*} or \verb{Allow: *}) is not reported; an
-empty \verb{Allow:} is ignored, and a crawler whose groups have no other rule
-is reported.
+with the named crawler's rules by type and value, except that a \code{*} Allow
+matching every path is not listed, because the named group's own rules are
+what the crawler follows. Such an Allow is \code{/} with any \code{*}s after it, or a
+run of \code{*}s with an optional \code{/} before and an optional final \code{$} (\code{/},
+\verb{/*}, \code{*}, \verb{/*$}, \verb{*$}; \verb{/$} is not one). A trailing \code{*} is ignored (\verb{/x}
+equals \verb{/x*}, and \code{*} and \verb{/*} equal \code{/}), \code{$} is not, and empty values are
+left out. The message lists the missing \code{*} rules, ten at most. A crawler
+whose rules are all explicit allow-all (an empty \verb{Disallow:} or an
+every-path \code{Allow}, as above) is not reported; an empty \verb{Allow:} is ignored,
+and a crawler whose groups have no other rule is reported.
+
+The \code{ai_training_} codes follow
+draft-kelley-aipref-training-preference-signal-00 (dated 2026-10-30), an
+Internet-Draft: a \verb{User-agent: __usage_ai-training} group states an
+AI-training preference, a disallowed path one against training on it and
+an allowed path one in favor. The draft matches the token exactly, apart
+from ASCII case, and a \verb{User-agent: *} group never applies to it, so the
+token is never reported as \code{wildcard_rules_not_inherited}, nor is a value
+Google's matcher reads as the token (\verb{__usage_ai-training/1.0}). A near
+miss is a value whose leading run of letters, \verb{_} and \code{-}, with the \verb{_}
+and \code{-} removed, is \code{usageaitraining} in any case. The Google and Yandex
+parsers join User-agent lines that no Allow or Disallow line separates
+into one group; the Bing parser joins them only across blank and comment
+lines and ends the group at any other directive
+(\code{design/engine-disagreements.md} classes 1 and 1b). So a training
+opt-out after a \code{*} group that holds no rule can become a Disallow for
+every crawler, and \code{ai_training_token_stacked} says so, naming which
+parsers join the lines. Another policy token or crawler a directive line
+separates from the token is reported too. Blank and comment lines
+separate nothing, and the draft lets a group mix tokens, so consecutive
+or comment-headed User-agent lines that name crawlers stay silent. A
+line after a token group's last rule may head the next group, so
+\code{ai_training_group_extra_line} leaves it out unless the group is the
+file's last. A key such as \code{DisallowAITraining} is
+\code{accepted_directive_prefix}. A body cut at \code{max_bytes} is checked, and
+the info then says the lines past the cut were not read; a document
+holding a NUL byte gets none of these codes.
+Which crawler operators read the token, and from when, is recorded with
+dates in \code{design/engine-profiles.md} section 7a.
 
 For \code{disallow_tied_by_allow}, an Allow and a Disallow with the same
 pattern match the same paths with the same priority, and Allow wins the
@@ -192,7 +327,7 @@ User-agent line from joining its group.
 
 A document holding a NUL byte gets none of \code{wildcard_rules_not_inherited},
 \code{disallow_tied_by_allow} or \code{duplicate_rule}, because the parser stops a
-value at the NUL while the matchers drop it and read on.
+value at the NUL while Google's matcher drops it and reads on.
 }
 
 \examples{

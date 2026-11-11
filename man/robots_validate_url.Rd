@@ -64,9 +64,10 @@ RFC 9309 section 2.5 allows a crawler to parse. The document row reports
 the cut with \code{body_truncated} and \code{limit_exceeded} both \code{TRUE} and
 \code{final_newline = NA} (the file's end was never read), \code{byte_size} is the
 stored size, and a warning diagnostic with code \code{body_truncated} says most
-of the file may not have been validated. A 3xx body over
-\code{max_bytes} is refused whole and reported as \code{acquisition_limit_exceeded},
-and a 4xx or 5xx keeps its status outcome whatever its body size.
+of the file may not have been validated. A body over \code{max_bytes} with a 3xx
+status, an unknown status, or a 2xx whose libcurl and status-line statuses
+disagree is refused whole and reported as \code{acquisition_limit_exceeded}, and a
+4xx or 5xx keeps its status outcome whatever its body size.
 }
 \details{
 A status that leaves no body gets a code for its class (404 and 410
@@ -76,7 +77,11 @@ A status that leaves no body gets a code for its class (404 and 410
 Yandex and Bing may do with it, and any \code{Retry-After} delay; the policy
 behind it is in \code{\link[=robots_engine_contract_v1]{robots_engine_contract_v1()}}. The document stays
 \code{"not_validated"}, so an \code{acquisition_http_4xx} row (a 4xx other than 404,
-410 and 429) has \code{warning_count} 1 and \code{error_count} 0.
+410 and 429) has \code{warning_count} 1 and \code{error_count} 0. A 2xx other than 200
+(203 or 204, say) keeps its body, which is validated as a 200's is, and also
+gets \code{acquisition_http_other_2xx}, an info whose message names how Google,
+Yandex and Bing read that status. A 206 is a partial response with no body,
+so it keeps \code{acquisition_partial_response}.
 
 A redirect, transport or safety outcome gets a code of its own too, read
 from the source row's \code{terminal_redirect_reason} and \code{safety_block_reason}
@@ -89,6 +94,22 @@ failure) and
 Google, Yandex and Bing may do, or says that an engine's behavior is not
 documented. A refusal is robotstxtr's own safety choice, so its message
 gives no engine verdict for it.
+
+A fetch that succeeded after redirecting away from the robots.txt URL is
+reported beside the body's own diagnostics, from the source row's
+\code{robots_url}, \code{effective_url} and \code{content_flag}: \code{redirect_other_path}
+(same host, another path; info, or a warning when the page reached is
+HTML), \code{redirect_same_site} (another host of the same registrable domain;
+info, or a warning when the page reached is HTML) and
+\code{redirect_cross_site} (another registrable domain; warning). A
+change of scheme or port alone, such as \code{http} to \code{https}, is not
+reported. The registrable domain comes from the Public Suffix List
+through \code{rurl::get_domain()}, so \code{a.example.co.uk} and \code{b.example.co.uk}
+are one site; an IP literal, or a host with no registrable domain, is
+compared whole. RFC 9309 section 2.3.1.2 and Yandex document applying
+the file reached to the requested host, Google is inferred to, and Bing
+does not document it; when the page reached is HTML, the message says
+the robots.txt is effectively missing. The fetch itself is unchanged.
 
 This function validates the acquired robots.txt document. It does not answer
 whether any target URL is allowed; use \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} for that

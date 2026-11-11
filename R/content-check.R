@@ -5,7 +5,9 @@
 # as before, and no allow or disallow decision depends on the flag.
 #
 # The flag comes from the body alone. The response's Content-Type is reported
-# beside it, unread here, so a caller can compare the two.
+# beside it, unread here, so a caller can compare the two. The flag is read on
+# fetch rows and by the validator, whose `html_body` warning is its "html"
+# answer (ROBO-ccfsanhq).
 #
 # The closed vocabulary, first match wins:
 #
@@ -20,9 +22,13 @@
 #   letter case, possibly after XML declarations or processing instructions
 #   (`<?...?>`) and markup comments (`<!--...-->`) that each close on their
 #   own line. A `<` inside a robots.txt comment line never starts a line.
+#   Or the first non-whitespace byte is `<` and `<!doctype html`, `<html`,
+#   `<head`, `<body`, `<script` or `<style` appears anywhere in the window,
+#   as a minified page puts them mid-line (ROBO-qquftxcx). `<title`, `<link`
+#   and `<meta` are left out: RSS and Atom feeds use them.
 # - "xml": the first non-whitespace byte is `<` (an XML declaration, an
 #   element such as an S3 `<Error>`, a markup comment, or HTML tag soup with
-#   none of the four markers above). No robots.txt line starts with `<`.
+#   none of the six markers above). No robots.txt line starts with `<`.
 # - "json": the first non-whitespace byte opens a JSON object (`{` then `"`
 #   or `}`) or array (`[` then a JSON value or `]`).
 # - NA: none of these, an empty body, or no body.
@@ -54,6 +60,9 @@ robots_content_flag <- function(body) {
     return("html")
   }
   if (grepl("^\\s*<", text, perl = TRUE, useBytes = TRUE)) {
+    if (grepl(content_html_tag_pattern, text, perl = TRUE, useBytes = TRUE)) {
+      return("html")
+    }
     return("xml")
   }
   if (grepl(content_json_pattern, text, perl = TRUE, useBytes = TRUE)) {
@@ -71,6 +80,12 @@ content_html_pattern <- paste0(
   "(?:(?:<\\?[^\\r\\n]*?\\?>|<!--[^\\r\\n]*?-->)\\s*)*",
   "<(!doctype\\s+html|html|head|body)(?=[\\s>/]|$)"
 )
+
+# Anywhere in a window that opens with markup: an HTML doctype or one of the
+# document, script or style tags, followed by whitespace, `>`, `/` or the
+# window's end, so `<header>` or `<scripts>` does not count.
+content_html_tag_pattern <-
+  "(?i)<(!doctype\\s+html|html|head|body|script|style)(?=[\\s>/]|\\z)"
 
 content_json_pattern <-
   "^\\s*(\\{\\s*[\"}]|\\[\\s*([\\[{\"\\]0-9-]|true|false|null))"

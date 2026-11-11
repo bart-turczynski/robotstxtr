@@ -68,8 +68,9 @@
 #' short is never read as a shorter rule. A cut body with no line break yields
 #' no rules. `body` and `body_size` keep every stored byte.
 #' A 4xx or 5xx keeps its status outcome whatever its body size, with no
-#' stored body. A 3xx whose body is over the limit ends as `body_too_large` and
-#' is not followed, because \pkg{ssrfr} keeps no `Location` for it.
+#' stored body. A body over the limit with a 3xx status, an unknown status, or a
+#' 2xx whose libcurl and status-line statuses disagree ends as `body_too_large`;
+#' a 3xx is not followed, because \pkg{ssrfr} keeps no `Location` for it.
 #'
 #' The response header may take up to 64 KiB and 256 fields per hop; a header
 #' over either limit is a `network_error`.
@@ -88,11 +89,12 @@
 #' `NA` in both columns means the delay is not available, not that none was
 #' requested. That is the case when the final response has no `Retry-After`,
 #' and also when the fetch ends without a usable final response: a refusal, a
-#' transport failure, a redirect error, or a 3xx body over `max_bytes`. A 4xx or
-#' 5xx whose body exceeds `max_bytes` keeps its status and outcome, but its
-#' headers are not available, so its `Retry-After` is `NA` even when the
-#' server sent one. `robots_fetch()` never retries: honoring the delay is the
-#' caller's choice.
+#' transport failure, a redirect error, or a body over `max_bytes` with a 3xx
+#' status, an unknown status, or a 2xx whose libcurl and status-line statuses
+#' disagree. A 4xx or 5xx whose body exceeds `max_bytes` keeps its status and
+#' outcome, but its headers are not available, so its `Retry-After` is `NA`
+#' even when the server sent one. `robots_fetch()` never retries: honoring the
+#' delay is the caller's choice.
 #'
 #' Each source row also keeps the final response's `Content-Type` field value
 #' as `content_type`, exactly as received (`NA` when absent or when there is
@@ -100,8 +102,10 @@
 #' 4096 bytes of a stored body: `"binary"` (a NUL byte, or at least 8 bytes,
 #' and more than 10% of them, not valid UTF-8), `"html"` (a line starting
 #' with `<!doctype html`, `<html`, `<head` or `<body`, possibly after an
-#' `<?xml ...?>` or `<!-- ... -->` on that line), `"xml"` (the body starts
-#' with `<`), `"json"` (the body starts with a JSON object or array), or `NA`.
+#' `<?xml ...?>` or `<!-- ... -->` on that line; or a body starting with `<`
+#' that holds `<!doctype html`, `<html`, `<head`, `<body`, `<script` or
+#' `<style` anywhere), `"xml"` (any other body starting with `<`), `"json"`
+#' (the body starts with a JSON object or array), or `NA`.
 #' The flag comes from the body alone, never from `content_type`, and changes
 #' nothing: the body is matched as it is either way.
 #'

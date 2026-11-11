@@ -2,7 +2,7 @@
 
 vc_codes <- c(
   "invalid_sitemap_url", "unsupported_sitemap_scheme",
-  "rule_missing_leading_slash", "rule_inner_dollar"
+  "rule_missing_leading_slash", "rule_inner_dollar", "rule_inner_whitespace"
 )
 
 vc_validate <- function(line) {
@@ -105,6 +105,99 @@ test_that("an inner '$' is rule_inner_dollar", {
     "Disallow: private$x",
     c("rule_missing_leading_slash", "rule_inner_dollar"), "disallow"
   )
+})
+
+test_that("a space, tab, VT or FF inside a rule is rule_inner_whitespace", {
+  # ROBO-dlgeqluf: an interior whitespace byte matches no percent-encoded URL,
+  # so the rule never matches
+  expect_value_codes("Disallow: /a b", "rule_inner_whitespace", "disallow")
+  expect_value_codes("Allow: /a b", "rule_inner_whitespace", "allow")
+  expect_value_codes("Disallow: /a\tb", "rule_inner_whitespace", "disallow")
+  expect_value_codes("Disallow: /a\vb", "rule_inner_whitespace", "disallow")
+  expect_value_codes("Disallow: /a\fb", "rule_inner_whitespace", "disallow")
+  x <- vc_validate("Disallow: /a b")
+  expect_identical(
+    x$diagnostics$message,
+    paste0(
+      "Pattern holds a raw space or other whitespace; crawlers request it ",
+      "percent-encoded (a space is %20), so this rule matches no URL they ",
+      "send."
+    )
+  )
+})
+
+test_that("a whitespace finding keeps the other findings on its rule", {
+  expect_value_codes(
+    "Disallow: private b",
+    c("rule_missing_leading_slash", "rule_inner_whitespace"), "disallow"
+  )
+  expect_value_codes(
+    "Disallow: /a$ b",
+    c("rule_inner_dollar", "rule_inner_whitespace"), "disallow"
+  )
+  # The parser escapes the 'é' to %C3%A9 before the check reads the value.
+  expect_value_codes(
+    "Disallow: /é b", "rule_inner_whitespace", "disallow"
+  )
+})
+
+test_that("a raw space beside malformed bytes is checked, not an error", {
+  body <- c(charToRaw("user-agent: *\nDisallow: /a"), as.raw(0xff),
+            charToRaw(" b\nallow: /\n"))
+  x <- expect_no_error(robots_validate_text(body))
+  expect_true(all(
+    c("invalid_utf8", "rule_inner_whitespace") %in% x$diagnostics$code
+  ))
+  text <- rawToChar(body)
+  Encoding(text) <- "bytes"
+  y <- expect_no_error(robots_validate_text(text))
+  expect_identical(x$diagnostics, y$diagnostics)
+})
+
+test_that("a space after a NUL is not read by the parser", {
+  # The value stops at the NUL, so the space behind it is never checked.
+  body <- c(charToRaw("user-agent: *\nDisallow: /a"), as.raw(0),
+            charToRaw(" b\nallow: /\n"))
+  x <- expect_no_error(robots_validate_text(body))
+  expect_true("nul_byte" %in% x$diagnostics$code)
+  expect_false("rule_inner_whitespace" %in% x$diagnostics$code)
+})
+
+test_that("a raw space in a line past the parser's buffer is still checked", {
+  long <- sprintf("user-agent: *\ndisallow: /a b%s\n", strrep("x", 17000L))
+  y <- expect_no_error(robots_validate_text(long))
+  expect_identical(
+    y$diagnostics$code, c("line_too_long", "rule_inner_whitespace")
+  )
+})
+
+for (locale in readLines(test_path("fixtures", "case-folding-locales.txt"))) {
+  test_that(paste("a rule's whitespace check is byte-based under", locale), {
+    old <- Sys.getlocale("LC_CTYPE")
+    on.exit(Sys.setlocale("LC_CTYPE", old), add = TRUE)
+    set <- suppressWarnings(Sys.setlocale("LC_CTYPE", locale))
+    skip_if_not(identical(set, locale), paste(locale, "is not available"))
+    expect_value_codes("Disallow: /a b", "rule_inner_whitespace", "disallow")
+  })
+}
+
+test_that("a value trimmed or escaped to a clean pattern draws nothing", {
+  # The parser trims the edges of a value and cuts a comment, so these values
+  # are clean; %20 is an escaped space, not a raw one.
+  for (line in c(
+    "Disallow: /a%20b", "Disallow: /a #comment", "Disallow: /a ",
+    "Disallow:  /a", "Disallow: /a\t", "Disallow: /a\v", "Disallow: /a\f"
+  )) {
+    x <- vc_validate(line)
+    expect_identical(nrow(x$diagnostics), 0L, label = line)
+  }
+})
+
+test_that("a User-agent or Sitemap value with a space is no rule", {
+  for (line in c("User-agent: Foo Bot", "Sitemap: https://a.example/x y")) {
+    x <- vc_validate(line)
+    expect_false("rule_inner_whitespace" %in% x$diagnostics$code, label = line)
+  }
 })
 
 test_that("well-formed patterns stay clean of the value checks", {

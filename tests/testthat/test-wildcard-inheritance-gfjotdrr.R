@@ -211,9 +211,14 @@ test_that("rule values in the message show control bytes escaped", {
   body <- c(charToRaw("User-agent: *\nDisallow: /a"), as.raw(c(0x01, 0x1b)),
             charToRaw("[31mb\tc\nUser-agent: Bingbot\nDisallow: /x\n"))
   rows <- robots_validate_text(body)$diagnostics
-  expect_identical(rows$code, "wildcard_rules_not_inherited")
+  # The tab is inside the value, so rule_inner_whitespace (ROBO-dlgeqluf)
+  # flags the line too, ahead of the group check.
+  expect_identical(
+    rows$code, c("rule_inner_whitespace", "wildcard_rules_not_inherited")
+  )
   expect_match(rows$message, "^[ -~]*$")
-  expect_match(rows$message, "Disallow: /a\\x01\\x1B[31mb\\tc (line 2)",
+  wildcard <- rows[rows$code == "wildcard_rules_not_inherited", , drop = FALSE]
+  expect_match(wildcard$message, "Disallow: /a\\x01\\x1B[31mb\\tc (line 2)",
                fixed = TRUE)
 })
 
@@ -250,12 +255,12 @@ test_that("a latin1 agent name is cut where the matcher cuts it", {
 test_that("an explicit allow-all group is exempt", {
   for (rules in list("Disallow:", "Allow: /", c("Disallow:", "Allow: /"),
                      "Allow: /*", "Allow: /**", "Allow: *", "Allow: **",
-                     c("Disallow:", "Allow:"))) {
+                     "Allow: /*$", "Allow: *$", c("Disallow:", "Allow:"))) {
     body <- wi_lines("User-agent: *", "Disallow: /a", "User-agent: Bingbot",
                      rules)
     expect_identical(nrow(wi_rows(body)), 0L, label = body)
   }
-  for (rules in list("Allow:", "Allow: /$", "Allow: *$", "Allow: /*$",
+  for (rules in list("Allow:", "Allow: /$", "Allow: /*$*", "Allow: *$*",
                      c("Allow:", "Disallow: /z"))) {
     body <- wi_lines("User-agent: *", "Disallow: /a", "User-agent: Bingbot",
                      rules)
@@ -366,7 +371,7 @@ test_that("the check sits beside no_rules without overlapping it", {
 })
 
 test_that("a NUL inside a * rule skips the group checks", {
-  # The parser reads `/a`, the matchers `/ab` (ROBO-fdhmlvwm).
+  # The parser reads `/a`, Google's matcher `/ab` (ROBO-fdhmlvwm).
   body <- c(charToRaw("User-agent: *\nDisallow: /a"), as.raw(0),
             charToRaw("b\nUser-agent: Bingbot\nDisallow: /x\n"))
   x <- robots_validate_text(body)
@@ -383,6 +388,94 @@ test_that("a large document keeps every message capped", {
     expect_length(item$missing, 500L)
     expect_match(item$message, ", and 490 more.", fixed = TRUE)
   }
+})
+
+test_that("a * group's blanket Allow is not listed as lost (ROBO-gkuuwbgc)", {
+  # A `*` Allow matching every path is not listed, because the named group's
+  # own rules are what the crawler follows (the tie case is below).
+  rows <- wi_rows(wi_lines(
+    "User-agent: *", "Allow: /", "User-agent: ExampleBot",
+    "Disallow: /private/"
+  ))
+  expect_identical(nrow(rows), 0L)
+  for (value in c("Allow: /*", "Allow: /**", "Allow: *", "Allow: **",
+                  "Allow: /*$", "Allow: *$", "Allow: /**$")) {
+    body <- wi_lines("User-agent: *", value, "User-agent: ExampleBot",
+                     "Disallow: /private/")
+    expect_identical(nrow(wi_rows(body)), 0L, label = body)
+  }
+  # An empty Allow in the named group changes nothing, so nothing is listed.
+  rows <- wi_rows(wi_lines("User-agent: *", "Allow: /",
+                           "User-agent: ExampleBot", "Allow:"))
+  expect_identical(nrow(rows), 0L)
+  # `/$` matches only `/`, so it is still compared.
+  body <- wi_lines("User-agent: *", "Allow: /$", "User-agent: ExampleBot",
+                   "Disallow: /private/")
+  rows <- wi_rows(body)
+  expect_identical(nrow(rows), 1L)
+  expect_match(rows$message, "Allow: /$ (line 2).", fixed = TRUE)
+  # A `$` before the end is literal, so these match only paths containing `$`.
+  for (value in c("Allow: /*$*", "Allow: *$*")) {
+    body <- wi_lines("User-agent: *", value, "User-agent: ExampleBot",
+                     "Disallow: /private/")
+    rows <- wi_rows(body)
+    expect_identical(nrow(rows), 1L, label = body)
+    expect_match(rows$message, paste0(value, " (line 2)."), fixed = TRUE,
+                 label = body)
+  }
+})
+
+test_that("a named group whose only rule is a $-anchored every-path Allow", {
+  # Exempt like `Allow: /`: the group's own rules are what it follows.
+  body <- wi_lines("User-agent: *", "Disallow: /x", "User-agent: ExampleBot",
+                   "Allow: /*$")
+  expect_identical(nrow(wi_rows(body)), 0L)
+  # `/*$*` is not every path, so the group is not exempt.
+  body <- wi_lines("User-agent: *", "Disallow: /x", "User-agent: ExampleBot",
+                   "Allow: /*$*")
+  expect_identical(nrow(wi_rows(body)), 1L)
+})
+
+test_that("a named Disallow: / keeps a * blanket Allow silent", {
+  # Inherited, `Allow: /` would win the tie with `Disallow: /` and open every
+  # path. ExampleBot does not inherit it, so its own block holds: nothing is
+  # listed and the path stays blocked.
+  for (value in c("Allow: /", "Allow: /*$")) {
+    body <- wi_lines("User-agent: *", value, "User-agent: ExampleBot",
+                     "Disallow: /")
+    expect_identical(nrow(wi_rows(body)), 0L, label = body)
+    x <- allowed_by_robots_text(body, "https://x.com/abc", "ExampleBot")
+    expect_false(x$results$allowed, label = body)
+  }
+})
+
+test_that("a real * rule beside a blanket * Allow is still listed", {
+  body <- wi_lines("User-agent: *", "Allow: /", "Disallow: /tmp/",
+                   "User-agent: ExampleBot", "Disallow: /private/")
+  rows <- wi_rows(body)
+  expect_identical(rows$line, 4L)
+  expect_identical(rows$message, paste0(
+    "ExampleBot obeys only this group, so this `User-agent: *` rule ",
+    "does not apply to it: Disallow: /tmp/ (line 3).", wi_tail
+  ))
+  found <- wi_found(
+    "User-agent: *", "Allow: /", "Disallow: /tmp/",
+    "User-agent: ExampleBot", "Disallow: /private/"
+  )
+  expect_length(found, 1L)
+  expect_identical(found[[1L]]$missing, 3L)
+})
+
+test_that("a real * Allow exception beside a blanket * Allow is listed", {
+  rows <- wi_rows(wi_lines(
+    "User-agent: *", "Allow: /", "Disallow: /a", "Allow: /a/b",
+    "User-agent: ExampleBot", "Disallow: /a"
+  ))
+  expect_identical(rows$line, 5L)
+  expect_match(rows$message, paste0(
+    "so this `User-agent: *` rule does not apply to it: Allow: /a/b ",
+    "(line 4)."
+  ), fixed = TRUE)
 })
 
 for (locale in readLines(test_path("fixtures", "case-folding-locales.txt"))) {

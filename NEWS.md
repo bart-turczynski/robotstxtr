@@ -1,5 +1,43 @@
 # robotstxtr (development version)
 
+* `robots_fetch()`'s `content_flag` and the `html_body` warning now catch an HTML page opening with inline script or style, or cut at `max_bytes` on its first line (ROBO-qquftxcx).
+
+* `robots_validate_text()` now warns `rules_after_nul_removal` when NUL bytes hide rules from its parser that Google's matcher reads, even beside other rules (ROBO-ctdkqawi).
+
+* `robots_validate_text()` and `robots_validate_url()` now take time linear in the number of diagnostics (ROBO-dbvmxcfw).
+
+* The v1 `google` matcher parses each distinct robots.txt once per call, not once per URL (ROBO-iooslxvj).
+
+* `robots_validate_text()` recognizes the draft aipref `__usage_ai-training` token: an info, warnings on near misses, unusable lines and stacked groups, and no `wildcard_rules_not_inherited` (ROBO-kzyfejcv).
+
+* `robots_validate_text()` and `robots_validate_url()` warn, as `rule_lowercase_escape`, on a lower-case percent-escape in an Allow or Disallow pattern, which Google matches only in upper case (ROBO-kormmfyg).
+
+* `robots_validate_url()` notes a 2xx status other than 200, such as 203, with an info `acquisition_http_other_2xx` naming how Google, Yandex and Bing read it (ROBO-yvhqvthd).
+
+* `robots_validate_text()` reports `rules_after_nul_removal` instead of `no_rules` when rules appear only once NUL bytes are dropped, as in UTF-16 files (RFC 9309 §2.3) (ROBO-igrkabdb).
+
+* `robots_validate_text()` and `robots_validate_url()` warn, as `rule_inner_whitespace`, on whitespace inside an Allow or Disallow pattern, which matches no request URL (RFC 9309 §2.2) (ROBO-dlgeqluf).
+
+* `robots_validate_url()` reports a robots.txt fetch that redirected to another path, host or site (RFC 9309 §2.3.1.2) (ROBO-gokbvzcb).
+
+* `robots_validate_text()` and `robots_validate_url()` report `invalid_utf8` on each line holding the bytes, and bytes only a comment holds as the new `invalid_utf8_comment` warning (RFC 9309 §2.3) (ROBO-sniltuap).
+
+* `robots_validate_text()` reports a `Content-Signal` line as `content_signal_directive`, not `unsupported_directive`: an expired draft no crawler documents honoring (ROBO-fqkgreev).
+
+* `robots_validate_text()` warns `rule_cut_by_comment` when a `#` with no space or tab before it starts a comment inside an Allow or Disallow value, cutting the rule there (ROBO-gjhpykcj).
+
+* `robots_validate_text()` and `robots_validate_url()` warn `user_agent_cut` when a non-global User-agent value holds a character outside letters, `_` and `-`, naming the token Google's matcher reads (RFC 9309 §2.2.1) (ROBO-zvhrayhx).
+
+* `robots_validate_text()` and `robots_validate_url()` warn (`accepted_directive_prefix`) on a key such as `DisallowAITraining`, which Google reads as Disallow by prefix (ROBO-xglcoagv).
+
+* `robots_validate_text()` and `robots_validate_url()` warn with `misplaced_byte_order_mark` on a byte-order mark after the start of the file, which hides the directive on its line (ROBO-atkmqcov).
+
+* `robots_validate_text()` and `robots_validate_url()` warn, as `rule_escaped_unreserved`, on a rule that percent-escapes an unreserved character such as `%7E`, which Google never matches against `~` (RFC 9309 §2.2.2) (ROBO-gaczsrgj).
+
+* `robots_validate_text()` and `robots_validate_url()` warn with `html_body` when the body looks like an HTML page, not a robots.txt (ROBO-ccfsanhq).
+
+* Text entry points no longer alter an unmarked non-ASCII `robots_txt` under `LC_ALL=C`; it is read as UTF-8, as in a UTF-8 locale (ROBO-tipzbglv).
+
 * The `robots` frame of `robots_fetch()` and `allowed_by_robots_*()` gains `terminal_redirect_reason` and `safety_block_reason`; `robots_validate_url()` explains redirect, transport and safety outcomes per engine with their own codes instead of `acquisition_failed` (ROBO-bsloeclp).
 
 * Under the v1 `google` ruleset and matcher backend, a robots.txt cut at `max_bytes` with at least 512,000 bytes stored is now matched on its first 512,000 bytes instead of resolving `incomplete_evidence` (ROBO-ptibdnvy).

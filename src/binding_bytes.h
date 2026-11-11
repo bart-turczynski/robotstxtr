@@ -1,5 +1,6 @@
 // Byte transport shared by the package's own cpp11 bindings (ROBO-iwmtdutk):
-// collector_binding.cpp (Google), yandex_matcher_binding.cpp and
+// collector_binding.cpp and matcher_binding.cpp (Google; the latter for the
+// batch's raw URL targets, ROBO-iooslxvj), yandex_matcher_binding.cpp and
 // bing_binding.cpp.
 //
 // This header is NOT part of any vendored upstream snapshot; it is the R

@@ -121,8 +121,8 @@ test_that("values compare in the parser's canonical form", {
   )
   x <- robots_validate_text(latin1)
   expect_identical(x$diagnostics$code,
-                   c("invalid_utf8", "disallow_tied_by_allow"))
-  expect_identical(x$diagnostics$line, c(NA_integer_, 3L))
+                   c("invalid_utf8", "invalid_utf8", "disallow_tied_by_allow"))
+  expect_identical(x$diagnostics$line, c(2L, 3L, 3L))
 })
 
 test_that("no stripping beyond the parser's canonical form", {
@@ -215,8 +215,8 @@ test_that("a tie on an inner-dollar pattern keeps both warnings", {
   )
 })
 
-# The parser stops a value at a NUL; the matchers drop the NUL and read on,
-# so the group checks are skipped on any NUL.
+# The parser stops a value at a NUL; Google's matcher drops the NUL and reads
+# on, so the group checks are skipped on any NUL.
 at_nul <- function(...) {
   parts <- list(...)
   out <- charToRaw(parts[[1L]])
@@ -250,7 +250,7 @@ test_that("a NUL in a User-agent skips wildcard_rules_not_inherited", {
   x <- robots_validate_text(at_nul(
     "User-agent: *\nDisallow: /a\n\nUser-agent: bot", "x\nAllow: /b\n"
   ))
-  expect_identical(x$diagnostics$code, "nul_byte")
+  expect_identical(x$diagnostics$code, c("nul_byte", "rules_after_nul_removal"))
 })
 
 test_that("edge inputs compare without error", {
@@ -279,7 +279,7 @@ test_that("edge inputs compare without error", {
             as.raw(0xff), charToRaw("\n"))
   x <- robots_validate_text(body)
   expect_identical(x$diagnostics$code,
-                   c("invalid_utf8", "disallow_tied_by_allow"))
+                   c("invalid_utf8_comment", "disallow_tied_by_allow"))
 })
 
 test_that("a body cut at max_bytes is still checked", {

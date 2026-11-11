@@ -29,7 +29,8 @@ blank line, other directives, other suffixes, the inverse URL form) until the
 cause is isolated, and the decision, reason and matched line are recorded for
 each row. Every live class is pinned. Some refuted candidates are pinned too:
 the Yandex form of class 1 (its own stacking test), the Bing form of class 4,
-and the `*%*` shape of class 9 (pinned in class 10). Class 5 and class 9's
+the `*%*` shape of class 9 (pinned in class 10), and class 14's stacked Yandex
+form and `sitemap`-prefix control. Class 5 and class 9's
 other forms are listed, not pinned.
 
 Verdicts:
@@ -67,12 +68,14 @@ Outcomes below read `decision reason line`; `default` means
 | 11 | A lower-case escape in a rule | yandex | UNEVIDENCED |
 | 12 | An empty `User-agent` value | yandex | UNEVIDENCED |
 | 13 | A key that starts with `disallow` or `allow` | yandex, bing | EXPECTED-SOURCED |
+| 14 | A key that starts with `user-agent` (or a `User-agent` typo); `sitemap` refuted | yandex, bing | EXPECTED-SOURCED |
 
 No class is OUR BUG: every backend does what its contract says. Most rows have
 Google disallowing where the other engine allows. The rows where Google allows
 and the other engine disallows are class 10's `/page` shape, class 11's
 `/a%3cb` path, class 6's raw `/café` path, class 1's later-`bingbot`
-`Disallow` shape and class 13's `Allow`-prefixed key (below).
+`Disallow` shape, class 13's `Allow`-prefixed key and class 14's after-a-rule
+shape (below).
 
 ## Classes
 
@@ -142,10 +145,12 @@ crawler. Bing seals the `*` run at `Content-Signal`, an unknown field, and the
 stacks on all four rows.
 
 This shape decides how an aipref `__usage_ai-training` group
-(draft-kelley-aipref-training-preference-signal) reads under Google-style
-stacking: a training opt-out written after a `*` group that holds only
-non-rule lines becomes a full `Disallow` for every crawler. The validator side
-is ROBO-kzyfejcv.
+(draft-kelley-aipref-training-preference-signal-00, an Internet-Draft dated
+2026-10-30) reads under Google-style stacking: a training opt-out written
+after a `*` group that holds only non-rule lines becomes a full `Disallow` for
+every crawler. The validator side is ROBO-kzyfejcv: `robots_validate_text()`
+warns `ai_training_token_stacked` on the token line of this fixture (and of
+the control, whose group also names `*`); see `design/engine-profiles.md` §5c.
 
 Verdict: EXPECTED-SOURCED, on class 1's sources
 (`design/robotstxtbing-v2-spec.md` §9.3 rule 2a).
@@ -335,9 +340,9 @@ given; Yandex compares the rule as written.
 
 Verdict: UNEVIDENCED for Yandex: the accepted corpus has no escape-case case.
 Bing is tester-observed (`body-sr2-bingbot-hexcase-*`). The Google side is the
-upstream matcher's behavior (`MaybeEscapePattern`), not a matcher bug; the gap
-is the validator's, which does not yet warn about such a rule: ROBO-kormmfyg
-(`design/edge-case-catalog.md`, `esc-lower-hex-rule`).
+upstream matcher's behavior (`MaybeEscapePattern`), not a matcher bug; the
+validator did not warn about such a rule, and `rule_lowercase_escape` now does
+(ROBO-kormmfyg; `design/edge-case-catalog.md`, `esc-lower-hex-rule`).
 
 ### 12. An empty `User-agent` value (yandex)
 
@@ -383,17 +388,80 @@ Bing: field names "must exactly equal" a known name, and the grammar
 tester case `ydx-parser-directive-suffix` (`inst/yandex-corpus/`: a
 `Disallow-extra:` line is ignored, the candidate path is allowed; observed
 2026-07-15 and 2026-07-17), which the vendored lexer implements by comparing a
-field name whole (`ClassifyField`, `AsciiCaseEqual`). That such a file validates clean while it
-blocks everything for Google is the validator's gap, ROBO-xglcoagv, not a
-matcher change.
+field name whole (`ClassifyField`, `AsciiCaseEqual`). The matchers stay as
+they are; the validator warns on such a key with `accepted_directive_prefix`
+(ROBO-xglcoagv), naming the key and Google's reading of it.
+
+### 14. A key that starts with `user-agent` (yandex, bing)
+
+Keys: `User-agentfoo`, `User-agent-x`, `USER-AGENTS`, and the typo forms
+`Useragent`, `Useragents` and `User agent`. Fixtures, path `/private`, with
+`<key>` each of those:
+
+- bare: `<key>: *` / `Disallow: /private`;
+- stacked: `User-agent: bingbot` / `<key>: x` / `User-agent: *` /
+  `Disallow: /private`;
+- after a rule: `User-agent: Yandex` / `User-agent: bingbot` / `Disallow: /a` /
+  `<key>: Other` / `Disallow: /private`.
+
+| Row | Bare | Stacked | After a rule |
+|---|---|---|---|
+| `google_yandex` | `disallow rule_disallow 2` | `disallow rule_disallow 4` | default |
+| `yandex` | default | `disallow rule_disallow 4` | `disallow rule_disallow 5` |
+| `google_bingbot` | `disallow rule_disallow 2` | `disallow rule_disallow 4` | default |
+| `bing` | default | default | `disallow rule_disallow 5` |
+
+Google's `KeyIsUserAgent` (`src/robots.cc`) accepts any key that starts with
+`user-agent`, ignoring case, and, with `kAllowFrequentTypos` on, any that
+starts with `useragent` or `user agent`. Each key is a `User-agent` line to
+Google and an unknown field to the Yandex and Bing backends. Bare, the
+following rule has a group on Google and is an orphan elsewhere. Stacked, Bing
+seals `bingbot`'s run at the unknown field (class 1, rule 2a); Yandex reaches
+`*` with the Yandex token on both rows. After a rule, the key starts an `Other`
+group on Google, so line 5 leaves the Yandex and `bingbot` group; both other
+engines keep it there. That last shape is one where Google allows and the other
+engines disallow.
+
+The Yandex form of the stacked shape is refuted: `User-agent: Yandex` /
+`<key>: x` / `User-agent: Other` / `Disallow: /private` is
+`disallow rule_disallow 4` for the Yandex token on both `google_yandex` and
+`yandex`, since Yandex keeps a run across an unknown field (class 1's Yandex
+form). It is pinned.
+
+The `sitemap` prefix is refuted and pinned as a control. `KeyIsSitemap` also
+matches by prefix, and the typo `site-map` too, so `Sitemapx`, `Sitemaps` and
+`Site-map` are `Sitemap` lines to Google and unknown fields to Yandex and Bing.
+No backend's access answer tells the two apart: Google ignores both, Yandex
+keeps a run across both, and Bing seals a run at both. Between stacked
+`User-agent` lines each key answers as `Sitemap:` does in class 1 (`bingbot`
+then `*`: Bing default, the other rows `disallow rule_disallow 4`; `Yandex`
+then `Other`: `disallow rule_disallow 4` for the Yandex token), and inside a
+`*` group all four rows are `disallow rule_disallow 3`.
+`robots_evaluate_text_v1()` returns access decisions only, no sitemap list, so
+a difference in which sitemaps an engine collects cannot show here. The control
+would turn red only if Bing stopped sealing, or Yandex started sealing, a run
+at an unknown field, and then together with class 1.
+
+Verdict: EXPECTED-SOURCED, on class 13's sources. Google's side is the upstream
+engine itself, which `design/engine-profiles.md` §5b checks against the pinned
+upstream: the prefix match is `StartsWithIgnoreCase` in `KeyIsUserAgent` and
+`KeyIsSitemap`. No Google page documents the prefix reading; the typo forms
+fall under Google's documented typo tolerance (`design/engine-profiles.md` §8),
+which upstream applies by prefix too. Bing: field names "must exactly equal" a
+known name, with no prefix/suffix field-name matching
+(`design/robotstxtbing-v2-spec.md` §9.2, project grammar). Yandex: the vendored
+lexer compares a field name whole (`ClassifyField`, `AsciiCaseEqual`), as the
+accepted case `ydx-parser-directive-suffix` shows for `Disallow`; for this
+class the accepted case `ydx-parser-user-agent-space` (`inst/yandex-corpus/`:
+a `User agent: Other` line after a Yandex rule leaves the next rule in the
+Yandex group; observed 2026-07-15 and 2026-07-17) is the after-a-rule shape
+itself.
 
 ## Adjacent findings
 
 - **Other prefix-matched keys.** Google's `KeyIsUserAgent` and `KeyIsSitemap`
-  also match by prefix, so a line such as `User-agentfoo: bingbot` is a
-  `User-agent` line to Google and an unknown field to Bing and Yandex, which on
-  Bing also seals a stacked run (class 1). Not probed or pinned here; filed as
-  ROBO-fslaxaep.
+  also match by prefix. The `User-agent` forms are class 14; the `Sitemap`
+  forms are refuted there and pinned as a control (ROBO-fslaxaep).
 
 - **A Yandex stacked-run claim our Yandex backend does not follow.**
   `design/robotstxtbing-v2-spec.md` §9.3 says the split "is corroborated
@@ -497,6 +565,45 @@ ignores escape case.
 `User-agent:` / `Disallow: /y8/`. Path `/y8/x`. Ours: allowed. Prohibited means
 Yandex skips the empty value and keeps the group.
 
+The questions below are for "Precedence ties" (ROBO-kbrzbccu, after "What a
+fix would touch"). Each pair of rules is its own body, so no rule of one shape
+reaches another shape's path.
+
+**B5, Bing, precedence ties: escape case.** Body: `User-agent: bingbot` /
+`Allow: /b5/a%3cb` / `Disallow: /b5/a%3Cb`. Path `/b5/a%3Cb`. Ours: allowed
+(Bing upper-cases the Allow's escape, both rules are 9 bytes and Allow wins a
+tie). Disallowed means Bing does not compose its escape upper-casing with its
+tie rule.
+
+**B6, Bing, precedence ties: wildcards.** Four bodies, each
+`User-agent: bingbot` and one pair: `Allow: /b6/a*` / `Disallow: /b6/ab`, path
+`/b6/ab`; `Allow: /b6/*b$` / `Disallow: /b6/xyb`, path `/b6/xyb`;
+`Allow: /b6/c$` / `Disallow: /b6/c*`, path `/b6/c`; `Allow: /b6/d$e` /
+`Disallow: /b6/d*ex`, path `/b6/d$ex`. Ours: the first three allowed (a tie,
+since Bing ranks by the rule's raw byte length, `*` and `$` included), the last
+disallowed (8 bytes against 7). A disallowed `/b6/ab` means Bing drops `*`
+from the length. A disallowed `/b6/xyb` means it drops `*` or a final `$`. A
+disallowed `/b6/c` means it drops a final `$` but counts `*` (dropping both
+still ties). An allowed `/b6/d$ex` means it drops `*` but counts an inner `$`,
+as Yandex does (7 against 7). Record the target the tester displays for
+`/b6/d$ex`, since it may escape `$`.
+
+**B7, Bing, precedence ties: two groups.** Body: `User-agent: bingbot` /
+`Allow: /b7/` / blank / `User-agent: bingbot` / `Disallow: /b7/`; a second
+body with the two rules swapped. Path `/b7/x`. Ours: allowed for both (the
+groups merge, and Allow wins the tie). Disallowed for one body only means Bing
+breaks a tie across groups by group order.
+
+**Y9, Yandex, precedence ties: two groups.** As B7, with `User-agent: Yandex`
+and `/y9/`; path `/y9/x`. Ours: allowed for both.
+
+**Y10, Yandex, precedence ties: an inner `$`.** Two bodies, each
+`User-agent: Yandex` and one pair: `Allow: /y10/a$b` / `Disallow: /y10/a*bx`,
+path `/y10/a$bx`; `Disallow: /y10/c$d$` / `Allow: /y10/c$d`, path `/y10/c$d`.
+Ours: allowed for both (an inner `$` counts as one byte, `*` and a final `$`
+none, so each pair counts 8 and 8). Prohibited means Yandex reads an inner `$`
+otherwise. Record the target the tester displays, since it may escape `$`.
+
 ## What a fix would touch
 
 No class is OUR BUG, so nothing is filed as a fix. Where a tester answer shows
@@ -505,3 +612,91 @@ for Bing the scanner, lexer or selection rules of
 `design/robotstxtbing-v2-spec.md` §8, §9.1, §9.2 or §13; for Yandex the
 `yandex-0.1.0` profile. Each such change is the maintainer's decision
 (`[USER]`), followed by a normal code issue, as ROBO-bpywsjwv's scope says.
+
+## Precedence ties (ROBO-kbrzbccu)
+
+- Pins: `tests/testthat/test-precedence-ties-kbrzbccu.R`
+- Tester questions: B5 to B7, Y9 and Y10 above
+
+An Allow and a Disallow of equal priority that both match a path tie, and every
+backend gives the tie to Allow: Google by the longest rule with Allow on a tie,
+Yandex in `IsBetter()` (`src/vendor/robotstxtyandex/src/access_matcher.cc`:
+equal count, then Allow, then the earlier line), Bing in `winner.cpp`
+(`tie-allow-wins`, either order). Upstream's own test and the existing tie
+fixtures are literal. These shapes tie only after normalization, through a
+wildcard, or across groups. Each runs on the four rows of "Method", in both
+source orders: the winner stays Allow and the matched line moves with it, so a
+winner taken by line order would show. Beside each shape a control runs, in one
+order, with a longer Disallow. On the Google rows it is one byte longer and
+wins, which shows that the tie, not a non-match, decides the Google answer. On
+the Yandex and Bing rows it is a control only where both rules match. For the
+raw `/é` shape, on `yandex` and `bing`, and for the escape-case shape, on
+`yandex`, the Allow does not match the control's path, so the Disallow wins
+for that reason. In the `/a*` and `/*b$` shapes the Yandex Disallow is longer
+by two (4 against 2). In the `/a$` shape the second `*` adds nothing on Yandex,
+so the tie stays and Allow wins there.
+
+| Shape | Path | `google_*` | `yandex` | `bing` |
+|---|---|---|---|---|
+| `Allow: /é` (raw) / `Disallow: /%C3%A9` | `/%C3%A9` | Allow | Disallow | Disallow |
+| the same | raw `/é` | default | Allow | Allow |
+| `Allow: /a%3cb` / `Disallow: /a%3Cb` | `/a%3Cb` | Allow | Disallow | Allow |
+| the same | `/a%3cb` | default | Allow | default |
+| `Allow: /a*` / `Disallow: /ab` | `/ab` | Allow | Disallow | Allow |
+| `Allow: /*b$` / `Disallow: /xyb` | `/xyb` | Allow | Disallow | Allow |
+| `Allow: /a$` / `Disallow: /a*` | `/a` | Allow | Allow | Allow |
+| `Allow: /p` and `Disallow: /p` in two groups for the row's token | `/p` | Allow | Allow | Allow |
+| `Allow: /a$b` / `Disallow: /a*bx` | `/a$bx` | Disallow | Allow | Disallow |
+| `Allow: /a$b` / `Disallow: /a$b$` | `/a$b` | Disallow | Allow | Disallow |
+
+Allow or Disallow means the rule of that kind wins, at its own line; default
+means neither rule matches.
+
+- **Normalization.** Google escapes a rule's non-ASCII bytes and upper-cases its
+  escapes (`MaybeEscapePattern`), so `/é` and `/%C3%A9`, and `/a%3cb` and
+  `/a%3Cb`, are one rule, and Allow wins. It never escapes the URL, so the raw
+  and lower-case paths match neither rule. Yandex compares both as written
+  (classes 6 and 11), so only one rule matches each path. Bing compares raw
+  bytes (class 6) but upper-cases a rule's escape (class 11), so it ties the
+  escape-case pair as Google does.
+- **Wildcards.** Google and Bing count every byte of the rule, `*` and `$`
+  included; Yandex counts neither `*` nor a final `$` (class 10). `/a*` against
+  `/ab` and `/*b$` against `/xyb` tie on Google and Bing, and Yandex's longer
+  Disallow wins. `/a$` against `/a*` ties on every backend (3 and 3; Yandex 2
+  and 2). With a second `*` (`Disallow: /a**`) Google and Bing disallow, while
+  Yandex still counts 2 and allows.
+- **A `$` against a literal of the same length cannot tie.** A `$` pattern
+  without `*` matches only the path one byte shorter than the pattern, and a
+  literal of the pattern's length cannot match that path: `Allow: /ab$` /
+  `Disallow: /abc` on `/ab` is Allow on every row because the Disallow does not
+  match. The pins therefore use the two forms that can tie: a `*` in the `$`
+  side (`/*b$` against `/xyb`), and `$` against `*` (`/a$` against `/a*`).
+- **Two groups.** Each backend merges two groups for one agent before ranking,
+  so the tie across them goes to Allow in either group order. The bodies name
+  the row's own token in both groups (`Yandex` on the Yandex rows, `bingbot` on
+  the bingbot rows), since a `FooBot` group is no group for the Yandex or Bing
+  backends. Google with `FooBot` answers the same and is pinned too.
+- **An inner `$`.** Only a final `$` anchors; an inner `$` is a literal byte on
+  every backend. Yandex counts it as one byte, so `/a$b` (4) ties `/a*bx` and
+  `/a$b$` (4 each), and Allow wins. Google and Bing count 4 against 5, so the
+  Disallow wins.
+
+Verdicts. Google: the vendored matcher, which `design/engine-profiles.md` §5b
+checks against the pinned upstream; no shape here is in a §5b difference class
+(empty value, window, `max_bytes` cut, input screening, NUL). Yandex:
+EXPECTED-SOURCED for the wildcard and `$` ties, which compose class 10 with the
+accepted `ydx-05-ties-wildcards` cases (`ydx-05-yandex-wild-root`:
+`/wild/root*` against `/wild/root$` goes to Allow); the normalization shapes
+follow classes 6 and 11 (UNEVIDENCED); two groups and the inner `$` are
+UNEVIDENCED (Y9, Y10). Bing: the tester ties (`body-win-bingbot-tie-*`) are
+literal, its escape upper-casing (`body-sr2-bingbot-hexcase-*`) and repeated
+groups (`exp-sel-bingbot-repeated-groups`) are tester-observed apart, and no
+case composes them: UNEVIDENCED (B5 to B7); the raw `/é` shape follows class 6.
+No backend contradicts its own source or contract, so nothing is OUR BUG.
+
+Maintainer step: the Google rows are pinned from the vendored matcher only.
+`dev/google-fidelity/differential.R` reads only `gf_cases()` in
+`tests/testthat/fixtures/google-fidelity-deehqhlc/cases.R` and needs the
+maintainer-only upstream binary, so re-deriving these rows from upstream means
+adding them there as `pattern` cases with the reference answers and running
+`Rscript dev/google-fidelity/differential.R <google_ref binary>` (exit 0).

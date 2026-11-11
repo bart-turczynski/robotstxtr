@@ -40,13 +40,22 @@ harness_main <- function(args) {
   opts <- parse_harness_args(args)
   cfg <- corpus_env_config(need_corpus = opts$mode != "compare")
   # Everything that can refuse runs before the run directory exists, so a
-  # refusal leaves no "running" record behind.
-  frozen_hash <- if (!is.na(opts$manifest)) {
-    frozen_manifest_hash(cfg$out, opts$manifest)
+  # refusal leaves no "running" record behind: the --manifest run, the --pkg
+  # tree, every compare check and the chunk plan.
+  frozen <- if (!is.na(opts$manifest)) {
+    frozen_run(cfg$out, opts$manifest)
   }
-  if (opts$mode != "compare") {
+  if (opts$mode %in% c("validate", "evaluate", "size")) {
+    package_git_facts(opts$pkg)
+  }
+  if (opts$mode == "compare") {
+    prepared <- prepare_compare(cfg$out, opts)
+  } else {
     hosts <- list_host_dirs(cfg$corpus)
     chunks <- plan_chunks(hosts, opts)
+    # The start manifest right after the listing, before the package
+    # compiles: a planned directory gone by now is caught as gone.
+    start <- corpus_manifest(cfg$corpus, plan_frame(hosts, chunks))
   }
   if (is.na(opts$run_id)) {
     opts$run_id <- paste0(
@@ -71,6 +80,8 @@ harness_main <- function(args) {
   ctx <- list(opts = opts, out = cfg$out, corpus = cfg$corpus,
               run_dir = run_dir)
   if (opts$mode %in% c("validate", "evaluate", "size")) {
+    # Taken again here: the tree may have moved while the start manifest
+    # hashed the corpus, and these facts must name the code loaded next.
     record$package <- package_git_facts(opts$pkg)
     pkgload::load_all(
       opts$pkg, quiet = TRUE, export_all = FALSE, helpers = FALSE,
@@ -111,13 +122,12 @@ harness_main <- function(args) {
   }
 
   if (opts$mode == "compare") {
+    ctx$compare <- prepared
     res <- mode_compare(ctx)
     record$compare <- res
   } else {
     ctx$hosts <- hosts
     ctx$chunks <- chunks
-    plan <- plan_frame(ctx$hosts, ctx$chunks)
-    start <- corpus_manifest(cfg$corpus, plan)
     saveRDS(start, file.path(run_dir, "manifest.rds"), compress = "xz")
     record$manifest <- list(start_hash = manifest_hash(start))
     write_record(run_dir, record)
@@ -127,11 +137,15 @@ harness_main <- function(args) {
       evaluate = mode_evaluate, size = mode_size
     )
     record <- run_and_check(record, ctx, runner, start)
-    if (!is.null(frozen_hash)) {
-      record$manifest$frozen_run <- opts$manifest
-      record$manifest$matches_frozen <- identical(
-        frozen_hash, record$manifest$start_hash
+    if (!is.null(frozen)) {
+      # On the host directories both runs cover, when either is partial.
+      match <- same_input_set(
+        start, frozen$manifest, is_partial_run(opts),
+        !is.null(frozen$params) && is_partial_run(frozen$params)
       )
+      record$manifest$frozen_run <- opts$manifest
+      record$manifest$matches_frozen <- match$same
+      record$manifest$frozen_rows_compared <- match$rows
     }
   }
 
@@ -165,11 +179,19 @@ harness_main <- function(args) {
       message("A full run lacks shards the other run holds.")
     }
     if (!record$compare$harness_same) {
-      message("NOTE: the two runs came from different harness trees.")
+      message(
+        "NOTE: the two runs came from different, dirty or unknown ",
+        "harness trees."
+      )
     }
     message(if (record$compare$identical) "IDENTICAL" else "DIFFERENT")
   } else if (invalid) {
     message("INVALID RUN: ", record$invalid_cause, ".")
+  } else if (identical(record$manifest$frozen_rows_compared, 0L)) {
+    message(
+      "NOTE: this run and the frozen run share no host directory: ",
+      "nothing was compared."
+    )
   } else if (!is.null(record$manifest$matches_frozen) &&
                !record$manifest$matches_frozen) {
     message("WARNING: the corpus no longer matches the frozen manifest.")

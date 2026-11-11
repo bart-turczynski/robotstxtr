@@ -128,8 +128,9 @@ cut body only up to its last complete line (its last line break): a rule cut
 short is never read as a shorter rule. A cut body with no line break yields
 no rules. \code{body} and \code{body_size} keep every stored byte.
 A 4xx or 5xx keeps its status outcome whatever its body size, with no
-stored body. A 3xx whose body is over the limit ends as \code{body_too_large} and
-is not followed, because \pkg{ssrfr} keeps no \code{Location} for it.
+stored body. A body over the limit with a 3xx status, an unknown status, or a
+2xx whose libcurl and status-line statuses disagree ends as \code{body_too_large};
+a 3xx is not followed, because \pkg{ssrfr} keeps no \code{Location} for it.
 
 The response header may take up to 64 KiB and 256 fields per hop; a header
 over either limit is a \code{network_error}.
@@ -148,11 +149,12 @@ the final response counts, never a redirect before it.
 \code{NA} in both columns means the delay is not available, not that none was
 requested. That is the case when the final response has no \code{Retry-After},
 and also when the fetch ends without a usable final response: a refusal, a
-transport failure, a redirect error, or a 3xx body over \code{max_bytes}. A 4xx or
-5xx whose body exceeds \code{max_bytes} keeps its status and outcome, but its
-headers are not available, so its \code{Retry-After} is \code{NA} even when the
-server sent one. \code{robots_fetch()} never retries: honoring the delay is the
-caller's choice.
+transport failure, a redirect error, or a body over \code{max_bytes} with a 3xx
+status, an unknown status, or a 2xx whose libcurl and status-line statuses
+disagree. A 4xx or 5xx whose body exceeds \code{max_bytes} keeps its status and
+outcome, but its headers are not available, so its \code{Retry-After} is \code{NA}
+even when the server sent one. \code{robots_fetch()} never retries: honoring the
+delay is the caller's choice.
 
 Each source row also keeps the final response's \code{Content-Type} field value
 as \code{content_type}, exactly as received (\code{NA} when absent or when there is
@@ -160,8 +162,10 @@ no final response), and a heuristic \code{content_flag} read from the first
 4096 bytes of a stored body: \code{"binary"} (a NUL byte, or at least 8 bytes,
 and more than 10\% of them, not valid UTF-8), \code{"html"} (a line starting
 with \verb{<!doctype html}, \verb{<html}, \verb{<head} or \verb{<body}, possibly after an
-\verb{<?xml ...?>} or \verb{<!-- ... -->} on that line), \code{"xml"} (the body starts
-with \code{<}), \code{"json"} (the body starts with a JSON object or array), or \code{NA}.
+\verb{<?xml ...?>} or \verb{<!-- ... -->} on that line; or a body starting with \code{<}
+that holds \verb{<!doctype html}, \verb{<html}, \verb{<head}, \verb{<body}, \verb{<script} or
+\verb{<style} anywhere), \code{"xml"} (any other body starting with \code{<}), \code{"json"}
+(the body starts with a JSON object or array), or \code{NA}.
 The flag comes from the body alone, never from \code{content_type}, and changes
 nothing: the body is matched as it is either way.
 

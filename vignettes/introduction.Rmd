@@ -179,16 +179,32 @@ BOM/NUL and final-newline evidence, and a validation status. The `diagnostics`
 table has stable line, severity, code, directive, raw-text, and message columns.
 Raw vectors are accepted so malformed UTF-8 and NUL bytes can be reported
 without first converting or losing the acquisition bytes. The validator also
-warns on Allow or Disallow patterns that never match (not led by `/` or `*`)
-or hold a literal `$` (one before the pattern's end), and on a Sitemap value
+warns on Allow or Disallow patterns that never match (not led by `/` or `*`,
+or holding a raw space or other whitespace, which crawlers send only
+percent-encoded) or hold a literal `$` (one before the pattern's end), on
+patterns that
+percent-escape an unreserved character such as `%7E` for `~` (Google never
+matches the escape against the character), on patterns with a lower-case
+escape such as `%3c` (Google upper-cases the rule, not the URL), and on a
+Sitemap value
 that is not an absolute `http`, `https` or `ftp` URL. An info,
 `wildcard_rules_not_inherited`, notes a named User-agent group that lacks some
-`User-agent: *` rules: its crawler obeys only the groups that name it. A
-warning, `disallow_tied_by_allow`, flags a Disallow that an Allow with the
-identical pattern cancels, since Allow wins the tie. An info,
-`duplicate_rule`, notes an Allow or Disallow that repeats an earlier rule for
-the same crawlers, so it has no effect. The "Diagnostic codes" section of
-`?robots_validate_text` lists every code.
+`User-agent: *` rules: its crawler obeys only the groups that name it. The
+AI-training policy token `__usage_ai-training`, from the Internet-Draft
+draft-kelley-aipref-training-preference-signal-00, is no crawler and `*` never
+covers it: its group gets an info, `ai_training_preference`, listing the
+group's own rules, and warnings flag a near-miss spelling
+(`ai_training_token_near_miss`), a line such as `Crawl-delay` in a group that
+names only the token (`ai_training_group_extra_line`), and a token line that
+shares a group with `User-agent: *`, or with a crawler or another policy
+token a directive line separates it from (`ai_training_token_stacked`). A key
+such as `DisallowAITraining`, which Google reads as `Disallow`, is
+`accepted_directive_prefix`. A warning, `disallow_tied_by_allow`, flags a
+Disallow that an Allow with the identical pattern cancels, since Allow wins
+the tie. An info, `duplicate_rule`, notes an Allow or Disallow that repeats an
+earlier rule for the same crawlers, so it has no effect. A warning,
+`html_body`, says the body looks like an HTML page rather than a robots.txt.
+The "Diagnostic codes" section of `?robots_validate_text` lists every code.
 
 ```{r, eval = FALSE}
 # Performs live HTTP, so it is not evaluated in the vignette.
@@ -199,14 +215,18 @@ URL validation reuses `robots_fetch()`. A 2xx response whose decoded body is
 over `max_bytes` is cut at the limit, as RFC 9309 section 2.5 allows: its
 first `max_bytes` bytes are validated up to their last complete line, the
 document reports `body_truncated` and `limit_exceeded`, and a `body_truncated`
-warning says the rest was not validated. A 3xx over the limit is reported as an
-acquisition limit failure with `validation_status = "not_validated"`. A 4xx
+warning says the rest was not validated. A body over the limit with a 3xx
+status, an unknown status, or a 2xx whose libcurl and status-line statuses
+disagree is reported as an acquisition limit failure with
+`validation_status = "not_validated"`. A 4xx
 or 5xx keeps its status outcome and gets a code for its class:
 `acquisition_missing` for a 404 or 410, `acquisition_http_4xx` for another
 4xx, `acquisition_http_429` and `acquisition_http_5xx`; a 1xx or
 out-of-range status gets `acquisition_http_protocol`. Its message names the
 status and what Google, Yandex and Bing may do with it, as
-`robots_engine_contract_v1()` records.
+`robots_engine_contract_v1()` records. A 2xx other than 200, such as 203 or 204,
+keeps its body, which is still validated, and gets `acquisition_http_other_2xx`,
+an info whose message names how Google, Yandex and Bing read that status.
 
 The validation profile is explicitly `google-parser-compatible`: it reflects
 the package's pinned parser (including accepted typo and missing-colon forms)

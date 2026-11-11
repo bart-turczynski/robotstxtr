@@ -4,8 +4,7 @@
 # contract: design/engine-profiles.md sections 2, 3, 4 and 7, and
 # design/engine-contract-v1.md ("A robots.txt over `max_bytes`"). Every
 # fixture is synthesized here; responses are scripted at the ssrfr boundary
-# (helper-fake-ssrfr.R). The assertions pin current behavior; where it
-# departs from the documents a comment starting "contract mismatch" says so.
+# (helper-fake-ssrfr.R). The assertions pin current behavior.
 
 ss_window <- 512000L
 ss_rulesets <- c("rfc9309", "google", "yandex", "bing", "assumed_rfc9309")
@@ -18,13 +17,17 @@ ss_grid <- expand.grid(
 )
 ss_google <- ss_grid[ss_grid$ruleset == "google" &
                        ss_grid$backend == "google", ]
-# The pairs a cut of 512,000 stored bytes or more can resolve
-# (ceiling_cut_readable_v1()): the yandex ruleset under every backend, and
-# google with the google backend. Every other pair stays incomplete at any
-# size, so the sizes past 512,000 run these alone.
-ss_size_pairs <- ss_grid[ss_grid$ruleset == "yandex" |
-                           (ss_grid$ruleset == "google" &
-                              ss_grid$backend == "google"), ]
+# The pairs a cut of `stored` bytes resolves (ceiling_cut_readable_v1()). Past
+# 512,000, that is the yandex ruleset under every backend, and google with the
+# google backend. Every other pair stays incomplete at any size, so the sizes
+# past 512,000 run the readable pairs alone.
+ss_readable_pairs <- function(stored, grid = ss_grid) {
+  evidence <- list(body_truncated = TRUE, stored_bytes = stored)
+  readable <- mapply(function(ruleset, backend) {
+    ceiling_cut_readable_v1(evidence, ruleset, backend)
+  }, grid$ruleset, grid$backend)
+  grid[unname(readable), ]
+}
 # A supplied body is use_rules under every ruleset, so only the backend
 # reads its size: one ruleset per backend.
 ss_diagonal <- ss_grid[ss_grid$ruleset == ss_grid$backend, ]
@@ -62,8 +65,10 @@ ss_body <- function(tail, at, size = 600000L) {
 # - utf8: the split falls between the two bytes of "é" (C3 A9).
 # `probes` are paths and the decision each gets from the google backend when
 # the line is read whole; `raw_probes`, where set, are the paths and
-# decisions the yandex and bing backends give the whole line (the utf8 line
-# is probed there with the raw "é" path, the form those two match).
+# decisions the yandex and bing backends give the whole line. The utf8 line
+# is probed there with the raw "é" path. That pin is of current backend
+# behavior and is UNEVIDENCED in design/engine-disagreements.md section 6:
+# not documented engine behavior.
 ss_tails <- list(
   rule = list(
     bytes = charToRaw("Disallow: /private-drafts/\n"), keep = 11L,
@@ -133,12 +138,27 @@ ss_eval_text <- function(body, paths, grid = ss_grid) {
 }
 
 # The expected rows as one data frame: `want(i)` gives row i's expected
-# columns as a named list.
+# columns as a named list. Every row must carry the names of row 1 and one
+# value per column, so a NULL or short field stops here instead of recycling
+# onto other rows. Each column takes its type from row 1, since the callers
+# mix logical, integer and character columns.
 ss_want_rows <- function(r, want) {
   rows <- lapply(seq_len(nrow(r)), want)
-  cols <- stats::setNames(nm = names(rows[[1L]]))
+  cols <- names(rows[[1L]])
+  for (i in seq_along(rows)) {
+    if (!identical(names(rows[[i]]), cols)) {
+      stop("row ", i, " names differ from row 1", call. = FALSE)
+    }
+    for (col in cols) {
+      if (length(rows[[i]][[col]]) != 1L) {
+        stop("row ", i, ", column ", col, " is not one value", call. = FALSE)
+      }
+    }
+  }
   data.frame(
-    lapply(cols, function(col) unlist(lapply(rows, `[[`, col))),
+    lapply(stats::setNames(nm = cols), function(col) {
+      vapply(rows, `[[`, rows[[1L]][[col]], col)
+    }),
     stringsAsFactors = FALSE
   )
 }
@@ -225,11 +245,12 @@ ss_expect_cut_rows <- function(x, stored, status) {
 
 test_that("ROBO-etlkvljs: a cut 200 or 203 at each size, ruleset x backend", {
   # Every pair at 511,999 and 512,000, where the readable pairs turn; past
-  # 512,000 the pairs whose reading can still change (ss_size_pairs).
+  # 512,000 the pairs ceiling_cut_readable_v1() resolves at that size.
   body <- ss_split_body(ss_tails$rule)
   sizes <- list(
     list(511999L, ss_grid), list(512000L, ss_grid),
-    list(512001L, ss_size_pairs), list(524288L, ss_size_pairs)
+    list(512001L, ss_readable_pairs(512001L)),
+    list(524288L, ss_readable_pairs(524288L))
   )
   for (status in c(200L, 203L)) {
     for (size in sizes) {
@@ -237,6 +258,18 @@ test_that("ROBO-etlkvljs: a cut 200 or 203 at each size, ruleset x backend", {
       x <- ss_eval_url(names(ss_tails$rule$probes), size[[1L]], size[[2L]])
       ss_expect_cut_rows(x, size[[1L]], status)
     }
+  }
+})
+
+test_that("ROBO-etlkvljs: the pairs read past 512,000 are named", {
+  # engine-profiles.md section 7: the yandex ruleset under every backend, and
+  # google with the google backend. A pair that starts to resolve here shows
+  # up as a new row of ss_readable_pairs(), and this fails by name.
+  named <- ss_grid[ss_grid$ruleset == "yandex" |
+                     (ss_grid$ruleset == "google" &
+                        ss_grid$backend == "google"), ]
+  for (size in c(512001L, 524288L)) {
+    expect_identical(ss_readable_pairs(size), named, label = paste(size))
   }
 })
 
@@ -316,8 +349,6 @@ ss_expect_supplied <- function(x, size, google_bytes, decisions) {
   if (nrow(m) == 0L) {
     return(invisible())
   }
-  # contract mismatch: engine-profiles.md section 6 and engine-contract-v1.md
-  # call the bing backend capability_unavailable; it is available.
   want <- ss_want_rows(m, function(i) {
     backend <- m$matcher_backend[[i]]
     google <- identical(backend, "google")
@@ -370,8 +401,6 @@ test_that("ROBO-etlkvljs: a supplied body whose last line ends at the limits", {
 test_that("ROBO-etlkvljs: a supplied body over 500,000 bytes keeps use_rules", {
   # Under the yandex ruleset too: the size branch reads fetched evidence
   # (engine-profiles.md section 2: a supplied body is use_rules).
-  # contract mismatch: engine-contract-v1.md says bodies over 500,000 bytes
-  # resolve allow_all under yandex, without limiting that to fetched bodies.
   # The yandex ruleset alone: the test above runs a 511,999-byte supplied
   # body through the google and rfc9309 backends and the diagonal, each
   # use_rules (supplied_body_use_rules).
@@ -504,8 +533,10 @@ test_that("ROBO-etlkvljs: the validator reads a supplied body past 512,000", {
 # --- Status classes: the v1 policy -------------------------------------------
 
 # engine-profiles.md sections 3 and 4, transcribed by hand (status, action)
-# per ruleset. assumed_rfc9309 is the RFC reading as an application choice
-# (section 1), so it takes the rfc9309 cell.
+# per ruleset, and checked cell for cell against engine_policy_table_v1() by
+# the test after the status-class test, so a drift in either fails by name.
+# assumed_rfc9309 is the RFC reading as an application choice (section 1), so
+# it takes the rfc9309 cell.
 ss_cell <- function(status, action = NA_character_) list(status, action)
 ss_gap <- ss_cell("documentation_gap")
 ss_open <- ss_cell("evaluated", "allow_all")
@@ -528,6 +559,20 @@ ss_status_policy <- list(
   redirect_over_budget = ss_row(ss_open, ss_open, ss_gap),
   protocol_error = ss_row(ss_gap, ss_gap, ss_gap)
 )
+
+# The table's cells in the shape of ss_status_policy: (status, action) per
+# category and ruleset.
+ss_table_policy <- function(policy) {
+  by_category <- function(category) {
+    rows <- policy[policy$category == category, ]
+    cell <- function(ruleset) {
+      row <- rows[rows$ruleset == ruleset, ]
+      list(row$policy_status, row$policy_action)
+    }
+    lapply(stats::setNames(nm = names(ss_status_policy[[category]])), cell)
+  }
+  lapply(stats::setNames(nm = names(ss_status_policy)), by_category)
+}
 
 ss_over_budget <- function(req) {
   hop <- suppressWarnings(as.integer(sub("^.*/r", "", req$url)))
@@ -592,6 +637,16 @@ ss_status_cases <- list(
                handler = function(req) fake_response(102L))
 )
 
+# The status case `label` names. An unknown label stops here: a misspelled
+# one would otherwise hand the test a NULL handler.
+ss_case <- function(label) {
+  case <- ss_status_cases[[label]]
+  if (is.null(case)) {
+    stop("no status case ", label, call. = FALSE)
+  }
+  case
+}
+
 # What a row of `case` resolves to under `ruleset` and `backend`: the
 # section 4 cell, and the matcher result that follows from it.
 ss_status_want <- function(case, ruleset, backend) {
@@ -635,6 +690,17 @@ test_that("ROBO-etlkvljs: each status class resolves as section 4 documents", {
   }
 })
 
+test_that("ROBO-etlkvljs: the status policy equals engine_policy_table_v1()", {
+  policy <- engine_policy_table_v1()
+  expect_setequal(names(ss_status_policy), unique(policy$category))
+  for (category in names(ss_status_policy)) {
+    expect_setequal(
+      names(ss_status_policy[[category]]), unique(policy$ruleset)
+    )
+  }
+  expect_identical(ss_table_policy(policy), ss_status_policy)
+})
+
 test_that("ROBO-etlkvljs: a 4xx or 5xx over max_bytes keeps its status class", {
   # engine-profiles.md section 7: classified by its status (section 4).
   body <- ss_split_body(ss_tails$rule)
@@ -656,8 +722,15 @@ test_that("ROBO-etlkvljs: a 4xx or 5xx over max_bytes keeps its status class", {
 
 # --- Status classes: the validator -------------------------------------------
 
-# The validator's code, severity and engine readings per class, from the
-# robots_validate_text() code table and the section 3 and 4 cells above.
+# The validator's code, severity and message per status class, from the
+# robots_validate_text() code table and the section 3 and 4 cells above. A
+# full message is checked where no other test pins it whole: 400, 401, 404,
+# 410, 500, 503 and 206. test-validate-status-ybzbxfml.R pins the phrases of
+# the first six and not the whole text, and no other test pins the 206 text.
+# The 403, 429 and 102 messages are pinned whole in that file, and the
+# timeout, 301 loop and 301 over budget messages whole in
+# test-redirect-reason-bsloeclp.R, so those cases check code and severity
+# alone. The 302 case checks the engine-readings tail of its message.
 ss_no_robots <- paste0(
   "may treat it as no robots.txt, which places no restrictions on crawling"
 )
@@ -673,7 +746,6 @@ ss_firewall <- paste(
   "A 401 or 403 is often a firewall or bot filter answering this client,",
   "not the site's own robots.txt."
 )
-
 ss_validator_cases <- list(
   list(label = "400", code = "acquisition_http_4xx", severity = "warning",
        message = paste0("HTTP 400: ",
@@ -682,26 +754,14 @@ ss_validator_cases <- list(
        message = paste0("HTTP 401: ",
                         ss_readings(ss_no_robots, ss_open_yandex), " ",
                         ss_firewall, ss_tail)),
-  list(label = "403", code = "acquisition_http_4xx", severity = "warning",
-       message = paste0("HTTP 403: ",
-                        ss_readings(ss_no_robots, ss_open_yandex), " ",
-                        ss_firewall, ss_tail)),
+  list(label = "403", code = "acquisition_http_4xx", severity = "warning"),
   list(label = "404", code = "acquisition_missing", severity = "info",
        message = paste0("HTTP 404: ",
                         ss_readings(ss_no_robots, ss_open_yandex), ss_tail)),
   list(label = "410", code = "acquisition_missing", severity = "info",
        message = paste0("HTTP 410: ",
                         ss_readings(ss_no_robots, ss_open_yandex), ss_tail)),
-  list(label = "429", code = "acquisition_http_429", severity = "error",
-       message = paste0(
-         "HTTP 429: ",
-         ss_readings(
-           paste("not documented for robots.txt (Google excludes 429",
-                 "from its 4xx rule)"),
-           ss_open_yandex
-         ),
-         ss_tail
-       )),
+  list(label = "429", code = "acquisition_http_429", severity = "error"),
   list(label = "500", code = "acquisition_http_5xx", severity = "error",
        message = paste0("HTTP 500: ",
                         ss_readings(ss_context_phrase, ss_open_yandex),
@@ -710,44 +770,45 @@ ss_validator_cases <- list(
        message = paste0("HTTP 503: ",
                         ss_readings(ss_context_phrase, ss_open_yandex),
                         ss_tail)),
-  list(label = "102", code = "acquisition_http_protocol", severity = "error",
-       message = paste0("HTTP 102: ",
-                        ss_readings("not documented", "not documented"),
-                        ss_tail)),
+  list(label = "102", code = "acquisition_http_protocol", severity = "error"),
   list(label = "timeout", code = "acquisition_transport_failed",
-       severity = "error",
-       message = paste0(": ",
-                        ss_readings(ss_context_phrase, "not documented"),
-                        ss_tail)),
+       severity = "error"),
   list(label = "302 no Location", code = "acquisition_redirect_no_location",
        severity = "error",
-       message = paste0(": ",
-                        ss_readings("not documented", "not documented"),
-                        ss_tail)),
+       tail = paste0(": ", ss_readings("not documented", "not documented"),
+                     ss_tail)),
   list(label = "301 loop", code = "acquisition_redirect_loop",
-       severity = "error",
-       message = paste0(": ",
-                        ss_readings("not documented", "not documented"),
-                        ss_tail)),
+       severity = "error"),
   list(label = "301 over budget", code = "acquisition_redirect_over_budget",
-       severity = "error",
-       message = paste0(
-         ": ",
-         ss_readings(
-           paste("may stop and treat it as a 404, which places no",
-                 "restrictions on crawling"),
-           "not documented"
-         ),
-         ss_tail
-       )),
+       severity = "error"),
   list(label = "206", code = "acquisition_partial_response",
        severity = "error",
        message = "Partial HTTP response was rejected; no body was validated.")
 )
 
-test_that("ROBO-etlkvljs: the validator's code and message per status class", {
+test_that("ROBO-etlkvljs: a misspelled label or a bad expected row stops", {
+  expect_error(ss_case("4O4"), "no status case 4O4")
+  expect_error(
+    ss_want_rows(data.frame(a = 1:2), function(i) {
+      if (i == 1L) list(x = "a") else list(x = NULL)
+    }),
+    "row 2, column x"
+  )
+  expect_error(
+    ss_want_rows(data.frame(a = 1:2), function(i) list(x = c("a", "b"))),
+    "row 1, column x"
+  )
+  expect_error(
+    ss_want_rows(data.frame(a = 1:2), function(i) {
+      if (i == 1L) list(x = "a") else list(y = "b")
+    }),
+    "row 2 names differ"
+  )
+})
+
+test_that("ROBO-etlkvljs: the validator's code, severity and message", {
   for (case in ss_validator_cases) {
-    local_fake_ssrfr(ss_status_cases[[case$label]]$handler)
+    local_fake_ssrfr(ss_case(case$label)$handler)
     x <- robots_validate_url("http://example.com/")
     d <- x$diagnostics
     expect_identical(nrow(d), 1L, label = case$label)
@@ -755,18 +816,18 @@ test_that("ROBO-etlkvljs: the validator's code and message per status class", {
     expect_identical(d$severity, case$severity, label = case$label)
     expect_identical(x$documents$validation_status, "not_validated",
                      label = case$label)
-    if (startsWith(case$message, ": ")) {
-      # The fetch's own message opens it; the engine readings close it.
-      expect_true(endsWith(d$message, case$message), label = case$label)
-    } else {
+    if (!is.null(case$message)) {
       expect_identical(d$message, case$message, label = case$label)
+    }
+    if (!is.null(case$tail)) {
+      expect_true(endsWith(d$message, case$tail), label = case$label)
     }
   }
 })
 
-test_that("ROBO-etlkvljs: a non-200 2xx body is validated, no status code", {
-  # Yandex reads a non-200 2xx as allow_all (section 4), but the validator
-  # validates its body like a 200's and names no status.
+test_that("ROBO-etlkvljs: a non-200 2xx body is validated, with its code", {
+  # Yandex reads a non-200 2xx as allow_all (section 4). The validator validates
+  # the body like a 200's and names the status class (ROBO-yvhqvthd).
   for (status in c(203L, 204L)) {
     local_fake_ssrfr(function(req) {
       fake_response(status, body = ss_rules_body)
@@ -778,15 +839,14 @@ test_that("ROBO-etlkvljs: a non-200 2xx body is validated, no status code", {
     expect_identical(d$fetch_outcome, "fetched")
     expect_identical(d$validation_status, "valid", label = status_label)
     expect_identical(d$disallow_directives, 1L, label = status_label)
-    expect_false(any(startsWith(x$diagnostics$code, "acquisition_")))
+    expect_identical(x$diagnostics$code, "acquisition_http_other_2xx",
+                     label = status_label)
   }
 })
 
 test_that("ROBO-etlkvljs: a 2xx refused whole is acquisition_limit_exceeded", {
   # engine-profiles.md section 7: a status mismatch over the limit is
   # body_too_large, refused whole, as a 3xx is.
-  # contract mismatch: the robots_validate_text() code table says this code
-  # is for a 3xx body; a 2xx ssrfr refuses whole gets it too.
   local_fake_ssrfr(function(req) {
     fake_failure(
       "response-too-large",

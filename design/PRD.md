@@ -563,10 +563,14 @@ Correlation mechanism:
 - A positive matching line missing from the callback lookup is an internal
   invariant failure and must raise a package error, not `allowed = NA`.
 
-Body handling: for supplied text, convert the R character scalar to UTF-8 once,
-store those exact bytes in `robots$body`, and pass that same byte sequence to
-C++. If a matched callback value is not valid UTF-8, return it as an R character
-value with `Encoding = "bytes"` rather than replacing bytes.
+Body handling: for supplied text, take the R character scalar's bytes once. A
+string marked UTF-8 is used as written. An unmarked string is taken as UTF-8
+bytes as written when the session's native encoding is UTF-8 or ASCII (the C
+locale), and converted from the native encoding otherwise; one marked
+`"latin1"` is converted; one marked `Encoding = "bytes"` is used verbatim.
+Store those exact bytes in `robots$body`, and pass that same byte sequence to
+C++. If a matched callback value is not valid UTF-8, return it as an R
+character value with `Encoding = "bytes"` rather than replacing bytes.
 
 Acquired bytes carrying a NUL: R's character type cannot hold a NUL byte, so
 every decode of acquired bytes must remove NUL bytes before those bytes become an

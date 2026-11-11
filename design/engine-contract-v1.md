@@ -136,20 +136,39 @@ Yandex row the matcher status is `not_evaluated` with either
 `reason = "invalid_request_target"`
 (`error_class = "robots_invalid_request_target"`), both at
 `error_stage = "input"`; `unsupported_crawler` takes precedence when both a
-target and a token are invalid. Bodies over 500,000 bytes resolve through the
-documented Yandex `allow_all` policy (`matcher_status = "not_needed"`) before
-the matcher runs. A 2xx cut at `max_bytes` that stored at least 512,000 bytes
+target and a token are invalid. A fetched body over 500,000 bytes resolves
+through the documented Yandex `allow_all` policy before the matcher runs
+(`matcher_status = "not_needed"`); a supplied or local body stays `use_rules`
+(`supplied_body_use_rules`) at any size. A 2xx cut at `max_bytes` that stored at
+least 512,000 bytes
 is a file over 500 KB under either reading of the unit, so it resolves
 `allow_all` too, while its `evidence_status` stays `incomplete`
 (ROBO-arrtietl): a cut 200 with the same `yandex_file_over_500000_bytes`
 reason, a cut non-200 2xx with `non_200_allow_all` from the policy table, as
 its uncut form does. A smaller cut stays `incomplete_evidence`.
 
-RFC 9309 and Bing matcher requests return `capability_unavailable-v1`. Their
-policy tables still resolve independently where the accepted design has
-evidence. Bing fetch/status policy remains a `documentation_gap`;
-`assumed_rfc9309` is a separately named application policy and is never reported
-as Bing.
+A Google row reports no line for a rule with an empty value. When the rule that
+Google's matcher selects is an `Allow:` or `Disallow:` with nothing after the
+colon (also `Disallow: # comment`), the row reports `url_decision = "allow"`,
+`reason = "default_allow"`, `matched_rule_type = "none"`, `matched_line` and
+`matched_rule_value` `NA`, and `matched_rule_value_raw` `NULL`, although the
+native engine records that line as the match. This follows the PRD's "Match
+metadata rules" (§6.6: an empty-path directive is ignored and surfaces as
+`default_allow`); the Google adapter and its reference row matcher
+`match_google_v1()` apply it to v1 Google rows, and the
+legacy functions and `as_legacy_robots_decisions_v1()` report the same
+`decision_source`, type, line and value. The decision equals Google's. Yandex
+differs: when the selected rule is an empty `Disallow`, the row reports
+`effective_empty_disallow` with that rule's line.
+
+RFC 9309 matcher requests return `matcher_status = "capability_unavailable"`
+(reason `matcher_capability_unavailable`; the rfc9309 revision is
+`capability-unavailable-v1`). Bing matcher
+requests are available, bounded to its supported vendor profiles
+(`bounded_profiles`). The RFC 9309 and Bing policy tables still resolve
+independently where the accepted design has evidence. Bing fetch/status policy
+remains a `documentation_gap`; `assumed_rfc9309` is a separately named
+application policy and is never reported as Bing.
 
 ## Legacy compatibility
 
@@ -179,9 +198,10 @@ chain; a redirect's `Retry-After` never counts.
 
 `NA` means "not available", not "no delay requested". Besides a final
 response without the field, that covers an outcome with no usable final
-response: a refusal, a transport failure, a `redirect_error`, and a 3xx
-body over `max_bytes`. A 2xx body over `max_bytes` is a final response, cut
-(ROBO-ldpahknv below), so its `Retry-After` is kept. A 4xx or 5xx whose body
+response: a refusal, a transport failure, a `redirect_error`, and a body
+over `max_bytes` with a 3xx status, an unknown status, or a 2xx whose libcurl
+and status-line statuses disagree. A 2xx body over `max_bytes` that is cut is a
+final response (ROBO-ldpahknv below), so its `Retry-After` is kept. A 4xx or 5xx whose body
 exceeds `max_bytes` keeps its
 status and outcome, but ssrfr's size failure carries no headers, so its
 `Retry-After` is `NA` even when the server sent one. robotstxtr never
@@ -223,10 +243,16 @@ write `NA` in both.
 2. `html`: a line starting, after whitespace or a UTF-8 BOM, with
    `<!doctype html`, `<html`, `<head` or `<body`, in any letter case,
    possibly after `<?...?>` declarations and `<!--...-->` comments that close
-   on that same line. An HTML error page lands here.
+   on that same line. An HTML error page lands here. So does a body whose
+   first non-whitespace byte is `<` and whose window holds `<!doctype html`,
+   `<html`, `<head`, `<body`, `<script` or `<style` anywhere, in any letter
+   case, followed by whitespace, `>`, `/` or the window's end: a minified
+   page opening with inline script or style (ROBO-qquftxcx). `<title`,
+   `<link` and `<meta` are left out, since RSS and Atom feeds use them.
 3. `xml`: the first non-whitespace byte is `<`. No robots.txt line starts
-   with `<`; a `<` inside a comment or a value never flags. HTML tag soup
-   without any of the four markers above lands here, not in `html`.
+   with `<`; a `<` inside a comment or a value never flags. Markup without
+   any of the six markers above, such as a feed or tag soup, lands here, not
+   in `html`.
 4. `json`: the body opens with a JSON object (`{` then `"` or `}`) or array
    (`[` then a value or `]`).
 
@@ -266,7 +292,9 @@ split a character.
 | v1 `termination_reason` | `ceiling` |
 | v1 `evidence_status` | `incomplete`, as before: no v1 policy verdict or URL decision is made from a prefix, except for a cut of at least 512,000 bytes: the `yandex` ruleset's `allow_all` (ROBO-arrtietl) and the `google` ruleset's match, with the `google` backend, of the complete lines in its first 512,000 bytes (ROBO-ptibdnvy) |
 
-A 3xx body over `max_bytes` is still `body_too_large` with no body, and a 4xx
+A body over `max_bytes` with a 3xx status, an unknown status, or a 2xx whose
+libcurl and status-line statuses disagree is still `body_too_large` with no
+body, and a 4xx
 or 5xx still keeps its status outcome with no body: ssrfr truncates only a 2xx.
 A 206 stays `partial_response` with no body.
 
@@ -340,7 +368,8 @@ Decisions:
   prefix. Its documentation says so.
   `observed_bytes` stays in the v1 evidence only.
 - `robots_validate_url()` validates a cut prefix and reports the cut in its
-  documents frame. A body refused whole (a 3xx over `max_bytes`) is still
+  documents frame. A body refused whole (a 3xx, an unknown status, or a 2xx
+  whose libcurl and status-line statuses disagree, over `max_bytes`) is still
   `not_validated` with `acquisition_limit_exceeded`.
 - `max_bytes` below RFC 9309's 500 KiB floor (`512000`) stays accepted, and
   is documented as below it. The default, `524288`, meets the floor.
@@ -395,9 +424,11 @@ status outside the published set.
 The evaluator hands an adapter the readable body: a body cut at `max_bytes`
 (read only under the `google` ruleset with the `google` backend) has its
 partial last line dropped first, and each row's own cut is OR-ed into the
-frame's `matcher_body_truncated`. The Google adapter still matches row by
-row; each row's body is cut to Google's 512,000-byte window before any
-grouping, and its `matched_rule_value_raw` is `NULL`.
+frame's `matcher_body_truncated`. In the Google adapter the matcher parses
+each distinct body once, cut to Google's 512,000-byte window, and the line
+collector reads each body that has a matched row once more; row for row it
+gives what its reference row matcher `match_google_v1()` gives, and its
+`matched_rule_value_raw` is `NULL`.
 
 To add a backend without changing the core result schema:
 

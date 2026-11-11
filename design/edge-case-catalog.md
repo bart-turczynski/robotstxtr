@@ -144,15 +144,15 @@ vendored matcher's decision today; "Validator" lists the codes.
 | id | RFC 9309 | Google doc | Matcher | Validator | Surprise |
 |---|---|---|---|---|---|
 | `enc-bom-start` — BOM, then `Disallow: /a` | unspecified: the RFC never mentions a BOM, and BOM+`User-agent` is not valid syntax (§2.2); `/b` allow either way | leading BOM ignored ("File format") | `/a` disallow, `/b` allow | `byte_order_mark@1` (warning) | no |
-| `enc-bom-mid-file` — BOM before line 2 `Disallow: /a` | unspecified | not documented; a BOM is only skipped at the start | `/a` allow: the line's key is BOM+`Disallow`, unknown | `unknown_directive@2`, `no_rules` | yes; **known gap**: no BOM diagnostic mid-file |
-| `enc-bom-before-user-agent` — BOM before a second group's `User-agent: FooBot` | unspecified | not documented | `/a` disallow, `/b` disallow: the FooBot line is unknown, so FooBot falls to `*`, and its `Disallow: /b` joins the `*` group | `unknown_directive@4` | yes; **known gap**: the lost group is not reported as a BOM |
-| `enc-bom-doubled` — two BOMs, then the rules | unspecified | only one leading BOM is documented as ignored | `/a` allow: the second BOM hides `User-agent`, so the rule has no group | `byte_order_mark@1`, `unknown_directive@1`, `rule_without_user_agent@2`, `missing_user_agent` | yes; covered by `rule_without_user_agent` (`byte_order_mark` alone would say the BOM is skipped) |
-| `enc-utf16le-bom` — UTF-16LE with BOM | not UTF-8 (§2.3, MUST); MAY bridge (§2.2.2): unspecified | must be UTF-8 | `/a` allow (NULs dropped, the `FF FE` prefix spoils line 1, the rule has no group) | `nul_byte@1..3`, `invalid_utf8`, `malformed_line@1`, `no_rules` | yes; covered by `nul_byte` (errors) |
-| `enc-utf16le-no-bom` — UTF-16LE, no BOM | as above | must be UTF-8 | `/a` **disallow**: with the NULs dropped the file is plain ASCII. Google's C++ reads each line only up to its first NUL, so no line holds a directive (allow); robotstxtr's drop is deliberate (`R/body-decode.R`) | `nul_byte@1..3`, `malformed_line@1`, `no_rules` | yes; **known gap**: `no_rules` ("places no restrictions") while the matcher enforces `Disallow: /a` |
-| `enc-utf16be-bom` — UTF-16BE with BOM | as above | must be UTF-8 | `/a` allow | `nul_byte@1..2`, `invalid_utf8`, `malformed_line@1`, `no_rules` | yes; covered by `nul_byte` (errors) |
-| `enc-latin1-rule` — `Disallow: /caf` + Latin-1 `é` (`E9`) | non-UTF-8 file (§2.3); unspecified | non-UTF-8 characters may be ignored, rules may become invalid | `/caf%E9` disallow (the byte is escaped to `%E9`), `/caf%C3%A9` allow | `invalid_utf8` (no line) | yes: the UTF-8 URL a browser sends is not blocked; covered by `invalid_utf8` (error) |
-| `enc-latin1-comment` — Latin-1 byte inside a comment only | the file is not UTF-8 (§2.3), though only a comment holds the byte: unspecified | as above | `/a` disallow, unaffected | `invalid_utf8` (error, no line) | no; **known gap**: a lineless error for a byte that changes nothing |
-| `enc-invalid-utf8-key` — `Dis\xFFallow: /a` | not UTF-8 (§2.3): unspecified; were the file read anyway, not a valid line | invalid lines ignored | `/a` allow | `invalid_utf8`, `unknown_directive@2`, `no_rules` | no |
+| `enc-bom-mid-file` — BOM before line 2 `Disallow: /a` | unspecified | not documented; a BOM is only skipped at the start | `/a` allow: the line's key is BOM+`Disallow`, unknown | `misplaced_byte_order_mark@2`, `unknown_directive@2`, `no_rules` | yes; covered by `misplaced_byte_order_mark`, which names the hidden Disallow (ROBO-atkmqcov) |
+| `enc-bom-before-user-agent` — BOM before a second group's `User-agent: FooBot` | unspecified | not documented | `/a` disallow, `/b` disallow: the FooBot line is unknown, so FooBot falls to `*`, and its `Disallow: /b` joins the `*` group | `misplaced_byte_order_mark@4`, `unknown_directive@4` | yes; covered by `misplaced_byte_order_mark`, which says the User-agent line is not read and its rules join the group before it (ROBO-atkmqcov) |
+| `enc-bom-doubled` — two BOMs, then the rules | unspecified | only one leading BOM is documented as ignored | `/a` allow: the second BOM hides `User-agent`, so the rule has no group | `byte_order_mark@1`, `misplaced_byte_order_mark@1`, `unknown_directive@1`, `rule_without_user_agent@2`, `missing_user_agent` | yes; covered by `misplaced_byte_order_mark`, which names the hidden User-agent (`byte_order_mark` alone would say the BOM is skipped) |
+| `enc-utf16le-bom` — UTF-16LE with BOM | not UTF-8 (§2.3, MUST); MAY bridge (§2.2.2): unspecified | must be UTF-8 | `/a` allow (NULs dropped, the `FF FE` prefix spoils line 1, the rule has no group) | `nul_byte@1..3`, `invalid_utf8@1`, `malformed_line@1`, `rules_after_nul_removal` | yes; covered by `nul_byte` (errors); `rules_after_nul_removal` says Google's matcher reads a rule once the NULs are dropped, though it has no group here |
+| `enc-utf16le-no-bom` — UTF-16LE, no BOM | as above | must be UTF-8 | `/a` **disallow**: with the NULs dropped the file is plain ASCII. Google's C++ reads each line only up to its first NUL, so no line holds a directive (allow); robotstxtr's drop is deliberate (`R/body-decode.R`) | `nul_byte@1..3`, `malformed_line@1`, `rules_after_nul_removal` | yes; covered by `rules_after_nul_removal` (warning), which replaces `no_rules` and says Google's matcher reads the rule once the NULs are dropped (ROBO-igrkabdb) |
+| `enc-utf16be-bom` — UTF-16BE with BOM | as above | must be UTF-8 | `/a` allow | `nul_byte@1..2`, `invalid_utf8@1`, `malformed_line@1`, `rules_after_nul_removal` | yes; covered by `nul_byte` (errors); `rules_after_nul_removal` as for `enc-utf16le-bom` |
+| `enc-latin1-rule` — `Disallow: /caf` + Latin-1 `é` (`E9`) | non-UTF-8 file (§2.3); unspecified | non-UTF-8 characters may be ignored, rules may become invalid | `/caf%E9` disallow (the byte is escaped to `%E9`), `/caf%C3%A9` allow | `invalid_utf8@2` | yes: the UTF-8 URL a browser sends is not blocked; covered by `invalid_utf8` (error) |
+| `enc-latin1-comment` — Latin-1 byte inside a comment only | the file is not UTF-8 (§2.3), though only a comment holds the byte: unspecified | as above | `/a` disallow, unaffected | `invalid_utf8_comment@1` (warning) | no |
+| `enc-invalid-utf8-key` — `Dis\xFFallow: /a` | not UTF-8 (§2.3): unspecified; were the file read anyway, not a valid line | invalid lines ignored | `/a` allow | `invalid_utf8@2`, `unknown_directive@2`, `no_rules` | no |
 | `enc-nonascii-rule-raw-url` — `Disallow: /café`, URL with a raw `é` | octets percent-encoded on both sides before comparison (§2.2.2): disallow | rules compared in percent-encoded form | `/café` allow, `/caf%C3%A9` disallow: the matcher escapes the rule, never the URL; `allowed_by_robots_text()` documents that the caller supplies an escaped URL | none | no (a caller-input caveat, not a site-owner one) |
 | `enc-escaped-rule-raw-url` — `Disallow: /caf%C3%A9`, raw `é` URL | disallow | as above | `/café` allow, same reason | none | no |
 
@@ -166,11 +166,11 @@ catalog does not run the Yandex matcher.
 |---|---|---|---|---|---|
 | `esc-pct2f-rule-slash-url` — `Disallow: /a%2Fb` | `%2F` is reserved, stays encoded (§2.2.2): `/a/b` allow, `/a%2Fb` disallow | compared in encoded form | same | none | no |
 | `esc-slash-rule-pct2f-url` — `Disallow: /a/b`, URL `/a%2Fb` | allow | as above | allow | none | no |
-| `esc-pct7e-rule-tilde-url` — `Disallow: /%7Ejoe` | `~` is unreserved, so `%7E` is decoded: `/~joe` disallow (§2.2.2 states the decoding for the URI; its Figure 4 maps `/foo/bar/%62%61%7A` to `/foo/bar/baz`, which reads as the rule side too) | not documented for unreserved characters | `/~joe` **allow**, `/%7Ejoe` disallow | none | yes; **known gap**: nothing flags an escaped unreserved character |
+| `esc-pct7e-rule-tilde-url` — `Disallow: /%7Ejoe` | `~` is unreserved, so `%7E` is decoded: `/~joe` disallow (§2.2.2 states the decoding for the URI; its Figure 4 maps `/foo/bar/%62%61%7A` to `/foo/bar/baz`, which reads as the rule side too) | not documented for unreserved characters | `/~joe` **allow**, `/%7Ejoe` disallow | `rule_escaped_unreserved@2` | yes; covered by `rule_escaped_unreserved` |
 | `esc-tilde-rule-pct7e-url` — `Disallow: /~joe`, URL `/%7Ejoe` or `/%7ejoe` | the URI's `%7E` MUST be decoded (§2.2.2): disallow | not documented | allow for both | none | yes, but not a validator gap: the file is correct RFC syntax and nothing in it could be flagged; the difference is the URL's form. `allowed_by_robots_text()` passes the URL to the matcher unchanged and leaves supplying an appropriately `%`-escaped URL to the caller ("R does not clean, decode, canonicalize, or reserialize the URL"), and the PRD's R-package rules say "do not normalize Unicode or percent escapes on the matcher side" (`design/PRD.md`) |
-| `esc-lower-hex-rule` — `Disallow: /a%3cb` | `<` is neither reserved nor unreserved, so `%3c` stays encoded on both sides (§2.2.2): `/a%3cb` matches octet for octet, disallow; `/a%3Cb` hinges on whether `%3c` equals `%3C`, which the RFC does not say: unspecified | not documented | `/a%3Cb` disallow (rule upper-cased), `/a%3cb` **allow** (URL not normalized): the exact path the owner wrote is not blocked | none | yes; **known gap**: ROBO-kormmfyg |
+| `esc-lower-hex-rule` — `Disallow: /a%3cb` | `<` is neither reserved nor unreserved, so `%3c` stays encoded on both sides (§2.2.2): `/a%3cb` matches octet for octet, disallow; `/a%3Cb` hinges on whether `%3c` equals `%3C`, which the RFC does not say: unspecified | not documented | `/a%3Cb` disallow (rule upper-cased), `/a%3cb` **allow** (URL not normalized): the exact path the owner wrote is not blocked | `rule_lowercase_escape@2` | yes; covered by `rule_lowercase_escape` |
 | `esc-path-letter-case` — `Disallow: /Private` | SHOULD be case-sensitive | case-sensitive | `/Private` disallow, `/private` allow | none | no |
-| `esc-space-in-rule` — `Disallow: /a b` | a space is not allowed in `path-pattern` (§2.2); unspecified | not documented | `/a%20b` allow, `/a` allow: the rule keeps a raw space no escaped URL holds | none | yes; **known gap**: nothing flags a raw space in a rule |
+| `esc-space-in-rule` — `Disallow: /a b` | a space is not allowed in `path-pattern` (§2.2); unspecified | not documented | `/a%20b` allow, `/a` allow: the rule keeps a raw space no escaped URL holds | `rule_inner_whitespace@2` | yes; covered by `rule_inner_whitespace` |
 | `esc-star-leading` — `Disallow: *.pdf` | not a valid `path-pattern` (must start `/`); unspecified | `*` matches any run | `/x.pdf` disallow, `/x.html` allow | none (a leading `*` is accepted) | no |
 | `esc-double-star` — `Disallow: /a**b` | `*` is zero or more of any character (§2.2.3) | same | `/axxb` disallow, `/a` allow | none | no |
 | `esc-star-dollar` — `Disallow: /*$` | disallow every path | same | `/` and `/anything` disallow | none | no |
@@ -201,7 +201,7 @@ Zero bytes and blank-only bodies are pinned elsewhere (table above).
 | `cmt-comments-and-sitemap` | as above | as above | `/a` allow | `no_rules` | no |
 | `cmt-user-agent-only` — `User-agent: *` and nothing else | an empty group | not documented | `/a` allow | `no_rules` | no |
 | `cmt-inline-comment` — `Disallow: /a # private` | comment stripped | everything after `#` ignored | `/a` and `/a%20` disallow | none | no |
-| `cmt-hash-in-rule` — `Disallow: /a#b` | `#` starts a comment, so the rule is `/a` | same | `/a` **and `/abc`** disallow | none | yes; **known gap**: nothing flags a `#` that shortens a rule into a wider prefix |
+| `cmt-hash-in-rule` — `Disallow: /a#b` | `#` starts a comment, so the rule is `/a` | same | `/a` **and `/abc`** disallow | `rule_cut_by_comment@2` | yes; covered by `rule_cut_by_comment` (ROBO-gjhpykcj) |
 
 The validator side of the rule-free cases is ROBO-vxrzcqpe's; these rows add
 the matcher decision for the comparison work.
@@ -216,12 +216,12 @@ the matcher decision for the comparison work.
 | `grp-blank-line-between-agents` | as above | not documented | FooBot and BarBot `/x` disallow | none | no |
 | `grp-same-agent-twice` — FooBot twice (second as `foobot`), BarBot between | combined (§2.2.1) | combined | `/x`, `/y` disallow, `/z` (BarBot's) allow | none | no |
 | `grp-rule-before-user-agent` | a rule outside a group is not valid syntax | invalid lines ignored | `/x` allow, `/y` disallow | `rule_without_user_agent@1` | no |
-| `grp-token-version-in-file` — `User-agent: Googlebot/2.1` | `/` is not allowed in a token; unspecified | `googlebot/1.2` equals `googlebot` | `/x` as `Googlebot` disallow | none | no |
+| `grp-token-version-in-file` — `User-agent: Googlebot/2.1` | `/` is not allowed in a token; unspecified | `googlebot/1.2` equals `googlebot` | `/x` as `Googlebot` disallow | `user_agent_cut@1` (warning; names `Googlebot`) | no |
 | `grp-token-letter-case-in-file` — `User-agent: GOOGLEBOT`, token `googlebot` | case-insensitive | case-insensitive | disallow | none | no |
 | `grp-googlebot-image-fallback` — a `Googlebot` group and a `*` group, token `Googlebot-Image` | `*` applies (no group names the token) | the common-crawlers page lists `Googlebot` as Googlebot-Image's second token, so Google's crawler follows the `Googlebot` group (engine-profiles.md §5a) | `/x` allow, `/y` disallow (the `*` group): the binding reads the one token only | `wildcard_rules_not_inherited@1` | yes; **known gap**, a maintainer decision: ROBO-fbbmvbob |
-| `grp-user-agent-with-space` — `User-agent: Foo Bot` | not a valid token; unspecified | not documented | as `Foo` disallow, as `FooBot` allow: the value is cut at the space | none | yes; **known gap**: a cut User-agent value is not flagged |
-| `grp-digit-in-token` — `User-agent: Bot2` | digits are not allowed in a token (§2.2.1); unspecified | not documented | as `Bot2` allow, as `Bot` disallow: the value is cut at the digit | none | yes; **known gap**: same |
-| `grp-star-prefixed-token` — `User-agent: *bot` | not a valid token; unspecified | not documented | allow: `*bot` is neither global nor a token | none | yes; **known gap**: same |
+| `grp-user-agent-with-space` — `User-agent: Foo Bot` | not a valid token; unspecified | not documented | as `Foo` disallow, as `FooBot` allow: the value is cut at the space | `user_agent_cut@1` (warning; names `Foo`) | yes; covered by `user_agent_cut` |
+| `grp-digit-in-token` — `User-agent: Bot2` | digits are not allowed in a token (§2.2.1); unspecified | not documented | as `Bot2` allow, as `Bot` disallow: the value is cut at the digit | `user_agent_cut@1` (warning; names `Bot`) | yes; covered by `user_agent_cut` |
+| `grp-star-prefixed-token` — `User-agent: *bot` | not a valid token; unspecified | not documented | allow: `*bot` is neither global nor a token | `user_agent_cut@1` (warning; names no crawler) | yes; covered by `user_agent_cut` |
 | `grp-sitemap-mid-group` — Sitemap between two rules | MUST NOT terminate a group (§2.2.4) | "Rules other than allow, disallow, and user-agent are ignored by the robots.txt parser" ("Order of precedence for user agents"; its example has a sitemap line inside a group of two user-agent lines); a sitemap line between rules is not shown | `/x`, `/y` disallow | none | no |
 | `grp-unknown-between-agents` — `Crawl-delay` between two User-agent lines | other records; unspecified for the first agent | unsupported fields ignored | FooBot and BarBot `/x` disallow: the unknown line does not split them | `unsupported_directive@2` | no |
 
@@ -240,8 +240,9 @@ The 500 KiB boundaries are pinned elsewhere (table above).
 
 | id | RFC 9309 | Google doc | Matcher | Validator | Surprise |
 |---|---|---|---|---|---|
-| `content-spam-html` — a casino/popunder page with scripts, links and an iframe served as robots.txt | no valid records: no rules | an HTML download is parsed for rules and everything else ignored | `/`, `/private/` allow | `accepted_missing_colon`, `unknown_directive` and `malformed_line` rows, `no_rules`; `validation_status = "error"` | yes; **known gap**: no diagnostic names the body as HTML (the content flag exists only on fetch rows, ROBO-nhuirvrd) |
-| `redirect-cross-host-html` — `http://a.example/robots.txt` answers 301 to `https://b.example/landing`, an HTML page | redirects followed, reached rules applied to the first authority (§2.3.1.2) | redirects followed | the fetch follows (`redirect_count = 1`, `effective_url` the landing page, `content_type = "text/html"`, `content_flag = "html"`, v1 `usable_body` / `http_200_use_rules`), and every URL is allowed | the landing page's lines (`malformed_line`, `accepted_missing_colon`, `unknown_directive`, `no_rules`); nothing about the redirect | yes; **known gap**: ROBO-gokbvzcb |
+| `content-spam-html` — a casino/popunder page with scripts, links and an iframe served as robots.txt | no valid records: no rules | an HTML download is parsed for rules and everything else ignored | `/`, `/private/` allow | `accepted_missing_colon`, `unknown_directive` and `malformed_line` rows, `html_body` (the body looks like HTML, from the ROBO-nhuirvrd content flag), `no_rules`; `validation_status = "error"` | yes; covered by `html_body` |
+| `content-html-script-first` — a one-line page opening with inline `<script>` and `<style>`, its doctype and `<html>` mid-line | no valid records: no rules | an HTML download is parsed for rules and everything else ignored | `/`, `/private/` allow | `unknown_directive`, `html_body` (the content flag is `"html"`: a body opening with `<` that holds a script, style or document marker anywhere), `no_rules` | yes; covered by `html_body` |
+| `redirect-cross-host-html` — `http://a.example/robots.txt` answers 301 to `https://b.example/landing`, an HTML page | redirects followed, reached rules applied to the first authority (§2.3.1.2) | redirects followed | the fetch follows (`redirect_count = 1`, `effective_url` the landing page, `content_type = "text/html"`, `content_flag = "html"`, v1 `usable_body` / `http_200_use_rules`), and every URL is allowed | the landing page's lines (`malformed_line`, `accepted_missing_colon`, `unknown_directive`, `html_body`, `no_rules`); `robots_validate_url()` adds a `redirect_cross_site` warning (another registrable domain; the robots.txt is effectively missing, the page being HTML) | yes; covered by `redirect_cross_site` (from the fetch) |
 
 The redirect case runs through the ssrfr fake (`helper-fake-ssrfr.R`); its
 fetch-layer values are pinned in the test file, not in the manifest.
@@ -256,29 +257,46 @@ fetch-layer values are pinned in the test file, not in the manifest.
 
 ## Known gaps found
 
-Filed 2026-11-09 unless marked; none is fixed here. Each is pinned in the
-test file with a `# known gap (ROBO-xxxxxxxx):` comment naming its issue, so
-a fix turns its block red.
+Filed 2026-11-09 unless marked. Each open gap is pinned in the test file with
+a `# known gap (ROBO-xxxxxxxx):` comment naming its issue, so a fix turns its
+block red. An item marked fixed names the diagnostic that now covers it.
 
 1. ROBO-atkmqcov — `enc-bom-mid-file`, `enc-bom-before-user-agent`: a BOM after the start is
-   only an `unknown_directive`; a lost User-agent group is not called out.
-2. ROBO-igrkabdb — `enc-utf16le-no-bom`: `no_rules` says the file restricts nothing while the
-   NUL-dropping matcher enforces its rules.
-3. ROBO-sniltuap — `enc-latin1-comment`: `invalid_utf8` has no line and is an error even when
-   only a comment holds the byte.
+   only an `unknown_directive`; a lost User-agent group is not called out. Fixed:
+   `misplaced_byte_order_mark` names the BOM and the directive it hides.
+2. ROBO-igrkabdb — `enc-utf16le-no-bom`: `no_rules` said the file restricts nothing while the
+   NUL-dropping matcher enforces its rules. Fixed: `rules_after_nul_removal` (warning) counts
+   the rules Google's matcher reads once the NULs are dropped.
+3. ROBO-sniltuap — `enc-latin1-comment`: `invalid_utf8` had no line and was an error even when
+   only a comment held the byte. Fixed: each line is reported, and bytes only after the first
+   `#` give the `invalid_utf8_comment` warning.
 4. ROBO-gaczsrgj — `esc-pct7e-rule-tilde-url`: no diagnostic for an escaped unreserved
-   character, which Google never matches against the raw form.
-5. ROBO-dlgeqluf — `esc-space-in-rule`: no diagnostic for a raw space inside a rule.
-6. ROBO-gjhpykcj — `cmt-hash-in-rule`: no diagnostic for a `#` that cuts a rule into a wider
-   prefix.
+   character, which Google never matches against the raw form. Fixed:
+   `rule_escaped_unreserved`.
+5. ROBO-dlgeqluf — `esc-space-in-rule`: no diagnostic for a raw space inside a rule. Fixed:
+   `rule_inner_whitespace`.
+6. Fixed: ROBO-gjhpykcj — `cmt-hash-in-rule`: a `#` that cuts a rule into a wider prefix
+   went unflagged; `rule_cut_by_comment` now reports it.
 7. ROBO-zvhrayhx — `grp-user-agent-with-space`, `grp-digit-in-token`,
    `grp-star-prefixed-token`: a User-agent value the matcher cuts or never
-   matches is not flagged.
+   matches is not flagged. Fixed: `user_agent_cut` (warning) names the token
+   the matcher reads, or says the value names no crawler.
 8. ROBO-ccfsanhq — `content-spam-html`: no validator diagnostic names an HTML body.
+   Fixed by ROBO-ccfsanhq: the `html_body` warning.
 9. ROBO-fbbmvbob (maintainer decision) — `grp-googlebot-image-fallback`: the
    binding ignores Googlebot-Image's documented parent token `Googlebot`.
 10. ROBO-kormmfyg — `esc-lower-hex-rule`: the matcher upper-cases a rule's
     lower-case escape but not the URL's, so `Disallow: /a%3cb` allows the
-    exact path `/a%3cb`; no diagnostic.
+    exact path `/a%3cb`; no diagnostic. Fixed: `rule_lowercase_escape`.
 11. ROBO-gokbvzcb (filed earlier) — `redirect-cross-host-html`: no validator
     diagnostic for a successful cross-host redirect, here to an HTML page.
+    Fixed by ROBO-gokbvzcb: the `redirect_cross_site` warning, beside
+    `redirect_same_site` and `redirect_other_path`.
+12. ROBO-qquftxcx (filed 2026-11-10) — `content-html-script-first`: `html_body`
+    needs an HTML marker at a line start, so a minified page opening with
+    inline script or style is flagged `"xml"`; and a one-line page cut at
+    `max_bytes` leaves nothing readable to sniff. Neither draws `html_body`.
+    Fixed by ROBO-qquftxcx: a body opening with `<` is `"html"` when a
+    doctype, `<html`, `<head`, `<body`, `<script` or `<style` appears
+    anywhere in the window, and `html_body` sniffs the stored bytes, before
+    the cut.

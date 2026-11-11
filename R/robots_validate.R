@@ -23,8 +23,11 @@ validation_unsupported <- c(
 #'
 #' `robots_txt` may be text or a raw vector. Raw input is useful when validating
 #' acquisition bytes that contain malformed UTF-8, a byte-order mark, or NUL
-#' bytes. Character input marked with `Encoding = "bytes"` is used verbatim;
-#' other character input is converted to UTF-8 once.
+#' bytes. Character input marked UTF-8 is used as written. Unmarked input (as
+#' `rawToChar()` gives) is taken as UTF-8 bytes as written when the session's
+#' native encoding is UTF-8 or ASCII (the C locale), and converted from the
+#' native encoding otherwise; input marked `"latin1"` is converted, and input
+#' marked `Encoding = "bytes"` is used verbatim.
 #'
 #' The result contains three typed data frames: `map` (the validation target),
 #' `documents` (one summary row per document), and `diagnostics` (zero or more
@@ -39,18 +42,28 @@ validation_unsupported <- c(
 #' matchers agree on both pattern effects (a pattern not led by `/` or `*`
 #' never matches, and `$` anchors only as the last character). The sitemap
 #' checks are syntax-only: no sitemap is fetched, which is the `sitemapr`
-#' package's job. `body_truncated` and the codes starting `acquisition_` come
-#' only from [robots_validate_url()].
+#' package's job. `body_truncated` and the codes starting `acquisition_` or
+#' `redirect_` come only from [robots_validate_url()]; a `redirect_` row
+#' follows the body's own rows.
 #'
 #' \tabular{lll}{
 #'   \strong{Code} \tab \strong{Severity} \tab \strong{Meaning} \cr
 #'   \code{byte_order_mark} \tab warning \tab
 #'     The document starts with a UTF-8 byte-order mark; the parser skips it.
 #'     \cr
+#'   \code{misplaced_byte_order_mark} \tab warning \tab
+#'     A UTF-8 byte-order mark after the start of the file begins a line, so
+#'     the parser reads it as part of the key and ignores that line's
+#'     directive. A hidden User-agent line starts no group: the lines after
+#'     it stay with the group before it until the next User-agent line. \cr
 #'   \code{nul_byte} \tab error \tab
 #'     A line holds NUL bytes, which can truncate parsing. \cr
 #'   \code{invalid_utf8} \tab error \tab
-#'     The document bytes are not well-formed UTF-8. \cr
+#'     A line holds bytes that are not well-formed UTF-8 before the line's
+#'     first \code{#}. \cr
+#'   \code{invalid_utf8_comment} \tab warning \tab
+#'     A line's bytes that are not well-formed UTF-8 all sit in its comment,
+#'     after the first \code{#}; no rule changes. \cr
 #'   \code{malformed_line} \tab error \tab
 #'     An active line is not a key-value directive. \cr
 #'   \code{line_too_long} \tab error \tab
@@ -59,12 +72,26 @@ validation_unsupported <- c(
 #'     A directive without a colon, which the parser accepts. \cr
 #'   \code{accepted_directive_typo} \tab warning \tab
 #'     A directive name in an accepted typo spelling. \cr
+#'   \code{accepted_directive_prefix} \tab warning \tab
+#'     A key such as \code{DisallowAITraining} that only starts with
+#'     \code{allow} or \code{disallow}, which the parser reads as that rule.
+#'     \cr
 #'   \code{unsupported_directive} \tab warning \tab
 #'     A known directive this profile ignores, such as \code{crawl-delay}. \cr
+#'   \code{content_signal_directive} \tab warning \tab
+#'     A \code{Content-Signal} line, from an expired Internet-Draft that no
+#'     crawler operator documents honoring; it counts as an unsupported
+#'     directive. \cr
 #'   \code{unknown_directive} \tab warning \tab
 #'     A directive this profile does not recognize. \cr
 #'   \code{empty_user_agent} \tab error \tab
 #'     A User-agent line with an empty value. \cr
+#'   \code{user_agent_cut} \tab warning \tab
+#'     A User-agent value Google's matcher reads only up to its first
+#'     character outside letters, \code{_} and \code{-}, such as
+#'     \code{Foo Bot} or \code{Googlebot/2.1}; the message names the token
+#'     read, or says it names no crawler (\code{*bot}). The Bing and Yandex
+#'     matchers do not cut the value. \cr
 #'   \code{rule_without_user_agent} \tab error \tab
 #'     An Allow or Disallow in no group a non-empty User-agent opened: before
 #'     any, or after an empty User-agent that follows a rule. \cr
@@ -72,8 +99,25 @@ validation_unsupported <- c(
 #'     An empty Allow or Disallow value, which the matcher ignores. \cr
 #'   \code{rule_missing_leading_slash} \tab warning \tab
 #'     A pattern not led by \code{/} or \code{*}; it never matches. \cr
+#'   \code{rule_cut_by_comment} \tab warning \tab
+#'     A \code{#} with no space or tab before it starts a comment inside an
+#'     Allow or Disallow value, cutting the rule at the \code{#}. A vertical
+#'     tab or form feed before the \code{#} still counts as no space. \cr
 #'   \code{rule_inner_dollar} \tab warning \tab
 #'     A \code{$} before a pattern's end; it matches a literal \code{$}. \cr
+#'   \code{rule_inner_whitespace} \tab warning \tab
+#'     A pattern holds a space, tab, vertical tab or form feed; crawlers
+#'     request URLs with it percent-encoded, so the rule never matches. \cr
+#'   \code{rule_escaped_unreserved} \tab warning \tab
+#'     A pattern percent-escapes an unreserved character, such as \code{\%7E}
+#'     for \code{~}. Google matches only the escape, never the character,
+#'     though RFC 9309 section 2.2.2 decodes it. One per rule line. \cr
+#'   \code{rule_lowercase_escape} \tab warning \tab
+#'     A pattern holds a lower-case percent-escape, such as \code{\%3c}.
+#'     Google upper-cases the escape in a pattern but not in the URL, so a URL
+#'     written with it never matches the rule; Bing upper-cases it too, and
+#'     the package's Yandex matcher compares the pattern as written. One per
+#'     rule line. \cr
 #'   \code{empty_sitemap_value} \tab warning \tab
 #'     A Sitemap line with an empty value. \cr
 #'   \code{invalid_sitemap_url} \tab warning \tab
@@ -84,6 +128,25 @@ validation_unsupported <- c(
 #'     A named User-agent group lacks some \code{User-agent: *} rules, which
 #'     its crawlers therefore do not obey. Anchored on the group's first
 #'     User-agent line. Not reported for a body cut at \code{max_bytes}. \cr
+#'   \code{ai_training_preference} \tab info \tab
+#'     A User-agent line names the AI-training policy token
+#'     \code{__usage_ai-training}; the message lists its group's own rules.
+#'     One per group, on its first such line. \cr
+#'   \code{ai_training_token_near_miss} \tab warning \tab
+#'     A User-agent value close to the policy token that does not match it
+#'     exactly, such as \code{__usage_ai_training} or
+#'     \code{__usage_ai-training/1.0}. \cr
+#'   \code{ai_training_group_extra_line} \tab warning \tab
+#'     A directive such as \code{Crawl-delay} in a group that names only the
+#'     policy token, before its last rule or anywhere in the file's last
+#'     group; file-level Sitemap, Host and \code{Clean-param} lines are left
+#'     out.
+#'     \cr
+#'   \code{ai_training_token_stacked} \tab warning \tab
+#'     A policy-token User-agent line (\code{__usage_}, or a near miss)
+#'     shares a group with \code{User-agent: *}, or with a crawler or other
+#'     policy token from which a directive line separates it, so the group's
+#'     rules reach them too. \cr
 #'   \code{disallow_tied_by_allow} \tab warning \tab
 #'     A Disallow never takes effect: an Allow with the identical pattern
 #'     applies to the same crawlers and wins the tie. Anchored on the
@@ -95,10 +158,23 @@ validation_unsupported <- c(
 #'   \code{missing_user_agent} \tab error \tab
 #'     Allow or Disallow rules exist but no line names a non-empty
 #'     User-agent. \cr
+#'   \code{html_body} \tab warning \tab
+#'     The body looks like an HTML page, not a robots.txt; its lines are still
+#'     read and reported one by one. \cr
 #'   \code{no_rules} \tab info \tab
 #'     The parser read no Allow or Disallow rule, so the document restricts
-#'     nothing.
+#'     nothing (see \code{rules_after_nul_removal}).
 #'     Not reported for a body cut at \code{max_bytes}. \cr
+#'   \code{rules_after_nul_removal} \tab warning \tab
+#'     With the NUL bytes removed, as Google's matcher reads the body, it
+#'     holds Allow or Disallow rules the parser, which ends a line at its
+#'     first NUL, does not read. When the parser read no rule, every
+#'     NUL-free rule is counted; UTF-16 text does this, and should be
+#'     re-saved as UTF-8; reported in place of \code{no_rules}. Otherwise
+#'     only grouped rules (after a User-agent line, as Google's matcher
+#'     reads them) on lines the parser does not read as rules, or in a group
+#'     the NUL changes, are counted; a value the NUL only shortens is not.
+#'     Reported even for a body cut at \code{max_bytes}. \cr
 #'   \code{body_truncated} \tab warning \tab
 #'     The body exceeded \code{max_bytes}; only lines before the cut were read.
 #'     \cr
@@ -117,8 +193,13 @@ validation_unsupported <- c(
 #'     A 5xx, with each engine's reading in \code{message}. \cr
 #'   \code{acquisition_http_protocol} \tab error \tab
 #'     A 1xx or a status outside 100 to 599. \cr
+#'   \code{acquisition_http_other_2xx} \tab info \tab
+#'     A 2xx other than 200, such as 203 or 204; the body is still validated.
+#'     \code{message} names how Google, Yandex and Bing read the status. \cr
 #'   \code{acquisition_limit_exceeded} \tab error \tab
-#'     A 3xx body exceeded \code{max_bytes} and was refused whole. \cr
+#'     A body with a 3xx status, an unknown status, or a 2xx whose libcurl and
+#'     status-line statuses disagree exceeded \code{max_bytes} and was refused
+#'     whole. \cr
 #'   \code{acquisition_partial_response} \tab error \tab
 #'     A partial HTTP response was rejected. \cr
 #'   \code{acquisition_redirect_over_budget} \tab error \tab
@@ -135,6 +216,16 @@ validation_unsupported <- c(
 #'   \code{acquisition_redirect_non_http} \tab error \tab
 #'     A redirect to a scheme other than \code{http} or \code{https} was
 #'     refused for safety. \cr
+#'   \code{redirect_other_path} \tab info \tab
+#'     The fetch redirected to another path on the same host, such as the
+#'     home page; a warning when the page reached is HTML. \cr
+#'   \code{redirect_same_site} \tab info \tab
+#'     The fetch redirected to another host of the same registrable domain,
+#'     such as \code{www} and the bare domain; a warning when the page
+#'     reached is HTML. \cr
+#'   \code{redirect_cross_site} \tab warning \tab
+#'     The fetch redirected to another registrable domain, whose file is
+#'     applied to this host. \cr
 #'   \code{acquisition_transport_failed} \tab error \tab
 #'     A timeout, TLS, network or malformed-response failure, with each
 #'     engine's reading in
@@ -147,16 +238,60 @@ validation_unsupported <- c(
 #'     \code{message}.
 #' }
 #'
+#' For `accepted_directive_prefix`, Google's parser accepts any key that
+#' starts with `allow` or `disallow`, ignoring ASCII case, so
+#' `DisallowAITraining: /` is read as `Disallow: /` and blocks the group's
+#' crawlers. The Bing and Yandex matchers compare the whole field name and
+#' ignore the line, and RFC 9309's grammar (section 2.2) has only `allow` and
+#' `disallow` rule records, leaving other records to the crawler (section
+#' 2.2.4). The message names the key as written; for a Disallow key it points
+#' to a separate `User-agent: __usage_ai-training` group, not stacked under
+#' another User-agent line, as the AI-training opt-out.
+#' An accepted typo such as `Dissallow` is reported as
+#' `accepted_directive_typo` only.
+#'
 #' For `wildcard_rules_not_inherited`, a crawler obeys only the groups that
 #' name it (combined when several do) and ignores the `User-agent: *` group,
 #' as RFC 9309 section 2.2.1 says. Each `*` Allow or Disallow is compared
-#' with the named crawler's rules by type and value; a trailing `*` is
-#' ignored (`/x` equals `/x*`, and `*` and `/*` equal `/`), `$` is not, and
-#' empty values are left out. The message lists the missing `*` rules, ten at
-#' most. A crawler whose rules are all explicit allow-all (an empty
-#' `Disallow:`, `Allow: /`, `Allow: /*` or `Allow: *`) is not reported; an
-#' empty `Allow:` is ignored, and a crawler whose groups have no other rule
-#' is reported.
+#' with the named crawler's rules by type and value, except that a `*` Allow
+#' matching every path is not listed, because the named group's own rules are
+#' what the crawler follows. Such an Allow is `/` with any `*`s after it, or a
+#' run of `*`s with an optional `/` before and an optional final `$` (`/`,
+#' `/*`, `*`, `/*$`, `*$`; `/$` is not one). A trailing `*` is ignored (`/x`
+#' equals `/x*`, and `*` and `/*` equal `/`), `$` is not, and empty values are
+#' left out. The message lists the missing `*` rules, ten at most. A crawler
+#' whose rules are all explicit allow-all (an empty `Disallow:` or an
+#' every-path `Allow`, as above) is not reported; an empty `Allow:` is ignored,
+#' and a crawler whose groups have no other rule is reported.
+#'
+#' The `ai_training_` codes follow
+#' draft-kelley-aipref-training-preference-signal-00 (dated 2026-10-30), an
+#' Internet-Draft: a `User-agent: __usage_ai-training` group states an
+#' AI-training preference, a disallowed path one against training on it and
+#' an allowed path one in favor. The draft matches the token exactly, apart
+#' from ASCII case, and a `User-agent: *` group never applies to it, so the
+#' token is never reported as `wildcard_rules_not_inherited`, nor is a value
+#' Google's matcher reads as the token (`__usage_ai-training/1.0`). A near
+#' miss is a value whose leading run of letters, `_` and `-`, with the `_`
+#' and `-` removed, is `usageaitraining` in any case. The Google and Yandex
+#' parsers join User-agent lines that no Allow or Disallow line separates
+#' into one group; the Bing parser joins them only across blank and comment
+#' lines and ends the group at any other directive
+#' (`design/engine-disagreements.md` classes 1 and 1b). So a training
+#' opt-out after a `*` group that holds no rule can become a Disallow for
+#' every crawler, and `ai_training_token_stacked` says so, naming which
+#' parsers join the lines. Another policy token or crawler a directive line
+#' separates from the token is reported too. Blank and comment lines
+#' separate nothing, and the draft lets a group mix tokens, so consecutive
+#' or comment-headed User-agent lines that name crawlers stay silent. A
+#' line after a token group's last rule may head the next group, so
+#' `ai_training_group_extra_line` leaves it out unless the group is the
+#' file's last. A key such as `DisallowAITraining` is
+#' `accepted_directive_prefix`. A body cut at `max_bytes` is checked, and
+#' the info then says the lines past the cut were not read; a document
+#' holding a NUL byte gets none of these codes.
+#' Which crawler operators read the token, and from when, is recorded with
+#' dates in `design/engine-profiles.md` section 7a.
 #'
 #' For `disallow_tied_by_allow`, an Allow and a Disallow with the same
 #' pattern match the same paths with the same priority, and Allow wins the
@@ -183,7 +318,7 @@ validation_unsupported <- c(
 #'
 #' A document holding a NUL byte gets none of `wildcard_rules_not_inherited`,
 #' `disallow_tied_by_allow` or `duplicate_rule`, because the parser stops a
-#' value at the NUL while the matchers drop it and read on.
+#' value at the NUL while Google's matcher drops it and reads on.
 #'
 #' @param robots_txt A single non-missing character string or a raw vector.
 #' @param source_id A single non-empty character string identifying the supplied
@@ -243,9 +378,10 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' the cut with `body_truncated` and `limit_exceeded` both `TRUE` and
 #' `final_newline = NA` (the file's end was never read), `byte_size` is the
 #' stored size, and a warning diagnostic with code `body_truncated` says most
-#' of the file may not have been validated. A 3xx body over
-#' `max_bytes` is refused whole and reported as `acquisition_limit_exceeded`,
-#' and a 4xx or 5xx keeps its status outcome whatever its body size.
+#' of the file may not have been validated. A body over `max_bytes` with a 3xx
+#' status, an unknown status, or a 2xx whose libcurl and status-line statuses
+#' disagree is refused whole and reported as `acquisition_limit_exceeded`, and a
+#' 4xx or 5xx keeps its status outcome whatever its body size.
 #'
 #' A status that leaves no body gets a code for its class (404 and 410
 #' `acquisition_missing`, another 4xx `acquisition_http_4xx`, 429
@@ -254,7 +390,11 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' Yandex and Bing may do with it, and any `Retry-After` delay; the policy
 #' behind it is in [robots_engine_contract_v1()]. The document stays
 #' `"not_validated"`, so an `acquisition_http_4xx` row (a 4xx other than 404,
-#' 410 and 429) has `warning_count` 1 and `error_count` 0.
+#' 410 and 429) has `warning_count` 1 and `error_count` 0. A 2xx other than 200
+#' (203 or 204, say) keeps its body, which is validated as a 200's is, and also
+#' gets `acquisition_http_other_2xx`, an info whose message names how Google,
+#' Yandex and Bing read that status. A 206 is a partial response with no body,
+#' so it keeps `acquisition_partial_response`.
 #'
 #' A redirect, transport or safety outcome gets a code of its own too, read
 #' from the source row's `terminal_redirect_reason` and `safety_block_reason`
@@ -267,6 +407,22 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' Google, Yandex and Bing may do, or says that an engine's behavior is not
 #' documented. A refusal is robotstxtr's own safety choice, so its message
 #' gives no engine verdict for it.
+#'
+#' A fetch that succeeded after redirecting away from the robots.txt URL is
+#' reported beside the body's own diagnostics, from the source row's
+#' `robots_url`, `effective_url` and `content_flag`: `redirect_other_path`
+#' (same host, another path; info, or a warning when the page reached is
+#' HTML), `redirect_same_site` (another host of the same registrable domain;
+#' info, or a warning when the page reached is HTML) and
+#' `redirect_cross_site` (another registrable domain; warning). A
+#' change of scheme or port alone, such as `http` to `https`, is not
+#' reported. The registrable domain comes from the Public Suffix List
+#' through `rurl::get_domain()`, so `a.example.co.uk` and `b.example.co.uk`
+#' are one site; an IP literal, or a host with no registrable domain, is
+#' compared whole. RFC 9309 section 2.3.1.2 and Yandex document applying
+#' the file reached to the requested host, Google is inferred to, and Bing
+#' does not document it; when the page reached is HTML, the message says
+#' the robots.txt is effectively missing. The fetch itself is unchanged.
 #'
 #' This function validates the acquired robots.txt document. It does not answer
 #' whether any target URL is allowed; use [allowed_by_robots_url()] for that
@@ -351,11 +507,7 @@ validation_body_bytes <- function(robots_txt) {
       "robotstxtr_invalid_validation_document"
     )
   }
-  if (identical(Encoding(robots_txt), "bytes")) {
-    charToRaw(robots_txt)
-  } else {
-    charToRaw(enc2utf8(robots_txt))
-  }
+  text_body_bytes_v1(robots_txt)
 }
 
 new_robots_validations <- function(map, documents, diagnostics) {
@@ -439,6 +591,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # the site's. `byte_size` stays the stored size; the file's real end was
   # never read, so `final_newline` is NA.
   stored_size <- length(bytes)
+  stored_bytes <- bytes
   bytes <- readable_body(bytes, body_truncated)
   parsed <- as.data.frame(
     robotstxtr_validation_parse_(bytes),
@@ -450,27 +603,53 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     parsed <- parsed[parsed$line <= line_count, , drop = FALSE]
   }
 
+  # The diagnostics are kept as chunks of column vectors, in emission order:
+  # one chunk per row or batch. The frame is built once, at the end
+  # (ROBO-dbvmxcfw), so the cost stays linear in the number of rows. Each chunk
+  # is bound under its index: appending to a list held in the environment
+  # would copy the whole list on every append.
   diag_env <- new.env(parent = emptyenv())
-  diag_env$items <- list()
+  diag_env$n_chunks <- 0L
+  add_chunk <- function(line, severity, code, directive, raw_text, message) {
+    n <- length(line)
+    # Each column is one value per row or one value for the whole chunk;
+    # rep_len() would silently cut or pad any other length.
+    stopifnot(all(lengths(list(severity, code, directive, raw_text, message))
+                  %in% c(1L, n)))
+    diag_env$n_chunks <- diag_env$n_chunks + 1L
+    assign(as.character(diag_env$n_chunks), list(
+      line = rep_len(as.integer(line), n),
+      severity = rep_len(as.character(severity), n),
+      code = rep_len(as.character(code), n),
+      directive = rep_len(as.character(directive), n),
+      raw_text = rep_len(as.character(raw_text), n),
+      message = rep_len(as.character(message), n)
+    ), envir = diag_env)
+  }
   add_diagnostic <- function(line, severity, code, directive, message) {
     raw_text <- if (!is.na(line) && line <= line_count) {
       render_validation_line(raw_lines[[line]])
     } else {
       NA_character_
     }
-    diag_env$items[[length(diag_env$items) + 1L]] <- validation_diagnostic(
-      source_id, line, severity, code, directive, raw_text, message
-    )
+    add_chunk(line, severity, code, directive, raw_text, message)
   }
 
-  has_bom <- length(bytes) >= 3L && identical(
-    bytes[1:3], as.raw(c(0xef, 0xbb, 0xbf))
-  )
+  has_bom <- length(bytes) >= 3L && identical(bytes[1:3], validation_bom)
   if (has_bom) {
     add_diagnostic(
       1L, "warning", "byte_order_mark", NA_character_,
       paste0("A UTF-8 byte-order mark is present; the Google-compatible ",
              "parser skips it.")
+    )
+  }
+  # ROBO-atkmqcov: only the BOM at byte 0 is skipped; one that starts a
+  # line's content anywhere else stays at the front of the key.
+  for (line in misplaced_bom_lines(raw_lines, has_bom)) {
+    hidden <- misplaced_bom_hidden(raw_lines[[line]], line == 1L && has_bom)
+    add_diagnostic(
+      line, "warning", "misplaced_byte_order_mark", hidden$directive,
+      hidden$message
     )
   }
 
@@ -488,15 +667,39 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     )
   }
 
-  bytes_without_nul <- nul_free_bytes(bytes)
-  encoding_valid <- validUTF8(rawToChar(bytes_without_nul))
-  encoding <- if (encoding_valid) "utf-8" else "invalid-utf-8"
+  # RFC 9309 section 2.3: the file MUST be UTF-8. LF and CR are ASCII, so the
+  # document is well-formed exactly when every line is. A line is checked
+  # without its NUL bytes, as Google's matcher reads it. The parser cuts a
+  # line at its first `#` (GetKeyAndValueFrom), and `#` is never part of a
+  # multi-byte sequence, so bad bytes only after it change no rule
+  # (ROBO-sniltuap).
+  # Its rows go in as one frame: a file can hold thousands of bad lines.
+  nul_free_lines <- lapply(raw_lines, nul_free_bytes)
+  bad_lines <- which(!vapply(nul_free_lines, function(line_bytes) {
+    validUTF8(rawToChar(line_bytes))
+  }, logical(1L)))
+  encoding_valid <- length(bad_lines) == 0L
   if (!encoding_valid) {
-    add_diagnostic(
-      NA_integer_, "error", "invalid_utf8", NA_character_,
-      "Document bytes are not well-formed UTF-8."
+    in_comment <- vapply(nul_free_lines[bad_lines], function(line_bytes) {
+      hash <- match(as.raw(0x23), line_bytes)
+      !is.na(hash) &&
+        validUTF8(rawToChar(validation_raw_slice(line_bytes, 1L, hash - 1L)))
+    }, logical(1L))
+    add_chunk(
+      bad_lines, ifelse(in_comment, "warning", "error"),
+      ifelse(in_comment, "invalid_utf8_comment", "invalid_utf8"),
+      NA_character_,
+      vapply(raw_lines[bad_lines], render_validation_line, "",
+             USE.NAMES = FALSE),
+      ifelse(
+        in_comment,
+        paste0("Only a comment holds bytes that are not well-formed UTF-8; ",
+               "no rule changes."),
+        "Line bytes are not well-formed UTF-8."
+      )
     )
   }
+  encoding <- if (encoding_valid) "utf-8" else "invalid-utf-8"
 
   active <- !parsed$is_empty & !parsed$is_comment
   malformed <- active & !parsed$has_directive
@@ -535,11 +738,31 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         "Directive spelling is an accepted Google-parser typo variant."
       )
     }
+    if (type %in% c("allow", "disallow") && !parsed$is_typo[[i]]) {
+      prefix_key <- validation_prefix_key(
+        raw_lines[[line]], line, type, parsed$missing_colon[[i]]
+      )
+      if (!is.null(prefix_key)) {
+        add_diagnostic(
+          line, "warning", "accepted_directive_prefix", action,
+          validation_prefix_key_message(prefix_key, type)
+        )
+      }
+    }
 
     if (identical(type, "unknown")) {
       unsupported[[i]] <- !is.na(action) &&
         action %in% validation_unsupported
-      if (unsupported[[i]]) {
+      if (identical(action, "content-signal")) {
+        add_diagnostic(
+          line, "warning", "content_signal_directive", action,
+          paste0("Content-Signal comes from an expired Internet-Draft and ",
+                 "no crawler operator documents honoring it; for an ",
+                 "AI-training preference use a separate ",
+                 "`User-agent: __usage_ai-training` group, not stacked ",
+                 "under another User-agent line.")
+        )
+      } else if (unsupported[[i]]) {
         add_diagnostic(
           line, "warning", "unsupported_directive", action,
           paste0("Directive is known but ignored by this validation profile; ",
@@ -582,6 +805,22 @@ validate_document_bytes <- function(bytes, source_id, source_type,
           "Empty Allow or Disallow value is ignored by the matcher."
         )
       }
+      # The parser cuts the line at its first `#` (ROBO-gjhpykcj), so
+      # `Disallow: /a#b` is the wider rule `/a`. The parser stops at a NUL,
+      # but Google's matcher drops NULs and reads on (R/body-decode.R), so a
+      # line with a NUL is checked NUL-free. Otherwise it is gated on
+      # has_comment: the parser never sees a `#` past its line buffer.
+      has_nul <- nul_counts[[line]] > 0L
+      if ((parsed$has_comment[[i]] ||
+             (has_nul && !parsed$line_too_long[[i]])) &&
+            nzchar(value) &&
+            rule_cut_by_comment(nul_free_bytes(raw_lines[[line]]))) {
+        add_diagnostic(
+          line, "warning", "rule_cut_by_comment", type,
+          paste0("A '#' with no space or tab before it starts a comment, ",
+                 "so the rule is cut at the '#'.")
+        )
+      }
     } else if (identical(type, "sitemap") && !nzchar(value)) {
       add_diagnostic(
         line, "warning", "empty_sitemap_value", type,
@@ -591,14 +830,62 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     for (found in directive_value_diagnostics(type, value)) {
       add_diagnostic(line, "warning", found$code, type, found$message)
     }
+    # Google upper-cases a rule's escapes but never the URL's, so a
+    # lower-case one misses the path written (ROBO-kormmfyg). The parser's
+    # value is already upper-cased, so the check reads the raw line.
+    if (type %in% c("allow", "disallow")) {
+      escapes <- rule_lowercase_escapes(
+        raw_lines[[line]], line == 1L, parsed$missing_colon[[i]]
+      )
+      if (length(escapes) > 0L) {
+        add_diagnostic(
+          line, "warning", "rule_lowercase_escape", type,
+          rule_lowercase_escape_message(escapes)
+        )
+      }
+    }
   }
 
-  # The group checks need the values the matchers read. The parser stops a
-  # value at a NUL, but every matcher drops the NULs and reads on, so a
+  # The group checks need the values Google's matcher reads. The parser stops
+  # a value at a NUL, but that matcher drops the NULs and reads on, so a
   # document with any NUL (already a `nul_byte` error) gets none of the group
   # checks.
   if (length(nul_lines) == 0L) {
     groups <- validation_groups(parsed)
+    # Google's matcher reads a User-agent value only up to its first byte
+    # outside [A-Za-z_-], so the group names another crawler than written,
+    # or none (ROBO-zvhrayhx). The message names the token only (ASCII):
+    # the value may not be valid UTF-8, and `raw_text` carries it.
+    agents <- groups$agents
+    for (i in which(agents$cut)) {
+      token <- agents$token[[i]]
+      add_diagnostic(
+        agents$line[[i]], "warning", "user_agent_cut", "user-agent",
+        if (nzchar(token)) {
+          sprintf(paste0("User-agent value is read as '%s' by Google's ",
+                         "matcher, which stops at the first character ",
+                         "outside letters, '_' and '-'."), token)
+        } else {
+          paste0("User-agent value names no crawler: Google's matcher ",
+                 "reads a product token only from a leading run of letters, ",
+                 "'_' and '-'.")
+        }
+      )
+    }
+    # The AI-training policy token (ROBO-kzyfejcv). A cut body is checked on
+    # the lines before the cut: a User-agent line past it could still join
+    # the last group (stacking the token, or making a token-only group
+    # mixed), and rules past it are unread, which the info says.
+    found <- ai_training_diagnostics(groups, parsed,
+                                     truncated = body_truncated)
+    if (nrow(found) > 0L) {
+      add_chunk(
+        found$line, found$severity, found$code, found$directive,
+        vapply(raw_lines[found$line], render_validation_line, "",
+               USE.NAMES = FALSE),
+        found$message
+      )
+    }
     # A named group drops the `*` rules for its crawlers (ROBO-gfjotdrr). On
     # a cut body a group's rules may lie past the cut, so it is skipped.
     if (!body_truncated) {
@@ -625,8 +912,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     # Its rows go in as one frame: a file can repeat thousands of rules.
     found <- duplicate_rule_diagnostics(groups)
     if (nrow(found) > 0L) {
-      diag_env$items[[length(diag_env$items) + 1L]] <- validation_diagnostic(
-        source_id, found$line, "info", "duplicate_rule", found$type,
+      add_chunk(
+        found$line, "info", "duplicate_rule", found$type,
         vapply(raw_lines[found$line], render_validation_line, "",
                USE.NAMES = FALSE),
         found$message
@@ -645,7 +932,81 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       "Document has no non-empty User-agent directive."
     )
   }
-  if (rule_count == 0L && !body_truncated) {
+  # A body that looks like an HTML page gets one document-level warning
+  # (ROBO-ccfsanhq), from the fetch row's sniffer (ROBO-nhuirvrd) read on the
+  # stored bytes, as the fetch row reads them, so a page cut mid-line is
+  # still seen, or on the validated bytes, so a NUL or invalid UTF-8 in the
+  # partial line a cut drops does not hide it (ROBO-qquftxcx). Its per-line
+  # rows stay: a real rule inside the page is still enforced. Where the
+  # validated bytes hold the NUL or mostly invalid UTF-8, the flag is
+  # "binary", and nul_byte or invalid_utf8 reports it instead.
+  if (identical(robots_content_flag(stored_bytes), "html") ||
+        identical(robots_content_flag(bytes), "html")) {
+    add_diagnostic(
+      NA_integer_, "warning", "html_body", NA_character_,
+      paste0("The body looks like an HTML page, not a robots.txt; its lines ",
+             "were read as directives anyway.")
+    )
+  }
+  # The parser ends a line at its first NUL, but Google's matcher drops the
+  # NULs and reads on (R/body-decode.R), so rules that appear only once the NULs
+  # are gone, as in UTF-16 text, are reported instead of no_rules
+  # (ROBO-igrkabdb). Rules read before a cut are real, so a cut body is
+  # checked too. When the parser reads rules of its own, the NUL-free read is
+  # reported only for the grouped rules it adds: a grouped rule on a line the
+  # parser does not read as one, or in a group the NUL changes
+  # (ROBO-ctdkqawi). A rule before the first User-agent is in no group, for
+  # Google's matcher too, and is not counted; nor is a value the NUL only
+  # shortens, which keeps its rule and group. That read is built line by
+  # line, each line NUL-free and ended by LF, so its line N is raw line N: a
+  # NUL dropped from the whole body would turn `\r\0\n` into one CRLF and
+  # move every later line up by one.
+  nul_free_rules <- 0L
+  hidden_rules <- 0L
+  if (length(nul_lines) > 0L) {
+    if (rule_count == 0L) {
+      nul_free_parsed <- robotstxtr_validation_parse_(nul_free_bytes(bytes))
+      nul_free_rules <- sum(nul_free_parsed$type %in% c("allow", "disallow"))
+    } else {
+      nul_free_text <- unlist(lapply(nul_free_lines, function(line_bytes) {
+        c(line_bytes, as.raw(0x0a))
+      }), use.names = FALSE)
+      nul_free_parsed <- as.data.frame(
+        robotstxtr_validation_parse_(nul_free_text),
+        stringsAsFactors = FALSE
+      )
+      nul_free_parsed <- nul_free_parsed[nul_free_parsed$line <= line_count, ,
+                                         drop = FALSE]
+      hidden_rules <- sum(!validation_rule_keys(nul_free_parsed) %in%
+                            validation_rule_keys(parsed))
+    }
+  }
+  if (hidden_rules > 0L) {
+    add_diagnostic(
+      NA_integer_, "warning", "rules_after_nul_removal", NA_character_,
+      sprintf(
+        paste0(
+          "With its NUL bytes removed, as Google's matcher reads it, the ",
+          "document has %d Allow or Disallow rule(s) that the parser, which ",
+          "ends a line at its first NUL, does not read or reads in another ",
+          "group; remove the NUL bytes."
+        ),
+        hidden_rules
+      )
+    )
+  } else if (nul_free_rules > 0L) {
+    add_diagnostic(
+      NA_integer_, "warning", "rules_after_nul_removal", NA_character_,
+      sprintf(
+        paste0(
+          "With its NUL bytes removed, as Google's matcher reads it, the ",
+          "document has %d Allow or Disallow rule(s); if this is a UTF-16 ",
+          "file, re-save it as UTF-8 (RFC 9309 section 2.3)."
+        ),
+        nul_free_rules
+      )
+    )
+  } else if (rule_count == 0L && !body_truncated) {
     add_diagnostic(
       NA_integer_, "info", "no_rules", NA_character_,
       paste0("Document has no Allow or Disallow rules, so it places no ",
@@ -664,11 +1025,36 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       )
     )
   }
+  # A fetched 2xx other than 200 keeps its body, which is validated as a 200's
+  # is; the code says how each ruleset reads the status (ROBO-yvhqvthd). A 206
+  # never comes here fetched: classify_status() gives it partial_response with
+  # no body. http_status_category_v1() still counts 206 as 2xx other, and a
+  # missing status is protocol_error, so the category test drops that too.
+  other_2xx <- identical(fetch_outcome, "fetched") &&
+    identical(http_status_category_v1(http_status), "status_other_2xx")
+  if (other_2xx) {
+    add_diagnostic(
+      NA_integer_, "info", "acquisition_http_other_2xx", NA_character_,
+      paste(
+        paste0("HTTP ", http_status, ": ",
+               status_engine_readings("status_other_2xx"), "."),
+        "See robots_engine_contract_v1()."
+      )
+    )
+  }
 
-  diagnostic_frame <- if (length(diag_env$items) == 0L) {
+  diagnostic_frame <- if (diag_env$n_chunks == 0L) {
     empty_validation_diagnostics()
   } else {
-    do.call(rbind, diag_env$items)
+    chunks <- mget(as.character(seq_len(diag_env$n_chunks)), envir = diag_env)
+    chunk_column <- function(name) {
+      unlist(lapply(chunks, `[[`, name), use.names = FALSE)
+    }
+    validation_diagnostic(
+      source_id, chunk_column("line"), chunk_column("severity"),
+      chunk_column("code"), chunk_column("directive"),
+      chunk_column("raw_text"), chunk_column("message")
+    )
   }
   core_recognized <- parsed$has_directive & parsed$type != "unknown"
   recognized <- sum(core_recognized) + sum(unsupported)
@@ -744,8 +1130,10 @@ directive_value_diagnostics <- function(type, value) {
 #   its User-agent lines is `*`, alone or followed by whitespace).
 # - `agents`: one row per User-agent line: `group`, `line`, `global`,
 #   `token` (the ExtractUserAgent run of [A-Za-z_-] as spelled, ASCII; ""
-#   for a global line or one led by any other byte) and `key`
-#   (`ascii_lower(token)`, the merge key).
+#   for a global line or one led by any other byte), `key`
+#   (`ascii_lower(token)`, the merge key) and `cut` (a non-empty, non-global
+#   value the token does not spell whole: the matcher reads less than was
+#   written, or nothing; ROBO-zvhrayhx).
 # - `rules`: one row per Allow or Disallow inside a group (rules before the
 #   first User-agent are dropped): `group`, `line`, `type` ("allow" or
 #   "disallow"), `value` (canonical, as parsed), `empty` and `key` (type and
@@ -780,6 +1168,7 @@ validation_groups <- function(parsed) {
     global = agent_global,
     token = agent_token,
     key = ascii_lower(agent_token),
+    cut = !agent_global & lengths(agent_bytes) > nchar(agent_token, "bytes"),
     stringsAsFactors = FALSE
   )
 
@@ -812,28 +1201,324 @@ validation_groups <- function(parsed) {
   list(groups = groups, agents = agents, rules = rules)
 }
 
+# One key per grouped Allow or Disallow of a parsed document (ROBO-ctdkqawi):
+# its line, its type and the sorted crawler keys of its group (`*` for a
+# global User-agent line). The value is left out, so a rule whose value
+# alone differs between two reads of the same bytes keeps its key.
+validation_rule_keys <- function(parsed) {
+  groups <- validation_groups(parsed)
+  agents <- groups$agents
+  agent_key <- ifelse(agents$global, "*", agents$key)
+  group_agents <- vapply(split(agent_key, agents$group), function(keys) {
+    paste(sort(unique(keys)), collapse = " ")
+  }, character(1L))
+  rules <- groups$rules
+  paste(rules$line, rules$type,
+        group_agents[as.character(rules$group)])
+}
+
+# The AI-training policy token of draft-kelley-aipref-training-preference-
+# signal-00 (an Internet-Draft, 2026-10-30; ROBO-kzyfejcv), cited by name.
+ai_training_token <- "__usage_ai-training"
+ai_training_draft <- "draft-kelley-aipref-training-preference-signal-00"
+
+# The four AI-training checks over a document's groups (ROBO-kzyfejcv), as a
+# data frame of `line`, `severity`, `code`, `directive` and `message`, in
+# line order. The draft matches the token exactly, apart from ASCII case, so
+# a User-agent line names it when its whole (trimmed) value is the token: its
+# token spells the value whole (`cut` is FALSE) and its key is the token.
+# - ai_training_token_near_miss: a line whose token, with `_` and `-`
+#   removed, is `usageaitraining` but which does not name the token exactly
+#   (`__usage_ai_training`, `__usage_ai-training/1.0`).
+# - ai_training_token_stacked: a policy-token line (a `__usage_` key, the
+#   token or a near miss) in a group that also names `*`, or a crawler or
+#   another policy token (not the same class) with a directive line between
+#   the two. Parsers that join User-agent lines no rule separates give the
+#   group's rules to those crawlers too. Blank and comment lines are RFC 9309
+#   emptylines and the draft lets a group mix tokens, so consecutive or
+#   comment-headed User-agent lines stay silent.
+# - ai_training_group_extra_line: a directive other than Allow, Disallow or
+#   User-agent, and not file-level (Sitemap, Host, Clean-param), in a group
+#   that names only the token: before its last rule, or anywhere in the
+#   file's last group. A line after the last rule of an earlier group may
+#   head the next group, so it is not counted.
+# - ai_training_preference: one info per group naming the token, on its first
+#   such line, listing the group's own rules; `*` rules are never merged in.
+#   `truncated` adds that lines past a `max_bytes` cut were not read.
+# Like the other group checks, the caller skips it for a body with a NUL.
+ai_training_diagnostics <- function(groups, parsed, truncated = FALSE) {
+  agents <- groups$agents
+  exact <- !agents$cut & agents$key == ai_training_token
+  near <- !exact & gsub("[_-]", "", agents$key) == "usageaitraining"
+  family <- exact | near | startsWith(agents$key, "__usage_")
+  class <- ifelse(exact | near, "usageaitraining", agents$key)
+  found <- list(
+    ai_training_near_miss_rows(agents, near, exact),
+    ai_training_stacked_rows(agents, parsed, family, class),
+    ai_training_extra_line_rows(groups, parsed, exact, truncated),
+    ai_training_preference_rows(groups, exact, truncated)
+  )
+  found <- do.call(rbind, c(list(ai_training_rows()), found))
+  found[order(found$line), , drop = FALSE]
+}
+
+ai_training_rows <- function(line = integer(), severity = character(),
+                             code = character(), directive = character(),
+                             message = character()) {
+  data.frame(line = as.integer(line), severity = severity, code = code,
+             directive = directive, message = message,
+             stringsAsFactors = FALSE)
+}
+
+# An agent name as the ai_training_ messages render it: elided past `max`
+# characters (its first `max - 4` and "..."), so a message stays bounded
+# however long a User-agent value is.
+ai_training_name <- function(name, max = 64L) {
+  long <- nchar(name, "bytes") > max
+  name[long] <- paste0(substr(name[long], 1L, max - 4L), "...")
+  name
+}
+
+# The message names the token read (ASCII) only; `raw_text` carries the
+# value, which may not be valid UTF-8. When the group also names the exact
+# token, that line carries the preference, and the message says so.
+ai_training_near_miss_rows <- function(agents, near, exact) {
+  token_line <- agents$line[exact][match(agents$group[near],
+                                         agents$group[exact])]
+  near <- agents[near, , drop = FALSE]
+  read_as_token <- near$key == ai_training_token
+  token <- ai_training_name(ai_training_token)
+  message <- sprintf(
+    paste0("User-agent value is not the AI-training policy token `%s`, ",
+           "which matches only exactly, apart from ASCII case (%s, an ",
+           "Internet-Draft), so %s"),
+    token, ai_training_draft,
+    ifelse(is.na(token_line), "this group states no AI-training preference.",
+           sprintf(paste0("this line names no policy token; the group's ",
+                          "`User-agent: %s` line (line %d) carries the ",
+                          "preference."), token, token_line))
+  )
+  message[read_as_token] <- paste(
+    message[read_as_token],
+    sprintf("Google's matcher still reads it as `%s`.", token)
+  )
+  ai_training_rows(near$line, rep("warning", nrow(near)),
+                   rep("ai_training_token_near_miss", nrow(near)),
+                   rep("user-agent", nrow(near)), message)
+}
+
+# Linear in the agent lines. `segment` counts the directive lines (other than
+# User-agent) up to each agent line, so two agent lines have a directive
+# between them exactly when their segments differ; two groups always do (a
+# rule line ends a group). Agent rows are in file order, so segments never
+# decrease along them, and findInterval() finds for each policy-token line
+# the nearest candidate before it in an earlier segment and after it in a
+# later one. A candidate of the token line's own class (the same key; the
+# token and its near misses are one class) is skipped by jumping to the end
+# of its run of same-class candidates. Candidates in another group are
+# dropped. A `*` line in the group is named first, one in the token line's
+# segment (nothing but blank or comment lines between) before any other.
+# Bing ends a group at any directive (`design/engine-disagreements.md`
+# class 1), so it joins the lines only when the two share a segment.
+ai_training_stacked_rows <- function(agents, parsed, family, class) {
+  token_rows <- which(family)
+  if (length(token_rows) == 0L) {
+    return(ai_training_rows())
+  }
+  breaks <- parsed$line[parsed$has_directive & parsed$type != "user-agent"]
+  segment <- findInterval(agents$line, breaks)
+  group <- agents$group[token_rows]
+  token_class <- class[token_rows]
+
+  candidates <- which(!agents$global & nzchar(agents$key))
+  n <- length(candidates)
+  candidate_class <- class[candidates]
+  run <- if (n == 0L) {
+    integer()
+  } else {
+    cumsum(c(TRUE, candidate_class[-1L] != candidate_class[-n]))
+  }
+  run_before <- match(run, run) - 1L
+  run_before[run_before == 0L] <- NA_integer_
+  run_after <- n + 2L - match(run, rev(run))
+  run_after[run_after > n] <- NA_integer_
+  at <- segment[candidates]
+  before <- findInterval(segment[token_rows], at, left.open = TRUE)
+  before[before == 0L] <- NA_integer_
+  same <- !is.na(before) & candidate_class[before] == token_class
+  before[same] <- run_before[before[same]]
+  after <- findInterval(segment[token_rows], at) + 1L
+  after[after > n] <- NA_integer_
+  same <- !is.na(after) & candidate_class[after] == token_class
+  after[same] <- run_after[after[same]]
+  before <- candidates[before]
+  after <- candidates[after]
+  before[!is.na(before) & agents$group[before] != group] <- NA_integer_
+  after[!is.na(after) & agents$group[after] != group] <- NA_integer_
+  distance <- function(rows) abs(agents$line[rows] - agents$line[token_rows])
+  nearest <- ifelse(
+    is.na(after) | (!is.na(before) & distance(before) <= distance(after)),
+    before, after
+  )
+
+  global_rows <- which(agents$global)
+  star_joined <- global_rows[match(segment[token_rows], segment[global_rows])]
+  star_joined[!is.na(star_joined) &
+                agents$group[star_joined] != group] <- NA_integer_
+  star <- global_rows[match(group, agents$group[global_rows])]
+  star[!is.na(star_joined)] <- star_joined[!is.na(star_joined)]
+  other <- ifelse(is.na(star), nearest, star)
+  fire <- !is.na(other)
+  token_rows <- token_rows[fire]
+  other <- other[fire]
+  joined <- !is.na(star_joined[fire])
+  star <- !is.na(star[fire])
+  named <- ifelse(star, "*", ai_training_name(agents$token[other]))
+  message <- sprintf(
+    paste0("`User-agent: %s` shares a group with `User-agent: %s` (line ",
+           "%d): Google's and Yandex's parsers join User-agent lines that no ",
+           "Allow or Disallow line separates, so this group's rules also ",
+           "apply to %s. %s Give the policy token a separate group, after a ",
+           "group that ends in an Allow or Disallow line."),
+    ai_training_name(agents$token[token_rows]), named, agents$line[other],
+    ifelse(star, "every crawler no group names", named),
+    ifelse(joined, "Bing's parser joins them too.",
+           paste("Bing's parser ends the group at the directive line",
+                 "between the two."))
+  )
+  ai_training_rows(agents$line[token_rows], rep("warning", length(token_rows)),
+                   rep("ai_training_token_stacked", length(token_rows)),
+                   rep("user-agent", length(token_rows)), message)
+}
+
+# A group's span starts at its first User-agent line. A line after the
+# group's last rule may head the next group, so it counts only in the last
+# group, where nothing follows. A User-agent line naming no crawler (empty,
+# or led by a byte outside [A-Za-z_-]) or one Google reads as the token
+# (`__usage_ai-training/1.0`) does not make the group mixed.
+ai_training_extra_line_rows <- function(groups, parsed, exact,
+                                        truncated = FALSE) {
+  agents <- groups$agents
+  rules <- groups$rules
+  group_ids <- groups$groups$group
+  mixed <- (agents$global | nzchar(agents$key)) &
+    agents$key != ai_training_token
+  token_only <- group_ids %in% agents$group[exact] &
+    !group_ids %in% agents$group[mixed]
+  if (!any(token_only)) {
+    return(ai_training_rows())
+  }
+  last <- !duplicated(rules$group, fromLast = TRUE)
+  last_rule <- rules$line[last][match(group_ids, rules$group[last])]
+  # Before a `max_bytes` cut, the last group read is not the file's last.
+  final <- !truncated & seq_along(group_ids) == length(group_ids)
+  lines <- parsed[parsed$has_directive & !parsed$type %in% c(
+    "user-agent", "allow", "disallow", "sitemap"
+  ), c("line", "type", "action"), drop = FALSE]
+  span <- findInterval(lines$line, groups$groups$first_line)
+  inside <- span > 0L
+  lines <- lines[inside, , drop = FALSE]
+  span <- span[inside]
+  keep <- token_only[span] & (final[span] |
+    (!is.na(last_rule[span]) & lines$line < last_rule[span]))
+  lines <- lines[keep, , drop = FALSE]
+  directive <- vapply(seq_len(nrow(lines)), function(i) {
+    validation_ascii_action(lines$action[[i]], lines$type[[i]])
+  }, "")
+  file_level <- directive %in% c("host", "clean-param")
+  lines <- lines[!file_level, , drop = FALSE]
+  directive <- directive[!file_level]
+  message <- sprintf(
+    paste0("Line has no defined meaning in a group that names only the ",
+           "AI-training policy token `%s`: %s (an Internet-Draft) adds no ",
+           "directive and keeps RFC 9309's group structure, so only Allow ",
+           "and Disallow state the preference."),
+    ai_training_name(ai_training_token), ai_training_draft
+  )
+  ai_training_rows(lines$line, rep("warning", nrow(lines)),
+                   rep("ai_training_group_extra_line", nrow(lines)),
+                   directive, rep(message, nrow(lines)))
+}
+
+# Linear in the rules: they are split by group once, and at most `cap` per
+# group are rendered.
+ai_training_preference_rows <- function(groups, exact, truncated,
+                                        cap = 10L) {
+  agents <- groups$agents[exact, , drop = FALSE]
+  agents <- agents[!duplicated(agents$group), , drop = FALSE]
+  rules <- groups$rules
+  by_group <- split(seq_len(nrow(rules)),
+                    factor(rules$group, levels = unique(agents$group)))
+  listed <- vapply(by_group, function(rows) {
+    k <- length(rows)
+    if (k == 0L) {
+      return("This group has no Allow or Disallow rule.")
+    }
+    shown <- rows[seq_len(min(k, cap))]
+    allow <- rules$type[shown] == "allow"
+    value <- vapply(rules$value[shown], function(value) {
+      render_validation_line(charToRaw(value))
+    }, "", USE.NAMES = FALSE)
+    value[!nzchar(value)] <- ifelse(allow[!nzchar(value)],
+                                    "(empty; ignored)",
+                                    "(empty; no restriction)")
+    items <- sprintf("%s: %s (line %d)",
+                     ifelse(allow, "Allow", "Disallow"), value,
+                     rules$line[shown])
+    sprintf("This group's rules: %s%s.", toString(items),
+            if (k > cap) sprintf(", and %d more", k - cap) else "")
+  }, "", USE.NAMES = FALSE)
+  message <- sprintf(
+    paste0("`User-agent: %s` states an AI-training preference (%s, an ",
+           "Internet-Draft): a disallowed path is a preference against ",
+           "training on it, an allowed one a preference for it. %s ",
+           "`User-agent: *` rules never apply to the token."),
+    rep(ai_training_name(ai_training_token), nrow(agents)),
+    ai_training_draft, listed
+  )
+  if (truncated && length(message) > 0L) {
+    message <- paste(message,
+                     "Lines past the max_bytes cut were not read.")
+  }
+  ai_training_rows(agents$line, rep("info", nrow(agents)),
+                   rep("ai_training_preference", nrow(agents)),
+                   rep("user-agent", nrow(agents)), message)
+}
+
 # A crawler obeys only the groups that name it (merged, as Google does) and
 # never the `*` group (ROBO-gfjotdrr). For each named agent, the `*` rules
 # missing from its effective rules, as a list of list(line, agents, missing,
 # message): `line` is the first User-agent line of the first group naming
 # the agents, `agents` their tokens as first spelled, `missing` the lines of
 # every missing `*` rule (uncapped) and `message` the capped text. An agent
-# whose rules are all explicit allow-all (an empty Disallow, or an Allow
-# keyed `/`) is exempt; an empty Allow is a no-op and is not counted, so an
-# agent with no other rule is not exempt. Rows come in anchor-line order:
-# agents are visited in the order they are first named.
+# whose rules are all explicit allow-all (an empty Disallow, or a `*` Allow
+# matching every path) is exempt; an empty Allow is a no-op and is not
+# counted, so an agent with no other rule is not exempt. A `*` Allow matching
+# every path is never a missing rule (ROBO-gkuuwbgc): the named group's own
+# rules are what the crawler follows. Rows come in anchor-line order: agents
+# are visited in the order they are first named.
 wildcard_inheritance_diagnostics <- function(groups) {
   rules <- groups$rules
   # An empty key (a global line, or one led by a byte outside [A-Za-z_-])
-  # names no crawler.
-  agents <- groups$agents[nzchar(groups$agents$key), , drop = FALSE]
-  global <- rules[!rules$empty &
+  # names no crawler. The AI-training policy token is no crawler either, and
+  # `*` never applies to it (ROBO-kzyfejcv): the key is what Google reads, so
+  # `__usage_ai-training/1.0` is left out too.
+  agents <- groups$agents[nzchar(groups$agents$key) &
+                            groups$agents$key != ai_training_token, ,
+                          drop = FALSE]
+  # A `*` Allow matching every path is not compared, and the named side's
+  # allow-all test uses the same vector (ROBO-gkuuwbgc). It is tested on the
+  # value, not the key: the key drops a trailing `*` run, which would also
+  # take `/*$*`, where a `$` before the end is literal. `/$` is not one.
+  every_path <- rules$type == "allow" &
+    grepl("^(/\\**|/?\\*+\\$?)$", rules$value)
+  global <- rules[!rules$empty & !every_path &
                     rules$group %in% groups$groups$group[groups$groups$global],
                   , drop = FALSE]
   global <- global[!duplicated(global$key), , drop = FALSE]
   no_op <- rules$type == "allow" & rules$empty
   allow_all <- (rules$type == "disallow" & rules$empty) |
-    (!rules$empty & rules$key == "allow /")
+    (!rules$empty & every_path)
 
   losers <- list()
   for (key in unique(agents$key)) {
@@ -1072,6 +1757,64 @@ validation_invisible_prefixes <- c(
   "U+FEFF" = "%EF%BB%BF"
 )
 
+validation_bom <- as.raw(c(0xef, 0xbb, 0xbf))
+
+# Where a BOM starts a line's content, after the ASCII blanks the parser
+# strips (SP, HT, VT, FF), or 0 when none does. `skip_start` passes over the
+# byte-0 BOM the parser itself skips.
+misplaced_bom_offset <- function(line, skip_start) {
+  first <- if (skip_start) 4L else 1L
+  n <- length(line)
+  while (first <= n &&
+           line[[first]] %in% as.raw(c(0x20, 0x09, 0x0b, 0x0c))) {
+    first <- first + 1L
+  }
+  # Indexing past the end of a raw vector gives 00, so a short tail never
+  # equals the BOM.
+  if (identical(line[first:(first + 2L)], validation_bom)) first else 0L
+}
+
+misplaced_bom_lines <- function(raw_lines, has_bom) {
+  found <- vapply(seq_along(raw_lines), function(i) {
+    misplaced_bom_offset(raw_lines[[i]], i == 1L && has_bom) > 0L
+  }, logical(1L))
+  which(found)
+}
+
+# The directive a misplaced BOM hides, learned by parsing the line again
+# without it.
+misplaced_bom_hidden <- function(line, skip_start) {
+  at <- misplaced_bom_offset(line, skip_start)
+  rest <- validation_raw_slice(line, at + 3L, length(line))
+  # The binding reports at least one line, even for an empty `rest`.
+  parsed <- robotstxtr_validation_parse_(rest)
+  type <- parsed$type[[1L]]
+  labels <- c(
+    "user-agent" = "User-agent", allow = "Allow", disallow = "Disallow",
+    sitemap = "Sitemap"
+  )
+  message <- paste0(
+    "A UTF-8 byte-order mark starts this line; the Google-compatible parser ",
+    "skips one only at the start of the file, so here it is part of the key."
+  )
+  if (!type %in% names(labels)) {
+    if (isTRUE(parsed$is_comment[1L])) {
+      message <- paste0(message, " This comment line is read as an active ",
+                        "line.")
+    }
+    return(list(directive = NA_character_, message = message))
+  }
+  hidden <- sprintf(" This %s line is not read", labels[[type]])
+  tail <- if (identical(type, "user-agent")) {
+    paste0(": the parser starts no group here, so the lines after it stay ",
+           "with the group before it, or with no group, until the next ",
+           "User-agent line.")
+  } else {
+    "."
+  }
+  list(directive = type, message = paste0(message, hidden, tail))
+}
+
 rule_value_diagnostics <- function(value) {
   bytes <- charToRaw(value)
   found <- list()
@@ -1104,7 +1847,151 @@ rule_value_diagnostics <- function(value) {
       )
     )
   }
+  # The parser trims a value's edges, so a space, tab, VT or FF left here is
+  # interior (ROBO-dlgeqluf). Bytes, not a [[:space:]] class, so the locale
+  # cannot change the answer.
+  if (any(bytes %in% as.raw(c(0x20, 0x09, 0x0b, 0x0c)))) {
+    found[[length(found) + 1L]] <- list(
+      code = "rule_inner_whitespace",
+      message = paste0(
+        "Pattern holds a raw space or other whitespace; crawlers request it ",
+        "percent-encoded (a space is %20), so this rule matches no URL they ",
+        "send."
+      )
+    )
+  }
+  escaped <- rule_escaped_unreserved_diagnostic(value)
+  if (!is.null(escaped)) {
+    found[[length(found) + 1L]] <- escaped
+  }
   found
+}
+
+# RFC 3986 section 2.3 unreserved characters. RFC 9309 section 2.2.2 decodes
+# their escapes before matching; Google's matcher compares the escape as
+# written, so a rule's '%7E' never matches a URL's '~'.
+validation_unreserved_bytes <- as.integer(charToRaw(paste(
+  c(LETTERS, letters, 0:9, "-", ".", "_", "~"), collapse = ""
+)))
+
+# At most one finding per rule, naming each distinct escape (up to ten).
+# Escapes are read left to right without overlap, so '%257E' is the escape
+# '%25' and a literal '7E'. Returns a finding or NULL.
+rule_escaped_unreserved_diagnostic <- function(value) {
+  escapes <- regmatches(
+    value, gregexpr("%[0-9A-Fa-f]{2}", value, useBytes = TRUE)
+  )[[1L]]
+  codes <- strtoi(substr(escapes, 2L, 3L), 16L)
+  hit <- codes %in% validation_unreserved_bytes
+  escapes <- unique(escapes[hit])
+  if (length(escapes) == 0L) {
+    return(NULL)
+  }
+  chars <- rawToChar(
+    as.raw(strtoi(substr(escapes, 2L, 3L), 16L)), multiple = TRUE
+  )
+  if (length(escapes) == 1L) {
+    message <- sprintf(
+      paste0(
+        "'%s' escapes the unreserved character '%s'. Google matches it only ",
+        "against '%s' in the URL, never against '%s', though RFC 9309 ",
+        "section 2.2.2 decodes it."
+      ),
+      escapes, chars, escapes, chars
+    )
+  } else {
+    cap <- 10L
+    k <- length(escapes)
+    items <- sprintf("'%s' for '%s'", escapes, chars)[seq_len(min(k, cap))]
+    listed <- toString(items)
+    if (k > cap) {
+      listed <- sprintf("%s, and %d more", listed, k - cap)
+    }
+    message <- paste0(
+      "These escapes stand for unreserved characters: ", listed, ". Google ",
+      "matches each only against the same escape in the URL, never against ",
+      "the character, though RFC 9309 section 2.2.2 decodes them."
+    )
+  }
+  list(code = "rule_escaped_unreserved", message = message)
+}
+
+# The parser keeps 16,663 bytes of a line: its read buffer holds kMaxLineLen - 1
+# bytes (src/robots.cc, RobotsTxtParser::Parse). A byte-order mark on line 1 is
+# skipped before that count.
+validation_line_bytes <- 16663L
+
+# The lower-case percent-escapes of an Allow or Disallow line's value, as the
+# parser keeps it, read from the raw line bytes (ROBO-kormmfyg). The parser
+# upper-cases the escapes it keeps (MaybeEscapePattern, src/robots.cc), so the
+# canonical value cannot show the case. The line is cut at its first NUL, its
+# first `#` and at 16,663 bytes. The key ends at the first `:`, or, when the
+# colon is missing, at the first space or tab after the leading blanks. A `%`
+# followed by two hex digits is an escape; one with a digit in a-f is
+# lower-case. Returns the distinct escapes as written, or character(0).
+rule_lowercase_escapes <- function(line_bytes, first_line, missing_colon) {
+  bytes <- line_bytes
+  if (first_line) {
+    skip <- 0L
+    while (skip < min(3L, length(bytes)) &&
+             bytes[[skip + 1L]] == validation_bom[[skip + 1L]]) {
+      skip <- skip + 1L
+    }
+    bytes <- validation_raw_slice(bytes, skip + 1L, length(bytes))
+  }
+  nul <- match(as.raw(0x00), bytes)
+  if (!is.na(nul)) {
+    bytes <- bytes[seq_len(nul - 1L)]
+  }
+  bytes <- bytes[seq_len(min(length(bytes), validation_line_bytes))]
+  hash <- match(as.raw(0x23), bytes)
+  if (!is.na(hash)) {
+    bytes <- bytes[seq_len(hash - 1L)]
+  }
+  if (missing_colon) {
+    blank <- as.raw(c(0x20, 0x09, 0x0a, 0x0b, 0x0c, 0x0d))
+    lead <- which(!bytes %in% blank)
+    bytes <- bytes[lead[[1L]]:length(bytes)]
+    stop_at <- which(bytes %in% as.raw(c(0x20, 0x09)))
+  } else {
+    stop_at <- which(bytes == as.raw(0x3a))
+  }
+  value <- bytes[-seq_len(stop_at[[1L]])]
+  pct <- which(value == as.raw(0x25))
+  hex <- as.raw(c(0x30:0x39, 0x41:0x46, 0x61:0x66))
+  pct <- pct[value[pct + 1L] %in% hex & value[pct + 2L] %in% hex]
+  lower <- as.raw(0x61:0x66)
+  pct <- pct[value[pct + 1L] %in% lower | value[pct + 2L] %in% lower]
+  if (length(pct) == 0L) {
+    return(character())
+  }
+  unique(vapply(pct, function(i) rawToChar(value[i:(i + 2L)]), character(1L)))
+}
+
+# At most one finding per rule line, naming up to ten lower-case escapes with
+# the upper-case form Google matches (ROBO-kormmfyg).
+rule_lowercase_escape_message <- function(escapes) {
+  upper <- chartr("abcdef", "ABCDEF", escapes)
+  if (length(escapes) == 1L) {
+    return(sprintf(
+      paste0("Google upper-cases the escape '%s' in a pattern but not in the ",
+             "URL, so a URL written with '%s' does not match this rule; write ",
+             "it as '%s'."),
+      escapes, escapes, upper
+    ))
+  }
+  cap <- 10L
+  k <- length(escapes)
+  items <- sprintf("'%s' for '%s'", escapes, upper)[seq_len(min(k, cap))]
+  listed <- toString(items)
+  if (k > cap) {
+    listed <- sprintf("%s, and %d more", listed, k - cap)
+  }
+  paste0(
+    "These escapes are lower-case: ", listed, ". Google upper-cases each ",
+    "escape in a pattern but not in the URL, so a URL written with a ",
+    "lower-case escape does not match this rule; write them in upper case."
+  )
 }
 
 # A syntax-only check of a Sitemap value: an absolute http, https or ftp URL
@@ -1168,6 +2055,66 @@ validation_ascii_action <- function(action, type) {
   ascii_lower(action)
 }
 
+# The key of an Allow or Disallow line as the Google parser cut it
+# (GetKeyAndValueFrom, src/robots.cc), rendered for a message, when it is
+# not exactly `allow` or `disallow`; NULL when it is (ROBO-xglcoagv). The
+# parser hands R only the type of a known key, so the key is derived again
+# from the line's bytes: the BOM prefix Parse() skips on line 1, leading
+# ASCII whitespace, the separator (the first `:`, or the first SP or HT when
+# the parser reported a missing colon) and trailing whitespace. The parser
+# also ends the line at a NUL and at `#`, but it found its separator before
+# both, and that cut line is a prefix of these bytes, so the first separator
+# here is the same one and neither cut can change the key.
+validation_prefix_key <- function(bytes, line, type, missing_colon) {
+  if (identical(line, 1L)) {
+    bom <- as.raw(c(0xef, 0xbb, 0xbf))
+    skip <- 0L
+    while (skip < min(3L, length(bytes)) &&
+             bytes[[skip + 1L]] == bom[[skip + 1L]]) {
+      skip <- skip + 1L
+    }
+    bytes <- bytes[seq_len(length(bytes) - skip) + skip]
+  }
+  space <- as.raw(c(0x20, 0x09, 0x0a, 0x0b, 0x0c, 0x0d))
+  # The parser found a non-empty key on this line, so `lead` is never empty.
+  lead <- which(!bytes %in% space)
+  bytes <- bytes[lead[[1L]]:length(bytes)]
+  separator <- as.raw(if (missing_colon) c(0x20, 0x09) else 0x3a)
+  stop_at <- which(bytes %in% separator)
+  key <- if (length(stop_at) == 0L) {
+    bytes
+  } else {
+    bytes[seq_len(stop_at[[1L]] - 1L)]
+  }
+  kept <- which(!key %in% space)
+  key <- key[seq_len(if (length(kept) == 0L) 0L else max(kept))]
+  folded <- as.integer(key)
+  upper <- folded >= 0x41 & folded <= 0x5a
+  folded[upper] <- folded[upper] + 32L
+  if (identical(folded, as.integer(charToRaw(type)))) {
+    return(NULL)
+  }
+  render_validation_line(key)
+}
+
+validation_prefix_key_message <- function(key, type) {
+  name <- if (identical(type, "disallow")) "Disallow" else "Allow"
+  message <- paste0(
+    "Google reads key `", key, "` as ", name, " (prefix match), so for ",
+    "Google this line is ", if (identical(type, "allow")) "an " else "a ",
+    name, " rule; Bing and Yandex ignore it, and RFC 9309 defines no such ",
+    "record."
+  )
+  if (identical(type, "disallow")) {
+    message <- paste0(
+      message, " For an AI-training opt-out, use a separate ",
+      "`User-agent: __usage_ai-training` group, not stacked under another ",
+      "User-agent line."
+    )
+  }
+  message
+}
+
 split_validation_lines <- function(bytes) {
   n <- length(bytes)
   if (n == 0L) {
@@ -1195,6 +2142,15 @@ split_validation_lines <- function(bytes) {
 
 validation_raw_slice <- function(bytes, first, last) {
   if (first > last) raw() else bytes[first:last]
+}
+
+# TRUE when the first `#` of a raw line follows a byte other than a space or
+# tab: a comment glued to the rule value, not one set apart from it.
+# Works on bytes, so invalid UTF-8 or Latin-1 in the value is no error.
+rule_cut_by_comment <- function(raw_line) {
+  hash <- match(as.raw(0x23), raw_line)
+  !is.na(hash) && hash > 1L &&
+    !(raw_line[[hash - 1L]] %in% as.raw(c(0x20, 0x09)))
 }
 
 render_validation_line <- function(bytes) {
@@ -1231,6 +2187,10 @@ validate_fetched_documents <- function(fetched) {
         max_bytes = source$max_bytes,
         body_truncated = isTRUE(robots$body_truncated[[i]])
       )
+      redirect <- redirect_host_diagnostic(source)
+      if (!is.null(redirect)) {
+        validated <- add_document_diagnostic(validated, redirect)
+      }
     } else {
       validated <- unavailable_validation(source)
     }
@@ -1449,6 +2409,125 @@ acquisition_diagnosis <- function(source) {
   )
 }
 
+# The diagnostic row for a robots.txt fetch that succeeded after redirecting
+# away from the robots.txt URL (ROBO-gokbvzcb), or NULL. It reads only the
+# source row's `robots_url`, `effective_url` and `content_flag`; the fetch
+# itself is unchanged. Hosts are compared idna-encoded and ASCII-lowercased.
+#
+# - Same host, the path still /robots.txt (a scheme or port change, such as
+#   http to https): silent, the usual case.
+# - Same host, another path: `redirect_other_path`, info, or a warning when
+#   the landing page is HTML (a catch-all to a page).
+# - Another host, same registrable domain (www and apex, or another
+#   subdomain): `redirect_same_site`, info, or a warning when the landing
+#   page is HTML.
+# - Another registrable domain: `redirect_cross_site`, warning: the rules
+#   applied are another site's.
+#
+# The registrable domain comes from the Public Suffix List through
+# rurl::get_domain() (so a.example.co.uk and b.example.co.uk are one site); an
+# IP literal, or a host with no registrable domain, is compared whole. The
+# engine readings are design/engine-profiles.md, section 3, "Within budget".
+redirect_host_diagnostic <- function(source) {
+  if (identical(source$robots_url, source$effective_url)) {
+    return(NULL)
+  }
+  from <- redirect_url_parts(source$robots_url)
+  to <- redirect_url_parts(source$effective_url)
+  if (is.null(from) || is.null(to)) {
+    return(NULL)
+  }
+  same_host <- identical(from$host, to$host)
+  if (same_host && identical(to$path, from$path)) {
+    return(NULL)
+  }
+  html <- identical(source$content_flag, "html")
+  if (same_host) {
+    code <- "redirect_other_path"
+    severity <- if (html) "warning" else "info"
+    where <- "another path on the same host"
+  } else if (identical(redirect_site_key(from$host),
+                       redirect_site_key(to$host))) {
+    code <- "redirect_same_site"
+    severity <- if (html) "warning" else "info"
+    where <- "another host of the same site"
+  } else {
+    code <- "redirect_cross_site"
+    severity <- "warning"
+    where <- "another site"
+  }
+  message <- sprintf(
+    paste0(
+      "The robots.txt at %s redirected to %s, %s. RFC 9309 (documented) and ",
+      "Yandex (documented, if the target answers 200) apply the file reached ",
+      "to the requested host, Google is inferred to do the same, and Bing is ",
+      "not documented."
+    ),
+    source$robots_url, source$effective_url, where
+  )
+  if (html) {
+    message <- paste(
+      message,
+      "The page reached is HTML, so the site's robots.txt is effectively",
+      "missing; any lines on it were read as directives anyway."
+    )
+  }
+  validation_diagnostic(
+    source$source_id, NA_integer_, severity, code, NA_character_,
+    NA_character_, message
+  )
+}
+
+# The ASCII-lowercased idna host and the path of a URL, or NULL when it does
+# not parse to a host.
+redirect_url_parts <- function(url) {
+  if (length(url) != 1L || is.na(url)) {
+    return(NULL)
+  }
+  parsed <- tryCatch(
+    rurl::safe_parse_url(url, host_encoding = "idna"),
+    error = function(e) NULL
+  )
+  host <- parsed$host
+  if (!is.character(host) || length(host) != 1L || is.na(host) ||
+        !nzchar(host)) {
+    return(NULL)
+  }
+  path <- parsed$path
+  if (!is.character(path) || length(path) != 1L || is.na(path) ||
+        !nzchar(path)) {
+    path <- "/"
+  }
+  # A fully qualified name's root dot is the same host (as ssrfr's
+  # normalize_host_name reads it), and get_domain() finds no domain with it.
+  host <- sub("\\.$", "", ascii_lower(host))
+  if (!nzchar(host)) {
+    return(NULL)
+  }
+  list(host = host, path = path)
+}
+
+# The registrable domain of a host, or the whole host when it has none (an IP
+# literal, a public suffix, or a name under no listed suffix).
+redirect_site_key <- function(host) {
+  domain <- tryCatch(rurl::get_domain(host), error = function(e) NA_character_)
+  if (length(domain) != 1L || is.na(domain) || !nzchar(domain)) {
+    return(host)
+  }
+  ascii_lower(domain)
+}
+
+# Appends one diagnostic row to a validated document and recounts its row.
+add_document_diagnostic <- function(validated, diagnostic) {
+  diagnostics <- rbind(validated$diagnostics, diagnostic)
+  document <- validated$document
+  document$validation_status <- validation_status(diagnostics)
+  document$diagnostic_count <- as.integer(nrow(diagnostics))
+  document$warning_count <- as.integer(sum(diagnostics$severity == "warning"))
+  document$error_count <- as.integer(sum(diagnostics$severity == "error"))
+  list(document = document, diagnostics = diagnostics)
+}
+
 # "Google: ...; Yandex: ...; Bing: ..." for one policy-table category.
 status_engine_readings <- function(category) {
   table <- engine_policy_table_v1()
@@ -1478,6 +2557,14 @@ status_policy_phrase <- function(ruleset, category, status, action) {
     } else {
       "may treat it as no robots.txt, which places no restrictions on crawling"
     }
+  } else if (identical(status, "evaluated") &&
+               identical(action, "use_rules") &&
+               identical(category, "status_other_2xx")) {
+    # A 2xx other than 200 whose body a ruleset reads (ROBO-yvhqvthd). Google
+    # documents it (design/engine-profiles.md section 4, other 2xx row); the
+    # wording follows the cell's action, so a table edit that gives another
+    # engine `use_rules` here still gets a phrase.
+    "reads the body's rules as for a 200"
   } else if (identical(status, "context_required")) {
     "context-dependent (may pause crawling or use its last cached copy)"
   } else if (identical(status, "documentation_gap")) {

@@ -90,7 +90,9 @@ worker_failure <- function(failures) {
 
 # Run `work(chunk)` over the chunks on at most two forked workers. Each call
 # returns a small list; the shards are written by the worker itself. A chunk
-# without a result signals a corpus_harness_worker_failure naming it.
+# without a result signals a corpus_harness_worker_failure naming it. One
+# worker stops at the first failed chunk: the run is invalid from there on,
+# so the chunks after it are never run.
 run_chunks <- function(chunks, work, workers) {
   task <- function(ch) {
     gc(reset = TRUE)
@@ -107,9 +109,17 @@ run_chunks <- function(chunks, work, workers) {
       chunks, task, mc.cores = workers, mc.preschedule = FALSE
     )
   } else {
-    lapply(chunks, function(ch) try(task(ch), silent = TRUE))
+    done <- list()
+    for (ch in chunks) {
+      r <- try(task(ch), silent = TRUE)
+      done[[length(done) + 1L]] <- r
+      if (inherits(r, "try-error")) {
+        break
+      }
+    }
+    done
   }
-  failures <- chunk_failures(chunks, results)
+  failures <- chunk_failures(chunks[seq_along(results)], results)
   if (nrow(failures)) {
     stop(worker_failure(failures))
   }
@@ -119,14 +129,22 @@ run_chunks <- function(chunks, work, workers) {
 # Run the mode's chunks, then the input checks; return the record with the
 # chunk statistics and the manifest checks, or with the failed chunks. A run
 # whose worker failed is invalid for that cause alone: its missing files
-# shards say nothing about the corpus.
+# shards say nothing about the corpus. So is a run whose runner failed
+# outside any chunk (size mode builds chunk 0 in this process); a refusal
+# is passed on.
 run_and_check <- function(record, ctx, runner, start) {
-  stats <- tryCatch(
-    runner(ctx), corpus_harness_worker_failure = function(e) e
-  )
+  stats <- tryCatch(runner(ctx), error = function(e) e)
+  if (inherits(stats, "corpus_harness_refusal")) {
+    stop(stats)
+  }
   if (inherits(stats, "corpus_harness_worker_failure")) {
     record$worker_failures <- stats$failures
     record$invalid_cause <- conditionMessage(stats)
+    record$manifest$valid <- FALSE
+    return(record)
+  }
+  if (inherits(stats, "error")) {
+    record$invalid_cause <- paste0("the run failed: ", conditionMessage(stats))
     record$manifest$valid <- FALSE
     return(record)
   }
@@ -166,6 +184,12 @@ walk_chunk <- function(corpus, hosts, ch, on_body = NULL) {
       next
     }
     read <- read_corpus_record(path)
+    if (isTRUE(read$vanished)) {
+      # Gone since the check above: recorded as absent, so the run's input
+      # check sees the change.
+      files[[k]] <- skipped_file_row(id, host)
+      next
+    }
     row <- file_row(id, host, read)
     if (!is.null(on_body) && isTRUE(row$body_present)) {
       t0 <- proc.time()[["elapsed"]]
@@ -262,7 +286,6 @@ mode_evaluate <- function(ctx) {
         path_set(record$body, ctx$opts$max_rule_paths, ctx$random)
       }
       paths$tier <- if (large) "large" else "full"
-      paths$evaluated_bytes <- evaluated_bytes(record$body)
       res <- evaluate_body(
         record$body, paths, if (large) narrow else combos, fns
       )
@@ -512,9 +535,12 @@ check_comparable_runs <- function(ra, rb, dir_a, dir_b) {
   invisible(TRUE)
 }
 
-mode_compare <- function(ctx, detail_cap = 1000L) {
-  dir_a <- file.path(ctx$out, ctx$opts$a)
-  dir_b <- file.path(ctx$out, ctx$opts$b)
+# Every check compare makes before it diffs anything, each a refusal; run.R
+# calls it before it creates the compare run's directory, so a refused
+# compare leaves no "running" record. Returns what the diff needs.
+prepare_compare <- function(out, opts) {
+  dir_a <- file.path(out, opts$a)
+  dir_b <- file.path(out, opts$b)
   rec_path <- function(d) file.path(d, "record.rds")
   if (!file.exists(rec_path(dir_a)) || !file.exists(rec_path(dir_b))) {
     harness_refuse("Both --a and --b must name finished runs with a record.")
@@ -526,8 +552,16 @@ mode_compare <- function(ctx, detail_cap = 1000L) {
   partial_b <- is_partial_run(rb$params)
   # Inputs first: no result is diffed across two different input sets, nor
   # across two chunks that name different host directories.
-  manifest_a <- readRDS(file.path(dir_a, "manifest.rds"))
-  manifest_b <- readRDS(file.path(dir_b, "manifest.rds"))
+  read_run_manifest <- function(d) {
+    m <- tryCatch(suppressWarnings(readRDS(file.path(d, "manifest.rds"))),
+                  error = function(e) NULL)
+    if (!is.data.frame(m)) {
+      harness_refuse(paste0("Run ", basename(d), " has no readable manifest."))
+    }
+    m
+  }
+  manifest_a <- read_run_manifest(dir_a)
+  manifest_b <- read_run_manifest(dir_b)
   check_input_sets(manifest_a, manifest_b, partial_a, partial_b)
   check_chunk_plans(manifest_a, manifest_b)
   ia <- shard_index(dir_a)
@@ -540,6 +574,40 @@ mode_compare <- function(ctx, detail_cap = 1000L) {
   if (length(both) == 0L) {
     harness_refuse("The runs share no shard, so there is nothing to compare.")
   }
+  list(
+    dir_a = dir_a, dir_b = dir_b, ra = ra, rb = rb, partial_a = partial_a,
+    partial_b = partial_b, ia = ia, ib = ib, key_a = key_a, key_b = key_b,
+    both = both
+  )
+}
+
+# Two runs came from the same harness only when each recorded its tree, the
+# trees are the same, and neither had uncommitted harness changes.
+same_harness <- function(ha, hb) {
+  ta <- scalar_or_na(ha$harness_tree, NA_character_)
+  tb <- scalar_or_na(hb$harness_tree, NA_character_)
+  !is.na(ta) && !is.na(tb) && identical(ta, tb) &&
+    !isTRUE(ha$harness_dirty) && !isTRUE(hb$harness_dirty)
+}
+
+# Diff two runs shard by shard. `ctx$compare` is prepare_compare()'s result
+# when run.R has already checked the runs; without it the checks run here.
+mode_compare <- function(ctx, detail_cap = 1000L) {
+  p <- ctx$compare
+  if (is.null(p)) {
+    p <- prepare_compare(ctx$out, ctx$opts)
+  }
+  dir_a <- p$dir_a
+  dir_b <- p$dir_b
+  ra <- p$ra
+  rb <- p$rb
+  partial_a <- p$partial_a
+  partial_b <- p$partial_b
+  ia <- p$ia
+  ib <- p$ib
+  key_a <- p$key_a
+  key_b <- p$key_b
+  both <- p$both
   summary <- list()
   details <- list()
   tables <- setdiff(unique(c(ia$table, ib$table)), nondeterministic_tables())
@@ -587,9 +655,7 @@ mode_compare <- function(ctx, detail_cap = 1000L) {
     # Recorded, not checked: the trees that produced each run.
     harness_a = ra$harness, harness_b = rb$harness,
     package_a = ra$package, package_b = rb$package,
-    harness_same = identical(
-      ra$harness$harness_tree, rb$harness$harness_tree
-    ),
+    harness_same = same_harness(ra$harness, rb$harness),
     unmatched_shards = unmatched,
     identical = sum(summary$rows_differing) == 0 && !unmatched,
     summary = summary

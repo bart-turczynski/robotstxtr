@@ -13,11 +13,14 @@ variant: fleet-r
 # scripts/check-bugreports.py forbids a /-/issues link in _pkgdown.yml. It is
 # a pre-commit pre-push hook, so it runs on every push whatever the tier;
 # _pkgdown.yml is excluded anyway, as the migration contract asks for every
-# allowlisted path a script or hook reads. No script under scripts/, dev/,
-# tests/ or data-raw/ reads design/**/*.md: the corpus generators and
+# allowlisted path a script or hook reads. scripts/check-policy-anchors.R reads
+# design/engine-profiles.md, so that file is excluded too: a docs-only edit
+# that drops an anchor gets the full tier. No other script under scripts/,
+# dev/, tests/ or data-raw/ reads design/**/*.md: the corpus generators and
 # PROVENANCE files only name a design/ spec as a string.
 docs_exclude:
   - _pkgdown.yml
+  - design/engine-profiles.md
 
 # T0, and the start of T1: the former dev/gates.R `spelling` gate, over
 # DESCRIPTION, man/, vignettes, README and NEWS against `Language: en-US`.
@@ -38,7 +41,9 @@ docs_gates:
 # rather than regenerated ahead of R CMD check (both scripts pslr's). Then
 # lintr, README.md against a fresh knit, and the two vendored-tree fidelity
 # checks (offline: the vendored trees against their frozen manifests). Then
-# every declared URL: the gate's R CMD check runs with remote incoming, and
+# the policy anchors: each design/engine-profiles.md#x that R/ names has its
+# <a id="x"> in that document (scripts/check-policy-anchors.R). Then every
+# declared URL: the gate's R CMD check runs with remote incoming, and
 # so its URL check, off; t2-ascran runs it with incoming on.
 cheap_gates:
   - Rscript scripts/check-news-version.R
@@ -49,6 +54,7 @@ cheap_gates:
   - sh scripts/check-readme-drift.sh
   - Rscript dev/verify-yandex-vendor.R
   - Rscript dev/verify-bing-vendor.R
+  - Rscript scripts/check-policy-anchors.R
   - Rscript scripts/check-urls.R
 
 # The case-folding legs of test-ascii-case-folding-tldlaxgq.R switch LC_CTYPE
@@ -97,6 +103,8 @@ allowed_skips:
     why: NR-VENDOR reads src/vendor/robotstxtyandex, absent from an installed check; the cheap gate dev/verify-yandex-vendor.R checks that tree against its manifest
   - reason: corpus harness dev/ not present (built package)
     why: test-corpus-harness-qbxsydcf.R sources dev/corpus/, which .Rbuildignore keeps out of the tarball; it runs from the source tree (ROBO-qbxsydcf)
+  - reason: no 8-bit native locale installed
+    why: the fleet image has no ISO-8859 locale; test-text-encoding-tipzbglv.R checks the native-encoding predicate on stand-ins everywhere and runs the entry points in a real 8-bit locale where one exists (ROBO-tipzbglv)
 
 # No allowed_notes: R CMD check NOTEs don't fail the gate, as they did not
 # fail the former pre-push hook or CI (rcmdcheck error_on = "warning", no

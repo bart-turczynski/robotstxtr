@@ -649,12 +649,38 @@ expand_product_token_v1 <- function(token, n) {
   )
 }
 
+# The bytes of a supplied robots.txt string, shared by every text entry point
+# (ROBO-tipzbglv). A string marked "bytes" is used verbatim, and one marked
+# UTF-8 is already UTF-8. An unmarked ("unknown") string is taken as UTF-8
+# bytes as written when native_text_as_written() holds: enc2utf8() would
+# re-encode it as native-locale text, and under LC_CTYPE C, whose charset is
+# ASCII, that escapes each non-ASCII byte as "<xx>". In any other native
+# encoding (an 8-bit locale such as ISO-8859-1 or ISO-8859-15) an unmarked
+# string is native text, so it is converted. A string marked "latin1" is
+# converted.
 text_body_bytes_v1 <- function(robots_txt) {
-  if (identical(Encoding(robots_txt), "bytes")) {
-    charToRaw(robots_txt)
-  } else {
-    charToRaw(enc2utf8(robots_txt))
+  encoding <- Encoding(robots_txt)
+  if (identical(encoding, "bytes")) {
+    return(charToRaw(robots_txt))
   }
+  if (identical(encoding, "unknown") && native_text_as_written()) {
+    return(charToRaw(robots_txt))
+  }
+  charToRaw(enc2utf8(robots_txt))
+}
+
+# TRUE when the session's native encoding is UTF-8 or ASCII (the C locale), so
+# an unmarked string's bytes are already what a UTF-8 reading wants. The C
+# locale reports its codeset under several names; a platform that reports none
+# is not assumed to be ASCII. `info` is l10n_info()'s shape; tests pass their
+# own, since the fleet image installs no 8-bit locale.
+native_text_as_written <- function(info = l10n_info()) {
+  if (isTRUE(info[["UTF-8"]])) {
+    return(TRUE)
+  }
+  codeset <- info[["codeset"]]
+  is.character(codeset) && length(codeset) == 1L &&
+    codeset %in% c("US-ASCII", "ANSI_X3.4-1968", "ASCII")
 }
 
 matcher_string_v1 <- function(body) {
@@ -1065,12 +1091,34 @@ row_matcher_frame_v1 <- function(row_match, bodies, urls, product_tokens) {
   out
 }
 
-# The Google matcher adapter. It still matches row by row: each row's body
-# is cut to Google's 512,000-byte window by match_google_v1() itself, before
-# any grouping, and each row keeps its own `matcher_body_truncated`. Google
-# rows carry no raw rule value yet (`matched_rule_value_raw` NULL).
+# The Google matcher adapter. Its matcher parses each distinct body once (the
+# line collector reads each body with a matched row once more), through the
+# shared batch module (R/matcher-batch-v1.R) like the Yandex and Bing
+# adapters; its extractor, native batch and status mapping live in
+# R/google-batch-v1.R (ROBO-iooslxvj). Each distinct body is cut to Google's
+# 512,000-byte window there, and each row keeps its body's
+# `matcher_body_truncated`. Row for row it gives what match_google_v1(), the
+# reference row matcher, gives. A batch holding a row the row matcher refuses
+# goes to the row matcher, so the same row fails first
+# (google_batch_refused_v1()). Google rows carry no raw rule value yet
+# (`matched_rule_value_raw` NULL).
 match_google_batch_v1 <- function(bodies, urls, product_tokens) {
-  row_matcher_frame_v1(match_google_v1, bodies, urls, product_tokens)
+  n <- length(bodies)
+  if (is.list(bodies) && n > 0L &&
+        google_batch_refused_v1(bodies, urls, product_tokens)) {
+    return(row_matcher_frame_v1(
+      match_google_v1, bodies, rep(urls, length.out = n),
+      rep(product_tokens, length.out = n)
+    ))
+  }
+  run_batch_matcher_v1(
+    bodies, urls, product_tokens,
+    bodies_class = "robotstxtr_invalid_google_bodies",
+    extract_target = google_request_target_v1,
+    native_eval = google_evaluate_batch_v1,
+    map_status = google_map_native_v1,
+    native_columns = character()
+  )
 }
 
 # The frozen identity of the vendored robotstxtyandex payload. These six fields
@@ -1458,7 +1506,8 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 
   # One adapter call per backend over all of its rows, in row order; the
   # decision frame's row k scatters back to the backend's k-th row. Adapters
-  # that parse once per distinct body (yandex, bing) dedupe inside.
+  # whose matcher parses once per distinct body (google, yandex, bing; Google's
+  # line collector reads a body with a matched row once more) dedupe inside.
   matched_rule_value_raw <- vector("list", n)
   matcher_rows <- which(needs_matcher)
   matcher_sources <- source_of[matcher_rows]
@@ -1576,8 +1625,21 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' vendored-matcher identity is published as
 #' `robots_engine_contract_v1()$matcher_identity$yandex`.
 #'
+#' A Google row reports no line for a rule with an empty value: when the
+#' selected rule is an `Allow:` or `Disallow:` with nothing after the colon,
+#' the row reports `url_decision = "allow"` with `reason = "default_allow"`,
+#' `matched_rule_type = "none"`, `NA` `matched_line` and `matched_rule_value`,
+#' and a `NULL` `matched_rule_value_raw`; the legacy functions report the
+#' same decision source, type, line and value (`design/PRD.md` section 6.6,
+#' "Match metadata rules"). When a Yandex row's selected rule is an empty
+#' `Disallow`, it instead reports `effective_empty_disallow` with that line.
+#'
 #' @param robots_txt A single, non-missing character value containing the
-#'   robots.txt body.
+#'   robots.txt body. A body marked UTF-8 is used as written. An unmarked body
+#'   (as `rawToChar()` gives) is taken as UTF-8 bytes as written when the
+#'   session's native encoding is UTF-8 or ASCII (the C locale), and converted
+#'   from the native encoding otherwise; one marked `"latin1"` is converted,
+#'   and one marked `Encoding = "bytes"` is used verbatim.
 #' @param url A character vector of URLs to evaluate.
 #' @param robots_product_token A matcher-profile selector: a robots.txt
 #'   `User-agent:` group label, NOT an HTTP `User-Agent` crawler identity. It is
@@ -1654,6 +1716,9 @@ robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
 #' bounded to their supported vendor profiles and RFC 9309 behavior is available
 #' only under the `rfc9309` backend. See
 #' `robots_engine_contract_v1()$matcher_capability`.
+#'
+#' A Google row whose selected rule has an empty value reports
+#' `reason = "default_allow"` with no line, as in [robots_evaluate_text_v1()].
 #'
 #' @inheritParams robots_evaluate_text_v1
 #' @inheritParams robots_fetch

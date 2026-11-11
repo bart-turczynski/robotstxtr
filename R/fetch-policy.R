@@ -203,7 +203,8 @@ fetch_error_meta <- function(outcome) {
 # bytes, which are stored and matched (RFC 9309 section 2.5, ROBO-ldpahknv),
 # with `termination_reason = "ceiling"` and ssrfr's `observed_bytes`
 # (acquire_final_result()). Every other body over `max_bytes` is refused whole:
-# on a 3xx it is `fetch_outcome = "body_too_large"` with `termination_reason =
+# on a 3xx, an unknown status or a 2xx whose libcurl and status-line statuses
+# disagree it is `fetch_outcome = "body_too_large"` with `termination_reason =
 # "ceiling"`; a 4xx or 5xx keeps its status outcome (acquire_failure_result()).
 make_source_result <- function(outcome, http_status, effective_url,
                                redirect_count, body, error_message,

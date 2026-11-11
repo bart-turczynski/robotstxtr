@@ -1,10 +1,10 @@
-# The shared batch module behind the Yandex and Bing matcher adapters
-# (ROBO-iwmtdutk).
+# The shared batch module behind the Yandex, Bing and Google matcher adapters
+# (ROBO-iwmtdutk; Google since ROBO-iooslxvj).
 #
-# Both adapters have slice A's batch interface `callable(bodies, urls,
-# product_tokens)` -> a decision frame (ROBO-bukqpjli), and both native
-# bindings parse each DISTINCT body exactly once. What the two adapters
-# shared is batching and result transport, and that is all this module
+# The adapters have slice A's batch interface `callable(bodies, urls,
+# product_tokens)` -> a decision frame (ROBO-bukqpjli), and each native
+# binding parses each DISTINCT body exactly once. What the adapters
+# share is batching and result transport, and that is all this module
 # holds: the argument check, recycling, the request-target bytes, the
 # distinct-body grouping, the allow/disallow decision, the empty frame and
 # the frame assembly. Everything an engine decides stays with its adapter:
@@ -17,10 +17,11 @@
 # evaluates. `extract_target` is the engine's own lexical extractor: one URL
 # in, the slash-prefixed target or NA_character_ out. A missing or empty URL,
 # or one the extractor gives no target for, becomes an empty target
-# (raw(0)), which each engine rejects as invalid_request_target -- unless the
-# product token is also unsupported, in which case the engine reports that
-# first. Leaving that precedence to the engine, rather than mapping the NA
-# here, keeps each engine's own unsupported-first rule.
+# (raw(0)), and each engine decides what that means. Yandex and Bing reject it
+# as invalid_request_target -- unless the product token is also unsupported,
+# in which case the engine reports that first; leaving that precedence to the
+# engine, rather than mapping the NA here, keeps each engine's own
+# unsupported-first rule. Google reads the empty URL as the path "/".
 matcher_target_bytes_v1 <- function(url, extract_target) {
   if (is.na(url) || !nzchar(url)) {
     return(raw(0))
@@ -32,19 +33,41 @@ matcher_target_bytes_v1 <- function(url, extract_target) {
   charToRaw(target)
 }
 
-# Group per-row raw bodies into the distinct-body list + 1-based index the
-# native batch bindings take. Keys are the full byte sequence rendered as hex,
-# so embedded NUL and invalid UTF-8 compare safely and dedupe exactly.
+# Group per-row bodies into the distinct-body list + 1-based index the native
+# batch bindings take, distinct bodies in order of first appearance, each the
+# first row's body as it is. The native grouping (robotstxtr_batch_body_groups_,
+# src/matcher_binding.cpp) is exact on a raw body's bytes alone, so embedded
+# NUL, invalid UTF-8 and attributes neither split nor merge groups; it hashes
+# each distinct body object once, so the rows of one source, which share one
+# body object, cost one lookup each. A body that is not raw (NULL included)
+# is a group of its own and reaches the engine as it is, to be refused there
+# as on its own. Keys built in R cost each row a pass over its body, which
+# outweighed the parse a batch saves (ROBO-iooslxvj).
 matcher_body_groups_v1 <- function(bodies) {
-  keys <- vapply(
-    bodies,
-    function(b) paste(as.character(b), collapse = ""),
-    character(1L)
-  )
-  first <- !duplicated(keys)
+  body_index <- robotstxtr_batch_body_groups_(bodies)
   list(
-    distinct_bodies = bodies[first],
-    body_index = match(keys, keys[first])
+    distinct_bodies = bodies[!duplicated(body_index)],
+    body_index = body_index
+  )
+}
+
+# The one list of the atomic decision columns the module builds, in frame
+# order, each as its zero-length type: matcher_decision_columns_v1() without
+# the list column matched_rule_value_raw, which is assigned separately. Both
+# the empty and the assembled frame take their columns from it.
+matcher_decision_prototype_v1 <- function() {
+  list(
+    matcher_status = character(),
+    url_decision = character(),
+    reason = character(),
+    matched_line = integer(),
+    matched_rule_type = character(),
+    matched_rule_value = character(),
+    matcher_input_bytes = integer(),
+    matcher_body_truncated = logical(),
+    error_stage = character(),
+    error_class = character(),
+    error_message = character()
   )
 }
 
@@ -54,21 +77,7 @@ matcher_batch_empty_frame_v1 <- function(native_columns) {
   native <- rep(list(character()), length(native_columns))
   names(native) <- native_columns
   out <- do.call(data.frame, c(
-    native,
-    list(
-      matcher_status = character(),
-      url_decision = character(),
-      reason = character(),
-      matched_line = integer(),
-      matched_rule_type = character(),
-      matched_rule_value = character(),
-      matcher_input_bytes = integer(),
-      matcher_body_truncated = logical(),
-      error_stage = character(),
-      error_class = character(),
-      error_message = character(),
-      stringsAsFactors = FALSE
-    )
+    native, matcher_decision_prototype_v1(), stringsAsFactors = FALSE
   ))
   out$matched_rule_value_raw <- list()
   attr(out, "n_parse_calls") <- 0L
@@ -81,7 +90,7 @@ matcher_batch_empty_frame_v1 <- function(native_columns) {
 # - `extract_target(url)`: the engine's request-target extractor (see
 #   matcher_target_bytes_v1()).
 # - `native_eval(bodies, body_index, product_tokens, targets)`: the engine's
-#   native batch, called with those four arguments in that order: the distinct
+#   native batch, called with those four arguments by name: the distinct
 #   bodies, the 1-based body per row, and the token and target bytes per row.
 #   It returns the native per-row columns and the scalar `n_parse_calls`.
 # - `map_status(native, url_decision)`: the engine's mapping, returning a list
@@ -111,7 +120,8 @@ run_batch_matcher_v1 <- function(bodies, urls, product_tokens, bodies_class,
   groups <- matcher_body_groups_v1(bodies)
 
   native <- native_eval(
-    groups$distinct_bodies, groups$body_index, product_tokens, targets_raw
+    bodies = groups$distinct_bodies, body_index = groups$body_index,
+    product_tokens = product_tokens, targets = targets_raw
   )
 
   decided <- !is.na(native$url_decision)
@@ -133,22 +143,21 @@ run_batch_matcher_v1 <- function(bodies, urls, product_tokens, bodies_class,
     )
   }
 
+  # Each decision column from where it comes: the decision computed here, the
+  # matched-rule columns from the native result, the rest from the mapping.
+  # The prototype names which columns the frame carries, and in what order.
+  decision <- c(
+    list(url_decision = url_decision),
+    native[c(
+      "matched_line", "matched_rule_type", "matched_rule_value",
+      "matcher_input_bytes"
+    )],
+    mapped
+  )
   out <- do.call(data.frame, c(
     native[native_columns],
-    list(
-      matcher_status = mapped$matcher_status,
-      url_decision = url_decision,
-      reason = mapped$reason,
-      matched_line = native$matched_line,
-      matched_rule_type = native$matched_rule_type,
-      matched_rule_value = native$matched_rule_value,
-      matcher_input_bytes = native$matcher_input_bytes,
-      matcher_body_truncated = mapped$matcher_body_truncated,
-      error_stage = mapped$error_stage,
-      error_class = mapped$error_class,
-      error_message = mapped$error_message,
-      stringsAsFactors = FALSE
-    )
+    decision[names(matcher_decision_prototype_v1())],
+    stringsAsFactors = FALSE
   ))
   # Assign the native list THROUGH unchanged so the raw(0) (present-but-empty)
   # vs NULL (absent) distinction survives verbatim -- rebuilding it would drop

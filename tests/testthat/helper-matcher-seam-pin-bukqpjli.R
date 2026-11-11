@@ -99,11 +99,13 @@ seam_canonical <- function(frame) {
   out
 }
 
-seam_digest <- function(frame) {
+# `extra`: lines written after the canonical form (the batch-module pin adds
+# the frame's attributes, test-batch-module-iwmtdutk.R).
+seam_digest <- function(frame, extra = character()) {
   file <- tempfile(fileext = ".txt")
   on.exit(unlink(file))
   con <- file(file, open = "wb")
-  writeLines(seam_canonical(frame), con, useBytes = TRUE)
+  writeLines(c(seam_canonical(frame), extra), con, useBytes = TRUE)
   close(con)
   unname(tools::md5sum(file))
 }

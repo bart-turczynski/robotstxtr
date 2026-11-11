@@ -31,12 +31,14 @@ body for the selected product token.
   parsing-error catalog). robotstxtr validates syntax and structure for the Google-compatible profile
   only; this doc's per-engine policy work adds no validator scope (PRD §3; ADR-009 §8). §8 rule-count/line-length/typo items
   are future-validator reference only; nothing there executes.
-- **Bing robots policy** — no current Bing primary source publishes a robots.txt status/redirect/
+- <a id="bing-policy"></a>**Bing robots policy** — no current Bing primary source publishes a robots.txt status/redirect/
   network table or an RFC-9309 conformance claim. Every Bing status/redirect cell is
   `documentation_gap`; not synthesized from RFC. A product may opt into an explicit `assumed_rfc9309`
   application policy, never presented as `bing`.
 - **Crawler lifecycle emulation** (cache TTL, 30-day grace, last-known-good). Stateless; lifecycle-
   dependent cells resolve to `context_required` (§4).
+
+<a id="neutral-fetch"></a>
 
 ## 2. Neutral fetch outcome contract (L0 — engine-agnostic)
 
@@ -64,7 +66,8 @@ mapping from ssrfr's reason codes is data in `R/acquire-map.R`; ssrfr's `host-de
 `range-denied` are not admitted, since robotstxtr's policy states no deny rules. `body_truncated` is
 `TRUE` only for a 2xx body over the ceiling, which ssrfr's `truncate_body` returns as its first
 `max_bytes` bytes (`termination_reason = ceiling`, so `evidence_status = incomplete`; ROBO-ldpahknv); a
-3xx over it is `body_too_large`; a 4xx/5xx keeps its status outcome. A set `safety_block_reason` means
+3xx, an unknown status or a status mismatch (libcurl and the status line
+disagree) over it is `body_too_large`; a 4xx/5xx keeps its status outcome. A set `safety_block_reason` means
 `evidence_status = safety_refused`, except an address-class code under `safety_level = crawler`, which
 means `unreachable_local` (§3a). `fetch_outcome` stays `ssrf_blocked` at both levels.
 
@@ -93,6 +96,8 @@ case.
 Note (`http_protocol_error` for 1xx): a received 1xx is an HTTP/protocol outcome, deliberately kept
 distinct from `transport_fail` (DNS/TLS/network). Current code lumps 1xx into `http_error`
 (`R/fetch-policy.R:88`); this contract separates them (an implementation delta, §9).
+
+<a id="redirect-handling"></a>
 
 ## 3. Redirect handling (per terminal reason, then per engine)
 
@@ -124,6 +129,9 @@ follows incl. cross-host, target's directives apply and the target must return 2
 `bing` `[documentation_gap]`. None of the engines conditions a redirect on its scheme: an HTTPS→HTTP
 hop is followed `[inferred]` for `rfc9309`, `google` and `yandex`, and is `[documentation_gap]` for
 `bing`.
+The validator's redirect codes (ROBO-gokbvzcb) decide "same site" by the registrable domain from
+the Public Suffix List (`rurl::get_domain()`), comparing an IP literal or a host with none whole;
+this is reporting only and changes no fetch.
 
 ### 3a. Safety level (ADR 0001)
 
@@ -142,6 +150,8 @@ Address-class codes: `loopback`, `private`, `link-local`, `cloud-metadata`, `sha
 
 `crawler` is in the published value set but refused as a call-level error until it lands
 (ROBO-lwdxzdhw, ROBO-jqwukcog), and `fetch_allow_ranges` is recorded as empty until ROBO-bamcjvwn.
+
+<a id="status-policy"></a>
 
 ## 4. Status → policy (per `robots_policy_ruleset`, per-cell provenance)
 
@@ -294,7 +304,8 @@ calls `RobotsMatcher::OneAgentAllowedByRobots()` on the raw body bytes and repor
 `matching_line()`. The same body, token and URL go to each robotstxtr Google path:
 `robots_evaluate_text_v1()` with the `google` backend under every ruleset (`google`, `rfc9309`,
 `assumed_rfc9309`, `bing`, `yandex`: each reads a supplied body as `use_rules` at any size, so every
-row that passes input screening reaches the matcher); `allowed_by_robots_text()`; and `allowed_by_robots_url()` and `robots_evaluate_url_v1()`
+row that passes input screening reaches the matcher and equals the `google` row, so the window bodies run
+under `google` only); `allowed_by_robots_text()`; and `allowed_by_robots_url()` and `robots_evaluate_url_v1()`
 (`google`/`google`), which take no body argument, so the body is served at the ssrfr boundary
 (`tests/testthat/helper-fake-ssrfr.R`), with no network. The decision and the matched line are
 compared. The inputs are synthesized: empty-value rules; the window (a rule after byte 512,000, a
@@ -315,7 +326,7 @@ Every path agrees with the reference on decision and line, outside these classes
 
 | # | Class | Fixture | Reference | robotstxtr | Verdict |
 |---|---|---|---|---|---|
-| 1 | an `Allow`/`Disallow` with an empty value (also `Disallow: # comment`) matches at priority 0 | `User-agent: FooBot` / `Disallow:`, URL `/x` | allowed, line 2 | allowed, `default_allow`, no line, type `none` (all paths) | DELIBERATE: PRD §6.6 match-metadata rules ("an empty path is ignored", restated as `default_allow`), `normalize_ignored_empty_path()` for the legacy paths; `match_google_v1()` copied it into v1 in `af141e7`. Undocumented for v1: `design/engine-contract-v1.md` states it for no Google row. The Yandex backend reports an empty `Disallow` as `effective_empty_disallow` with its line, and an empty `Allow` as `default_allow` with no line, as here |
+| 1 | an `Allow`/`Disallow` with an empty value (also `Disallow: # comment`) matches at priority 0 | `User-agent: FooBot` / `Disallow:`, URL `/x` | allowed, line 2 | allowed, `default_allow`, no line, type `none` (all paths) | DELIBERATE: PRD §6.6 match-metadata rules ("an empty path is ignored", restated as `default_allow`), `normalize_ignored_empty_path()` for the legacy paths; `match_google_v1()` copied it into v1 in `af141e7`. Documented for v1 in `design/engine-contract-v1.md` (ROBO-dhwinnii). The Yandex backend reports an empty `Disallow` as `effective_empty_disallow` with its line, and an empty `Allow` as `default_allow` with no line, as here |
 | 2 | the 512,000-byte window (v1 paths) | a rule starting at byte 520,001; `Disallow: /private-drafts/` across byte 512,000 | disallowed, line 3 (no window) | allowed, `default_allow` | DELIBERATE: §7, the window `[documented]`, the cut line dropped `[application_choice]` (ROBO-phfbpfiy) |
 | 3 | the `max_bytes` cut (`allowed_by_robots_url()`) | a rule starting at byte 530,001 | disallowed, line 3 | allowed, `default_allow`, `body_truncated` | DELIBERATE: `allowed_by_robots_url()` `max_bytes` (524,288 by default; complete lines, ROBO-ldpahknv); §9 delta (c) |
 | 4 | input screening | URL `""`, token `""`; on the URL paths also `example.com/private`, `ftp://example.com/private` | a decision (`""` is path `/`; `""` as agent reads `*`) | no decision, `input_unknown` / `input_invalid` | DELIBERATE: PRD §6.6 input rules; the roxygen of `allowed_by_robots_text()` and `allowed_by_robots_url()` (HTTP(S) only) |
@@ -329,6 +340,57 @@ follow Google's documented 512,000-byte limit.
 
 A private corpus run of the `google`/`google` v1 path against the same reference found class 1 and
 no decision difference.
+
+### 5c. The aipref AI-training policy token (ROBO-kzyfejcv; validator only)
+
+draft-kelley-aipref-training-preference-signal-00 is an individual Internet-Draft (dated 2026-10-30,
+expires 2027-05-03; no formal IETF standing), so everything below may change with its next revision
+(https://datatracker.ietf.org/doc/draft-kelley-aipref-training-preference-signal/). It states an
+AI-training preference with an ordinary group keyed by the policy token `__usage_ai-training`, and
+"introduces no new directive names and no new grammar", leaving RFC 9309's path language,
+precedence and group structure unchanged (abstract, §1): a disallowed path is a preference against
+training on it, an allowed path one in favor, and no such group means no preference. Two rules
+differ from crawler group selection: a `User-agent: *` group must not be read as matching the
+token, and the token matches exactly, apart from case (§4.1, §4.2). A group may name several
+policy tokens, and policy tokens and other product tokens may be mixed in a group (§4.1). The
+token says nothing about crawling (§4.4). Which crawler operators read it, and from when, is the
+dated vendor record in §7a; this section repeats none of it.
+
+No matcher or decision changes here. A token group stacked onto `*` gives its rules to every
+crawler on every row of `design/engine-disagreements.md` class 1b when only blank lines come
+between. With a directive between (`Crawl-delay`, `Sitemap` or an unknown field such as
+`Content-Signal`, class 1), the `google_yandex`, `yandex` and `google_bingbot` rows still stack
+and the `bing` row ends the run there. The validator (`robots_validate_text()`,
+`robots_validate_url()`) reads the draft as follows:
+
+| Code | Severity | When |
+|---|---|---|
+| `ai_training_preference` | info | A User-agent value is the token whole, ASCII case aside. One per group, on its first such line; the message lists the group's own rules (an empty Disallow as no restriction), and never merges in `*` or names another group. |
+| `ai_training_token_near_miss` | warning | The value's leading `[A-Za-z_-]` run, with `_` and `-` removed and ASCII-lowercased, is `usageaitraining`, but the value is not the token (`__usage_ai_training`, `usage_ai-training`, `__usage-ai-training`, `__usage_ai-training/1.0`). For a suffix the message adds that Google's matcher still reads the token. |
+| `ai_training_group_extra_line` | warning | A directive other than Allow, Disallow and User-agent, and not file-level (Sitemap, Host, Clean-param), in a group that names only the token, such as `Crawl-delay`: before the group's last rule, or anywhere when the group is the file's last. |
+| `ai_training_token_stacked` | warning | A policy-token User-agent line (a `__usage_` key, the token or a near miss) shares a group with `*`, or with a crawler or another policy token and a directive line sits between them. The message says Bing joins the lines only when nothing but blank or comment lines comes between, which a `*` line alone can satisfy. |
+
+Blank and comment lines are RFC 9309 emptylines, and the draft allows mixed groups, so
+consecutive or comment-headed User-agent lines naming crawlers and the token stay silent. The
+token and its near misses are one class, so a repeat of the token across a directive is not
+stacking. A line after the last rule of a token group that another group follows may head that
+group (a `Content-Signal` line just before `User-agent: *`), so `ai_training_group_extra_line`
+leaves it out; a `Crawl-delay` there is missed too. In the file's last group nothing follows, so
+such a line is reported. A User-agent line naming no crawler (empty, or led by a byte outside
+`[A-Za-z_-]`) is never named by `ai_training_token_stacked` and does not make a token group mixed,
+and neither does a value Google reads as the token (`__usage_ai-training/1.0`). On a body cut at
+`max_bytes`, the last group read is not taken as the file's last. A near miss in a group that also
+names the token says the token's line carries the preference. Every agent name in these messages is
+elided past 64 characters (its first 60 and `...`), so message size stays linear in the rows.
+
+The token is never reported as `wildcard_rules_not_inherited`, and neither is a value Google's
+matcher reads as the token. All four codes are skipped for a body holding a NUL byte, like the
+other group checks, and kept for a body cut at `max_bytes`, where the info says lines past the cut
+were not read; a User-agent line past the cut could still join the last group. A
+`DisallowAITraining:`-style key is a different mistake, read by Google as `Disallow` for the whole
+group: `accepted_directive_prefix` (ROBO-xglcoagv) reports it, and its message points to the
+policy token group. Out of scope until the draft stabilizes: a public API answering "is training
+on this path opted out?". Pinned by `tests/testthat/test-aipref-policy-token-kzyfejcv.R`.
 
 ## 6. Matcher capability availability
 
@@ -346,6 +408,8 @@ capability_unavailable`; the §4 policy result still resolves independently (ADR
 This token/semantics boundary is published as data on
 `robots_engine_contract_v1()$matcher_capability` (keyed per backend with
 `token_policy`, `matcher_semantics`, and a `note`).
+
+<a id="policy-matcher-limits"></a>
 
 ## 7. Current policy/matcher limits (executable this release)
 
@@ -375,6 +439,43 @@ These byte-level limits affect the current policy/matcher decision (not future-v
   (`incomplete_evidence`). A 3xx, an unknown
   status or a status mismatch over the limit is `body_too_large`, nothing stored, `incomplete` under
   every ruleset. A 4xx/5xx over the limit is classified by its status (§4).
+
+### 7a. Content-Signal and Content-Usage lines (ROBO-fqkgreev; pages read 2026-11-10)
+
+Validator only: no matcher reads either line as a rule, and nothing here changes a decision (the Bing
+`*`-run sealing at an unknown field is `design/engine-disagreements.md` row 1b). Both keys stay in
+`validation_unsupported`, so they count in `unsupported_directives` and `recognized_directives`.
+
+**Content-Signal** gets its own warning, `content_signal_directive`, instead of `unsupported_directive`,
+whose "another crawler may use it" nothing documented supports. The message carries no date; this
+section is the dated statement behind it.
+
+- The syntax comes from draft-romm-aipref-contentsignals-00 (Cloudflare authors), an individual
+  Internet-Draft: last revision 2025-10-01, expired 2026-04-04 (six months on), "Expired & archived"
+  on the IETF datatracker
+  (https://datatracker.ietf.org/doc/draft-romm-aipref-contentsignals/).
+- The message's alternative is draft-kelley-aipref-training-preference-signal-00, an active individual
+  draft (dated 2026-10-30, expires 2027-05-03; no formal IETF standing), which defines a
+  `User-Agent: __usage_ai-training` group
+  (https://datatracker.ietf.org/doc/draft-kelley-aipref-training-preference-signal/).
+- As of 2026-11-10, no crawler operator below documents honoring Content-Signal `[documented]` (by
+  absence on each page):
+
+| Operator | Pages read 2026-11-10 | Finding |
+|---|---|---|
+| Google | https://developers.google.com/crawling/docs/robots-txt/robots-txt-spec ; https://developers.google.com/crawling/docs/crawlers-fetchers/google-common-crawlers ; https://www.google.com/robots.txt | No Content-Signal or Content-Usage. The spec: "Rules other than `allow`, `disallow`, and `user-agent` are ignored by the robots.txt parser." The crawlers page says Google intends to support the aipref training preference token `__usage_ai-training` in early 2027. |
+| Bing | https://blogs.bing.com/search/2026/10/your-content-your-choice-clearer-preferences-for-training-and-grounding/ (2026-10-30) ; https://blogs.bing.com/webmaster/september-2023/Announcing-new-options-for-webmasters-to-control-usage-of-their-content-in-Bing-Chat ; https://www.bing.com/webmasters/help/how-to-create-a-robots-txt-file-cb7c31ec ; https://www.bing.com/robots.txt | No Content-Signal or Content-Usage on any of them. The 2026-10-30 post introduces a robots.txt AI Training preference with `User-Agent: __usage_ai-training` groups: "Starting February 1, 2027, Microsoft will honor the new preferences as it crawls". It says "These preferences will replace existing Microsoft preferences NoArchive and NoCache for training and grounding", and after 2027-03-01 "`NoArchive` and `NoCache` will no longer be read as a preference for training or grounding". The 2023 post's `nocache`/`noarchive` meta tags are the controls until then. The help page renders as a title only for the reader `[documentation_gap]`. |
+| OpenAI | https://developers.openai.com/api/docs/bots (redirected from platform.openai.com/docs/bots) ; https://openai.com/robots.txt | No Content-Signal or Content-Usage; controls are robots.txt groups for GPTBot, OAI-SearchBot and ChatGPT-User. OpenAI's 2026-10-30 post https://openai.com/index/helping-websites-express-ai-training-preferences/ was not readable directly (HTTP 403 on 2026-11-10); it is cited by its URL only, and its content is not recorded here. |
+| Anthropic | https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler ; https://www.anthropic.com/robots.txt | No Content-Signal or Content-Usage. "As of October 30, 2026, Anthropic has begun recognizing a machine-readable signal" for a "no AI training" preference, linking draft-kelley-aipref-training-preference-signal, and is "rolling this out across all of our services over time". |
+| Apple | https://support.apple.com/en-us/119829 ; https://www.apple.com/robots.txt | No Content-Signal or Content-Usage; controls are robots.txt (Applebot, Applebot-Extended), robots meta tags and `X-Robots-Tag`. |
+| Cloudflare | https://developers.cloudflare.com/bots/additional-configurations/managed-robots-txt/ ; https://contentsignals.org/ ; https://www.cloudflare.com/robots.txt | Defines Content Signals and publishes a `Content-Signal` line in its own robots.txt, but names no crawler that honors them: "`robots.txt` compliance is voluntary." |
+
+Re-read these pages when the draft or a vendor page changes; a vendor that documents honoring
+Content-Signal makes the message wrong.
+
+**Content-Usage** (the aipref vocabulary syntax) keeps the generic `unsupported_directive`: the ticket's
+default, kept unless a crawler documents it. None of the pages above does. Pinned by
+`tests/testthat/test-content-signal-fqkgreev.R`.
 
 ## 8. Future-validator reference (NOT executed this release)
 

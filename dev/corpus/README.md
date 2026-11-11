@@ -52,8 +52,10 @@ run's manifest).
 Exit status: 0 for a valid run, 2 for a refusal, 3 for an invalid run. Every
 refusal that can be decided before the work starts is: the arguments, every
 run id (`--run-id`, `--a`, `--b`, `--manifest`: a plain name, never a path),
-the run `--manifest` names (it must exist and be finished), and an empty
-chunk plan all refuse before the run directory is created.
+the run `--manifest` names (it must exist, be finished and keep its
+`manifest.rds`), a `--pkg` that is missing or outside a git work tree, every
+compare check (below), and an empty chunk plan all refuse before the run
+directory is created, so a refusal leaves no `running` record behind.
 
 ## Modes
 
@@ -73,16 +75,20 @@ chunk plan all refuse before the run directory is created.
   package's parser, (b) a fixed list of probes (`$`, `*`, percent-escapes in
   both cases, `%2F`, letter case, `index.html`, non-ASCII, the empty path,
   queries), and (c) a seeded random set that depends only on `--seed`.
-  The package parses a body once per result row, so a large body's rows are
-  costly: a body over `--large-bytes` (default 65,536) gets the narrow tier,
+  The package parses each distinct body once per call, but every result row
+  still walks every rule of its body, so a large body's rows are costly: a
+  body over `--large-bytes` (default 65,536) gets the narrow tier,
   every ruleset x available backend with each backend's first named token
   (`size_combos`, same combo ids) over up to `--size-rule-paths` rule paths
   and a short fixed probe list. The `paths` table's `tier` column says which
   a file got.
   The body is evaluated with its NUL bytes removed (an R string cannot hold
   one), while `validate` sees the raw bytes, NULs included; the files table's
-  `nul_bytes` counts them, and the `paths` table's `evaluated_bytes` (the
-  `variants` table's, in size mode) gives the length actually evaluated.
+  `nul_bytes` counts them, and its `evaluated_bytes` (the `variants`
+  table's, in size mode) gives the length actually evaluated. Runs from
+  before `evaluated_bytes` moved from the `paths` table to the files table
+  compare with later ones as a `<shape>` difference in the files table in
+  every mode, and in the `paths` table too in evaluate mode.
 - `size`: every stored body of at least 511,999 bytes cut to 511,999,
   512,000 and 512,001 bytes, plus the whole body, and two synthetic bodies
   whose cut falls through a rule line and through a percent-escape; each
@@ -98,8 +104,12 @@ chunk plan all refuse before the run directory is created.
   fuller one only when N is a multiple of `--chunk-size`). It also refuses a
   run that is not `finished`, and two runs that differ in a parameter, in the
   evaluation grid (`combos.rds`), in the random or fixed path sets (their
-  sha256), in the token list or in the size targets. The harness and package
-  trees of each run are recorded in the compare record, not checked. It then
+  sha256), in the token list or in the size targets. Every one of these
+  checks runs before the compare run's own directory is created. The
+  harness and package trees of each run are recorded in the compare record,
+  not checked; its `harness_same` is `TRUE` only when both runs recorded the
+  same harness tree and neither had uncommitted harness changes, and a
+  `NOTE` is printed otherwise. It then
   diffs the result tables at `identical()` level, prints
   the count of differing rows per table and writes the detail to its own run
   directory (`compare-summary.rds`, `compare-detail.rds`). The verdict is
@@ -122,20 +132,36 @@ chunk plan all refuse before the run directory is created.
 
 ## Input checks
 
-Every run takes a manifest of its input files at the start, hashes each file
-again from the bytes it actually processes, and takes a fresh manifest at the
-end. A full run lists the corpus again for the end manifest, so a host
-directory or `robots.rds` that appeared during the run counts; a `--subset`
-or `--max-hosts` run re-hashes the directories it planned. If any file
-vanished, appeared or changed between the three, the run is
-recorded as `invalid`, the changes go to `input-changes.rds`, and the script
-exits with status 3.
+Every run takes a manifest of its input files at the start, right after it
+lists the corpus, hashes each file again from the bytes it actually
+processes, and takes a fresh manifest at the end. A full run lists the
+corpus again for the end manifest, so a host directory or `robots.rds` that
+appeared during the run counts; a `--subset` or `--max-hosts` run re-hashes
+the directories it planned. The manifest records whether each planned host
+directory exists (`dir_exists`) apart from whether it holds a `robots.rds`,
+so a planned directory already gone at the start, or gone by the end, counts
+as vanished in a partial run too. A `robots.rds` that vanishes between the
+existence check and the read is recorded as absent and shows up as a
+change; one that is there but cannot be read (no permission, a directory in
+its place) fails its chunk instead. If any file vanished, appeared or changed between the three, the run
+is recorded as `invalid`, the changes go to `input-changes.rds`, and the
+script exits with status 3.
+
+`--manifest` compares the start manifest with the named run's: both full,
+the two must name the same snapshot; when one is partial, every host
+directory it planned must appear, byte for byte, in the other (two partial
+runs: the directories both planned). `frozen_rows_compared` counts the host
+directories both manifests hold; when it is 0, the run says nothing was
+compared instead of warning of a mismatch.
 
 A chunk that delivers no result (its forked worker was killed, ran out of
 memory or raised an error) also makes the run `invalid` and exits 3; the
 record's `worker_failures` names each such chunk and its cause, and the
 input checks are skipped, since the missing shards say nothing about the
-corpus.
+corpus. With `--workers 1` the run stops at the first such chunk. A mode
+that fails outside its chunks (size mode builds its synthetic chunk 0 in
+the main process) is `invalid` the same way, its error in
+`invalid_cause`.
 
 ## Comparing two package trees
 

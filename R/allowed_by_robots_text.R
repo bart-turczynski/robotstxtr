@@ -27,7 +27,9 @@
 #' ignores every `User-agent: *` rule; `User-agent: *` applies only to a
 #' crawler no group names (RFC 9309 section 2.2.1). [robots_validate_text()]
 #' reports a named group that lacks `User-agent: *` rules as
-#' `wildcard_rules_not_inherited`.
+#' `wildcard_rules_not_inherited`, except for the AI-training policy token
+#' `__usage_ai-training`, which `*` never covers (an Internet-Draft,
+#' draft-kelley-aipref-training-preference-signal-00).
 #'
 #' Match metadata is fully populated on the text path. `matched_line` carries
 #' the upstream one-based matching line (or `NA` when no rule matched). For a
@@ -43,9 +45,13 @@
 #' `input_unknown`).
 #'
 #' @param robots_txt A single, non-missing character scalar holding the
-#'   robots.txt body. An empty body is valid. It is converted to UTF-8 once and
-#'   the exact bytes are stored in the returned `robots$body` and passed to the
-#'   matcher; a body already carrying `Encoding = "bytes"` is used verbatim.
+#'   robots.txt body. An empty body is valid. A body marked UTF-8 is used as
+#'   written. An unmarked body (as `rawToChar()` gives) is taken as UTF-8 bytes
+#'   as written when the session's native encoding is UTF-8 or ASCII (the C
+#'   locale), and converted from the native encoding otherwise; one marked
+#'   `"latin1"` is converted, and one marked `Encoding = "bytes"` is used
+#'   verbatim. Those exact bytes are stored in the returned `robots$body` and
+#'   passed to the matcher.
 #' @param url A character vector of URL strings to match, passed to the matcher
 #'   unchanged. May have length zero.
 #' @param user_agent A matcher user-agent string, length one or `length(url)`,
@@ -73,16 +79,12 @@ allowed_by_robots_text <- function(robots_txt, url, user_agent,
   n <- length(url)
   user_agent <- expand_user_agent(user_agent, n)
 
-  # --- Body: convert to UTF-8 once, store those exact bytes, and pass the same
-  # byte sequence to C++ (§6.6 body handling). A body already flagged as
-  # `Encoding = "bytes"` is used verbatim (it cannot be UTF-8-translated). The
-  # matcher input is rebuilt from the raw bytes and marked UTF-8 so cpp11
-  # forwards the exact bytes without a translation error or re-encoding.
-  if (identical(Encoding(robots_txt), "bytes")) {
-    raw_body <- charToRaw(robots_txt)
-  } else {
-    raw_body <- charToRaw(enc2utf8(robots_txt))
-  }
+  # --- Body: take the supplied bytes once (text_body_bytes_v1(), shared with
+  # the other text entry points), store those exact bytes, and pass the same
+  # byte sequence to C++ (§6.6 body handling). The matcher input is rebuilt
+  # from the raw bytes and marked UTF-8 so cpp11 forwards the exact bytes
+  # without a translation error or re-encoding.
+  raw_body <- text_body_bytes_v1(robots_txt)
   body_utf8 <- decode_matcher_body(raw_body)
 
   # --- Per-element validity (§6.6, text path): a URL or user agent is invalid
