@@ -1,11 +1,12 @@
 # ROBO-ctdkqawi: rules a NUL hides from the validation parser while other
-# rules still parse. Google's matcher drops the NUL bytes and reads on
-# (R/body-decode.R); the parser ends a line at its first NUL.
+# rules still parse. Since ROBO-pvqrfvol Google's matcher, like the parser,
+# ends a line at its first NUL (R/body-decode.R), so it never reads them
+# either; the NUL-free read counts them.
 
 ch_nul <- as.raw(0)
 
 # Google's matcher decision on `bytes`, decoded as the fetch path decodes it
-# (NULs dropped), for FooBot on example.com.
+# (each line cut at its first NUL), for FooBot on example.com.
 ch_allowed <- function(bytes, path) {
   url <- paste0("https://example.com", path)
   Encoding(url) <- "UTF-8"
@@ -21,9 +22,9 @@ ch_rows <- function(x) {
 ch_raw0_message <- function(n) {
   sprintf(
     paste0(
-      "With its NUL bytes removed, as Google's matcher reads it, the ",
-      "document has %d Allow or Disallow rule(s); if this is a UTF-16 ",
-      "file, re-save it as UTF-8 (RFC 9309 section 2.3)."
+      "The NUL bytes hide %d Allow or Disallow rule(s): Google's matcher ",
+      "ends each line at its first NUL and never reads them; if this is ",
+      "a UTF-16 file, re-save it as UTF-8 (RFC 9309 section 2.3)."
     ),
     n
   )
@@ -39,10 +40,9 @@ ch_agent_key <- c(charToRaw("User-"), ch_nul,
 ch_hidden_message <- function(n) {
   sprintf(
     paste0(
-      "With its NUL bytes removed, as Google's matcher reads it, the ",
-      "document has %d Allow or Disallow rule(s) that the parser, which ",
-      "ends a line at its first NUL, does not read or reads in another ",
-      "group; remove the NUL bytes."
+      "The NUL bytes hide %d Allow or Disallow rule(s) or move them to ",
+      "another group: Google's matcher ends each line at its first NUL; ",
+      "remove the NUL bytes."
     ),
     n
   )
@@ -72,7 +72,7 @@ test_that("a NUL at line start behind a parsed rule is reported", {
 test_that("a NUL in the User-agent key is reported beside the raw rows", {
   expect_true(ch_allowed(ch_agent_key, "/x"))
   x <- robots_validate_text(ch_agent_key)
-  # The raw reading stays: Bing and Yandex read the bytes as written.
+  # The raw reading stays: Google's matcher reads the line the same way.
   expect_identical(
     ch_rows(x),
     c("nul_byte@1", "malformed_line@1", "rule_without_user_agent@2",

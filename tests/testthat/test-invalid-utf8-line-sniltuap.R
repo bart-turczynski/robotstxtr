@@ -66,17 +66,17 @@ test_that("NUL bytes are dropped before the line is checked", {
   d <- iu_rows(iu_bytes("User-agent: *\nDisallow: /x", 0x00, 0xff, "\n"))
   expect_identical(d$code, c("nul_byte", "invalid_utf8"))
   expect_identical(d$line, c(2L, 2L))
-  # A NUL between a lead and a continuation byte: Google's matcher drops it
-  # and reads a well-formed character.
+  # A NUL between a lead and a continuation byte: the line is checked
+  # NUL-free, so only nul_byte reports it.
   d <- iu_rows(iu_bytes("User-agent: *\nDisallow: /", 0xc3, 0x00, 0xa9,
                         "\n"))
   expect_identical(d$code, "nul_byte")
-  # A NUL before the #: the # is still found on the NUL-free line, where it
-  # also cuts the rule (rule_cut_by_comment, ROBO-gjhpykcj).
+  # A NUL before the #: the # is still found on the NUL-free line. It cuts
+  # no rule: the line ends at the NUL, for the parser and Google's matcher
+  # alike (ROBO-pvqrfvol), so no rule_cut_by_comment (ROBO-gjhpykcj).
   d <- iu_rows(iu_bytes("User-agent: *\nDisallow: /a", 0x00, "# ", 0xff,
                         "\n"))
-  expect_identical(d$code,
-                   c("nul_byte", "invalid_utf8_comment", "rule_cut_by_comment"))
+  expect_identical(d$code, c("nul_byte", "invalid_utf8_comment"))
 })
 
 test_that("several bad lines get one row each, in line order", {

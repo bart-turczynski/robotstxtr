@@ -178,9 +178,10 @@ test_that("the frame of a NUL-bearing UTF-16 body is pinned", {
     c("nul_byte@1", "nul_byte@2", "nul_byte@3", "malformed_line@1",
       "rules_after_nul_removal@NA")
   )
+  # The rules_after_nul_removal wording moved with ROBO-pvqrfvol.
   expect_identical(
     seam_digest(d, linear_frame_extra(d)),
-    "dda782b02dd558144cf0f2deeede8357"
+    "87e9c2a1fdbd59ad78f1279e885c5a60"
   )
 })
 

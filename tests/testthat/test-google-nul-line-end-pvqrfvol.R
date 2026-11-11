@@ -177,7 +177,7 @@ test_that("a NUL past the parser's line buffer changes no rule", {
     pv_decoded(body), pv_bytes("User-agent: *\nDisallow: /", long, "\n")
   )
   got <- pv_google(body, "/aaa")
-  expect_identical(got$allowed, TRUE)
+  expect_true(got$allowed)
   expect_identical(got$v1, "allow")
 })
 

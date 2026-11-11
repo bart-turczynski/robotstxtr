@@ -7,8 +7,9 @@
 # restatement (an empty Allow stays default_allow with no line), the
 # index.htm normalization, the 512,000-byte window (a cut boundary line and a
 # body of exactly the window), NUL bytes (each line cut at its first NUL
-# before matching, ROBO-pvqrfvol, but counted in matcher_input_bytes), invalid UTF-8 and latin1 path bytes, two distinct
-# bodies of one length, and repeated URLs.
+# before matching, ROBO-pvqrfvol, but counted in matcher_input_bytes),
+# invalid UTF-8 and latin1 path bytes, two distinct bodies of one length, and
+# repeated URLs.
 #
 # No NA URL is in the grid: the batch module turns an NA URL into the empty
 # target while the row path hands cpp11 the string "NA" (decision 3a), and

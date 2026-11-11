@@ -64,12 +64,13 @@ test_that("the check reads raw bytes: invalid UTF-8 and Latin-1 values", {
   }
 })
 
-test_that("a NUL before or after the # still gets the cut warning", {
-  # The parser stops at the NUL, but Google's matcher drops NULs and reads
-  # on, so it cuts the rule at the `#`: the check reads the line NUL-free.
+test_that("a # after a NUL cuts nothing; a # before one still does", {
+  # The parser and Google's matcher both end the line at its first NUL
+  # (ROBO-pvqrfvol), so a `#` after it is never read: the NUL, not the `#`,
+  # ends the rule, and nul_byte reports it.
   for (tail in list(charToRaw("x#b"), charToRaw("#b"))) {
     line <- c(charToRaw("Disallow: /a"), as.raw(0), tail)
-    expect_cut(line, "disallow")
+    expect_identical(nrow(cc_hits(line)), 0L)
     codes <- cc_validate(line)$diagnostics$code
     expect_true("nul_byte" %in% codes)
   }
@@ -79,7 +80,6 @@ test_that("a NUL before or after the # still gets the cut warning", {
                                         "https://example.com/abc", "FooBot"))
   after <- c(charToRaw("Disallow: /a#b"), as.raw(0), charToRaw("c"))
   expect_cut(after, "disallow")
-  # A NUL-free space before the # still sets the comment apart.
   spaced <- c(charToRaw("Disallow: /a "), as.raw(0), charToRaw("#b"))
   expect_identical(nrow(cc_hits(spaced)), 0L)
 })

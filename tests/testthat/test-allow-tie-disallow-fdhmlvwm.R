@@ -215,8 +215,9 @@ test_that("a tie on an inner-dollar pattern keeps both warnings", {
   )
 })
 
-# The parser stops a value at a NUL; Google's matcher drops the NUL and reads
-# on, so the group checks are skipped on any NUL.
+# The parser and Google's matcher stop a line at a NUL (ROBO-pvqrfvol), but
+# Bing and Yandex read the NUL as an ordinary byte, so the group checks are
+# skipped on any NUL.
 at_nul <- function(...) {
   parts <- list(...)
   out <- charToRaw(parts[[1L]])
