@@ -105,7 +105,9 @@ matchers do not cut the value. \cr
 An Allow or Disallow in no group a non-empty User-agent opened: before
 any, or after an empty User-agent that follows a rule. \cr
 \code{empty_rule_value} \tab warning \tab
-An empty Allow or Disallow value, which the matcher ignores. \cr
+An empty Allow or Disallow value, which the matcher ignores. When a NUL
+byte right after the colon hides the path, the message says that
+Google's matcher reads the rule after the NUL instead. \cr
 \code{rule_missing_leading_slash} \tab warning \tab
 A pattern not led by \code{/} or \code{*}; it never matches. \cr
 \code{rule_cut_by_comment} \tab warning \tab

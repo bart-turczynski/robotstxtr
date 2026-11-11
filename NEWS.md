@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* `robots_validate_text()` and `robots_validate_url()` say Google's matcher reads the path behind a NUL right after an Allow or Disallow colon, not that the matcher ignores the line (ROBO-nrnucnru).
+
 * `safety_level = "crawler"` is now available: it follows an `https` to `http` redirect as an ordinary hop, and needs ssrfr 1.0.0.9001 (ROBO-lwdxzdhw).
 
 * `robots_fetch()`'s `content_flag` and the `html_body` warning now catch an HTML page opening with inline script or style, or cut at `max_bytes` on its first line (ROBO-qquftxcx).
