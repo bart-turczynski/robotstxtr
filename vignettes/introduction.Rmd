@@ -190,9 +190,9 @@ escape such as `%3c` (Google upper-cases the rule, not the URL), and on a
 Sitemap value
 that is not an absolute `http`, `https` or `ftp` URL. An info,
 `wildcard_rules_not_inherited`, notes a named User-agent group that lacks some
-`User-agent: *` rules: its crawler obeys only the groups that name it. Under
-a group that disallows `/`, only the lost `*` Allow rules are listed, as
-possible exceptions. The AI-training policy token `__usage_ai-training`, from the Internet-Draft
+`User-agent: *` rules: its crawler obeys only the groups that name it. Where
+the merged named groups disallow `/` and hold no non-empty `Allow`, only the
+lost `*` Allow rules are listed, as possible exceptions. The AI-training policy token `__usage_ai-training`, from the Internet-Draft
 draft-kelley-aipref-training-preference-signal-00, is no crawler and `*` never
 covers it: its group gets an info, `ai_training_preference`, listing the
 group's own rules, and warnings flag a near-miss spelling

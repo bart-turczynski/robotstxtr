@@ -1,6 +1,6 @@
 # robotstxtr (development version)
 
-* `robots_validate_text()` and `robots_validate_url()` list only the lost `User-agent: *` Allow rules, which may be exceptions, in `wildcard_rules_not_inherited` when a named group disallows `/` (ROBO-bwpacxtq).
+* `robots_validate_text()` and `robots_validate_url()` list only the lost `User-agent: *` Allow rules, which may be exceptions, in `wildcard_rules_not_inherited` when the merged named groups disallow `/` and hold no non-empty `Allow` (ROBO-bwpacxtq).
 
 * Under `safety_level = "crawler"`, a refused 6to4, Teredo or ISATAP address is now `evidence_status = "safety_refused"`, not `"unreachable_local"`: the refusal does not show the target is internal (ROBO-aoslfvnx).
 

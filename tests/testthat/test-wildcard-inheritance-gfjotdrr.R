@@ -298,9 +298,10 @@ test_that("a trailing * is ignored in the comparison and $ is not", {
                      paste("Disallow:", value))
     expect_identical(nrow(wi_rows(body)), 0L, label = body)
   }
-  # Bingbot does not disallow `/` in full here, so `*$` is not moot.
+  # Bingbot disallows `/` but keeps a non-empty Allow, so it is not a full
+  # block and `*$` is not moot: it must not be keyed as `/`.
   rows <- wi_rows(wi_lines("User-agent: *", "Disallow: *$",
-                           "User-agent: Bingbot", "Disallow: /y"))
+                           "User-agent: Bingbot", "Disallow: /", "Allow: /y"))
   expect_match(rows$message, "Disallow: *$ (line 2).", fixed = TRUE)
   # Bingbot disallows `/` in full, and that lost Disallow adds nothing
   # (ROBO-bwpacxtq).

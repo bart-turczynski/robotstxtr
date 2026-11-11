@@ -186,3 +186,17 @@ test_that("a blanket * Allow is never listed under a full block", {
   ))
   expect_identical(nrow(rows), 0L)
 })
+
+test_that("two named agents sharing a full block are named as them", {
+  rows <- bp_rows(bp_lines(
+    "User-agent: *", "Allow: /a", "Disallow: /b",
+    "User-agent: x", "User-agent: y", "Disallow: /"
+  ))
+  expect_identical(nrow(rows), 1L)
+  expect_identical(rows$line, 4L)
+  expect_identical(rows$message, paste0(
+    "x and y obey only this group, which disallows `/`, so this ",
+    "`User-agent: *` Allow rule may be meant as an exception and does not ",
+    "apply to them: Allow: /a (line 2). ", bp_full_note, bp_tail
+  ))
+})

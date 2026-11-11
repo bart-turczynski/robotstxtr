@@ -128,8 +128,9 @@ validation_unsupported <- c(
 #'     A Sitemap scheme other than \code{http}, \code{https} or \code{ftp}. \cr
 #'   \code{wildcard_rules_not_inherited} \tab info \tab
 #'     A named User-agent group lacks some \code{User-agent: *} rules, which
-#'     its crawlers therefore do not obey. Under a group that disallows
-#'     \code{/}, only the lost \code{User-agent: *} Allow rules are listed.
+#'     its crawlers therefore do not obey. Where the merged named groups
+#'     disallow \code{/} and hold no non-empty \code{Allow}, only the lost
+#'     \code{User-agent: *} Allow rules are listed.
 #'     Anchored on the group's first User-agent line. Not reported for a body
 #'     cut at \code{max_bytes}. \cr
 #'   \code{ai_training_preference} \tab info \tab
