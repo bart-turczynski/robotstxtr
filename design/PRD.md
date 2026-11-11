@@ -350,7 +350,7 @@ product-level caching.
 Public V1 API and committed signatures:
 
 - `allowed_by_robots_url(url, user_agent, timeout = 10,
-  max_bytes = 524288L, fetch_user_agent = NULL)` fetches and matches.
+  max_bytes = 512000L, fetch_user_agent = NULL)` fetches and matches.
 - `allowed_by_robots_text(robots_txt, url, user_agent,
   source_id = "supplied")` matches one supplied body without HTTP.
 - `robots_fetch(url, timeout = 10, max_bytes = 524288L,

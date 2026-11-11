@@ -106,7 +106,7 @@ test_that("ROBO-uwveumyp: a whole file up to 512,000 keeps its last line", {
   # A genuine last line with no newline is read when the file fits.
   for (size in c(511999L, 512000L)) {
     body <- uw_body("Disallow: /last", size - 15L)
-    expect_identical(length(body), size)
+    expect_length(body, size)
     uw_serve(body)
     x <- allowed_by_robots_url(uw_url("/last"), "bot")
     expect_false(x$results$allowed, label = size)

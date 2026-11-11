@@ -1668,6 +1668,16 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' "Match metadata rules"). When a Yandex row's selected rule is an empty
 #' `Disallow`, it instead reports `effective_empty_disallow` with that line.
 #'
+#' The Google backend reads the first 512,000 bytes of a body (Google's
+#' documented 500 KiB limit) and matches their complete lines: a rule after
+#' byte 512,000, or a line that byte splits, is not read. It looks one byte
+#' past the window, so a line whose line break is byte 512,001 is kept. A
+#' row over the window has `matcher_body_truncated = TRUE`, and
+#' `matcher_input_bytes` counts the bytes matched. [allowed_by_robots_text()]
+#' has no window and reads the whole body; [allowed_by_robots_url()] reads
+#' the complete lines of its `max_bytes` cut, 512,000 bytes by default
+#' (`design/engine-profiles.md` section 7).
+#'
 #' @param robots_txt A single, non-missing character value containing the
 #'   robots.txt body. A body marked UTF-8 is used as written. An unmarked body
 #'   (as `rawToChar()` gives) is taken as UTF-8 bytes as written when the
@@ -1753,6 +1763,17 @@ robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
 #'
 #' A Google row whose selected rule has an empty value reports
 #' `reason = "default_allow"` with no line, as in [robots_evaluate_text_v1()].
+#'
+#' The Google backend reads a fetched body as [robots_evaluate_text_v1()]
+#' does: the complete lines of its first 512,000 bytes, looking one byte past
+#' them. `max_bytes` keeps the 524,288 default of [robots_fetch()], so a body
+#' cut at it holds that window and the byte after it. With `max_bytes =
+#' 512000`, the default of [allowed_by_robots_url()], the byte after the
+#' window is not stored, and a line whose line break is byte 512,001 is
+#' dropped. A cut body is matched only under the `google` ruleset with the
+#' `google` backend, and only when it stored at least 512,000 bytes; a
+#' smaller google cut is `incomplete_evidence`, and other rulesets read a cut
+#' as `design/engine-profiles.md` section 7 sets out.
 #'
 #' @inheritParams robots_evaluate_text_v1
 #' @inheritParams robots_fetch

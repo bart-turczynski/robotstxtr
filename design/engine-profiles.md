@@ -340,15 +340,17 @@ Every path agrees with the reference on decision and line, outside these classes
 |---|---|---|---|---|---|
 | 1 | an `Allow`/`Disallow` with an empty value (also `Disallow: # comment`) matches at priority 0 | `User-agent: FooBot` / `Disallow:`, URL `/x` | allowed, line 2 | allowed, `default_allow`, no line, type `none` (all paths) | DELIBERATE: PRD §6.6 match-metadata rules ("an empty path is ignored", restated as `default_allow`), `normalize_ignored_empty_path()` for the legacy paths; `match_google_v1()` copied it into v1 in `af141e7`. Documented for v1 in `design/engine-contract-v1.md` (ROBO-dhwinnii). The Yandex backend reports an empty `Disallow` as `effective_empty_disallow` with its line, and an empty `Allow` as `default_allow` with no line, as here |
 | 2 | the 512,000-byte window (v1 paths) | a rule starting at byte 520,001; `Disallow: /private-drafts/` across byte 512,000 | disallowed, line 3 (no window) | allowed, `default_allow` | DELIBERATE: §7, the window `[documented]`, the cut line dropped `[application_choice]` (ROBO-phfbpfiy) |
-| 3 | the `max_bytes` cut (`allowed_by_robots_url()`) | a rule starting at byte 530,001 | disallowed, line 3 | allowed, `default_allow`, `body_truncated` | DELIBERATE: `allowed_by_robots_url()` `max_bytes` (524,288 by default; complete lines, ROBO-ldpahknv); §9 delta (c) |
+| 3 | the `max_bytes` cut (`allowed_by_robots_url()`) | a rule starting at byte 520,001 or 530,001; `Disallow: /private-drafts/` across byte 512,000; `Disallow: /private` ending at byte 512,000, its line feed byte 512,001 | disallowed, line 3 | allowed, `default_allow`, `body_truncated` | DELIBERATE: `allowed_by_robots_url()` `max_bytes` (512,000 by default, Google's window, ROBO-uwveumyp; complete lines, ROBO-ldpahknv); §7; §9 delta (c). The v1 paths read the last fixture (class 2 agrees there): accepted, §7 |
 | 4 | input screening | URL `""`, token `""`; on the URL paths also `example.com/private`, `ftp://example.com/private` | a decision (`""` is path `/`; `""` as agent reads `*`) | no decision, `input_unknown` / `input_invalid` | DELIBERATE: PRD §6.6 input rules; the roxygen of `allowed_by_robots_text()` and `allowed_by_robots_url()` (HTTP(S) only) |
 | 5 | a NUL byte in a fetched body: upstream parses each line as a NUL-terminated C string, so the line ends at its first NUL | `User-agent: *` / `\0Disallow: /x`, URL `/x`; `User-agent: *` / `Disallow: /a\0b`, URLs `/a`, `/ab` and `/ac` | `/x` allowed, no line (an empty line); `/a`, `/ab`, `/ac` disallowed, line 2 (the rule `/a`) | the same: the Google backend cuts each line at its first NUL (`R/body-decode.R`). Until ROBO-pvqrfvol it removed every NUL and read on (ROBO-hcqrzikz): `/x` disallowed, `/a` and `/ac` allowed | RESOLVED (ROBO-pvqrfvol): upstream parity; the cases stay in the fixtures as agreeing cases, out of `gf_expected`. What Googlebot does in production is unverified |
 
 Classes 2 and 3 split the entry points. `allowed_by_robots_text()` has no window, so it agrees with
 the reference on any over-window body. `allowed_by_robots_url()` reads a fetched body up to its
-`max_bytes` cut (524,288 by default): it agrees with the reference on a rule between bytes 512,000
-and the cut, which the v1 paths do not read, and not on a rule past the cut (class 3). The v1 paths
-follow Google's documented 512,000-byte limit.
+`max_bytes` cut, 512,000 bytes by default (ROBO-uwveumyp), so at the default it reads what the v1
+paths read, save a line whose line feed is byte 512,001 (§7); with a larger explicit `max_bytes`,
+such as `524288`, it agrees with the reference on a rule between bytes 512,000 and the cut, which the
+v1 paths do not read, and not on a rule past the cut (class 3). The v1 paths follow Google's
+documented 512,000-byte limit.
 
 A private corpus run of the `google`/`google` v1 path against the same reference found class 1 and
 no decision difference.
@@ -431,13 +433,28 @@ These byte-level limits affect the current policy/matcher decision (not future-v
   the window is the first 512,000 bytes `[documented]`. Google does not document how it parses a line
   the window or a cut at `max_bytes` splits; robotstxtr drops it and matches up to the last complete
   line inside the window `[application_choice]` (the cautious reading, ROBO-ldpahknv, ROBO-phfbpfiy).
+  Exact Googlebot behavior at a split line is unverified. The Google entry points read an oversized
+  body as follows (ROBO-uwveumyp):
+  - `robots_evaluate_text_v1()` and `robots_evaluate_url_v1()` (`google` backend): the complete lines
+    of the first 512,000 bytes, looking one byte past the window, so a line whose line feed is byte
+    512,001 is kept. `robots_evaluate_url_v1()` fetches with `max_bytes = 524288` by default, which
+    stores that byte; with `max_bytes = 512000` it is not stored and the line is dropped.
+  - `allowed_by_robots_url()`: the complete lines of its `max_bytes` cut, 512,000 bytes by default
+    (Google's window; RFC 9309 §2.5's 500 KiB floor). A line ending at byte 512,000 whose line feed
+    is byte 512,001 is dropped, as the break is not stored: an accepted edge where the default reads
+    less than the v1 window (fetching 512,001 bytes would change the recorded `max_bytes`). A larger explicit `max_bytes` reads further than Google: `524288`,
+    the default of `robots_fetch()`, `robots_validate_url()` and `robots_evaluate_url_v1()`, also
+    reads the complete lines between bytes 512,000 and 524,288.
+  - `allowed_by_robots_text()`: no window; the whole supplied body, as Google's open-source engine
+    reads a body it is handed.
 - `rfc9309`: **≥500 KiB minimum parse capacity** — a floor, NOT a maximum or truncation mandate
   `[documented]`.
 - `yandex`: **500 KB** file (read as 500,000 bytes; the unit is not stated `[documentation_gap]`); a
   file exceeding it fails the requirements → open fallback (allow_all) `[documented]`.
 - `bing`: no size limit found `[documentation_gap]`.
 - **Over-limit body**: Google parses the ≤-limit prefix. robotstxtr retains the ≤-limit prefix of a 2xx
-  (ROBO-ldpahknv; `body_truncated = TRUE`, `termination_reason = ceiling`); the legacy path matches it.
+  (ROBO-ldpahknv; `body_truncated = TRUE`, `termination_reason = ceiling`); the legacy path matches its
+  complete lines, cut at 512,000 bytes by default (ROBO-uwveumyp).
   The v1 evidence records it as `incomplete`, and the ruleset decides what it means: `yandex` with
   `stored_bytes ≥ 512000` → `allow_all` `[documented]` (the file exceeds 500 KB under either reading of
   the unit; ROBO-arrtietl): a cut 200 takes the same rule and reason as a retained body over 500,000
@@ -507,7 +524,7 @@ prohibits Cyrillic, Punycode/%-encoding `[documented]`; Yandex UTF-8/BOM `[docum
 resolves to `NA`. Deltas vs this spec: (a) generic 4xx → `NA` diverges from documented
 `google`/`yandex` (allow_all); (b) 1xx → `http_error` conflates protocol with transport
 (`R/fetch-policy.R:88`); (c) oversized body discarded, not retained-prefix: closed for the legacy path by ROBO-ldpahknv,
-which retains and matches a 2xx prefix; the v1 ruleset reading is §7's (ADR 0001 slices 8 and 9). These are implementation slices, filed only after this
+which retains and matches a 2xx prefix, cut at 512,000 bytes by default since ROBO-uwveumyp; the v1 ruleset reading is §7's (ADR 0001 slices 8 and 9). These are implementation slices, filed only after this
 spec is accepted; ADR-009 §3 (safety precedence) and §6 (findings encoding) govern how they surface.
 
 ## 10. Sources (self-contained; per-section)

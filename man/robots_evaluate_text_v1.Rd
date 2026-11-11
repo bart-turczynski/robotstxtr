@@ -88,6 +88,16 @@ and a \code{NULL} \code{matched_rule_value_raw}; the legacy functions report the
 same decision source, type, line and value (\code{design/PRD.md} section 6.6,
 "Match metadata rules"). When a Yandex row's selected rule is an empty
 \code{Disallow}, it instead reports \code{effective_empty_disallow} with that line.
+
+The Google backend reads the first 512,000 bytes of a body (Google's
+documented 500 KiB limit) and matches their complete lines: a rule after
+byte 512,000, or a line that byte splits, is not read. It looks one byte
+past the window, so a line whose line break is byte 512,001 is kept. A
+row over the window has \code{matcher_body_truncated = TRUE}, and
+\code{matcher_input_bytes} counts the bytes matched. \code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}}
+has no window and reads the whole body; \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} reads
+the complete lines of its \code{max_bytes} cut, 512,000 bytes by default
+(\code{design/engine-profiles.md} section 7).
 }
 \examples{
 # A non-Google-named token evaluated through the default Google backend

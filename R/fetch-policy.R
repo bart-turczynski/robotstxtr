@@ -60,9 +60,11 @@ validate_fetch_user_agent <- function(fetch_user_agent) {
 # integer exactly once, after validation.
 #
 # RFC 9309 section 2.5 sets a parsing limit of at least 500 KiB (512000
-# bytes). The default, 524288, meets it. A smaller value stays accepted (tests
-# and callers bound memory with one) and is documented as below the RFC 9309
-# floor rather than refused (ROBO-ldpahknv).
+# bytes). Every default meets it: 524288 for robots_fetch(),
+# robots_validate_url() and robots_evaluate_url_v1(), and 512000, Google's
+# window, for allowed_by_robots_url() (ROBO-uwveumyp). A smaller value stays
+# accepted (tests and callers bound memory with one) and is documented as
+# below the RFC 9309 floor rather than refused (ROBO-ldpahknv).
 validate_max_bytes <- function(max_bytes) {
   if (!is.numeric(max_bytes) || length(max_bytes) != 1L || is.na(max_bytes) ||
         !is.finite(max_bytes) || max_bytes <= 0 ||

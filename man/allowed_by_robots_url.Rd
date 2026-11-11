@@ -8,7 +8,7 @@ allowed_by_robots_url(
   url,
   user_agent,
   timeout = 10,
-  max_bytes = 524288L,
+  max_bytes = 512000L,
   fetch_user_agent = NULL,
   ssrf_guard = TRUE,
   safety_level = "strict",
@@ -32,11 +32,14 @@ origin, including redirects, rounded up to whole seconds. Defaults to
 limit no greater than \code{.Machine$integer.max}, coerced to integer. A
 whole-number double (for example \code{524288}) is accepted; fractional,
 non-positive, out-of-range, or non-scalar values are call-level errors.
-Defaults to \code{524288L} (512 KiB). A 2xx body over the limit is cut at it
-and matched up to its last complete line, as RFC 9309 section 2.5 allows;
-its source row has \code{body_truncated = TRUE}. RFC 9309 section 2.5 asks a
-crawler to parse at least 500 KiB (\code{512000} bytes); a smaller value is
-accepted but falls below that floor.}
+Defaults to \code{512000L} (500 KiB), the window Google parses. A 2xx body over
+the limit is cut at it and matched up to its last complete line, as RFC
+9309 section 2.5 allows; its source row has \code{body_truncated = TRUE}. A
+larger value reads further than Google does: \code{524288L}, the default of
+\code{\link[=robots_fetch]{robots_fetch()}}, \code{\link[=robots_validate_url]{robots_validate_url()}} and \code{\link[=robots_evaluate_url_v1]{robots_evaluate_url_v1()}},
+also reads the complete lines between bytes 512,000 and 524,288. RFC 9309
+section 2.5 asks a crawler to parse at least 500 KiB (\code{512000} bytes); a
+smaller value is accepted but falls below that floor.}
 
 \item{fetch_user_agent}{\code{NULL} (use the package fetch user agent) or a single
 non-empty character HTTP user agent to send instead. This is never the
@@ -128,6 +131,19 @@ fetch failure yields \code{fetch_unknown}/\code{NA}. For matched rows, \code{mat
 \code{matched_rule_type}, and \code{matched_rule_value} are correlated from the parse
 callbacks of the same source body (the canonical value the matcher used,
 after upstream \code{MaybeEscapePattern} canonicalization).
+
+A robots.txt over 512,000 bytes (Google's documented 500 KiB limit) is read
+differently by each Google entry point (\code{design/engine-profiles.md}
+section 7). This function stores the first \code{max_bytes} bytes of a 2xx body,
+512,000 by default, and matches its complete lines: a rule after the cut,
+or a line the cut splits, is not read, and neither is a line that ends at
+byte 512,000 when its line break is byte 512,001, since that break is not
+stored. \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}} and \code{\link[=robots_evaluate_url_v1]{robots_evaluate_url_v1()}} with the
+Google backend match the complete lines of the first 512,000 bytes too, but
+look one byte past them, so they keep that last line.
+\code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}} has no window: it reads the whole supplied body,
+as Google's open-source engine does. Google does not document how it reads
+a split line; dropping it is this package's choice.
 }
 \examples{
 # A refused origin is decided before any request, so this runs offline: a
