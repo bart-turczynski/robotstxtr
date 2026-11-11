@@ -44,6 +44,15 @@ test_that("every ssrfr reason code has exactly one refusal-table row", {
     "none", "over_budget", "no_location", "loop", "non_http_target",
     "downgrade"
   )))
+  # Each admitted row with a safety reason is classed (ROBO-jqwukcog), so a
+  # code ssrfr adds fails until robotstxtr says whether `crawler` reads it as
+  # unreachable_local; a row with none has no class.
+  reasoned <- !is.na(admitted$safety_block_reason)
+  expect_true(
+    all(admitted$class[reasoned] %in% c("address", "url_shape", "redirect")),
+    info = toString(admitted$code[reasoned & is.na(admitted$class)])
+  )
+  expect_true(all(is.na(table$class[is.na(table$safety_block_reason)])))
 })
 
 test_that("every ssrfr failure cause has a cause-table row", {
@@ -91,8 +100,8 @@ test_that("the published safety_block_reason set is the 2026-11-05.1 set", {
     "malformed-address", "numeric-literal", "scheme", "https_downgrade",
     "userinfo", "port", "parse", "multicast", "reserved"
   ))
-  expect_identical(engine_schema_revision_v1(), "2026-11-08.1")
-  expect_identical(engine_schema_revision_v2(), "2026-11-08.1")
+  expect_identical(engine_schema_revision_v1(), "2026-11-11.1")
+  expect_identical(engine_schema_revision_v2(), "2026-11-11.1")
 })
 
 test_that("a code or cause outside the tables aborts, never falls through", {

@@ -21,6 +21,15 @@
 # `redirect_error` / `non_http_target`, as before ssrfr. A downgrade only ever
 # happens on a redirect. "redirect-limit" cannot occur under the
 # budget-plus-one policy; if it does, it is the `over_budget` it stands for.
+#
+# `class` sorts each refusal with a `safety_block_reason` by what it refuses
+# (ADR 0001 section 3, design/engine-profiles.md section 3a): "address", where
+# the URL points (an internal or special-purpose address, or an IPv6 form that
+# embeds one); "url_shape", how the URL is spelled; "redirect", the downgrade.
+# ssrfr publishes no class, so robotstxtr assigns one here, and a test requires
+# one on every admitted code with a safety reason, so a code ssrfr adds fails
+# until it is classed. Under `safety_level = "crawler"` an address-class
+# refusal is `evidence_status = unreachable_local` (ROBO-jqwukcog).
 acquire_refusal_table <- function() {
   shared <- c(
     "loopback", "private", "link-local", "cloud-metadata", "shared",
@@ -46,6 +55,19 @@ acquire_refusal_table <- function() {
   scheme <- rows$code == "scheme"
   rows$redirect_fetch_outcome[scheme] <- "redirect_error"
   rows$redirect_terminal_redirect_reason[scheme] <- "non_http_target"
+  address <- c(
+    "loopback", "private", "link-local", "cloud-metadata", "shared",
+    "unspecified", "this-network", "multicast", "reserved", "ipv4-mapped",
+    "ipv4-translated", "ipv4-compatible", "nat64", "6to4", "teredo", "isatap"
+  )
+  url_shape <- c(
+    "scheme", "userinfo", "port", "parse", "numeric-literal",
+    "malformed-address"
+  )
+  rows$class <- NA_character_
+  rows$class[rows$code %in% address] <- "address"
+  rows$class[rows$code %in% url_shape] <- "url_shape"
+  rows$class[rows$code == "downgrade"] <- "redirect"
   rows
 }
 
@@ -77,6 +99,15 @@ acquire_safety_block_reasons <- function() {
   table <- acquire_refusal_table()
   reasons <- table$safety_block_reason[table$admitted]
   reasons[!is.na(reasons)]
+}
+
+# The `safety_block_reason` values of the address class: under
+# `safety_level = "crawler"` each one is `evidence_status = unreachable_local`
+# (source_evidence_status_v1()).
+acquire_address_class_reasons <- function() {
+  table <- acquire_refusal_table()
+  address <- table$admitted & !is.na(table$class) & table$class == "address"
+  table$safety_block_reason[address]
 }
 
 acquire_refusal_row <- function(code) {

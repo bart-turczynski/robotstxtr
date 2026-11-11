@@ -107,7 +107,9 @@ test_that("a downgrade spends the five-redirect budget like any hop", {
   expect_identical(e$redirect_count, 5L)
 })
 
-test_that("crawler keeps every other refusal: a loopback target is refused", {
+test_that("crawler still refuses a loopback target, as unreachable_local", {
+  # ROBO-jqwukcog: never dialed, recorded as an address a public crawler
+  # could not reach either.
   local_fake_ssrfr(cd_router(list(
     "https://a/robots.txt" = function(req) {
       fake_response(301L, headers = list(Location = "http://127.0.0.1/r"))
@@ -117,7 +119,8 @@ test_that("crawler keeps every other refusal: a loopback target is refused", {
     "https://a/x", "Googlebot", "google", "google", safety_level = "crawler"
   )$evidence
   expect_identical(e$safety_block_reason, "loopback")
-  expect_identical(e$evidence_status, "safety_refused")
+  expect_identical(e$evidence_status, "unreachable_local")
+  expect_identical(e$legacy_fetch_outcome, "ssrf_blocked")
 })
 
 test_that("acquire_policy() sets allow_downgrade from the safety level", {

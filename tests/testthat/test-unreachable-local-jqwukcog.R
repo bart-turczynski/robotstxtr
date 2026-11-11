@@ -64,13 +64,13 @@ test_that("every admitted refusal with a safety reason has a class", {
   expect_length(reasoned$class, nrow(reasoned))
   expect_true(all(reasoned$class %in% c("address", "url_shape", "redirect")),
               info = toString(reasoned$code[is.na(reasoned$class)]))
-  expect_setequal(table$code[table$class %in% "address"], ul_address_codes)
-  expect_setequal(table$code[table$class %in% "url_shape"],
+  expect_setequal(table$code[which(table$class == "address")], ul_address_codes)
+  expect_setequal(table$code[which(table$class == "url_shape")],
                   ul_url_shape_codes)
   expect_setequal(acquire_address_class_reasons(), ul_address_codes)
 })
 
-# --- the vocabulary walk --------------------------------------------------------
+# --- the vocabulary walk ------------------------------------------------------
 
 test_that("every address-class code is unreachable_local under crawler", {
   for (code in ul_address_codes) {
@@ -139,7 +139,7 @@ test_that("a real loopback target under crawler is unreachable_local", {
   expect_identical(e$safety_level, "crawler")
 })
 
-# --- the policy reading ---------------------------------------------------------
+# --- the policy reading -------------------------------------------------------
 
 test_that("no ruleset turns unreachable_local into allow or deny", {
   ul_local_refusal("private", on_hop = 1L)
@@ -198,9 +198,9 @@ test_that("the contract publishes an unreachable_local row per ruleset", {
   expect_identical(engine_schema_revision_v2(), "2026-11-11.1")
 })
 
-# --- the legacy frame and the invariants ----------------------------------------
+# --- the legacy frame and the invariants --------------------------------------
 
-test_that("the legacy frame reports a crawler address refusal as ssrf_blocked", {
+test_that("the legacy frame reports a crawler address refusal ssrf_blocked", {
   ul_local_refusal("link-local", on_hop = 2L)
   legacy <- as_legacy_robots_decisions_v1(ul_evaluate("crawler"))
   expect_identical(legacy$robots$fetch_outcome, "ssrf_blocked")
