@@ -138,7 +138,8 @@ does the whole job: it derives the `scheme://host[:port]/robots.txt` origin for
 each URL (handling IDN hosts, ports, IPv6 literals, and userinfo stripping via
 `rurl`), fetches each distinct origin exactly once under a conservative policy
 (a 10-second budget per origin, at most five redirects, no HTTPS-to-HTTP
-downgrades, no cookies or credentials forwarded) through the `ssrfr` guard, and
+downgrades unless `safety_level = "crawler"`, no cookies or credentials
+forwarded) through the `ssrfr` guard, and
 matches every URL against the body it retrieved.
 
 ```{r, eval = FALSE}

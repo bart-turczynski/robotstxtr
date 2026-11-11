@@ -93,11 +93,11 @@ The request policy is deterministic and intentionally conservative: HTTP
 \code{GET} over a new HTTP/1.1 connection; TLS verified with platform defaults;
 no proxy; one total timeout per origin, redirects included; at most five
 redirects; redirects allowed only to \code{http}/\code{https}; HTTP-to-HTTPS upgrades
-allowed but, under \code{safety_level = "strict"}, every HTTPS-to-HTTP downgrade
-rejected as \code{redirect_error}; no
-URL userinfo, authorization, cookies, or caller session state forwarded; a
-package fetch user agent (\verb{robotstxtr/<version>}) unless the caller supplies
-one; and no automatic retries.
+allowed; every HTTPS-to-HTTP downgrade rejected as \code{redirect_error} under
+\code{safety_level = "strict"} and followed as an ordinary hop under
+\code{"crawler"}; no URL userinfo, authorization, cookies, or caller session
+state forwarded; a package fetch user agent (\verb{robotstxtr/<version>}) unless
+the caller supplies one; and no automatic retries.
 
 Every request goes through the \pkg{ssrfr} guard, for the initial origin and
 for every redirect target. A host name is resolved once, every address it
