@@ -15,10 +15,9 @@
 #   rtx  rOpenSci robotstxt 0.7.15 (its checks run through spiderbar)
 #   spb  spiderbar 0.2.5
 # "others" in a comment means every library not named. robotstxtr agrees
-# with the reference on every row here except enc-utf16le-no-bom on /a, the
-# UTF-16LE body without a BOM: a deliberate split (design/engine-profiles.md
-# section 5b, class 5), the one row run.R's expected-split list names. The
-# two UTF-16 bodies with a BOM bear NULs too and agree.
+# with the reference on every row here, the three UTF-16 bodies included:
+# since ROBO-pvqrfvol its Google matcher ends each line at its first NUL, as
+# the reference does, so run.R's expected-split list is empty.
 #
 # The bodies are the committed fixtures: the class fixtures in
 # fixtures/library-comparison-dqqkvwts/ (manifest.csv there records every
@@ -43,8 +42,8 @@ lc_read_bytes <- function(dir, file) {
 }
 
 # The bytes as a string the text entry points take verbatim. A NUL-bearing
-# body is decoded as the fetch path decodes it (NUL bytes dropped), since an
-# R string cannot hold a NUL.
+# body is decoded as the fetch path decodes it (each line cut at its first
+# NUL), since an R string cannot hold a NUL.
 lc_text <- function(bytes) {
   if (any(bytes == as.raw(0))) {
     return(decode_matcher_body(bytes))
@@ -377,9 +376,9 @@ test_that("class 24: UTF-16 bodies", {
   # decodes them); rtx spb disallow on all three (the runner drops NULs).
   lc_expect(lc_catalog("enc-utf16le-bom"), "/a", "allow")
   lc_expect(lc_catalog("enc-utf16be-bom"), "/a", "allow")
-  # robotstxtr also drops NULs, so here it disallows where the reference
-  # allows: the deliberate split (ROBO-hcqrzikz).
-  lc_expect(lc_catalog("enc-utf16le-no-bom"), "/a", "disallow")
+  # robotstxtr ends each line at its first NUL, as the reference does, so it
+  # allows too (ROBO-pvqrfvol; it dropped the NULs and disallowed before).
+  lc_expect(lc_catalog("enc-utf16le-no-bom"), "/a", "allow")
 })
 
 test_that("class 25: a Latin-1 byte in a rule", {

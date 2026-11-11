@@ -45,7 +45,7 @@ nr_plain_message <- "Empty Allow or Disallow value is ignored by the matcher."
 test_that("a NUL after the colon names Google's matcher and keeps the line", {
   bytes <- c(charToRaw("User-agent: *\nDisallow: "), nr_nul,
              charToRaw("/private\n"))
-  expect_false(nr_allowed(bytes, "/private"))
+  expect_true(nr_allowed(bytes, "/private"))
   x <- robots_validate_text(bytes)
   expect_identical(nr_codes(x), c("nul_byte@2", "empty_rule_value@2"))
   row <- nr_empty_row(x, 2L)
@@ -115,7 +115,7 @@ test_that("a NUL inside the key is no empty rule, so no reworded row", {
   # path is counted by rules_after_nul_removal as before.
   bytes <- c(charToRaw("User-agent: *\nDisallow"), nr_nul,
              charToRaw(": /x\n"))
-  expect_false(nr_allowed(bytes, "/x"))
+  expect_true(nr_allowed(bytes, "/x"))
   x <- robots_validate_text(bytes)
   expect_identical(
     nr_codes(x),

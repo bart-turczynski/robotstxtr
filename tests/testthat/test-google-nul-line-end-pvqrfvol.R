@@ -1,4 +1,10 @@
-# ROBO-pvqrfvol: how the Google backend reads a NUL byte in a fetched body.
+# ROBO-pvqrfvol: on the Google backend a line ends at its first NUL byte.
+#
+# Google's open-source parser (src/robots.cc, RobotsTxtParser::Parse()) hands
+# each line on as a NUL-terminated C string, so the bytes from a line's first
+# NUL to its end are never read. decode_matcher_body() (R/body-decode.R) gives
+# the matcher the same lines: each cut at its first NUL, joined with LF so
+# that every line keeps its number. The answers below are upstream's.
 #
 # Only a fetched body can carry a NUL (an R string cannot), so each case is
 # served at the ssrfr boundary (helper-fake-ssrfr.R) and read through
@@ -41,63 +47,74 @@ pv_expect <- function(got, allowed, line, value) {
   expect_identical(got$v1_line, as.integer(line))
 }
 
-test_that("a NUL inside a value is removed", {
+test_that("a NUL inside a value ends the rule there", {
   body <- pv_bytes("User-agent: *\nDisallow: /a", pv_nul, "b\n")
   expect_identical(
-    pv_decoded(body), pv_bytes("User-agent: *\nDisallow: /ab\n")
+    pv_decoded(body), pv_bytes("User-agent: *\nDisallow: /a\n")
   )
   pv_expect(pv_google(body, c("/a", "/ab", "/ac")),
-            c(TRUE, FALSE, TRUE), c(NA, 2L, NA), c(NA, "/ab", NA))
+            c(FALSE, FALSE, FALSE), c(2L, 2L, 2L), c("/a", "/a", "/a"))
 })
 
-test_that("a NUL at the start of a line is removed", {
+test_that("a NUL at the start of a line leaves an empty line", {
   body <- pv_bytes("User-agent: *\n", pv_nul, "Disallow: /x\n")
-  pv_expect(pv_google(body, "/x"), FALSE, 2L, "/x")
+  expect_identical(pv_decoded(body), pv_bytes("User-agent: *\n\n"))
+  pv_expect(pv_google(body, "/x"), TRUE, NA, NA_character_)
 })
 
-test_that("a NUL as the body's first byte is removed", {
+test_that("a NUL as the body's first byte empties the first line", {
+  # The Disallow then precedes every User-agent line, so no group holds it.
   body <- pv_bytes(pv_nul, "User-agent: *\nDisallow: /x\n")
-  pv_expect(pv_google(body, "/x"), FALSE, 2L, "/x")
+  expect_identical(pv_decoded(body), pv_bytes("\nDisallow: /x\n"))
+  pv_expect(pv_google(body, "/x"), TRUE, NA, NA_character_)
 })
 
-test_that("a NUL before the colon is removed", {
+test_that("a NUL before the colon leaves a key with no value", {
   body <- pv_bytes("User-agent: *\nDisallow", pv_nul, ": /x\n")
-  pv_expect(pv_google(body, "/x"), FALSE, 2L, "/x")
+  pv_expect(pv_google(body, "/x"), TRUE, NA, NA_character_)
 })
 
-test_that("a NUL between CR and LF joins them into one CRLF", {
+test_that("a NUL between CR and LF is an empty line of its own", {
+  # Upstream: CR ends line 1, the NUL starts line 2 (so the LF is no CRLF
+  # continuation) and the LF ends it; the rule is on line 3.
   body <- pv_bytes("User-agent: *\r", pv_nul, "\nDisallow: /x\n")
   expect_identical(
-    pv_decoded(body), pv_bytes("User-agent: *\r\nDisallow: /x\n")
+    pv_decoded(body), pv_bytes("User-agent: *\n\nDisallow: /x\n")
   )
-  pv_expect(pv_google(body, "/x"), FALSE, 2L, "/x")
+  pv_expect(pv_google(body, "/x"), FALSE, 3L, "/x")
 })
 
-test_that("a NUL in a User-agent value is removed", {
+test_that("a NUL in a User-agent value ends the name there", {
   body <- pv_bytes("User-agent: Foo", pv_nul, "Bot\nDisallow: /x\n")
-  pv_expect(pv_google(body, "/x"), FALSE, 2L, "/x")
+  pv_expect(pv_google(body, "/x"), TRUE, NA, NA_character_)
+  pv_expect(pv_google(body, "/x", token = "Foo"), FALSE, 2L, "/x")
 })
 
-test_that("a BOM before a NUL-bearing body is kept", {
+test_that("a BOM before a NUL-bearing body is kept for the matcher", {
   bom <- as.raw(c(0xef, 0xbb, 0xbf))
   body <- pv_bytes(bom, "User-agent: *\nDisallow: /a", pv_nul, "b\n")
   expect_identical(
-    pv_decoded(body), pv_bytes(bom, "User-agent: *\nDisallow: /ab\n")
+    pv_decoded(body), pv_bytes(bom, "User-agent: *\nDisallow: /a\n")
   )
   pv_expect(pv_google(body, c("/a", "/ab")),
-            c(TRUE, FALSE), c(NA, 2L), c(NA, "/ab"))
+            c(FALSE, FALSE), c(2L, 2L), c("/a", "/a"))
 })
 
-test_that("a NUL inside a BOM prefix is removed", {
+test_that("a NUL inside a BOM prefix empties the first line", {
   body <- pv_bytes(as.raw(0xef), pv_nul, "User-agent: *\nDisallow: /x\n")
-  pv_expect(pv_google(body, "/x"), FALSE, 2L, "/x")
+  expect_identical(
+    pv_decoded(body), pv_bytes(as.raw(0xef), "\nDisallow: /x\n")
+  )
+  pv_expect(pv_google(body, "/x"), TRUE, NA, NA_character_)
 })
 
-test_that("UTF-16LE text without a BOM is read as its ASCII letters", {
+test_that("UTF-16LE text without a BOM reads as lines with no rule", {
   text <- charToRaw("User-agent: *\nDisallow: /a\n")
   body <- as.vector(rbind(text, pv_nul))
-  expect_identical(pv_decoded(body), text)
-  pv_expect(pv_google(body, "/a"), FALSE, 2L, "/a")
+  # Each line keeps its first letter or nothing: "U", then lines that start
+  # with the NUL after an LF.
+  expect_identical(pv_decoded(body), pv_bytes("U\n\n"))
+  pv_expect(pv_google(body, "/a"), TRUE, NA, NA_character_)
 })
 
 test_that("an empty body and a body of NULs decode to nothing", {
@@ -107,19 +124,20 @@ test_that("an empty body and a body of NULs decode to nothing", {
   pv_expect(pv_google(rep(pv_nul, 3L), "/x"), TRUE, NA, NA_character_)
 })
 
-test_that("several NULs on one line are all removed", {
+test_that("several NULs on one line end it at the first", {
   body <- pv_bytes("User-agent: *\nDisallow: /a", pv_nul, "b", pv_nul, "c\n")
+  expect_identical(
+    pv_decoded(body), pv_bytes("User-agent: *\nDisallow: /a\n")
+  )
   pv_expect(pv_google(body, c("/a", "/abc")),
-            c(TRUE, FALSE), c(NA, 2L), c(NA, "/abc"))
+            c(FALSE, FALSE), c(2L, 2L), c("/a", "/a"))
 })
 
-test_that("a NUL on an unterminated last line is removed", {
+test_that("a NUL on an unterminated last line leaves it unterminated", {
   body <- pv_bytes("User-agent: *\nDisallow: /a", pv_nul, "b")
-  expect_identical(
-    pv_decoded(body), pv_bytes("User-agent: *\nDisallow: /ab")
-  )
+  expect_identical(pv_decoded(body), pv_bytes("User-agent: *\nDisallow: /a"))
   pv_expect(pv_google(body, c("/a", "/ab")),
-            c(TRUE, FALSE), c(NA, 2L), c(NA, "/ab"))
+            c(FALSE, FALSE), c(2L, 2L), c("/a", "/a"))
 })
 
 test_that("CR, LF and CRLF lines keep their numbers around a NUL", {
@@ -127,17 +145,59 @@ test_that("CR, LF and CRLF lines keep their numbers around a NUL", {
     "User-agent: *\r\nAllow: /q\rDisallow: /a", pv_nul, "b\n",
     "Disallow: /c\r\n"
   )
+  expect_identical(
+    pv_decoded(body),
+    pv_bytes("User-agent: *\nAllow: /q\nDisallow: /a\nDisallow: /c\n")
+  )
   pv_expect(pv_google(body, c("/a", "/ab", "/c", "/q")),
-            c(TRUE, FALSE, FALSE, TRUE), c(NA, 3L, 4L, 2L),
-            c(NA, "/ab", "/c", "/q"))
+            c(FALSE, FALSE, FALSE, TRUE), c(3L, 3L, 4L, 2L),
+            c("/a", "/a", "/c", "/q"))
 })
 
-test_that("bytes on both sides of a NUL reach the matcher as written", {
+test_that("a body with no NUL reaches the matcher byte for byte", {
+  body <- pv_bytes("User-agent: *\r\nDisallow: /a\r\r\n", as.raw(0xff), "\r")
+  expect_identical(pv_decoded(body), body)
+})
+
+test_that("bytes before a NUL reach the matcher as written, none after it", {
   body <- pv_bytes(
     "User-agent: *\nDisallow: /", as.raw(0xff), pv_nul, as.raw(0xfe), "\n"
   )
   expect_identical(
     pv_decoded(body),
-    pv_bytes("User-agent: *\nDisallow: /", as.raw(c(0xff, 0xfe)), "\n")
+    pv_bytes("User-agent: *\nDisallow: /", as.raw(0xff), "\n")
   )
+})
+
+test_that("a NUL past the parser's line buffer changes no rule", {
+  # The parser keeps 16,662 bytes of a line; a NUL past them was never read.
+  long <- strrep("a", 17000L)
+  body <- pv_bytes("User-agent: *\nDisallow: /", long, pv_nul, "zz\n")
+  expect_identical(
+    pv_decoded(body), pv_bytes("User-agent: *\nDisallow: /", long, "\n")
+  )
+  got <- pv_google(body, "/aaa")
+  expect_identical(got$allowed, TRUE)
+  expect_identical(got$v1, "allow")
+})
+
+test_that("Bing and Yandex read the NUL as an ordinary byte", {
+  # Their bindings take the raw body: the rule is "/a\0b", which /a misses,
+  # while Google's matcher reads the rule "/a".
+  body <- pv_bytes("User-agent: *\nDisallow: /a", pv_nul, "b\n")
+  url <- "https://example.com/a"
+  expect_identical(match_bing_v1(list(body), url, "bingbot")$url_decision,
+                   "allow")
+  expect_identical(match_yandex_v1(list(body), url, "Yandex")$url_decision,
+                   "allow")
+  expect_identical(match_google_v1(body, url, "FooBot")$url_decision,
+                   "disallow")
+})
+
+test_that("the body preview still removes NUL bytes", {
+  body <- pv_bytes("User-agent: *\nDisallow: /a", pv_nul, "b\n")
+  local_fake_ssrfr(function(req) fake_response(200L, body = body))
+  x <- allowed_by_robots_url("https://example.com/a", "FooBot")
+  expect_identical(robots_body(x, n = Inf), "User-agent: *\nDisallow: /ab\n")
+  expect_identical(robots_body(x, raw = TRUE), body)
 })

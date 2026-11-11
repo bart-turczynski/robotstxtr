@@ -3,47 +3,72 @@
 # R's character type cannot carry a NUL byte. `rawToChar()` raises
 # "embedded nul in string" as soon as a NUL is followed by another byte, and the
 # parse collector's value channel (`Rf_mkCharLenCE()`) raises the same way. So
-# every decode of ACQUIRED bytes drops NUL bytes before crossing into R's string
-# world. Fetched bodies do carry NULs in the wild -- a UTF-16-encoded
-# robots.txt, a WAF challenge page, a truncated or NUL-padded response -- and
-# fetching is best-effort everywhere else in this package (a 404, an SSRF block
-# and a transport failure all degrade), so a NUL-bearing body degrades too
-# instead of aborting the call.
+# every decode of ACQUIRED bytes leaves the NUL bytes out before crossing into
+# R's string world. Fetched bodies do carry NULs in the wild -- a
+# UTF-16-encoded robots.txt, a WAF challenge page, a truncated or NUL-padded
+# response -- and fetching is best-effort everywhere else in this package (a
+# 404, an SSRF block and a transport failure all degrade), so a NUL-bearing
+# body degrades too instead of aborting the call.
 #
-# THE RULE, one source of truth for the whole package: NUL bytes are REMOVED
-# from the byte sequence; every remaining byte is decoded and matched unchanged,
-# in order. The document is not truncated at the NUL and no other byte is
-# rewritten. `robots_validate_text()` applies the same rule (see
-# `nul_free_bytes()` there) before checking encoding validity, and, when a
-# line holds a NUL, to find the rules Google's matcher reads that its own
-# parse does not (`rules_after_nul_removal`, ROBO-igrkabdb, ROBO-ctdkqawi).
-#
-# How this differs from the reference matcher, deliberately. Google's C++
-# matcher parses each line as a NUL-terminated C string, so it reads
-# "\0Disallow: /x" as an empty line and IGNORES it, and cuts "Disallow: /a\0b"
-# to the rule "/a"; robotstxtr -- the NUL dropped -- reads an active
-# "Disallow: /x" and the rule "/ab" (design/engine-profiles.md §5b, class 5).
-# Neither reading is reachable through R's character type, and of the two
-# representable options (drop the NUL, or truncate the document at it) dropping
-# preserves every directive the document actually spells out; truncating would
-# silently discard the rest of the file. The divergence is confined to
-# NUL-bearing documents, which are malformed by any reading.
+# Two readings, one per consumer:
+# - The Google matcher (`decode_matcher_body()`, ROBO-pvqrfvol) reads the body
+#   as Google's open-source parser does. That parser hands each line on as a
+#   NUL-terminated C string, so a line ends at its first NUL: "\0Disallow: /x"
+#   is an empty line, and "Disallow: /a\0b" is the rule "/a". Each line is cut
+#   at its first NUL and the lines are joined again, so the decision and the
+#   matched line equal upstream's. This is parity with the open-source parser,
+#   not a claim about what Googlebot does in production.
+# - The body preview (`robots_body()`) removes the NUL bytes and keeps every
+#   other byte, in order (`nul_free_bytes()`, ROBO-hcqrzikz): it shows the
+#   document, it does not match it.
+# The Bing and Yandex bindings take the raw body and read a NUL as an ordinary
+# byte; their bodies never pass through this file.
 #
 # The malformation stays VISIBLE rather than silent: `robots_validate_text()`
 # reports a `nul_byte` diagnostic at severity "error" for every line carrying
-# one (and renders it as `\x00` in the diagnostic's `raw_text`), so a caller who
-# wants to reject such a document can, while matching and body previews degrade.
+# one (and renders it as `\x00` in the diagnostic's `raw_text`); its parser
+# ends a line at its first NUL, as the Google matcher does.
 nul_free_bytes <- function(bytes) {
   bytes[bytes != as.raw(0)]
 }
 
-# Decode acquired bytes into the length-one string handed to the C++ matcher and
-# the parse collector. The bytes are NOT validated as UTF-8: the result is
+# The body as Google's parser reads it, each line cut at its first NUL
+# (src/robots.cc, RobotsTxtParser::Parse()). A body with no NUL is returned
+# unchanged. Otherwise the lines are split as upstream splits them -- CR, LF
+# and CRLF each end a line, and an LF right after a CR only finishes the CRLF
+# -- and joined with LF. Joining with LF keeps every line number: "\r\0\n" is
+# two line ends around an empty line, and dropping only the NUL would leave one
+# CRLF and move every later line up by one. The BOM bytes at the start stay,
+# since the matcher skips them itself, and the last line keeps or lacks its
+# terminator as the body does.
+nul_line_end_bytes <- function(bytes) {
+  nul <- bytes == as.raw(0)
+  if (!any(nul)) {
+    return(bytes)
+  }
+  cr <- bytes == as.raw(0x0d)
+  lf <- bytes == as.raw(0x0a)
+  keep <- !(lf & c(FALSE, cr[-length(cr)]))
+  bytes <- bytes[keep]
+  nul <- nul[keep]
+  ends <- cr[keep] | lf[keep]
+  # A byte is kept when its line holds no NUL up to it: the NULs counted
+  # through it equal the count at the line end before it.
+  seen <- cumsum(nul)
+  last_end <- cummax(ifelse(ends, seq_along(bytes), 0L))
+  before_line <- c(0L, seen)[last_end + 1L]
+  bytes[ends] <- as.raw(0x0a)
+  bytes[ends | seen == before_line]
+}
+
+# Decode acquired bytes into the length-one string handed to the Google C++
+# matcher and the parse collector, each line cut at its first NUL
+# (`nul_line_end_bytes()`). The bytes are NOT validated as UTF-8: the result is
 # marked UTF-8 so cpp11 forwards the exact bytes without translating or
 # re-encoding them, which is how an invalid-UTF-8 body still reaches the
 # byte-oriented matcher intact (PRD 6.2 bridge).
 decode_matcher_body <- function(bytes) {
-  out <- rawToChar(nul_free_bytes(bytes))
+  out <- rawToChar(nul_line_end_bytes(bytes))
   Encoding(out) <- "UTF-8"
   out
 }

@@ -6,8 +6,8 @@
 # grid holds the inputs where a parse-once rewrite can slip: the empty-value
 # restatement (an empty Allow stays default_allow with no line), the
 # index.htm normalization, the 512,000-byte window (a cut boundary line and a
-# body of exactly the window), NUL bytes (dropped before matching but counted
-# in matcher_input_bytes), invalid UTF-8 and latin1 path bytes, two distinct
+# body of exactly the window), NUL bytes (each line cut at its first NUL
+# before matching, ROBO-pvqrfvol, but counted in matcher_input_bytes), invalid UTF-8 and latin1 path bytes, two distinct
 # bodies of one length, and repeated URLs.
 #
 # No NA URL is in the grid: the batch module turns an NA URL into the empty
@@ -140,8 +140,9 @@ gb_spy_run <- function(bodies, urls, tokens, seen = new.env()) {
 
 # The adapter frame on the grid as main gave it before the batch (593300b,
 # where the adapter was row_matcher_frame_v1(match_google_v1, ...)), its
-# n_parse_calls attribute aside.
-gb_pinned <- "16723699e20f088a70c0003b91404b91"
+# n_parse_calls attribute aside, with the two NUL bodies read as each line
+# cut at its first NUL (ROBO-pvqrfvol).
+gb_pinned <- "64f27439bc2fe73d5b4818ba5452b593"
 
 test_that("the Google adapter's frame on the grid is unchanged", {
   g <- gb_grid()

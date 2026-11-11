@@ -63,14 +63,14 @@ expect_hidden_rules <- function(x, n, label = NULL) {
 }
 
 test_that("a NUL at line start behind a parsed rule is reported", {
-  expect_false(ch_allowed(ch_line_start, "/"))
+  expect_true(ch_allowed(ch_line_start, "/"))
   x <- robots_validate_text(ch_line_start)
   expect_identical(ch_rows(x), c("nul_byte@3", "rules_after_nul_removal@NA"))
   expect_hidden_rules(x, 1L)
 })
 
 test_that("a NUL in the User-agent key is reported beside the raw rows", {
-  expect_false(ch_allowed(ch_agent_key, "/x"))
+  expect_true(ch_allowed(ch_agent_key, "/x"))
   x <- robots_validate_text(ch_agent_key)
   # The raw reading stays: Bing and Yandex read the bytes as written.
   expect_identical(
@@ -92,13 +92,13 @@ test_that("a NUL mid-directive or in a User-agent value is counted", {
   # `Dis\0allow` is no directive to the parser.
   mid_key <- c(charToRaw("User-agent: *\nDisallow: /a\nDis"), ch_nul,
                charToRaw("allow: /b\n"))
-  expect_false(ch_allowed(mid_key, "/b"))
+  expect_true(ch_allowed(mid_key, "/b"))
   expect_hidden_rules(robots_validate_text(mid_key), 1L, "mid-directive")
 
   # `Foo\0Bot` names FooBot only NUL-free, so the group changes.
   agent_value <- c(charToRaw("User-agent: *\nDisallow: /a\nUser-agent: Foo"),
                    ch_nul, charToRaw("Bot\nDisallow: /b\n"))
-  expect_false(ch_allowed(agent_value, "/b"))
+  expect_true(ch_allowed(agent_value, "/b"))
   expect_hidden_rules(robots_validate_text(agent_value), 1L, "agent value")
 
   # Two hidden lines in one body are counted together.

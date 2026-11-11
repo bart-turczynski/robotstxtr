@@ -47,7 +47,7 @@ expect_rules_after_nul <- function(x, n, label) {
 
 test_that("a NUL-split body reports the rules Google's matcher reads", {
   bytes <- nr_utf16le("User-agent: *\nDisallow: /a\n")
-  expect_false(nr_allowed(bytes, "/a"))
+  expect_true(nr_allowed(bytes, "/a"))
   x <- robots_validate_text(bytes)
   expect_rules_after_nul(x, 1L, "UTF-16LE")
   expect_identical(x$documents$validation_status, "error")
@@ -56,7 +56,7 @@ test_that("a NUL-split body reports the rules Google's matcher reads", {
                    1:3)
   expect_identical(x$documents$disallow_directives, 0L)
 
-  expect_false(nr_allowed(nr_ascii_nul, "/x"))
+  expect_true(nr_allowed(nr_ascii_nul, "/x"))
   expect_rules_after_nul(robots_validate_text(nr_ascii_nul), 1L, "ASCII")
 
   bytes <- nr_utf16le("User-agent: *\nAllow: /a\nDisallow: /\n")
