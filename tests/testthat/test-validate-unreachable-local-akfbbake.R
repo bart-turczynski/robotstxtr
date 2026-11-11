@@ -131,6 +131,22 @@ test_that("ROBO-akfbbake: real loopback refusals, origin and redirect target", {
   }
 })
 
+# A named level is validated to its bare value before the diagnosis compares it
+# (validate_safety_level() drops names, as robots_fetch() does).
+test_that("ROBO-akfbbake: a named crawler level reads as unreachable", {
+  local({
+    origin <- akf_located("http://127.0.0.1/robots.txt", "http://b/",
+                          c(level = "crawler"))
+    expect_identical(origin$diagnostics$code, "acquisition_safety_refused")
+    expect_identical(origin$diagnostics$message, akf_unreachable("loopback"))
+  })
+  local({
+    target <- akf_located("http://a/robots.txt", "http://127.0.0.1/r",
+                          c(level = "crawler"))
+    expect_identical(target$diagnostics$message, akf_unreachable("loopback"))
+  })
+})
+
 test_that("ROBO-akfbbake: transition refusals keep the strict wording", {
   for (code in names(akf_transition_urls)) {
     url <- akf_transition_urls[[code]]
@@ -199,6 +215,7 @@ test_that("ROBO-akfbbake: an ssrf_blocked row with no reason has no refusal", {
     stringsAsFactors = FALSE
   )
   expect_null(acquisition_diagnosis(source))
+  expect_null(acquisition_diagnosis(source, safety_level = "crawler"))
 })
 
 test_that("ROBO-akfbbake: the legacy robots frame has no safety_level column", {

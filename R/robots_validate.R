@@ -480,6 +480,7 @@ robots_validate_url <- function(url, timeout = 10, max_bytes = 524288L,
                                 fetch_user_agent = NULL, ssrf_guard = TRUE,
                                 safety_level = "strict",
                                 fetch_allow_ranges = character()) {
+  safety_level <- validate_safety_level(safety_level)
   fetched <- robots_fetch(
     url = url,
     timeout = timeout,
