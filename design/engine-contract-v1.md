@@ -269,15 +269,18 @@ write `NA` in both.
    (ROBO-qquftxcx). The root is the first start tag after any number of
    leading items, each skipped whole (ROBO-isbpzgqn): `<?...?>` declarations;
    comments, including the abrupt `<!-->` and `<!--->` and a `--!>` closer;
-   doctypes of any kind; and end tags. A `<!doctype html` among those items
-   makes the root HTML by itself. The root's name, after any namespace prefix
-   and in any letter case, is an HTML element name (the WHATWG element names,
-   obsolete ones included, with `svg` and `math` left out) or a custom element
-   name: a letter, then a hyphen, and not a reserved SVG or MathML name. A name
-   must end in whitespace, `/` or `>`, so a root cut at the window's end is
-   not read. `<title`, `<link` and `<meta` are left out, since RSS and Atom
-   feeds use them. A `<?php` left unclosed before the root hides the root (a
-   known limit: its `?>` is missing).
+   markup declarations `<!...>`, with a doctype of any kind, an internal subset
+   in `[...]`, and the `<![if ...]>`, `<![endif]>` and `<![CDATA[...]]>`
+   sections; and end tags. A `<!doctype html` among those items makes the root
+   HTML by itself. The root's name, after any namespace prefix and in any
+   letter case, is an HTML element name (the WHATWG element names, obsolete
+   ones included, and the parser alias `image`, with `svg` and `math` left
+   out) or a custom element name with no prefix: a letter, then a hyphen, and
+   not a reserved SVG or MathML name. A name must end in whitespace, `/` or
+   `>`, so a root cut right after its name at the window's end reads `xml`.
+   `<title`, `<link` and `<meta` are left out, since RSS and Atom feeds use
+   them. Two known limits hide the root, as no item skips them: an unclosed
+   `<?php`, and a server template such as `<%@ page %>`.
 3. `xml`: the first non-whitespace byte is `<`. No robots.txt line starts
    with `<`; a `<` inside a comment or a value never flags. Markup whose root
    is not HTML (an SVG, a KML, a feed, an S3 error) lands here even when it
