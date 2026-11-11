@@ -1,7 +1,7 @@
 # Engine-aware robots evaluation contract v1
 
 - Contract ID: `robotstxtr.engine-aware/v1`
-- Schema revision: `2026-11-08.1`
+- Schema revision: `2026-11-11.1`
 - First package release: `robotstxtr 0.2.0`
 - Normative policy source: [`engine-profiles.md`](engine-profiles.md)
 
@@ -48,11 +48,14 @@ decides what the fetch may do on the network and is independent of
 publishes the value set as `safety_levels`: `strict`, the default, and
 `crawler`. `strict` is the acquisition of every earlier revision, unchanged.
 `crawler` follows an `https` to `http` redirect as an ordinary hop within the
-five-redirect budget (ROBO-lwdxzdhw); every address the guard refuses is still
-refused, as under `strict`, until ROBO-jqwukcog records an address-class
-refusal as `unreachable_local`. Any other value is a call-level error of class
-`robotstxtr_invalid_safety_level`. The levels are defined in
-[`engine-profiles.md`](engine-profiles.md) §3a.
+five-redirect budget (ROBO-lwdxzdhw). Every address the guard refuses is still
+refused, never dialed, and keeps `fetch_outcome = ssrf_blocked` and its code in
+`safety_block_reason` at both levels; under `crawler` an address-class refusal
+is recorded as `evidence_status = unreachable_local` (schema revision
+`2026-11-11.1`, ROBO-jqwukcog), while a URL-shape refusal stays
+`safety_refused`. Any other value is a call-level error of class
+`robotstxtr_invalid_safety_level`. The levels and the two classes of refusal
+are defined in [`engine-profiles.md`](engine-profiles.md) §3a.
 
 The evidence frame gains two columns. `safety_level` (character) is the level a
 source was fetched under. `fetch_allow_ranges` (a list column) holds the CIDR
@@ -69,7 +72,20 @@ frames are unchanged.
 
 Evidence status is one of `usable_body`, `partial`, `incomplete`, `http_status`,
 `http_protocol_error`, `redirect_over_budget`, `transport_fail`,
-`safety_refused`, or `not_applicable`.
+`unreachable_local`, `safety_refused`, or `not_applicable`.
+
+A set `safety_block_reason` means `safety_refused` or `unreachable_local`, and
+`unreachable_local` occurs under `safety_level = "crawler"` only: "not dialed:
+the address is internal, so a public crawler could not reach it either"
+(ADR 0001 §3). `transport_fail` never carries a `safety_block_reason`; a
+consumer that wants "the crawler could not reach it" combines the two. Schema
+revision `2026-11-11.1` (ROBO-jqwukcog) adds `unreachable_local` and an
+`unreachable_local` row per ruleset to the status-policy table, with the cells
+of that ruleset's `transport` row: `context_required` for `google`, `rfc9309`
+and `assumed_rfc9309`, `documentation_gap` for `yandex` and `bing`, so no
+ruleset reads it as allow or deny. The readings of existing evidence are
+unchanged, so no policy revision moved. Under `strict` every row reads as
+under `2026-11-08.1`.
 
 Policy status is one of `evaluated`, `not_evaluated`, `context_required`, or
 `documentation_gap`. An evaluated action is `use_rules` or `allow_all`.

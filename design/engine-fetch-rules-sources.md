@@ -233,5 +233,6 @@ slice 2):
 
 - §3 says RFC 9309 "requires" at least five. The RFC says SHOULD.
 - §2 lists `non_http_target` among the `http_protocol_error` triggers, while §3 and the code
-  (`source_evidence_status_v1()`, which returns `safety_refused` whenever
-  `safety_block_reason` is set, and `scheme` is set for it) make it `safety_refused`.
+  (`source_evidence_status_v1()`, which returns `safety_refused` whenever a
+  URL-shape `safety_block_reason` such as `scheme` is set, and `scheme` is set for it) make
+  it `safety_refused`.

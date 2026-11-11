@@ -556,6 +556,7 @@ ss_status_policy <- list(
   status_429 = ss_row(ss_open, ss_gap, ss_open),
   status_5xx = ss_row(ss_context, ss_context, ss_open),
   transport = ss_row(ss_context, ss_context, ss_gap),
+  unreachable_local = ss_row(ss_context, ss_context, ss_gap),
   redirect_over_budget = ss_row(ss_open, ss_open, ss_gap),
   protocol_error = ss_row(ss_gap, ss_gap, ss_gap)
 )

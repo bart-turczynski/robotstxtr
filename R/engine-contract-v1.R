@@ -10,6 +10,13 @@ engine_contract_id_v1 <- function() {
   "robotstxtr.engine-aware/v1"
 }
 
+# 2026-11-11.1: `evidence_status` gains `unreachable_local`, an address-class
+# refusal under `safety_level = "crawler"`, and the policy table an
+# `unreachable_local` row per ruleset with the transport cells (ADR 0001
+# section 3, ROBO-jqwukcog). The readings of existing evidence are unchanged,
+# so no policy revision moved. Both facades share the evidence schema, so both
+# moved.
+#
 # 2026-11-08.1: every fetching entry point takes `safety_level`; the contract
 # publishes its value set (`safety_levels`) and the evidence gains
 # `safety_level` and `fetch_allow_ranges` (ADR 0001 sections 1 and 8,
@@ -20,7 +27,7 @@ engine_contract_id_v1 <- function() {
 # (ROBO-jbralthm; design/engine-profiles.md section 2). Both facades share the
 # evidence schema, so both revisions moved.
 engine_schema_revision_v1 <- function() {
-  "2026-11-08.1"
+  "2026-11-11.1"
 }
 
 # The engine-aware/v2 facade identity (BI-V2-SCHEMA, spec SS15). Introduced by
@@ -35,7 +42,7 @@ engine_contract_id_v2 <- function() {
 }
 
 engine_schema_revision_v2 <- function() {
-  "2026-11-08.1"
+  "2026-11-11.1"
 }
 
 engine_rulesets_v1 <- function() {
@@ -341,8 +348,8 @@ policy_rows_set_v1 <- function(table, category, ruleset, policy_status,
 engine_policy_table_v1 <- function() {
   categories <- c(
     "status_200", "status_other_2xx", "status_206", "status_4xx",
-    "status_429", "status_5xx", "transport", "redirect_over_budget",
-    "protocol_error"
+    "status_429", "status_5xx", "transport", "unreachable_local",
+    "redirect_over_budget", "protocol_error"
   )
   table <- expand.grid(
     category = categories,
@@ -437,6 +444,19 @@ engine_policy_table_v1 <- function() {
   )
   set(
     "transport", "assumed_rfc9309", "context_required", NA,
+    "crawler_lifecycle_context_required", "application_choice",
+    "design/engine-profiles.md#status-policy"
+  )
+  # An address-class refusal under `safety_level = "crawler"` reads as the
+  # engine reads an unreachable file: the transport cells (ADR 0001 section 3,
+  # ROBO-jqwukcog). yandex and bing keep the documentation_gap default.
+  set(
+    "unreachable_local", c("google", "rfc9309"), "context_required", NA,
+    "crawler_lifecycle_context_required", "documented",
+    "design/engine-profiles.md#status-policy"
+  )
+  set(
+    "unreachable_local", "assumed_rfc9309", "context_required", NA,
     "crawler_lifecycle_context_required", "application_choice",
     "design/engine-profiles.md#status-policy"
   )
@@ -683,8 +703,18 @@ matcher_string_v1 <- function(body) {
   decode_matcher_body(body)
 }
 
-source_evidence_status_v1 <- function(result) {
-  if (!is.na(result$safety_block_reason)) {
+# A set `safety_block_reason` is tested first. Under `safety_level =
+# "crawler"` an address-class code means `unreachable_local`: not dialed, as
+# no public crawler could reach the address either; any other code, and every
+# code under "strict", means `safety_refused` (ADR 0001 section 3,
+# ROBO-jqwukcog).
+source_evidence_status_v1 <- function(result, safety_level = "strict") {
+  reason <- result$safety_block_reason
+  if (!is.na(reason)) {
+    if (identical(safety_level, "crawler") &&
+          reason %in% acquire_address_class_reasons()) {
+      return("unreachable_local")
+    }
     return("safety_refused")
   }
   if (result$termination_reason %in% c("deadline", "ceiling") ||
@@ -788,7 +818,8 @@ source_results_to_evidence_v1 <- function(results, source_ids, requested_url,
       results, `[[`, character(1L), "termination_reason"
     ),
     evidence_status = vapply(
-      results, source_evidence_status_v1, character(1L)
+      results, source_evidence_status_v1, character(1L),
+      safety_level = safety_level
     ),
     http_user_agent = rep(fetch_ua, length(results)),
     acquisition_timeout_seconds = rep(timeout, length(results)),
@@ -968,6 +999,8 @@ resolve_policy_v1 <- function(evidence, ruleset, policy_table,
 
   category <- if (identical(evidence_status, "transport_fail")) {
     "transport"
+  } else if (identical(evidence_status, "unreachable_local")) {
+    "unreachable_local"
   } else if (identical(evidence_status, "redirect_over_budget")) {
     "redirect_over_budget"
   } else if (identical(evidence_status, "http_protocol_error")) {

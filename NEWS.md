@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* Under `safety_level = "crawler"`, a refused internal address is now `evidence_status = "unreachable_local"`, which no ruleset reads as allow or deny; schema revision `2026-11-11.1` (ROBO-jqwukcog).
+
 * `robots_validate_text()` and `robots_validate_url()` say Google's matcher reads the path behind a NUL right after an Allow or Disallow colon, not that the matcher ignores the line (ROBO-nrnucnru).
 
 * `safety_level = "crawler"` is now available: it follows an `https` to `http` redirect as an ordinary hop, and needs ssrfr 1.0.0.9001 (ROBO-lwdxzdhw).
