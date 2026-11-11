@@ -5,11 +5,13 @@
 #
 # Narrowing the audit to hard dependencies cleared five of the seven repos in
 # this fleet. It does NOT clear robotstxtr: `curl` is a genuine hard
-# dependency here, reached through ssrfr. The six advisories below name
-# libcurl version ranges that include CRAN's current `curl` 8.1.0: OSS Index
-# matches the R package's version against libcurl's, and the earliest fixed
-# libcurl in each range is 8.14.x or later, so no R package version clears
-# them and no local change makes the audit clean. What actually runs is the
+# dependency here, reached through ssrfr (which is why the audit's input is
+# resolved from the installed library: see oss_index_audit_targets()). The
+# six advisories below name libcurl version ranges that include CRAN's
+# current `curl` 8.1.0: OSS Index matches the R package's version against
+# libcurl's, and the earliest fixed libcurl in each range is 8.14.x or later,
+# so no R package version clears them and no local change makes the audit
+# clean. What actually runs is the
 # libcurl the package links: the Windows and macOS CRAN binaries bundle one
 # with CVE backports (curl 8.1.0's NEWS), on Linux it is the system's. So a
 # row here is OSS Index's attribution, and each reason argues reachability.
@@ -263,7 +265,99 @@ oss_index_allowlist_violations <- function(rows) {
   out
 }
 
-# Flatten an oysteR::audit_description() result to one row per reported
+# What the audit queries: the recursive Depends + Imports + LinkingTo closure
+# of the package `description` describes, resolved against `db`, without base
+# packages, one row per package with its version. LinkingTo is followed at
+# every level, the root's included (so header-only packages such as cpp11 are
+# audited too); oysteR's audit_description() took only Depends and Imports
+# from the root and added LinkingTo below it.
+#
+# `description` is the package's DESCRIPTION as read.dcf() returns it. Its row
+# goes ahead of `db`'s, and package_dependencies() keeps the first of
+# duplicate rows, so the root's own dependencies are the DESCRIPTION's: an
+# installed robotstxtr can be an older build (one still importing httr2
+# reaches curl by the old path and never audits ssrfr).
+#
+# `db` is `installed.packages()` in the live test, not CRAN's
+# `available.packages()`. oysteR's audit_description() expands dependencies
+# with `tools::package_dependencies()` and no `db`, which means the CRAN
+# index. ssrfr is not on CRAN (DESCRIPTION reaches it through Remotes), so
+# that expansion stops at ssrfr and never sees curl, pslr or raddr. Once
+# httr2 was dropped (0b78b5d) that took curl out of the audit, and rule B
+# failed on all six rows below for an audit that had stopped looking
+# (ROBO-jvcpjstv). The installed library is what the user's robotstxtr
+# actually loads, and it needs no network.
+#
+# A package the closure names but `db` lacks keeps its row with an NA
+# version, so the caller can fail on it instead of auditing less silently.
+oss_index_audit_targets <- function(description, db) {
+  if (
+    nrow(description) != 1L ||
+      !"Package" %in% colnames(description) ||
+      is.na(description[1L, "Package"])
+  ) {
+    stop(
+      "`description` must be one DESCRIPTION row naming a single package.",
+      call. = FALSE
+    )
+  }
+  pkg <- unname(description[1L, "Package"])
+  fields <- c(
+    "Package",
+    "Version",
+    "Priority",
+    "Depends",
+    "Imports",
+    "LinkingTo"
+  )
+  root <- matrix(
+    NA_character_,
+    nrow = 1L,
+    ncol = length(fields),
+    dimnames = list(pkg, fields)
+  )
+  given <- intersect(fields, colnames(description))
+  root[1L, given] <- description[1L, given]
+  db <- rbind(root, db[, fields, drop = FALSE])
+
+  priority <- db[, "Priority"]
+  base_pkgs <- rownames(db)[!is.na(priority) & priority == "base"]
+  closure <- tools::package_dependencies(
+    pkg,
+    db = db,
+    which = c("Depends", "Imports", "LinkingTo"),
+    recursive = TRUE
+  )[[1]]
+  deps <- sort(setdiff(unique(closure), base_pkgs))
+  data.frame(
+    package = deps,
+    version = unname(db[match(deps, rownames(db)), "Version"]),
+    stringsAsFactors = FALSE
+  )
+}
+
+# Packages the audit should have checked and did not: every target, and every
+# package an allow-list row names, that is absent from `audit$package` or
+# present only with an NA version (a purl with no version matches no advisory
+# range). Run it before rules A and B: a package missing from the audit
+# satisfies rule A vacuously and fails rule B for the wrong reason, which is
+# how this file came to report six live advisories as stale.
+#
+# What it does not catch: oysteR::audit() builds `audit$package` from the
+# packages it is given, so against the live audit the targets half cannot
+# fail. The live check is the allow-list half (an allow-listed package that
+# dropped out of the closure); that the closure itself is complete rests on
+# oss_index_audit_targets() and its fixtures.
+oss_index_unaudited <- function(audit, targets, allowlist) {
+  wanted <- unique(c(
+    targets$package,
+    vapply(allowlist, function(row) row$package, character(1))
+  ))
+  seen <- as.character(audit$package)[!is.na(audit$version)]
+  setdiff(wanted, seen)
+}
+
+# Flatten an oysteR::audit() result to one row per reported
 # advisory. The `vulnerabilities` column is a list of per-package lists, empty
 # for a clean package, so the zero-advisory case has to survive unlist().
 oss_index_reported <- function(audit) {

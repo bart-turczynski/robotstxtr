@@ -1,20 +1,25 @@
 # OSS Index dependency vulnerability audit (oysteR / Sonatype).
 #
-# `oysteR::audit_description()` resolves the installed DESCRIPTION and audits
-# robotstxtr's hard dependencies against the Sonatype OSS Index. It is a
-# network test that requires OSS Index credentials (OSSINDEX_USER /
-# OSSINDEX_TOKEN): the API rejects unauthenticated requests with HTTP 401.
+# `oysteR::audit()` checks robotstxtr's installed hard-dependency closure
+# against the Sonatype OSS Index. It is a network test that requires OSS Index
+# credentials (OSSINDEX_USER / OSSINDEX_TOKEN): the API rejects
+# unauthenticated requests with HTTP 401.
 #
-# Scope: hard dependencies only -- `Depends` + `Imports`, never `Suggests`.
+# Scope: hard dependencies only -- the recursive `Depends` + `Imports` +
+# `LinkingTo` closure (LinkingTo at every level, the root's included), never
+# `Suggests`.
 #
 # `oysteR::expect_secure()` audits `Suggests` as well, which drags in the
 # recursive dependency trees of the dev tooling -- including oysteR's own. A
 # vulnerability in the auditor is not a vulnerability in what robotstxtr makes
 # users install, and a package's security posture is the latter. Measured
-# 2026-09-10: `Depends` + `Imports` audits 25 packages, the Suggests-inclusive
-# scope 84. `audit_description()` is called directly because only it exposes
-# `fields`; `expect_secure()` sets a CRAN mirror internally and
-# `audit_description()` does not, hence the explicit `repos` option.
+# 2026-09-10, under the former audit_description() scope: 25 packages, the
+# Suggests-inclusive scope 84. Measured 2026-11-11, the current scope: 15
+# packages, curl, pslr, raddr and ssrfr among them. Neither `expect_secure()`
+# nor `audit_description()` is used: both expand dependencies against CRAN's
+# index, which does not carry ssrfr, so they stopped auditing curl
+# (ROBO-jvcpjstv). oss_index_audit_targets() in helper-security.R resolves
+# the closure from the installed library instead.
 #
 # The allow-list and rules A/B/C live in helper-security.R, next to the data
 # they govern. Read that file before adding a row.
@@ -32,18 +37,16 @@
 # asked. So under OSSINDEX_AUDIT_REQUIRED=true every precondition below
 # becomes a hard failure with a message naming what is missing.
 #
-# That job is `security-audit` in .gitlab-ci.yml, run on the dependency-audit
-# schedule or a hand-started pipeline. It cannot go green on nothing because
-# it sets OSSINDEX_AUDIT_REQUIRED=true and fails when any test in this file
-# was skipped (SEOR-fftbjnpl). Everywhere else the flag is unset and the
-# preconditions stay skips.
+# That job is fleet-ci's T2 `security-audit` (the weekly deep-check schedule,
+# or a T3 run). It cannot go green on nothing because it sets
+# OSSINDEX_AUDIT_REQUIRED=true (SEOR-fftbjnpl). Everywhere else the flag is
+# unset and the preconditions stay skips.
 #
-# NOTE ON THE PRE-PUSH HOOK. Measured 2026-09-24, the audit does not run on
-# push. robotstxtr's pre-push gate is `dev/verify.sh`: lint, a docs-drift
-# check, and `rcmdcheck::rcmdcheck(args = "--as-cran")` on a `git archive
-# HEAD` export. No stage calls `testthat::test_local()`, and rcmdcheck does not
-# set NOT_CRAN, so `skip_on_cran()` below fires before the credential guard is
-# reached, even though `~/.Renviron` puts the credentials in scope inside R.
+# NOTE ON THE PRE-PUSH GATE. The audit does not run on push. The gate is
+# fleet-ci's local gate, and `.fleet-ci.yml` lists this whole file under
+# `exclude_tests`, so neither the live audit nor the offline fixture tests
+# below run there (design/ci.md). They run under a local
+# `devtools::test(filter = "security")` and in the T2 jobs that set NOT_CRAN.
 
 test_that("the OSS Index allow-list is well formed", {
   # No `expect_gt(length(oss_index_allowlist), 0)` here, although this repo
@@ -109,6 +112,129 @@ test_that("the allow-list validator rejects rows that are not decisions", {
   )
 })
 
+# A fixture shaped like `installed.packages()`: robotstxtr imports ssrfr,
+# ssrfr imports curl and links a header-only package, and robotstxtr also
+# depends on a base package. It is the shape of the real closure since
+# 0b78b5d, in which curl is reachable only through ssrfr. httr2 and openssl
+# are installed but unreachable, as they are once robotstxtr dropped httr2;
+# `root_imports` sets the installed robotstxtr's Imports, to model an
+# installed build older than the source.
+oss_index_fixture_db <- function(drop = character(), root_imports = "ssrfr") {
+  rows <- list(
+    c("robotstxtr", "0.0.0.9000", NA, "R (>= 4.1), utils", root_imports, NA),
+    c("ssrfr", "1.0.0.9001", NA, NA, "curl (>= 7.0.0)", "hdronly"),
+    c("httr2", "1.3.0", NA, NA, "curl, openssl", NA),
+    c("curl", "8.1.0", NA, NA, NA, NA),
+    c("openssl", "2.4.2", NA, NA, NA, NA),
+    c("hdronly", "1.2.3", NA, NA, NA, NA),
+    c("utils", "4.6.2", "base", NA, NA, NA)
+  )
+  db <- do.call(rbind, rows)
+  colnames(db) <- c(
+    "Package",
+    "Version",
+    "Priority",
+    "Depends",
+    "Imports",
+    "LinkingTo"
+  )
+  rownames(db) <- db[, "Package"]
+  db[!rownames(db) %in% drop, , drop = FALSE]
+}
+
+# robotstxtr's DESCRIPTION as read.dcf() returns it: one row, no Priority.
+oss_index_fixture_description <- function() {
+  db <- oss_index_fixture_db()
+  db["robotstxtr", c("Package", "Depends", "Imports"), drop = FALSE]
+}
+
+test_that("the audit targets are the installed hard-dependency closure", {
+  description <- oss_index_fixture_description()
+  targets <- oss_index_audit_targets(description, db = oss_index_fixture_db())
+
+  # curl is two hops away, through a package CRAN does not serve. The
+  # expansion has to be recursive and has to read the installed db.
+  expect_equal(
+    targets[order(targets$package), ],
+    data.frame(
+      package = c("curl", "hdronly", "ssrfr"),
+      version = c("8.1.0", "1.2.3", "1.0.0.9001"),
+      stringsAsFactors = FALSE
+    ),
+    ignore_attr = "row.names"
+  )
+
+  # Base packages and R itself are not audited.
+  expect_false(any(c("utils", "R", "robotstxtr") %in% targets$package))
+
+  # What a CRAN-only `available.packages()` amounted to: a db that cannot
+  # expand ssrfr. ssrfr is still named, as a direct import, but nothing it
+  # imports is, and it is reported as not installed rather than dropped.
+  blind <- oss_index_audit_targets(
+    description,
+    db = oss_index_fixture_db(drop = "ssrfr")
+  )
+  expect_false("curl" %in% blind$package)
+  expect_equal(blind$package[is.na(blind$version)], "ssrfr")
+
+  # The root's own dependencies come from the DESCRIPTION, never from an
+  # installed robotstxtr, which may be an older build: one still importing
+  # httr2 reaches curl by the old path and leaves ssrfr unaudited.
+  stale <- oss_index_audit_targets(
+    description,
+    db = oss_index_fixture_db(root_imports = "httr2")
+  )
+  expect_equal(sort(stale$package), c("curl", "hdronly", "ssrfr"))
+
+  # A DESCRIPTION that names no package is an error, not an empty closure.
+  db <- oss_index_fixture_db()
+  expect_error(
+    oss_index_audit_targets(description[, "Imports", drop = FALSE], db = db),
+    "single package",
+    fixed = TRUE
+  )
+  expect_error(
+    oss_index_audit_targets(description[0, , drop = FALSE], db = db),
+    "single package",
+    fixed = TRUE
+  )
+})
+
+test_that("the coverage check names every package the audit did not see", {
+  targets <- oss_index_audit_targets(
+    oss_index_fixture_description(),
+    db = oss_index_fixture_db()
+  )
+  curl_row <- list(list(package = "curl"))
+  audit <- function(package, version = rep("1", length(package))) {
+    data.frame(package = package, version = version, stringsAsFactors = FALSE)
+  }
+  complete <- audit(c("ssrfr", "hdronly", "curl"))
+
+  expect_equal(oss_index_unaudited(complete, targets, curl_row), character())
+  # The shape of this ticket: curl absent from the audit while allow-list
+  # rows name it.
+  expect_equal(
+    oss_index_unaudited(audit(c("ssrfr", "hdronly")), targets, curl_row),
+    "curl"
+  )
+  # An allow-listed package outside the closure is reported too, so a row can
+  # never be kept alive, or retired, by an audit that never looked.
+  expect_equal(
+    oss_index_unaudited(complete, targets, list(list(package = "openssl"))),
+    "openssl"
+  )
+  # A row with no version was not checked against any advisory range.
+  expect_equal(
+    oss_index_unaudited(
+      audit(c("ssrfr", "hdronly", "curl"), c("1", "1", NA)),
+      targets,
+      curl_row
+    ),
+    "curl"
+  )
+})
+
 test_that("hard dependencies report only allow-listed OSS Index advisories", {
   # The dedicated, credentialed audit job. A precondition it cannot meet is a
   # failure there, never a skip -- see the header.
@@ -146,23 +272,44 @@ test_that("hard dependencies report only allow-listed OSS Index advisories", {
     )
   }
 
-  old_repos <- getOption("repos")
-  on.exit(options(repos = old_repos), add = TRUE)
-  options(repos = c(CRAN = "https://cran.rstudio.com"))
+  # The closure comes from the installed library, not from CRAN's index: see
+  # oss_index_audit_targets() for why audit_description() stopped seeing curl.
+  # The root's own dependencies come from the DESCRIPTION system.file() finds:
+  # the source tree under devtools::test(), the installed one under
+  # R CMD check. Never from installed.packages()' robotstxtr row, which may be
+  # an older build.
+  targets <- oss_index_audit_targets(
+    read.dcf(system.file("DESCRIPTION", package = "robotstxtr")),
+    db = utils::installed.packages() # nolint: installed_packages_linter.
+  )
 
-  audit <- oysteR::audit_description(
-    dirname(system.file("DESCRIPTION", package = "robotstxtr")),
-    fields = c("Depends", "Imports"),
+  # A hard dependency that is not installed cannot be audited at its version.
+  # Fail rather than audit less: that is the vacuous green this file exists to
+  # refuse.
+  expect_equal(targets$package[is.na(targets$version)], character())
+  targets <- targets[!is.na(targets$version), ]
+
+  audit <- oysteR::audit(
+    targets$package,
+    targets$version,
+    type = "cran",
     verbose = FALSE
   )
   found <- oss_index_reported(audit)
   allowed <- vapply(oss_index_allowlist, function(row) row$id, character(1))
 
-  # An audit that resolved nothing is not a clean audit. Without this an empty
-  # result satisfies rule A vacuously, which is the same green-on-nothing
-  # failure the credential guard above exists to stop. (Rule B would also fail
-  # here while this repo has rows, but only by accident of the rows existing.)
+  # An audit that resolved nothing is not a clean audit, and a package an
+  # allow-list row names but the audit never queried satisfies rule A
+  # vacuously and fails rule B for the wrong reason (ROBO-jvcpjstv). So
+  # coverage is checked first, by name. oysteR::audit() returns a row for each
+  # package it is given, so here the live check is the allow-list half; that
+  # the closure itself is complete rests on oss_index_audit_targets() and its
+  # fixtures above.
   expect_gt(nrow(audit), 0)
+  expect_equal(
+    oss_index_unaudited(audit, targets, oss_index_allowlist),
+    character()
+  )
 
   # Rule A -- an advisory reported and not allow-listed.
   expect_equal(sort(setdiff(found$id, allowed)), character())
