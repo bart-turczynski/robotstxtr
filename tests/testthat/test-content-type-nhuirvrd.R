@@ -341,6 +341,43 @@ test_that("ROBO-isbpzgqn: leading items before the root are skipped", {
   expect_identical(ct_flag(cut), "xml")
 })
 
+test_that("ROBO-isbpzgqn: the comment, name and declaration edges", {
+  # A `--!>` closer ends a comment, as HTML's does.
+  expect_identical(ct_flag("<!-- a --!><html><style>"), "html")
+  # A namespace prefix is no part of a custom element name.
+  expect_identical(ct_flag("<ns:my-el><style/>"), "xml")
+  # The reserved SVG and MathML names are not custom elements.
+  expect_identical(ct_flag("<annotation-xml><style/>"), "xml")
+  expect_identical(ct_flag("<color-profile><style/>"), "xml")
+  expect_identical(ct_flag("<font-face-src><style/>"), "xml")
+  expect_identical(ct_flag("<font-face-uri><style/>"), "xml")
+  expect_identical(ct_flag("<font-face-format><style/>"), "xml")
+  expect_identical(ct_flag("<font-face-name><style/>"), "xml")
+  expect_identical(ct_flag("<missing-glyph><style/>"), "xml")
+  # Markup declarations and sections, and a doctype's internal subset, are
+  # skipped before the root.
+  expect_identical(
+    ct_flag("<![if !IE]><html><![endif]><head><style>"), "html"
+  )
+  expect_identical(ct_flag("<![CDATA[x]]><div><script>"), "html")
+  expect_identical(
+    ct_flag("<!DOCTYPE x [<!ELEMENT div ANY>]><div><style>"), "html"
+  )
+  # An unclosed comment is no declaration, so it hides no root.
+  expect_identical(ct_flag("<!-- x <html><style>"), "xml")
+  # `image` and `selectedcontent` are HTML element names.
+  expect_identical(ct_flag("<image><script>"), "html")
+  expect_identical(ct_flag("<selectedcontent><style/>"), "html")
+})
+
+test_that("ROBO-isbpzgqn: a long run of abrupt comments hits no limit", {
+  # Each leading item is atomic: no backtracking through the run, and no
+  # PCRE match-limit warning.
+  body <- charToRaw(paste0(strrep("<!-->\n", 22L), "<svg><style/>"))
+  expect_no_warning(flag <- robots_content_flag(body))
+  expect_identical(flag, "xml")
+})
+
 test_that("ROBO-nhuirvrd: JSON objects and arrays", {
   expect_identical(ct_flag("{\"error\": \"not found\"}"), "json")
   expect_identical(ct_flag(" {\n}"), "json")
