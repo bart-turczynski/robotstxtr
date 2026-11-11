@@ -25,15 +25,16 @@
 # `class` sorts each refusal with a `safety_block_reason` by what it refuses
 # (ADR 0001 section 3, design/engine-profiles.md section 3a): "address", where
 # the URL points (an internal or special-purpose address, or an IPv6 form that
-# embeds one); "transition", a 6to4 or Teredo literal, which ssrfr refuses
-# whatever IPv4 it wraps because its reachability is unknown; "url_shape", how
-# the URL is spelled; "redirect", the downgrade. ssrfr publishes no class, so
-# robotstxtr assigns one here, and a test requires one on every admitted code
-# with a safety reason, so a code ssrfr adds fails until it is classed. Under
-# `safety_level = "crawler"` an address-class refusal is `evidence_status =
-# unreachable_local` (ROBO-jqwukcog); every other class stays `safety_refused`
-# (ROBO-aoslfvnx). ISATAP stays address-class: ssrfr refuses it only under a
-# non-global prefix or around a prohibited IPv4, both internal facts.
+# embeds one); "transition", a 6to4, Teredo or ISATAP literal, whose refusal
+# does not say the target is internal (ssrfr refuses 6to4 and Teredo whatever
+# IPv4 they wrap, and ISATAP around a private IPv4 even under a global prefix,
+# which a public ISATAP router can serve), and robotstxtr does not unwrap the
+# IPv4 to tell; "url_shape", how the URL is spelled; "redirect", the
+# downgrade. ssrfr publishes no class, so robotstxtr assigns one here, and a
+# test requires one on every admitted code with a safety reason, so a code
+# ssrfr adds fails until it is classed. Under `safety_level = "crawler"` an
+# address-class refusal is `evidence_status = unreachable_local`
+# (ROBO-jqwukcog); every other class stays `safety_refused` (ROBO-aoslfvnx).
 acquire_refusal_table <- function() {
   shared <- c(
     "loopback", "private", "link-local", "cloud-metadata", "shared",
@@ -62,9 +63,9 @@ acquire_refusal_table <- function() {
   address <- c(
     "loopback", "private", "link-local", "cloud-metadata", "shared",
     "unspecified", "this-network", "multicast", "reserved", "ipv4-mapped",
-    "ipv4-translated", "ipv4-compatible", "nat64", "isatap"
+    "ipv4-translated", "ipv4-compatible", "nat64"
   )
-  transition <- c("6to4", "teredo")
+  transition <- c("6to4", "teredo", "isatap")
   url_shape <- c(
     "scheme", "userinfo", "port", "parse", "numeric-literal",
     "malformed-address"

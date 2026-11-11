@@ -53,11 +53,12 @@ refused, never dialed, and keeps `fetch_outcome = ssrf_blocked` and its code in
 `safety_block_reason` at both levels; under `crawler` an address-class refusal
 is recorded as `evidence_status = unreachable_local` (schema revision
 `2026-11-11.1`, ROBO-jqwukcog), while a URL-shape refusal stays
-`safety_refused`. So does a `6to4` or `teredo` refusal (ROBO-aoslfvnx): ssrfr
-refuses those whatever IPv4 they wrap, because their reachability is unknown,
-so the refusal says nothing about whether the target is internal. `isatap`
-stays address-class, because ssrfr refuses it only under a non-global prefix
-or around a prohibited IPv4. The change moves those rows between two existing
+`safety_refused`. So does a `6to4`, `teredo` or `isatap` refusal
+(ROBO-aoslfvnx): ssrfr refuses 6to4 and Teredo whatever IPv4 they wrap,
+because their reachability is unknown, and ISATAP around a private IPv4 even
+under a global prefix that a site's ISATAP router routes publicly, so the code
+says nothing about whether the target is internal, and robotstxtr does not
+unwrap the IPv4 to find out. The change moves those rows between two existing
 statuses and touches no enum, column or policy-table cell, so neither the
 schema revision nor a policy revision moves. Any other `safety_level` value is a
 call-level error of class `robotstxtr_invalid_safety_level`. The levels and

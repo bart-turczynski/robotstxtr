@@ -1,6 +1,6 @@
 # robotstxtr (development version)
 
-* Under `safety_level = "crawler"`, a refused 6to4 or Teredo address is now `evidence_status = "safety_refused"`, not `"unreachable_local"`: ssrfr refuses it whatever IPv4 it wraps (ROBO-aoslfvnx).
+* Under `safety_level = "crawler"`, a refused 6to4, Teredo or ISATAP address is now `evidence_status = "safety_refused"`, not `"unreachable_local"`: the refusal does not show the target is internal (ROBO-aoslfvnx).
 
 * New `fetch_allow_ranges` argument on the four fetching entry points: the CIDR ranges listed are fetched at either safety level, replacing the deprecated `ssrf_guard = FALSE` (ROBO-bamcjvwn).
 

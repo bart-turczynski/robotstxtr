@@ -3,18 +3,19 @@
 # 4). The address is never dialed, the L0 record is unchanged
 # (`fetch_outcome = ssrf_blocked`, the code in `safety_block_reason`), and the
 # ruleset reads it as it reads an unreachable file. URL-shape refusals, and
-# 6to4 and Teredo (ROBO-aoslfvnx), stay `safety_refused` at both levels.
+# 6to4, Teredo and ISATAP (ROBO-aoslfvnx), stay `safety_refused` at both
+# levels.
 # Offline: refusals are scripted at the ssrfr boundary (helper-fake-ssrfr.R).
 
 # ADR 0001 section 3 and design/engine-profiles.md section 3a, by hand.
 ul_address_codes <- c(
   "loopback", "private", "link-local", "cloud-metadata", "shared",
   "unspecified", "this-network", "multicast", "reserved", "ipv4-mapped",
-  "ipv4-translated", "ipv4-compatible", "nat64", "isatap"
+  "ipv4-translated", "ipv4-compatible", "nat64"
 )
-# ROBO-aoslfvnx: ssrfr refuses these whatever IPv4 they wrap, so the refusal
-# says nothing about where the address points.
-ul_transition_codes <- c("6to4", "teredo")
+# ROBO-aoslfvnx: a refusal of these does not say the target is internal
+# (6to4 and Teredo whatever IPv4 they wrap, ISATAP even under a global prefix).
+ul_transition_codes <- c("6to4", "teredo", "isatap")
 ul_url_shape_codes <- c(
   "scheme", "userinfo", "port", "parse", "numeric-literal",
   "malformed-address"
@@ -125,7 +126,7 @@ test_that("the same refusals stay safety_refused under strict", {
   }
 })
 
-test_that("6to4 and Teredo refusals are safety_refused at both levels", {
+test_that("transition-class refusals are safety_refused at both levels", {
   for (code in ul_transition_codes) {
     for (level in c("crawler", "strict")) {
       for (hop in 1:2) {
