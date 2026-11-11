@@ -262,15 +262,22 @@ write `NA` in both.
    `<!doctype html`, `<html`, `<head` or `<body`, in any letter case,
    possibly after `<?...?>` declarations and `<!--...-->` comments that close
    on that same line. An HTML error page lands here. So does a body whose
-   first non-whitespace byte is `<` and whose window holds `<!doctype html`,
-   `<html`, `<head`, `<body`, `<script` or `<style` anywhere, in any letter
-   case, followed by whitespace, `>`, `/` or the window's end: a minified
-   page opening with inline script or style (ROBO-qquftxcx). `<title`,
-   `<link` and `<meta` are left out, since RSS and Atom feeds use them.
+   first non-whitespace byte is `<`, whose root is HTML, and whose window
+   holds `<!doctype html`, `<html`, `<head`, `<body`, `<script` or `<style`
+   anywhere, in any letter case, followed by whitespace, `>`, `/` or the
+   window's end: a minified page opening with inline script or style
+   (ROBO-qquftxcx). The root is the first start tag after any `<?...?>` and
+   `<!--...-->` items: its name, after any namespace prefix and in any letter
+   case, is an HTML element name (ROBO-isbpzgqn: the WHATWG element names,
+   obsolete ones included, with `svg` and `math` left out). An `<!doctype
+   html` after those items makes the root HTML too. `<title`, `<link` and `<meta` are left out, since
+   RSS and Atom feeds use them.
 3. `xml`: the first non-whitespace byte is `<`. No robots.txt line starts
-   with `<`; a `<` inside a comment or a value never flags. Markup without
-   any of the six markers above, such as a feed or tag soup, lands here, not
-   in `html`.
+   with `<`; a `<` inside a comment or a value never flags. Markup whose root
+   is not HTML (an SVG, a KML, a feed, an S3 error) lands here even when it
+   holds those markers, and so does markup without any of the six markers
+   above, such as tag soup. A robots.txt that opens with a markup comment is
+   `xml` too: its first byte is `<`, and it has no root.
 4. `json`: the body opens with a JSON object (`{` then `"` or `}`) or array
    (`[` then a value or `]`).
 

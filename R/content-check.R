@@ -22,13 +22,17 @@
 #   letter case, possibly after XML declarations or processing instructions
 #   (`<?...?>`) and markup comments (`<!--...-->`) that each close on their
 #   own line. A `<` inside a robots.txt comment line never starts a line.
-#   Or the first non-whitespace byte is `<` and `<!doctype html`, `<html`,
-#   `<head`, `<body`, `<script` or `<style` appears anywhere in the window,
-#   as a minified page puts them mid-line (ROBO-qquftxcx). `<title`, `<link`
-#   and `<meta` are left out: RSS and Atom feeds use them.
+#   Or the first non-whitespace byte is `<`, the root is HTML (ROBO-isbpzgqn:
+#   after `<?...?>` and `<!--...-->` items, an html doctype or a first start
+#   tag whose name, after any namespace prefix, is in
+#   `content_html_element_names`), and `<!doctype html`, `<html`, `<head`,
+#   `<body`, `<script` or `<style` appears anywhere in the window, as a
+#   minified page puts them mid-line (ROBO-qquftxcx). `<title`, `<link` and
+#   `<meta` are left out: RSS and Atom feeds use them.
 # - "xml": the first non-whitespace byte is `<` (an XML declaration, an
-#   element such as an S3 `<Error>`, a markup comment, or HTML tag soup with
-#   none of the six markers above). No robots.txt line starts with `<`.
+#   element such as an S3 `<Error>`, a root that is not HTML such as an SVG
+#   or a feed, a markup comment, or HTML tag soup with none of the six markers
+#   above). No robots.txt line starts with `<`.
 # - "json": the first non-whitespace byte opens a JSON object (`{` then `"`
 #   or `}`) or array (`[` then a JSON value or `]`).
 # - NA: none of these, an empty body, or no body.
@@ -60,8 +64,12 @@ robots_content_flag <- function(body) {
     return("html")
   }
   if (grepl("^\\s*<", text, perl = TRUE, useBytes = TRUE)) {
-    if (grepl(content_html_tag_pattern, text, perl = TRUE, useBytes = TRUE)) {
-      return("html")
+    # The anywhere markers count only under an HTML root (ROBO-isbpzgqn).
+    if (grepl(content_html_root_pattern, text, perl = TRUE, useBytes = TRUE)) {
+      if (grepl(content_html_tag_pattern, text, perl = TRUE,
+                useBytes = TRUE)) {
+        return("html")
+      }
     }
     return("xml")
   }
@@ -81,7 +89,44 @@ content_html_pattern <- paste0(
   "<(!doctype\\s+html|html|head|body)(?=[\\s>/]|$)"
 )
 
-# Anywhere in a window that opens with markup: an HTML doctype or one of the
+# The HTML element names a root may have (ROBO-isbpzgqn): the WHATWG living
+# standard's elements and its obsolete ones, matched case-insensitively. `svg`
+# and `math` are foreign to HTML, so an SVG or MathML root never counts.
+content_html_element_names <- c(
+  "a", "abbr", "acronym", "address", "applet", "area", "article", "aside",
+  "audio", "b", "base", "basefont", "bdi", "bdo", "bgsound", "big", "blink",
+  "blockquote", "body", "br", "button", "canvas", "caption", "center", "cite",
+  "code", "col", "colgroup", "data", "datalist", "dd", "del", "details",
+  "dfn", "dialog", "dir", "div", "dl", "dt", "em", "embed", "fieldset",
+  "figcaption", "figure", "font", "footer", "form", "frame", "frameset", "h1",
+  "h2", "h3", "h4", "h5", "h6", "head", "header", "hgroup", "hr", "html", "i",
+  "iframe", "img", "input", "ins", "isindex", "kbd", "keygen", "label",
+  "legend", "li", "link", "listing", "main", "map", "mark", "marquee", "menu",
+  "menuitem", "meta", "meter", "multicol", "nav", "nextid", "nobr", "noembed",
+  "noframes", "noscript", "object", "ol", "optgroup", "option", "output", "p",
+  "param", "picture", "plaintext", "pre", "progress", "q", "rb", "rp", "rt",
+  "rtc", "ruby", "s", "samp", "script", "search", "section", "select", "slot",
+  "small", "source", "spacer", "span", "strike", "strong", "style", "sub",
+  "summary", "sup", "table", "tbody", "td", "template", "textarea", "tfoot",
+  "th", "thead", "time", "title", "tr", "track", "tt", "u", "ul", "var",
+  "video", "wbr", "xmp"
+)
+
+# The root of a body that opens with markup (ROBO-isbpzgqn). After any
+# `<?...?>` and `<!--...-->` items, it is an html doctype, or a first start tag
+# whose local name (after an optional namespace prefix) is an HTML element
+# name. Any other doctype, or a root that is not HTML, is no match, so the
+# anywhere rule below stays off. Each item ends at its own closing marker.
+content_html_root_pattern <- paste0(
+  "(?i)^\\s*(?:(?:<\\?(?:(?!\\?>)[\\s\\S])*\\?>",
+  "|<!--(?:(?!-->)[\\s\\S])*-->)\\s*)*",
+  "(?:<!doctype\\s+html(?=[\\s>/]|\\z)",
+  "|<(?:[a-z_][\\w.-]*:)?(?:",
+  paste(content_html_element_names, collapse = "|"),
+  ")(?=[\\s/>]|\\z))"
+)
+
+# Anywhere in a window whose root is HTML: an HTML doctype or one of the
 # document, script or style tags, followed by whitespace, `>`, `/` or the
 # window's end, so `<header>` or `<scripts>` does not count.
 content_html_tag_pattern <-
