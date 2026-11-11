@@ -105,6 +105,11 @@ test_that("the evidence records fetch_allow_ranges as passed", {
   e <- evaluate("http://10.1.2.3/x", fetch_allow_ranges = named)$evidence
   expect_identical(e$fetch_allow_ranges, list("10.0.0.0/8"))
 
+  # A matrix is recorded as a plain character vector, without its dim.
+  shaped <- matrix(c("10.0.0.0/8", "fd00::/8"), nrow = 1L)
+  e <- evaluate("http://10.1.2.3/x", fetch_allow_ranges = shaped)$evidence
+  expect_identical(e$fetch_allow_ranges, list(c("10.0.0.0/8", "fd00::/8")))
+
   e <- evaluate("https://example.com/x")$evidence
   expect_identical(e$fetch_allow_ranges, list(character()))
 
@@ -157,10 +162,24 @@ test_that("a provider endpoint stays refused under a broader range", {
   }
 })
 
+test_that("an entry ssrfr reads as no exact endpoint is accepted", {
+  # ssrfr reopens an endpoint only for its exact allow entry; a zero-padded
+  # prefix length is a valid range that admits no endpoint, so it passes
+  # validation and the endpoint is still refused at the fetch.
+  local_mocked_bindings(
+    acquire_fetch = function(binding) stop("must not fetch: ", binding$url)
+  )
+  e <- evaluate(
+    "http://169.254.169.254/x", fetch_allow_ranges = "169.254.169.254/032"
+  )$evidence
+  expect_identical(e$fetch_allow_ranges, list("169.254.169.254/032"))
+  expect_identical(e$safety_block_reason, "cloud-metadata")
+})
+
 test_that("an exact provider endpoint is refused before any fetch", {
   local_no_hop()
   endpoints <- c(
-    "169.254.169.254/32", "169.254.169.254/032", "100.100.100.200/32",
+    "169.254.169.254/32", "100.100.100.200/32", "fe80::a9fe:a9fe/128",
     "fd00:ec2::254/128", "FD00:EC2::254/128", "fd00:0ec2::254/128",
     "fd20:ce::254/128"
   )
@@ -169,6 +188,7 @@ test_that("an exact provider endpoint is refused before any fetch", {
       robots_fetch(
         "http://169.254.169.254/x", fetch_allow_ranges = c("10.0.0.0/8", entry)
       ),
+      regexp = "would reopen a cloud provider metadata endpoint",
       class = "robotstxtr_invalid_fetch_allow_ranges", info = entry
     )
   }
@@ -254,6 +274,15 @@ test_that("ssrf_guard = FALSE with a non-empty range is a call-level error", {
         info = paste(url, collapse = "")
       )
     }
+  }
+  # The pair is the error whatever the entries are (ADR 0001 section 6).
+  for (entry in c("169.254.169.254/32", "not-a-cidr")) {
+    expect_error(
+      robots_fetch(
+        "http://10.1.2.3/x", ssrf_guard = FALSE, fetch_allow_ranges = entry
+      ),
+      class = "robotstxtr_invalid_ssrf_guard", info = entry
+    )
   }
 })
 

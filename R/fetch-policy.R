@@ -116,14 +116,16 @@ validate_safety_level <- function(safety_level) {
 # anything reaches ssrfr, so a bad entry is the caller's error rather than an
 # acquisition defect (acquire_call()).
 #
-# An entry that names exactly one address (a /32 or a /128) that ssrfr's
-# default policy refuses as `cloud-metadata` is refused too: ssrfr reopens a
-# provider endpoint for an exact entry, and section 6 keeps those endpoints
-# refused whatever the caller lists. A broader range never reopens one.
-#
 # With `ssrf_guard = FALSE` a non-empty value is a call-level error, of the
-# `ssrf_guard` class: the call gives two answers to the same question. Returns
-# the ranges unnamed, as passed (no sorting, no deduplication).
+# `ssrf_guard` class, whatever the entries are: the call gives two answers to
+# the same question.
+#
+# An entry under which ssrfr would admit one of its provider endpoints is
+# refused too: ssrfr reopens an endpoint for an exact allow entry, and
+# section 6 keeps those endpoints refused whatever the caller lists.
+#
+# Returns the ranges as a plain character vector, as passed (no names or
+# dimensions, no sorting, no deduplication).
 validate_fetch_allow_ranges <- function(fetch_allow_ranges, ssrf_guard) {
   invalid <- function(detail) {
     robots_abort(
@@ -137,29 +139,7 @@ validate_fetch_allow_ranges <- function(fetch_allow_ranges, ssrf_guard) {
   if (!is.character(fetch_allow_ranges)) {
     invalid("It is not a character vector.")
   }
-  ranges <- unname(fetch_allow_ranges)
-  for (i in seq_along(ranges)) {
-    entry <- ranges[[i]]
-    if (is.na(entry) || !nzchar(entry)) {
-      invalid(sprintf("Entry %d is missing or empty.", i))
-    }
-    # A CIDR range is printable ASCII; checked by bytes, so an entry in
-    # another encoding or with invalid UTF-8 never reaches ssrfr.
-    if (!grepl("^[!-~]+$", entry, useBytes = TRUE)) {
-      invalid(sprintf("Entry %d is not a range.", i))
-    }
-    tryCatch(
-      ssrfr::ssrf_policy(allow_ranges = entry),
-      ssrfr_error_invalid_policy = function(e) {
-        invalid(sprintf("Entry %d is not a range.", i))
-      }
-    )
-    if (fetch_range_is_provider_endpoint(entry)) {
-      invalid(sprintf(
-        "Entry %d names a cloud-metadata endpoint, which is never reopened.", i
-      ))
-    }
-  }
+  ranges <- as.character(unname(fetch_allow_ranges))
   if (isFALSE(ssrf_guard) && length(ranges) > 0L) {
     robots_abort(
       paste(
@@ -170,22 +150,50 @@ validate_fetch_allow_ranges <- function(fetch_allow_ranges, ssrf_guard) {
       "robotstxtr_invalid_ssrf_guard"
     )
   }
+  for (i in seq_along(ranges)) {
+    entry <- ranges[[i]]
+    if (is.na(entry) || !nzchar(entry)) {
+      invalid(sprintf("Entry %d is missing or empty.", i))
+    }
+    # A CIDR range is printable ASCII; checked by bytes, so an entry in
+    # another encoding or with invalid UTF-8 never reaches ssrfr.
+    if (!grepl("^[!-~]+$", entry, useBytes = TRUE)) {
+      invalid(sprintf("Entry %d is not a range.", i))
+    }
+    policy <- tryCatch(
+      ssrfr::ssrf_policy(allow_ranges = entry),
+      ssrfr_error_invalid_policy = function(e) {
+        invalid(sprintf("Entry %d is not a range.", i))
+      }
+    )
+    if (fetch_range_admits_provider_endpoint(policy)) {
+      robots_abort(
+        sprintf(
+          paste(
+            "`fetch_allow_ranges` entry \"%s\" would reopen a cloud provider",
+            "metadata endpoint, which stays refused (ADR 0001 section 6)."
+          ),
+          entry
+        ),
+        "robotstxtr_invalid_fetch_allow_ranges"
+      )
+    }
+  }
   ranges
 }
 
-# TRUE when `entry`, a range ssrfr accepts, is exactly one address (a /32 or
-# a /128, leading zeros in the prefix length allowed) that ssrfr's default
-# policy refuses as `cloud-metadata`.
-fetch_range_is_provider_endpoint <- function(entry) {
-  address <- sub("/[^/]*$", "", entry)
-  prefix <- suppressWarnings(as.integer(sub("^.*/", "", entry)))
-  ipv6 <- grepl(":", address, fixed = TRUE)
-  if (is.na(prefix) || prefix != if (ipv6) 128L else 32L) {
-    return(FALSE)
+# TRUE when `policy`, built from one `fetch_allow_ranges` entry, admits any
+# address of ssrfr's provider-endpoint vocabulary, all of which its default
+# policy refuses.
+fetch_range_admits_provider_endpoint <- function(policy) {
+  for (address in ssrfr::ssrf_vocabulary("provider_endpoints")$address) {
+    ipv6 <- grepl(":", address, fixed = TRUE)
+    url <- sprintf(if (ipv6) "http://[%s]/" else "http://%s/", address)
+    if (is.na(ssrfr::ssrf_inspect_url(url, policy)$code)) {
+      return(TRUE)
+    }
   }
-  url <- sprintf(if (ipv6) "http://[%s]/" else "http://%s/", address)
-  code <- ssrfr::ssrf_inspect_url(url, ssrfr::ssrf_policy())$code
-  identical(code, "cloud-metadata")
+  FALSE
 }
 
 # The deprecation warning for `ssrf_guard = FALSE`, raised once per call by the
