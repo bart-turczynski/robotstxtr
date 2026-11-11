@@ -184,7 +184,7 @@ test_that("an invalid fetch_allow_ranges is a classed call-level error", {
     "é/8", rawToChar(as.raw(c(0xff, 0x2f, 0x38)))
   )
   for (value in bad) {
-    info <- paste(deparse(value), collapse = "")
+    info <- deparse1(value)
     expect_error(
       robots_fetch("http://10.1.2.3/x", fetch_allow_ranges = value),
       class = "robotstxtr_invalid_fetch_allow_ranges", info = info
@@ -302,9 +302,12 @@ test_that("ssrf_guard = FALSE under crawler warns twice, once each a call", {
     w$value$evidence$safety_block_reason, rep(NA_character_, 3L)
   )
   expect_warning(
-    calls$fetch(),
-    regexp = "internal addresses reachable",
-    class = "robotstxtr_ssrf_guard_crawler"
+    expect_warning(
+      calls$fetch(),
+      regexp = "internal addresses reachable",
+      class = "robotstxtr_ssrf_guard_crawler"
+    ),
+    class = "robotstxtr_deprecated_ssrf_guard"
   )
 })
 

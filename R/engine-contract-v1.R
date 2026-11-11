@@ -787,7 +787,8 @@ empty_evidence_v1 <- function() {
 
 source_results_to_evidence_v1 <- function(results, source_ids, requested_url,
                                           fetch_ua, timeout, max_bytes,
-                                          ssrf_guard, safety_level) {
+                                          ssrf_guard, safety_level,
+                                          fetch_allow_ranges = character()) {
   if (length(results) == 0L) {
     return(empty_evidence_v1())
   }
@@ -837,15 +838,18 @@ source_results_to_evidence_v1 <- function(results, source_ids, requested_url,
     error_message = vapply(results, `[[`, character(1L), "error_message"),
     stringsAsFactors = FALSE
   )
-  # No range is reopened yet: `fetch_allow_ranges` lands with ROBO-bamcjvwn.
-  out$fetch_allow_ranges <- rep(list(character()), length(results))
+  # The ranges the caller listed, as passed (ROBO-bamcjvwn). A deprecated
+  # `ssrf_guard = FALSE` is recorded in `ssrf_guard`, not here.
+  out$fetch_allow_ranges <- rep(
+    list(unname(fetch_allow_ranges)), length(results)
+  )
   out$redirect_hops <- lapply(results, `[[`, "redirect_hops")
   out$body <- lapply(results, `[[`, "body")
   out
 }
 
 fetch_evidence_v1 <- function(url, timeout, max_bytes, fetch_ua, ssrf_guard,
-                              safety_level) {
+                              safety_level, fetch_allow_ranges = character()) {
   origin <- vapply(url, robots_origin, character(1L), USE.NAMES = FALSE)
   eligible <- !is.na(origin)
   distinct_origins <- unique(origin[eligible])
@@ -854,12 +858,12 @@ fetch_evidence_v1 <- function(url, timeout, max_bytes, fetch_ua, ssrf_guard,
   for (i in seq_along(distinct_origins)) {
     fetched[[i]] <- acquire_robots(
       distinct_origins[[i]], timeout, fetch_ua, max_bytes, ssrf_guard,
-      safety_level
+      safety_level, fetch_allow_ranges
     )
   }
   evidence <- source_results_to_evidence_v1(
     fetched, source_ids, distinct_origins, fetch_ua, timeout, max_bytes,
-    ssrf_guard, safety_level
+    ssrf_guard, safety_level, fetch_allow_ranges
   )
   source_index <- match(origin, distinct_origins)
   mapped_source <- rep(NA_character_, length(url))
@@ -1788,14 +1792,18 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
                                    timeout = 10, max_bytes = 524288L,
                                    fetch_user_agent = NULL,
                                    ssrf_guard = TRUE,
-                                   safety_level = "strict") {
+                                   safety_level = "strict",
+                                   fetch_allow_ranges = character()) {
   validate_url_type(url)
   timeout <- validate_timeout(timeout)
   max_bytes <- validate_max_bytes(max_bytes)
   validate_fetch_user_agent(fetch_user_agent)
   validate_ssrf_guard(ssrf_guard)
   safety_level <- validate_safety_level(safety_level)
-  warn_ssrf_guard_deprecated(ssrf_guard)
+  fetch_allow_ranges <- validate_fetch_allow_ranges(
+    fetch_allow_ranges, ssrf_guard
+  )
+  warn_ssrf_guard_deprecated(ssrf_guard, safety_level)
   n <- length(url)
   token <- expand_product_token_v1(robots_product_token, n)
   ruleset <- expand_engine_argument_v1(
@@ -1815,7 +1823,8 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
   fetch_input <- url
   fetch_input[!token_valid] <- NA_character_
   fetched <- fetch_evidence_v1(
-    fetch_input, timeout, max_bytes, fetch_ua, ssrf_guard, safety_level
+    fetch_input, timeout, max_bytes, fetch_ua, ssrf_guard, safety_level,
+    fetch_allow_ranges
   )
   results <- evaluate_rows_v1(
     url, token, ruleset, backend, fetched$source_id, fetched$evidence,

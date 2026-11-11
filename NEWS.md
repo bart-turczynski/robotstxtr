@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* New `fetch_allow_ranges` argument on the four fetching entry points: the CIDR ranges listed are fetched at either safety level, replacing the deprecated `ssrf_guard = FALSE` (ROBO-bamcjvwn).
+
 * `robots_validate_url()` notes an `https` to `http` redirect followed under `safety_level = "crawler"` as `redirect_downgrade_followed`; legacy `robots` frames gain a `redirect_hops` column (ROBO-cscdbael).
 
 * `robots_fetch()`'s `content_flag` and `html_body` warning no longer read SVG, RSS or Atom roots, or a comment-led robots.txt, as HTML unless an `<!doctype html` or a line opens with `<html`, `<head` or `<body` (ROBO-isbpzgqn).

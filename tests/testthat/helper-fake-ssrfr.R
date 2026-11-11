@@ -172,8 +172,12 @@ local_loopback_policy <- function(port, env = parent.frame()) {
   real <- acquire_policy
   testthat::local_mocked_bindings(
     acquire_policy = function(timeout, fetch_ua, max_bytes, ssrf_guard = TRUE,
-                              safety_level = "strict") {
-      policy <- real(timeout, fetch_ua, max_bytes, ssrf_guard, safety_level)
+                              safety_level = "strict",
+                              fetch_allow_ranges = character()) {
+      policy <- real(
+        timeout, fetch_ua, max_bytes, ssrf_guard, safety_level,
+        fetch_allow_ranges
+      )
       ssrfr::ssrf_policy(
         allow_ports = port,
         allow_ranges = "127.0.0.0/8",

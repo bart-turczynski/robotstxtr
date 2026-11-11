@@ -101,7 +101,8 @@ allowed_by_robots_url <- function(url, user_agent, timeout = 10,
                                   max_bytes = 524288L,
                                   fetch_user_agent = NULL,
                                   ssrf_guard = TRUE,
-                                  safety_level = "strict") {
+                                  safety_level = "strict",
+                                  fetch_allow_ranges = character()) {
   # --- Call-level validation / shared fetch controls (PRD 6.6). Complete ALL
   # validation before building the fetch plan so a bad argument aborts the whole
   # call even when no row is fetch-eligible. --------------------------------
@@ -113,6 +114,9 @@ allowed_by_robots_url <- function(url, user_agent, timeout = 10,
   max_bytes_int <- validate_max_bytes(max_bytes)
   validate_ssrf_guard(ssrf_guard)
   safety_level <- validate_safety_level(safety_level)
+  fetch_allow_ranges <- validate_fetch_allow_ranges(
+    fetch_allow_ranges, ssrf_guard
+  )
 
   # --- Per-row eligibility (PRD 6.6). A URL is invalid when missing, empty,
   # malformed, or non-HTTP(S): robots_origin() returns NA for exactly those (it
@@ -134,7 +138,7 @@ allowed_by_robots_url <- function(url, user_agent, timeout = 10,
     url[elig_idx],
     timeout = timeout, max_bytes = max_bytes_int,
     fetch_user_agent = fetch_user_agent, ssrf_guard = ssrf_guard,
-    safety_level = safety_level
+    safety_level = safety_level, fetch_allow_ranges = fetch_allow_ranges
   )
   robots <- fetch$robots
 

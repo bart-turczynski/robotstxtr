@@ -275,10 +275,14 @@ test_that("ssrf_guard = FALSE under crawler dials a reopened range", {
   local_fake_ssrfr(function(req) {
     fake_response(200L, body = "user-agent: *\ndisallow: /private\n")
   })
+  # It warns twice (ROBO-bamcjvwn): the deprecation, and the crawler warning.
   expect_warning(
-    x <- robots_evaluate_url_v1(
-      "http://10.0.0.1/x", "Googlebot", "google", "google",
-      ssrf_guard = FALSE, safety_level = "crawler"
+    expect_warning(
+      x <- robots_evaluate_url_v1(
+        "http://10.0.0.1/x", "Googlebot", "google", "google",
+        ssrf_guard = FALSE, safety_level = "crawler"
+      ),
+      class = "robotstxtr_ssrf_guard_crawler"
     ),
     class = "robotstxtr_deprecated_ssrf_guard"
   )
