@@ -67,13 +67,14 @@ where nothing is shipped, the entry says "no documented intent found".
 
 ### Result
 
-robotstxtr agrees with the reference on every row, on both paths. When
-the comparison ran, robotstxtr dropped every NUL, so it disallowed the
-NUL-bearing `enc-utf16le-no-bom` on `/a`, where upstream, which ends a line
-at its first NUL, allows. Since ROBO-pvqrfvol robotstxtr's Google backend
-ends a line at its first NUL too (`design/engine-profiles.md` §5b, class 5,
-resolved), so it allows; the runner's expected-split list is empty, and a
-re-run is expected to confirm it. No class below is a robotstxtr bug.
+When the comparison ran, robotstxtr agreed with the reference on every
+row, on both paths, except the NUL-bearing `enc-utf16le-no-bom` on `/a`:
+robotstxtr then dropped every NUL and disallowed, where upstream, which
+ends a line at its first NUL, allows. Since ROBO-pvqrfvol robotstxtr's
+Google backend ends a line at its first NUL too (`design/engine-profiles.md`
+§5b, class 5, resolved), so that row is expected to agree as well. The
+runner's expected-split list is now empty; the comparison has not been
+re-run since the change. No class below is a robotstxtr bug.
 
 ## Hypotheses
 

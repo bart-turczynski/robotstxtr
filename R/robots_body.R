@@ -125,7 +125,8 @@ robots_body <- function(x, source_id = NULL, n = 20, raw = FALSE) {
 
 # Render raw bytes to a length-one character string without erroring on invalid
 # encoding OR on an embedded NUL (PRD 6.6 body handling). NUL bytes are dropped
-# first, the package-wide rule documented in R/body-decode.R; a bare
+# first, the preview's rule documented in R/body-decode.R (the Google matcher
+# instead ends each line at its first NUL); a bare
 # `rawToChar()` here would raise on a NUL-bearing fetched body and break the
 # no-error guarantee this preview is built on. Bytes that then form valid UTF-8
 # are marked UTF-8 for readable output; otherwise the result is marked

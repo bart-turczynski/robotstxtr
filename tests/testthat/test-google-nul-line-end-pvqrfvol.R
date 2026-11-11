@@ -170,7 +170,7 @@ test_that("bytes before a NUL reach the matcher as written, none after it", {
 })
 
 test_that("a NUL past the parser's line buffer changes no rule", {
-  # The parser keeps 16,662 bytes of a line; a NUL past them was never read.
+  # The parser keeps 16,663 bytes of a line; a NUL past them was never read.
   long <- strrep("a", 17000L)
   body <- pv_bytes("User-agent: *\nDisallow: /", long, pv_nul, "zz\n")
   expect_identical(
