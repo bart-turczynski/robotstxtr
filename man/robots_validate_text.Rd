@@ -137,8 +137,11 @@ A Sitemap value that is not a valid absolute URL. \cr
 A Sitemap scheme other than \code{http}, \code{https} or \code{ftp}. \cr
 \code{wildcard_rules_not_inherited} \tab info \tab
 A named User-agent group lacks some \code{User-agent: *} rules, which
-its crawlers therefore do not obey. Anchored on the group's first
-User-agent line. Not reported for a body cut at \code{max_bytes}. \cr
+its crawlers therefore do not obey. Where the merged named groups
+disallow \code{/} and hold no non-empty \code{Allow}, only the lost
+\code{User-agent: *} Allow rules are listed.
+Anchored on the group's first User-agent line. Not reported for a body
+cut at \code{max_bytes}. \cr
 \code{ai_training_preference} \tab info \tab
 A User-agent line names the AI-training policy token
 \code{__usage_ai-training}; the message lists its group's own rules.
@@ -277,7 +280,12 @@ equals \verb{/x*}, and \code{*} and \verb{/*} equal \code{/}), \code{$} is not, 
 left out. The message lists the missing \code{*} rules, ten at most. A crawler
 whose rules are all explicit allow-all (an empty \verb{Disallow:} or an
 every-path \code{Allow}, as above) is not reported; an empty \verb{Allow:} is ignored,
-and a crawler whose groups have no other rule is reported.
+and a crawler whose groups have no other rule is reported. A crawler whose
+merged groups disallow \code{/} (a \code{Disallow} of \code{/}, \verb{/*}, \code{*}, \verb{**} or \verb{/**},
+not one ending in \code{$}) and hold no non-empty \code{Allow} is in a full block:
+the \code{*} Disallows it lacks add nothing, so only its lost \code{*} Allow rules are
+listed, as rules that may be meant as exceptions. An empty \verb{Allow:} does not
+cancel a full block.
 
 The \code{ai_training_} codes follow
 draft-kelley-aipref-training-preference-signal-00 (dated 2026-10-30), an
