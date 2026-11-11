@@ -121,7 +121,7 @@ binding. Google's own C++ reads each line only up to its first NUL instead; see
 | `#` fragments and `%23` in URLs | `test-fragment-convergence-irdjzbay.R` |
 | Caller token with a version suffix (`FooBot/2.1`) or other letter case | `test-upstream-matcher-cases-r9.R` ("user-agent group matching is exact…") |
 | Missing colon and typo spellings accepted | `test-robots_validate-htvtajbr.R` |
-| A named group drops the `*` rules (validator) | ROBO-gfjotdrr: `test-wildcard-inheritance-gfjotdrr.R` |
+| A named group drops the `*` rules (validator); a full block lists only the lost `*` Allows | ROBO-gfjotdrr: `test-wildcard-inheritance-gfjotdrr.R`; ROBO-bwpacxtq: `test-full-block-wildcard-bwpacxtq.R` |
 | Rule values: missing leading slash, inner `$`, sitemap URLs | ROBO-xblfzkid: `test-robots_validate-value-checks-xblfzkid.R` |
 | No rules | ROBO-vxrzcqpe: `test-no-rules-vxrzcqpe.R` |
 | Status diagnostics on fetch | ROBO-ybzbxfml: `test-validate-status-ybzbxfml.R` |

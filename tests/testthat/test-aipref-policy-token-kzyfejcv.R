@@ -49,15 +49,25 @@ test_that("a token group draws the info and no wildcard info", {
   ))
 })
 
-test_that("a named crawler beside the token keeps its wildcard info", {
+test_that("a named crawler beside the token keeps only its lost * Allow", {
+  # GPTBot's group disallows `/` in full (ROBO-bwpacxtq): the lost `*`
+  # Disallow is moot, so only the token's info is due.
   d <- ai_diags(ai_lines(
     "User-agent: *", "Disallow: /private", "",
     "User-agent: GPTBot", "User-agent: __usage_ai-training", "Disallow: /"
   ))
+  expect_identical(d$code, "ai_training_preference")
+  # An Allow the `*` group keeps is still lost to GPTBot.
+  d <- ai_diags(ai_lines(
+    "User-agent: *", "Disallow: /private", "Allow: /press/", "",
+    "User-agent: GPTBot", "User-agent: __usage_ai-training", "Disallow: /"
+  ))
   expect_identical(d$code,
                    c("ai_training_preference", "wildcard_rules_not_inherited"))
-  expect_identical(d$line, c(5L, 4L))
+  expect_identical(d$line, c(6L, 5L))
   expect_match(d$message[[2L]], "^GPTBot obeys only this group")
+  expect_match(d$message[[2L]], "Allow: /press/ (line 3)", fixed = TRUE)
+  expect_no_match(d$message[[2L]], "/private", fixed = TRUE)
   expect_no_match(d$message[[2L]], "__usage", fixed = TRUE)
 })
 

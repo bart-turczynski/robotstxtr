@@ -128,8 +128,10 @@ validation_unsupported <- c(
 #'     A Sitemap scheme other than \code{http}, \code{https} or \code{ftp}. \cr
 #'   \code{wildcard_rules_not_inherited} \tab info \tab
 #'     A named User-agent group lacks some \code{User-agent: *} rules, which
-#'     its crawlers therefore do not obey. Anchored on the group's first
-#'     User-agent line. Not reported for a body cut at \code{max_bytes}. \cr
+#'     its crawlers therefore do not obey. Under a group that disallows
+#'     \code{/}, only the lost \code{User-agent: *} Allow rules are listed.
+#'     Anchored on the group's first User-agent line. Not reported for a body
+#'     cut at \code{max_bytes}. \cr
 #'   \code{ai_training_preference} \tab info \tab
 #'     A User-agent line names the AI-training policy token
 #'     \code{__usage_ai-training}; the message lists its group's own rules.
@@ -268,7 +270,12 @@ validation_unsupported <- c(
 #' left out. The message lists the missing `*` rules, ten at most. A crawler
 #' whose rules are all explicit allow-all (an empty `Disallow:` or an
 #' every-path `Allow`, as above) is not reported; an empty `Allow:` is ignored,
-#' and a crawler whose groups have no other rule is reported.
+#' and a crawler whose groups have no other rule is reported. A crawler whose
+#' merged groups disallow `/` (a `Disallow` of `/`, `/*`, `*`, `**` or `/**`,
+#' not one ending in `$`) and hold no non-empty `Allow` is in a full block:
+#' the `*` Disallows it lacks add nothing, so only its lost `*` Allow rules are
+#' listed, as rules that may be meant as exceptions. An empty `Allow:` does not
+#' cancel a full block.
 #'
 #' The `ai_training_` codes follow
 #' draft-kelley-aipref-training-preference-signal-00 (dated 2026-10-30), an
