@@ -194,6 +194,40 @@ test_that("an exact provider endpoint is refused before any fetch", {
   }
 })
 
+test_that("the entries are also checked together for a provider endpoint", {
+  local_no_hop()
+  calls <- new.env()
+  calls$n <- 0L
+  local_mocked_bindings(
+    fetch_range_admits_provider_endpoint = function(policy) {
+      calls$n <- calls$n + 1L
+      # Each entry alone admits nothing; only the combined policy does.
+      calls$n > 2L
+    }
+  )
+  expect_error(
+    robots_fetch(
+      "http://10.0.0.1/x", fetch_allow_ranges = c("10.0.0.0/8", "fd00::/8")
+    ),
+    regexp = "together would reopen a cloud provider metadata endpoint",
+    class = "robotstxtr_invalid_fetch_allow_ranges"
+  )
+  expect_identical(calls$n, 3L)
+})
+
+test_that("an empty provider-endpoint vocabulary fails closed", {
+  local_no_hop()
+  local_mocked_bindings(
+    ssrf_vocabulary = function(...) data.frame(address = character()),
+    .package = "ssrfr"
+  )
+  expect_error(
+    robots_fetch("http://10.0.0.1/x", fetch_allow_ranges = "10.0.0.0/8"),
+    regexp = "vocabulary is empty or unreadable",
+    class = "robotstxtr_invalid_fetch_allow_ranges"
+  )
+})
+
 test_that("an invalid fetch_allow_ranges is a classed call-level error", {
   local_no_hop()
   latin1 <- "\xe9/8"

@@ -179,14 +179,46 @@ validate_fetch_allow_ranges <- function(fetch_allow_ranges, ssrf_guard) {
       )
     }
   }
+  # The entries are also checked together, as the fetch uses them: the check
+  # must not rest on endpoint admission being the union of each entry's.
+  if (length(ranges) > 1L &&
+        fetch_range_admits_provider_endpoint(
+          ssrfr::ssrf_policy(allow_ranges = ranges)
+        )) {
+    robots_abort(
+      paste(
+        "`fetch_allow_ranges` together would reopen a cloud provider metadata",
+        "endpoint, which stays refused (ADR 0001 section 6)."
+      ),
+      "robotstxtr_invalid_fetch_allow_ranges"
+    )
+  }
   ranges
 }
 
-# TRUE when `policy`, built from one `fetch_allow_ranges` entry, admits any
+# The addresses of ssrfr's provider-endpoint vocabulary. An empty or missing
+# vocabulary is an error, so the endpoint check fails closed rather than
+# passing every entry.
+fetch_provider_endpoint_addresses <- function() {
+  addresses <- ssrfr::ssrf_vocabulary("provider_endpoints")$address
+  if (!is.character(addresses) || length(addresses) == 0L ||
+        anyNA(addresses)) {
+    robots_abort(
+      paste(
+        "Cannot check `fetch_allow_ranges`: ssrfr's provider-endpoint",
+        "vocabulary is empty or unreadable, so no range is accepted."
+      ),
+      "robotstxtr_invalid_fetch_allow_ranges"
+    )
+  }
+  addresses
+}
+
+# TRUE when `policy`, built from `fetch_allow_ranges` entries, admits any
 # address of ssrfr's provider-endpoint vocabulary, all of which its default
 # policy refuses.
 fetch_range_admits_provider_endpoint <- function(policy) {
-  for (address in ssrfr::ssrf_vocabulary("provider_endpoints")$address) {
+  for (address in fetch_provider_endpoint_addresses()) {
     ipv6 <- grepl(":", address, fixed = TRUE)
     url <- sprintf(if (ipv6) "http://[%s]/" else "http://%s/", address)
     if (is.na(ssrfr::ssrf_inspect_url(url, policy)$code)) {
