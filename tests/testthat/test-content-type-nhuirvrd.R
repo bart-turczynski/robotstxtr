@@ -314,6 +314,33 @@ test_that("ROBO-isbpzgqn: the root decides which markers count", {
   expect_identical(robots_content_flag(raw()), NA_character_)
 })
 
+test_that("ROBO-isbpzgqn: leading items before the root are skipped", {
+  # An XML declaration, then an HTML root: only the PI skip reads the root.
+  expect_identical(
+    ct_flag("<?xml version=\"1.0\"?>\n<div><script>a()</script></div>"),
+    "html"
+  )
+  # A stray end tag before the root.
+  expect_identical(ct_flag("</div><html><body>x</body></html>"), "html")
+  # A custom element: a name that starts with a letter and holds a hyphen.
+  expect_identical(
+    ct_flag("<app-root></app-root><script src=\"a.js\"></script>"), "html"
+  )
+  # The abrupt comment closes, which HTML allows.
+  expect_identical(ct_flag("<!--><html><style>"), "html")
+  expect_identical(ct_flag("<!---><html><style>"), "html")
+  # A doctype other than exactly html is skipped, and the search goes on.
+  expect_identical(ct_flag("<!DOCTYPE foo><div><script>"), "html")
+  expect_identical(ct_flag("<!DOCTYPE html5><head><style>"), "html")
+  # font-face is an SVG element, a reserved name, not a custom element.
+  expect_identical(ct_flag("<font-face><style/></font-face>"), "xml")
+  # A root name cut at the window's end is not read as a root, even after a
+  # marker: the window cannot tell `<s` of `<svg` from a shorter name.
+  cut <- paste0("<!-- <script> -->", strrep(" ", 4077L), "<svg>")
+  expect_identical(regexpr("<svg", cut, fixed = TRUE)[[1L]], 4095L)
+  expect_identical(ct_flag(cut), "xml")
+})
+
 test_that("ROBO-nhuirvrd: JSON objects and arrays", {
   expect_identical(ct_flag("{\"error\": \"not found\"}"), "json")
   expect_identical(ct_flag(" {\n}"), "json")
