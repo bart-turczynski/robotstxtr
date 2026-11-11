@@ -444,8 +444,8 @@ test_that("ROBO-etlkvljs: a supplied line split at byte 512,000", {
 
 test_that("ROBO-etlkvljs: allowed_by_robots_text() reads past byte 512,000", {
   # The legacy text path has no truncation flag and no google window: it
-  # matches the whole supplied body (engine-contract-v1.md, Legacy
-  # compatibility: the legacy functions remain unchanged).
+  # matches the whole supplied body, as Google's open-source engine does
+  # (engine-profiles.md §7).
   for (name in names(ss_tails)) {
     tail <- ss_tails[[name]]
     x <- allowed_by_robots_text(
@@ -460,15 +460,16 @@ test_that("ROBO-etlkvljs: allowed_by_robots_text() reads past byte 512,000", {
 
 test_that("ROBO-etlkvljs: allowed_by_robots_url() drops a split last line", {
   # engine-contract-v1.md: the legacy path matches a cut prefix up to its
-  # last line break, with no 512,000-byte window: the rule tail runs on
-  # either side of it, every tail at the default max_bytes.
+  # last line break, with no separate 512,000-byte window: the rule tail
+  # runs on either side of it, every tail at the default max_bytes, 512,000
+  # (ROBO-uwveumyp).
   for (name in names(ss_tails)) {
     tail <- ss_tails[[name]]
     paths <- names(tail$probes)
     sizes <- if (identical(name, "rule")) {
       c(511999L, 512000L, 524288L)
     } else {
-      524288L
+      512000L
     }
     for (max_bytes in sizes) {
       ss_serve(ss_split_body(tail, split = max_bytes))
@@ -483,14 +484,19 @@ test_that("ROBO-etlkvljs: allowed_by_robots_url() drops a split last line", {
   }
 })
 
-test_that("ROBO-etlkvljs: legacy and v1 differ on a line past the window", {
-  # A complete line between bytes 512,000 and max_bytes: the legacy path
-  # reads it, the google ruleset's v1 reading does not (documented).
+test_that("ROBO-etlkvljs: legacy and v1 on a line past the window", {
+  # A complete line between bytes 512,000 and 524,288: the legacy path's
+  # default cut, 512,000 bytes (ROBO-uwveumyp), leaves it out as the google
+  # ruleset's v1 reading does (documented); an explicit larger max_bytes
+  # reads it.
   tail <- ss_tails$rule
   ss_serve(ss_split_body(tail, split = ss_window + 1000L))
   url <- ss_urls("/private-drafts/x")
   legacy <- allowed_by_robots_url(url, "bot")
-  expect_false(legacy$results$allowed)
+  expect_true(legacy$results$allowed)
+  expect_identical(legacy$results$decision_source, "default_allow")
+  larger <- allowed_by_robots_url(url, "bot", max_bytes = 524288L)
+  expect_false(larger$results$allowed)
   v1 <- robots_evaluate_url_v1(url, "bot", "google", "google")
   expect_identical(v1$results$url_decision, "allow")
   adapted <- as_legacy_robots_decisions_v1(v1)

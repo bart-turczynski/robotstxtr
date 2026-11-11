@@ -298,7 +298,8 @@ test_that("ROBO-deehqhlc class 2: a line the window cuts is dropped whole", {
 test_that("ROBO-deehqhlc class 2: a rule ending at the window edge applies", {
   # Reference and v1 agree: disallowed on line 3, both when the rule ends at
   # byte 512,000 and its LF is byte 512,001 (past the window), and when the
-  # LF itself is byte 512,000.
+  # LF itself is byte 512,000. At its default max_bytes, the URL path
+  # drops the first of these (class 3 below; ROBO-uwveumyp).
   for (id in c("win-edge-lf-outside", "win-edge-lf-inside")) {
     r <- gf_result(id, "v1_text:google")
     expect_false(r$allowed, label = id)
@@ -311,18 +312,29 @@ test_that("ROBO-deehqhlc class 2: a rule ending at the window edge applies", {
 
 test_that("ROBO-deehqhlc class 3: a rule past max_bytes is not fetched", {
   # Reference (whole body): disallowed on line 3. allowed_by_robots_url()
-  # keeps the first max_bytes (524,288) bytes of a 2xx and reads its complete
-  # lines (its @param max_bytes; ROBO-ldpahknv); the rule starts at 530,001.
-  x <- gf_result("win-after-ceiling", "url")
-  expect_true(x$allowed)
-  expect_identical(x$reason, "default_allow")
-  expect_true(x$body_truncated)
-  # Between the window and the cut, the legacy URL path still reads a rule
-  # the v1 paths do not (class 2): the reference's answer.
-  x <- gf_result("win-after", "url")
-  expect_false(x$allowed)
-  expect_identical(x$line, 3L)
-  expect_false(x$body_truncated)
+  # keeps the first max_bytes (512,000 by default, ROBO-uwveumyp) bytes of a
+  # 2xx and reads its complete lines (its @param max_bytes; ROBO-ldpahknv):
+  # a rule after byte 512,000, a line across it, and a rule whose LF is byte
+  # 512,001 are not read. The v1 window keeps that last one (class 2 test
+  # above): the URL path stores no byte past 512,000 to see the LF.
+  for (id in c("win-after", "win-after-ceiling", "win-straddle",
+               "win-edge-lf-outside")) {
+    x <- gf_result(id, "url")
+    expect_true(x$allowed, label = id)
+    expect_identical(x$reason, "default_allow", label = id)
+    expect_identical(x$line, NA_integer_, label = id)
+    expect_true(x$body_truncated, label = id)
+  }
+  # An explicit larger max_bytes reads the rule between the window and that
+  # cut, which the v1 paths do not read (class 2): the reference's answer.
+  case <- gf_case_list[["win-after"]]
+  x <- gf_with_body(
+    case$body,
+    allowed_by_robots_url(case$url, case$token, max_bytes = 524288L)
+  )
+  expect_false(x$results$allowed)
+  expect_identical(x$results$matched_line, 3L)
+  expect_false(x$robots$body_truncated)
 })
 
 # --- Class 4: input screening -------------------------------------------------

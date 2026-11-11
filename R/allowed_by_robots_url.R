@@ -98,7 +98,7 @@
 #'   and [robots_fetch()] for the fetch stage on its own.
 #' @export
 allowed_by_robots_url <- function(url, user_agent, timeout = 10,
-                                  max_bytes = 524288L,
+                                  max_bytes = 512000L,
                                   fetch_user_agent = NULL,
                                   ssrf_guard = TRUE,
                                   safety_level = "strict",
@@ -176,10 +176,11 @@ allowed_by_robots_url <- function(url, user_agent, timeout = 10,
   error_message_col[invalid_ua] <- "User agent is missing or empty."
 
   # --- Decode each fetched source body to the matcher string ONCE (PRD 6.2
-  # bridge, mirrors allowed_by_robots_text): `decode_matcher_body()` drops NUL
-  # bytes and marks the result UTF-8 (R/body-decode.R). Non-fetched sources
-  # store no body and are not matched. Keyed by source_id so the per-(source,
-  # UA) matcher grouping below reuses one decoded body per source.
+  # bridge, mirrors allowed_by_robots_text): `decode_matcher_body()` ends each
+  # line at its first NUL byte, as Google's parser does (ROBO-pvqrfvol), and
+  # marks the result UTF-8 (R/body-decode.R). Non-fetched sources store no
+  # body and are not matched. Keyed by source_id so the per-(source, UA)
+  # matcher grouping below reuses one decoded body per source.
   source_body_utf8 <- vector("list", nrow(robots))
   names(source_body_utf8) <- robots$source_id
   for (i in seq_len(nrow(robots))) {

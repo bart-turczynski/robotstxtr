@@ -100,14 +100,15 @@ test_that("ROBO-ldpahknv: an oversized 200 over the wire, gzip", {
   expect_gt(src$observed_bytes, tr_limit)
 })
 
-test_that("ROBO-ldpahknv: over the default 512 KiB limit, over the wire", {
+test_that("ROBO-ldpahknv: over the default 500 KiB limit, over the wire", {
+  # allowed_by_robots_url()'s default is 512,000 bytes (ROBO-uwveumyp).
   body <- tr_body(pad_lines = 9000L)
   expect_gt(length(body), 524288L)
   url <- tr_server(body)
   x <- allowed_by_robots_url(
     tr_urls(sub("robots\\.txt$", "", url)), "bot", timeout = 10
   )
-  tr_expect_cut(x, full = body, limit = 524288L)
+  tr_expect_cut(x, full = body, limit = 512000L)
 })
 
 # --- Unchanged ----------------------------------------------------------------
