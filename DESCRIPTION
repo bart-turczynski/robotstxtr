@@ -39,7 +39,7 @@ Depends:
     R (>= 4.1.0)
 Imports:
     rurl (>= 3.0.1),
-    ssrfr (>= 1.0.0.9000)
+    ssrfr (>= 1.0.0.9001)
 LinkingTo:
     cpp11
 SystemRequirements: C++17
@@ -52,7 +52,7 @@ Suggests:
     testthat (>= 3.0.0),
     webfakes
 Remotes:
-    gitlab::bart-turczynski/ssrfr@ff6a6f3cdaa176038073984d6fe55c7b4b706cc1
+    gitlab::bart-turczynski/ssrfr@357ea9894a223079da7ce4ccc9690a5d17ed22cf
 Config/testthat/edition: 3
 VignetteBuilder: knitr
 Config/roxygen2/version: 8.1.1

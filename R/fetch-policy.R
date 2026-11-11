@@ -94,9 +94,7 @@ validate_ssrf_guard <- function(ssrf_guard) {
 }
 
 # `safety_level` must be one value of engine_safety_levels_v1() (ADR 0001
-# section 1). A published level that has not landed yet ("crawler") is refused
-# with a subclass of the invalid-value error, so a caller can tell "not yet"
-# from "never".
+# section 1).
 validate_safety_level <- function(safety_level) {
   levels <- engine_safety_levels_v1()
   if (!is.character(safety_level) || length(safety_level) != 1L ||
@@ -107,18 +105,6 @@ validate_safety_level <- function(safety_level) {
         paste0("\"", levels, "\"", collapse = ", ")
       ),
       "robotstxtr_invalid_safety_level"
-    )
-  }
-  if (!safety_level %in% engine_available_safety_levels_v1()) {
-    robots_abort(
-      sprintf(
-        "`safety_level = \"%s\"` is not available yet; use \"strict\".",
-        safety_level
-      ),
-      c(
-        "robotstxtr_unavailable_safety_level",
-        "robotstxtr_invalid_safety_level"
-      )
     )
   }
   invisible(unname(safety_level))

@@ -47,10 +47,12 @@ decides what the fetch may do on the network and is independent of
 `robots_policy_ruleset`; neither defaults from the other. The contract
 publishes the value set as `safety_levels`: `strict`, the default, and
 `crawler`. `strict` is the acquisition of every earlier revision, unchanged.
-`crawler` is published but not available yet: passing it is a call-level
-error of class `robotstxtr_unavailable_safety_level`, a subclass of
-`robotstxtr_invalid_safety_level`, which any other value raises. The levels
-are defined in [`engine-profiles.md`](engine-profiles.md) §3a.
+`crawler` follows an `https` to `http` redirect as an ordinary hop within the
+five-redirect budget (ROBO-lwdxzdhw); every address the guard refuses is still
+refused, as under `strict`, until ROBO-jqwukcog records an address-class
+refusal as `unreachable_local`. Any other value is a call-level error of class
+`robotstxtr_invalid_safety_level`. The levels are defined in
+[`engine-profiles.md`](engine-profiles.md) §3a.
 
 The evidence frame gains two columns. `safety_level` (character) is the level a
 source was fetched under. `fetch_allow_ranges` (a list column) holds the CIDR
@@ -59,8 +61,8 @@ until it lands; a deprecated `ssrf_guard = FALSE`, which reopens every range,
 is recorded in `ssrf_guard`, not here. Both are `NA` on a row with no
 acquisition, a supplied body: there the list cell is `NA_character_`, length
 one, so tell a supplied row by `source_kind`, not by `lengths()`. `https_downgrade_guard` is
-`safety_level == "strict"` on a fetched row, so `TRUE` as before, and stays
-`NA` where no acquisition was configured. The result columns and the legacy
+`safety_level == "strict"` on a fetched row: `TRUE` under `strict`, as before,
+`FALSE` under `crawler`, and `NA` where no acquisition was configured. The result columns and the legacy
 frames are unchanged.
 
 ## Stable outcome sets

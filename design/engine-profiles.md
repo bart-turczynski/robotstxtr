@@ -148,8 +148,9 @@ Address-class codes: `loopback`, `private`, `link-local`, `cloud-metadata`, `sha
 `6to4`, `teredo`, `isatap`. URL-shape codes: `scheme`, `userinfo`, `port`, `parse`, `numeric-literal`,
 `malformed-address`. `fetch_allow_ranges` reopens the listed ranges at either level.
 
-`crawler` is in the published value set but refused as a call-level error until it lands
-(ROBO-lwdxzdhw, ROBO-jqwukcog), and `fetch_allow_ranges` is recorded as empty until ROBO-bamcjvwn.
+`crawler` follows downgrades (ROBO-lwdxzdhw). Until ROBO-jqwukcog lands, an address-class refusal under
+`crawler` is still `safety_refused`, as under `strict`. `fetch_allow_ranges` is recorded as empty until
+ROBO-bamcjvwn.
 
 <a id="status-policy"></a>
 

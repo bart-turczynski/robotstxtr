@@ -1,6 +1,6 @@
 # `safety_level` exists, and "strict" is today's acquisition unchanged
-# (ADR 0001 slice 2, ROBO-pezlychx). "crawler" is published but refused until
-# it lands (ROBO-lwdxzdhw).
+# (ADR 0001 slice 2, ROBO-pezlychx). "crawler" is accepted since ROBO-lwdxzdhw
+# (test-crawler-downgrade-lwdxzdhw.R).
 
 sl_entry_points <- list(
   robots_fetch = function(...) robots_fetch("http://a/x", ...),
@@ -29,16 +29,12 @@ test_that("every fetching entry point refuses a bad safety_level", {
   }
 })
 
-test_that("crawler is refused as not available yet, a subclass", {
-  local_fake_ssrfr(function(req) stop("no request expected"))
+test_that("every fetching entry point accepts crawler", {
+  local_fake_ssrfr(function(req) {
+    fake_response(200L, body = "user-agent: *\ndisallow: /x\n")
+  })
   for (name in names(sl_entry_points)) {
-    err <- expect_error(
-      sl_entry_points[[name]](safety_level = "crawler"),
-      class = "robotstxtr_unavailable_safety_level",
-      info = name
-    )
-    expect_s3_class(err, "robotstxtr_invalid_safety_level")
-    expect_s3_class(err, "robotstxtr_error")
+    expect_no_error(sl_entry_points[[name]](safety_level = "crawler"))
   }
 })
 

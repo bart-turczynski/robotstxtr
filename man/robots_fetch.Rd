@@ -42,11 +42,12 @@ internal address ranges and the metadata host names, for example to fetch
 and the IPv6 transition forms that embed an address stay refused.}
 
 \item{safety_level}{A single string: what the fetch may do on the network,
-whatever ruleset reads the outcome. \code{"strict"}, the default and the only
-level available yet, refuses an \code{https} to \code{http} redirect and every
-address the guard refuses. \code{"crawler"} is reserved for what a public
-crawler experiences and is a call-level error until it lands; any other
-value is a call-level error too.}
+whatever ruleset reads the outcome. \code{"strict"}, the default, refuses an
+\code{https} to \code{http} redirect and every address the guard refuses.
+\code{"crawler"} fetches as a public crawler does: it follows an \code{https} to
+\code{http} redirect as an ordinary hop within the five-redirect budget, and
+still refuses every address the guard refuses. Any other value is a
+call-level error.}
 }
 \value{
 An S3 object of class \code{robots_fetches}: a named list with two
@@ -92,7 +93,8 @@ The request policy is deterministic and intentionally conservative: HTTP
 \code{GET} over a new HTTP/1.1 connection; TLS verified with platform defaults;
 no proxy; one total timeout per origin, redirects included; at most five
 redirects; redirects allowed only to \code{http}/\code{https}; HTTP-to-HTTPS upgrades
-allowed but every HTTPS-to-HTTP downgrade rejected as \code{redirect_error}; no
+allowed but, under \code{safety_level = "strict"}, every HTTPS-to-HTTP downgrade
+rejected as \code{redirect_error}; no
 URL userinfo, authorization, cookies, or caller session state forwarded; a
 package fetch user agent (\verb{robotstxtr/<version>}) unless the caller supplies
 one; and no automatic retries.
@@ -173,7 +175,8 @@ Each source row also says why a redirect chain ended without a final
 response, as \code{terminal_redirect_reason}: \code{"over_budget"} (a sixth
 redirect), \code{"no_location"} (a 3xx that names no target: not a 301, 302,
 303, 307 or 308, or an empty or repeated \code{Location}), \code{"loop"} (a target
-already requested), \code{"downgrade"} (an \code{https} to \code{http} redirect, refused),
+already requested), \code{"downgrade"} (an \code{https} to \code{http} redirect, refused
+under \code{safety_level = "strict"}),
 \code{"non_http_target"} (a redirect to a scheme other than \code{http} or \code{https},
 refused), or \code{"none"} for every other outcome, a redirect followed to its
 end included. A refusal by the guard sets \code{safety_block_reason} to its
