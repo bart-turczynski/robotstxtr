@@ -136,11 +136,7 @@ validate_fetch_allow_ranges <- function(fetch_allow_ranges, ssrf_guard) {
       "robotstxtr_invalid_fetch_allow_ranges"
     )
   }
-  if (!is.character(fetch_allow_ranges)) {
-    invalid("It is not a character vector.")
-  }
-  ranges <- as.character(unname(fetch_allow_ranges))
-  if (isFALSE(ssrf_guard) && length(ranges) > 0L) {
+  if (isFALSE(ssrf_guard) && length(fetch_allow_ranges) > 0L) {
     robots_abort(
       paste(
         "`ssrf_guard = FALSE` cannot be combined with a non-empty",
@@ -150,6 +146,10 @@ validate_fetch_allow_ranges <- function(fetch_allow_ranges, ssrf_guard) {
       "robotstxtr_invalid_ssrf_guard"
     )
   }
+  if (!is.character(fetch_allow_ranges)) {
+    invalid("It is not a character vector.")
+  }
+  ranges <- as.character(unname(fetch_allow_ranges))
   for (i in seq_along(ranges)) {
     entry <- ranges[[i]]
     if (is.na(entry) || !nzchar(entry)) {
@@ -183,7 +183,7 @@ validate_fetch_allow_ranges <- function(fetch_allow_ranges, ssrf_guard) {
   # must not rest on endpoint admission being the union of each entry's.
   if (length(ranges) > 1L &&
         fetch_range_admits_provider_endpoint(
-          ssrfr::ssrf_policy(allow_ranges = ranges)
+          fetch_endpoint_check(ssrfr::ssrf_policy(allow_ranges = ranges))
         )) {
     robots_abort(
       paste(
@@ -200,7 +200,9 @@ validate_fetch_allow_ranges <- function(fetch_allow_ranges, ssrf_guard) {
 # vocabulary is an error, so the endpoint check fails closed rather than
 # passing every entry.
 fetch_provider_endpoint_addresses <- function() {
-  addresses <- ssrfr::ssrf_vocabulary("provider_endpoints")$address
+  addresses <- fetch_endpoint_check(
+    ssrfr::ssrf_vocabulary("provider_endpoints")$address
+  )
   if (!is.character(addresses) || length(addresses) == 0L ||
         anyNA(addresses)) {
     robots_abort(
@@ -214,15 +216,47 @@ fetch_provider_endpoint_addresses <- function() {
   addresses
 }
 
+# Runs one step of the endpoint check, turning any error it raises (ssrfr's
+# included) into the classed refusal: the check fails closed, never open.
+fetch_endpoint_check <- function(expr) {
+  tryCatch(expr, error = function(e) {
+    if (inherits(e, "robotstxtr_invalid_fetch_allow_ranges")) {
+      stop(e)
+    }
+    robots_abort(
+      paste(
+        "Cannot check `fetch_allow_ranges` against ssrfr's provider",
+        "endpoints, so no range is accepted:", conditionMessage(e)
+      ),
+      "robotstxtr_invalid_fetch_allow_ranges"
+    )
+  })
+}
+
 # TRUE when `policy`, built from `fetch_allow_ranges` entries, admits any
 # address of ssrfr's provider-endpoint vocabulary, all of which its default
-# policy refuses.
+# policy refuses as `cloud-metadata`. A probe ssrfr refuses for any other
+# reason proves nothing about the endpoint, so it is an error, not a pass.
 fetch_range_admits_provider_endpoint <- function(policy) {
   for (address in fetch_provider_endpoint_addresses()) {
     ipv6 <- grepl(":", address, fixed = TRUE)
     url <- sprintf(if (ipv6) "http://[%s]/" else "http://%s/", address)
-    if (is.na(ssrfr::ssrf_inspect_url(url, policy)$code)) {
+    code <- fetch_endpoint_check(ssrfr::ssrf_inspect_url(url, policy)$code)
+    if (is.na(code)) {
       return(TRUE)
+    }
+    if (!identical(code, "cloud-metadata")) {
+      robots_abort(
+        sprintf(
+          paste(
+            "Cannot check `fetch_allow_ranges`: ssrfr refused its provider",
+            "endpoint %s as \"%s\", not as cloud-metadata, so no range is",
+            "accepted."
+          ),
+          address, code
+        ),
+        "robotstxtr_invalid_fetch_allow_ranges"
+      )
     }
   }
   FALSE
@@ -259,8 +293,8 @@ warn_ssrf_guard_deprecated <- function(ssrf_guard, safety_level = "strict") {
       list(
         message = paste(
           "`ssrf_guard = FALSE` under `safety_level = \"crawler\"` makes",
-          "internal addresses reachable, which no public crawler can do;",
-          "every range is reopened and dialed."
+          "private and loopback addresses reachable, which no public crawler",
+          "can do; they are dialed, not recorded as unreachable."
         ),
         call = NULL
       )

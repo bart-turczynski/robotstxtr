@@ -198,9 +198,17 @@ test_that("the entries are also checked together for a provider endpoint", {
   local_no_hop()
   calls <- new.env()
   calls$n <- 0L
+  calls$combined <- NULL
   local_mocked_bindings(
     fetch_range_admits_provider_endpoint = function(policy) {
       calls$n <- calls$n + 1L
+      if (calls$n > 2L) {
+        # The combined policy must hold every entry: both ranges admitted.
+        calls$combined <- c(
+          ssrfr::ssrf_inspect_url("http://10.0.0.1/", policy)$code,
+          ssrfr::ssrf_inspect_url("http://[fd00::1]/", policy)$code
+        )
+      }
       # Each entry alone admits nothing; only the combined policy does.
       calls$n > 2L
     }
@@ -213,19 +221,94 @@ test_that("the entries are also checked together for a provider endpoint", {
     class = "robotstxtr_invalid_fetch_allow_ranges"
   )
   expect_identical(calls$n, 3L)
+  expect_identical(calls$combined, c(NA_character_, NA_character_))
 })
 
-test_that("an empty provider-endpoint vocabulary fails closed", {
+test_that("an empty or unreadable provider-endpoint vocabulary fails closed", {
+  local_no_hop()
+  vocabularies <- list(
+    data.frame(address = character()),
+    data.frame(address = NA_character_),
+    data.frame(address = 1L),
+    data.frame(other = "169.254.169.254")
+  )
+  for (vocabulary in vocabularies) {
+    local_mocked_bindings(
+      ssrf_vocabulary = function(...) vocabulary,
+      .package = "ssrfr"
+    )
+    expect_error(
+      robots_fetch("http://10.0.0.1/x", fetch_allow_ranges = "10.0.0.0/8"),
+      regexp = "vocabulary is empty or unreadable",
+      class = "robotstxtr_invalid_fetch_allow_ranges",
+      info = deparse1(vocabulary)
+    )
+  }
+})
+
+test_that("a probe refused for another reason fails closed, not open", {
+  local_no_hop()
+  # A malformed or padded address makes ssrfr refuse the probe as a parse or
+  # shape problem; that proves nothing about the endpoint.
+  for (address in c("[fd00:ec2::254]", "169.254.169.254 ", "")) {
+    local_mocked_bindings(
+      ssrf_vocabulary = function(...) data.frame(address = address),
+      .package = "ssrfr"
+    )
+    expect_error(
+      robots_fetch(
+        "http://10.0.0.1/x", fetch_allow_ranges = "169.254.169.254/32"
+      ),
+      class = "robotstxtr_invalid_fetch_allow_ranges", info = address
+    )
+  }
+})
+
+test_that("an ssrfr error inside the endpoint check is the classed refusal", {
   local_no_hop()
   local_mocked_bindings(
-    ssrf_vocabulary = function(...) data.frame(address = character()),
+    ssrf_inspect_url = function(...) {
+      stop(structure(
+        class = c("ssrfr_error_x", "error", "condition"),
+        list(message = "boom", call = NULL)
+      ))
+    },
     .package = "ssrfr"
   )
-  expect_error(
+  err <- tryCatch(
     robots_fetch("http://10.0.0.1/x", fetch_allow_ranges = "10.0.0.0/8"),
-    regexp = "vocabulary is empty or unreadable",
-    class = "robotstxtr_invalid_fetch_allow_ranges"
+    error = identity
   )
+  expect_s3_class(err, "robotstxtr_invalid_fetch_allow_ranges")
+  expect_false(inherits(err, "ssrfr_error_x"))
+})
+
+test_that("ssrf_guard = FALSE with any non-empty value is the guard error", {
+  local_no_hop()
+  for (value in list(10, list("10.0.0.0/8"), NA_character_)) {
+    expect_error(
+      robots_fetch("http://10.0.0.1/x", ssrf_guard = FALSE,
+                   fetch_allow_ranges = value),
+      class = "robotstxtr_invalid_ssrf_guard", info = deparse1(value)
+    )
+  }
+})
+
+test_that("a missing, empty or non-ASCII entry is caught before ssrfr", {
+  local_no_hop()
+  for (value in list(NA_character_, "", c("10.0.0.0/8", NA))) {
+    expect_error(
+      robots_fetch("http://10.1.2.3/x", fetch_allow_ranges = value),
+      regexp = "missing or empty",
+      class = "robotstxtr_invalid_fetch_allow_ranges", info = deparse1(value)
+    )
+  }
+  bad_utf8 <- rawToChar(as.raw(c(0xff, 0x2f, 0x38)))
+  expect_no_warning(expect_error(
+    robots_fetch("http://10.1.2.3/x", fetch_allow_ranges = bad_utf8),
+    regexp = "is not a range",
+    class = "robotstxtr_invalid_fetch_allow_ranges"
+  ))
 })
 
 test_that("an invalid fetch_allow_ranges is a classed call-level error", {
@@ -367,7 +450,7 @@ test_that("ssrf_guard = FALSE under crawler warns twice, once each a call", {
   expect_warning(
     expect_warning(
       calls$fetch(),
-      regexp = "internal addresses reachable",
+      regexp = "private and loopback addresses reachable",
       class = "robotstxtr_ssrf_guard_crawler"
     ),
     class = "robotstxtr_deprecated_ssrf_guard"
