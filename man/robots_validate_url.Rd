@@ -108,7 +108,11 @@ failure) and
 \code{acquisition_safety_refused}. The message names the outcome and what
 Google, Yandex and Bing may do, or says that an engine's behavior is not
 documented. A refusal is robotstxtr's own safety choice, so its message
-gives no engine verdict for it.
+gives no engine verdict for it. The exception is a refusal of an internal
+address (loopback, private, link-local and the like) under
+\code{safety_level = "crawler"}: a public crawler could not reach that address
+either, so the message reads it as an unreachable file and names each
+engine's reading of an unreachable file.
 
 A fetch that succeeded after redirecting away from the robots.txt URL is
 reported beside the body's own diagnostics, from the source row's

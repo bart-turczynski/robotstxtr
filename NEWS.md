@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* Under `safety_level = "crawler"`, `robots_validate_url()` reads a refused internal address as an unreachable file, with each engine's reading, not as having no engine reading (ROBO-akfbbake).
+
 * On the Google backend a NUL byte in a fetched robots.txt now ends its line, as in Google's open-source parser, instead of being removed (ROBO-pvqrfvol).
 
 * `robots_validate_text()` and `robots_validate_url()` list only the lost `User-agent: *` Allow rules, which may be exceptions, in `wildcard_rules_not_inherited` when the merged named groups disallow `/` and hold no non-empty `Allow` (ROBO-bwpacxtq).

@@ -424,7 +424,11 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' `acquisition_safety_refused`. The message names the outcome and what
 #' Google, Yandex and Bing may do, or says that an engine's behavior is not
 #' documented. A refusal is robotstxtr's own safety choice, so its message
-#' gives no engine verdict for it.
+#' gives no engine verdict for it. The exception is a refusal of an internal
+#' address (loopback, private, link-local and the like) under
+#' `safety_level = "crawler"`: a public crawler could not reach that address
+#' either, so the message reads it as an unreachable file and names each
+#' engine's reading of an unreachable file.
 #'
 #' A fetch that succeeded after redirecting away from the robots.txt URL is
 #' reported beside the body's own diagnostics, from the source row's
@@ -476,6 +480,7 @@ robots_validate_url <- function(url, timeout = 10, max_bytes = 524288L,
                                 fetch_user_agent = NULL, ssrf_guard = TRUE,
                                 safety_level = "strict",
                                 fetch_allow_ranges = character()) {
+  safety_level <- validate_safety_level(safety_level)
   fetched <- robots_fetch(
     url = url,
     timeout = timeout,
@@ -485,7 +490,7 @@ robots_validate_url <- function(url, timeout = 10, max_bytes = 524288L,
     safety_level = safety_level,
     fetch_allow_ranges = fetch_allow_ranges
   )
-  validate_fetched_documents(fetched)
+  validate_fetched_documents(fetched, safety_level = safety_level)
 }
 
 #' Print a robots.txt validation result
@@ -2238,7 +2243,7 @@ render_validation_line <- function(bytes) {
   }, character(1L)), collapse = "")
 }
 
-validate_fetched_documents <- function(fetched) {
+validate_fetched_documents <- function(fetched, safety_level = "strict") {
   documents <- list()
   diagnostics <- list()
   robots <- fetched$robots
@@ -2266,7 +2271,7 @@ validate_fetched_documents <- function(fetched) {
         validated <- add_document_diagnostic(validated, downgrade)
       }
     } else {
-      validated <- unavailable_validation(source)
+      validated <- unavailable_validation(source, safety_level = safety_level)
     }
     documents[[i]] <- validated$document
     if (nrow(validated$diagnostics) > 0L) {
@@ -2307,7 +2312,7 @@ validate_fetched_documents <- function(fetched) {
   new_robots_validations(map, document_frame, diagnostic_frame)
 }
 
-unavailable_validation <- function(source) {
+unavailable_validation <- function(source, safety_level = "strict") {
   outcome <- source$fetch_outcome
   status <- source$http_status
   if (outcome %in% c("missing", "http_error") && !is.na(status)) {
@@ -2332,7 +2337,7 @@ unavailable_validation <- function(source) {
     message <- "Partial HTTP response was rejected; no body was validated."
   } else {
     severity <- "error"
-    diagnosis <- acquisition_diagnosis(source)
+    diagnosis <- acquisition_diagnosis(source, safety_level = safety_level)
     if (!is.null(diagnosis)) {
       code <- diagnosis$code
       message <- diagnosis$message
@@ -2423,8 +2428,11 @@ status_diagnosis <- function(status, retry_after_seconds) {
 # - A downgrade, a non-HTTP(S) target and any other guard refusal are
 #   decided by the safety level, never by a ruleset
 #   (design/engine-profiles.md#redirect-handling and section 3a), so their
-#   message says so instead of giving an engine verdict.
-acquisition_diagnosis <- function(source) {
+#   message says so instead of giving an engine verdict. The exception is an
+#   address-class refusal under `safety_level = "crawler"` (ROBO-akfbbake):
+#   no public crawler could reach that address either, so its message reads
+#   it as an unreachable file, with each engine's unreachable_local reading.
+acquisition_diagnosis <- function(source, safety_level = "strict") {
   terminal <- source$terminal_redirect_reason
   safety <- source$safety_block_reason
   outcome <- source$fetch_outcome
@@ -2462,10 +2470,19 @@ acquisition_diagnosis <- function(source) {
     )
   } else if (identical(outcome, "ssrf_blocked") && !is.na(safety)) {
     code <- "acquisition_safety_refused"
-    detail <- sprintf(paste(
-      "robotstxtr's safety refusal (safety_block_reason \"%s\"); nothing",
-      "was requested there, so no engine reading applies."
-    ), safety)
+    if (identical(safety_level, "crawler") &&
+          safety %in% acquire_address_class_reasons()) {
+      detail <- sprintf(paste(
+        "robotstxtr's safety refusal (safety_block_reason \"%s\") of an",
+        "internal address, which a public crawler could not reach either;",
+        "read as an unreachable file: %s."
+      ), safety, status_engine_readings("unreachable_local"))
+    } else {
+      detail <- sprintf(paste(
+        "robotstxtr's safety refusal (safety_block_reason \"%s\"); nothing",
+        "was requested there, so no engine reading applies."
+      ), safety)
+    }
   } else if (outcome %in% c("timeout", "tls_error", "network_error")) {
     code <- "acquisition_transport_failed"
     detail <- readings("transport")
