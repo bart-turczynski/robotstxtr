@@ -170,8 +170,10 @@
 #'   in `robots$body`, and the final response's `Retry-After` as the character
 #'   `retry_after` and the double `retry_after_seconds`, its `Content-Type` as
 #'   the character `content_type`, the character `content_flag`, the logical
-#'   `body_truncated`, and the character `terminal_redirect_reason` and
-#'   `safety_block_reason`).
+#'   `body_truncated`, the character `terminal_redirect_reason` and
+#'   `safety_block_reason`, and the list `redirect_hops`, which holds one list
+#'   per source of the redirects met, each a list of `from_url`, `status` and
+#'   `location_target`; the first `redirect_count` of them were followed).
 #'
 #' @examples
 #' # A refused origin is decided before any request, so this runs offline.
@@ -265,6 +267,8 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
     ),
     stringsAsFactors = FALSE
   )
+  # The redirect hop log, as the v1 evidence keeps it (ROBO-cscdbael).
+  robots$redirect_hops <- lapply(results, function(r) r$redirect_hops)
   # `body` is a list-of-raw column: each fetched body stored exactly once.
   robots$body <- lapply(results, function(r) r$body)
 
