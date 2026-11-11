@@ -31,6 +31,21 @@ akf_strict <- function(code) {
   )
 }
 
+# The crawler message for an address-class refusal: the unreachable_local
+# reading, as for an unreachable file (ROBO-akfbbake).
+akf_gap <- paste0(
+  "Google: context-dependent (may pause crawling or use its last cached ",
+  "copy); Yandex: not documented; Bing: not documented."
+)
+akf_unreachable <- function(code) {
+  paste0(
+    "Blocked by SSRF guard (", code, "): robotstxtr's safety refusal ",
+    "(safety_block_reason \"", code, "\") of an internal address, which a ",
+    "public crawler could not reach either; read as an unreachable file: ",
+    akf_gap, akf_see
+  )
+}
+
 # Refuse `code` on hop `on_hop` (1: the robots URL itself; 2: the target of a
 # 301 the first hop returns), then validate the robots URL at `safety_level`.
 akf_refused <- function(code, on_hop, safety_level, env = parent.frame()) {
@@ -78,9 +93,7 @@ test_that("ROBO-akfbbake: strict address refusals read as no engine reading", {
   }
 })
 
-# Pinned before the change: the crawler message is the strict one until the
-# diagnosis reads an address-class refusal as unreachable_local.
-test_that("ROBO-akfbbake: crawler address refusals, diagnosis pre-change", {
+test_that("ROBO-akfbbake: a crawler address refusal reads as unreachable", {
   for (code in akf_address_codes) {
     for (hop in 1:2) {
       local({
@@ -88,7 +101,10 @@ test_that("ROBO-akfbbake: crawler address refusals, diagnosis pre-change", {
         label <- paste(code, "hop", hop)
         expect_identical(x$diagnostics$code, "acquisition_safety_refused",
                          info = label)
-        expect_identical(x$diagnostics$message, akf_strict(code), info = label)
+        expect_identical(x$diagnostics$message, akf_unreachable(code),
+                         info = label)
+        expect_identical(x$documents$validation_status, "not_validated",
+                         info = label)
         expect_identical(x$documents$error_count, 1L, info = label)
       })
     }
@@ -97,16 +113,82 @@ test_that("ROBO-akfbbake: crawler address refusals, diagnosis pre-change", {
 
 test_that("ROBO-akfbbake: real loopback refusals, origin and redirect target", {
   for (level in c("strict", "crawler")) {
+    want <- if (identical(level, "crawler")) {
+      akf_unreachable("loopback")
+    } else {
+      akf_strict("loopback")
+    }
     local({
       origin <- akf_located("http://127.0.0.1/robots.txt", "http://b/", level)
-      expect_identical(origin$diagnostics$message, akf_strict("loopback"),
+      expect_identical(origin$diagnostics$message, want,
                        info = paste("origin", level))
     })
     local({
       target <- akf_located("http://a/robots.txt", "http://127.0.0.1/r", level)
-      expect_identical(target$diagnostics$message, akf_strict("loopback"),
+      expect_identical(target$diagnostics$message, want,
                        info = paste("target", level))
     })
+  }
+})
+
+test_that("ROBO-akfbbake: transition refusals keep the strict wording", {
+  for (code in names(akf_transition_urls)) {
+    url <- akf_transition_urls[[code]]
+    for (level in c("strict", "crawler")) {
+      local({
+        origin <- akf_located(url, "http://b/robots.txt", level)
+        target <- akf_located("http://a/robots.txt", url, level)
+        expect_identical(origin$diagnostics$message, akf_strict(code),
+                         info = paste("origin", code, level))
+        expect_identical(target$diagnostics$message, akf_strict(code),
+                         info = paste("target", code, level))
+        expect_identical(target$diagnostics$code,
+                         "acquisition_safety_refused",
+                         info = paste("target", code, level))
+      })
+    }
+  }
+})
+
+test_that("ROBO-akfbbake: URL-shape refusals keep the strict wording", {
+  for (code in akf_url_shape_codes) {
+    # A redirect to a non-HTTP(S) target has its own branch (scheme on hop 2).
+    hops <- if (identical(code, "scheme")) 1L else 1:2
+    for (hop in hops) {
+      local({
+        x <- akf_refused(code, hop, "crawler")
+        label <- paste(code, "hop", hop)
+        expect_identical(x$diagnostics$code, "acquisition_safety_refused",
+                         info = label)
+        expect_identical(x$diagnostics$message, akf_strict(code), info = label)
+      })
+    }
+  }
+})
+
+test_that("ROBO-akfbbake: acquisition_diagnosis() reads the safety level", {
+  refusal <- function(code) {
+    data.frame(
+      fetch_outcome = "ssrf_blocked", terminal_redirect_reason = "none",
+      safety_block_reason = code,
+      error_message = paste0("Blocked by SSRF guard (", code, ")."),
+      stringsAsFactors = FALSE
+    )
+  }
+  for (code in akf_address_codes) {
+    crawler <- acquisition_diagnosis(refusal(code), safety_level = "crawler")
+    expect_identical(crawler$code, "acquisition_safety_refused", info = code)
+    expect_identical(crawler$message, akf_unreachable(code), info = code)
+    strict <- acquisition_diagnosis(refusal(code))
+    expect_identical(strict$message, akf_strict(code), info = code)
+  }
+  for (code in c(names(akf_transition_urls), akf_url_shape_codes)) {
+    for (level in c("strict", "crawler")) {
+      got <- acquisition_diagnosis(refusal(code), safety_level = level)
+      label <- paste(code, level)
+      expect_identical(got$code, "acquisition_safety_refused", info = label)
+      expect_identical(got$message, akf_strict(code), info = label)
+    }
   }
 })
 
