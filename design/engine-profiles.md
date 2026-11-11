@@ -153,7 +153,7 @@ Address-class codes: `loopback`, `private`, `link-local`, `cloud-metadata`, `sha
 
 `crawler` follows downgrades (ROBO-lwdxzdhw) and records an address-class refusal as `unreachable_local`
 (ROBO-jqwukcog); the class of each ssrfr code is data in `R/acquire-map.R`. `fetch_allow_ranges` is recorded
-as empty until ROBO-bamcjvwn.
+on each fetched row as the caller passed it (ROBO-bamcjvwn).
 
 <a id="status-policy"></a>
 

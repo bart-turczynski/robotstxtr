@@ -110,10 +110,165 @@ validate_safety_level <- function(safety_level) {
   invisible(unname(safety_level))
 }
 
+# `fetch_allow_ranges` must be a character vector of CIDR ranges (ADR 0001
+# section 6), `character()` by default: no NA, no empty string, each entry one
+# that ssrfr accepts as an `allow_ranges` entry. It is checked here, before
+# anything reaches ssrfr, so a bad entry is the caller's error rather than an
+# acquisition defect (acquire_call()).
+#
+# With `ssrf_guard = FALSE` a non-empty value is a call-level error, of the
+# `ssrf_guard` class, whatever the entries are: the call gives two answers to
+# the same question.
+#
+# An entry under which ssrfr would admit one of its provider endpoints is
+# refused too: ssrfr reopens an endpoint for an exact allow entry, and
+# section 6 keeps those endpoints refused whatever the caller lists.
+#
+# Returns the ranges as a plain character vector, as passed (no names or
+# dimensions, no sorting, no deduplication).
+validate_fetch_allow_ranges <- function(fetch_allow_ranges, ssrf_guard) {
+  invalid <- function(detail) {
+    robots_abort(
+      paste(
+        "`fetch_allow_ranges` must be a character vector of CIDR ranges, such",
+        "as \"10.0.0.0/8\" or \"fd00::/8\", with no host bits set.", detail
+      ),
+      "robotstxtr_invalid_fetch_allow_ranges"
+    )
+  }
+  if (isFALSE(ssrf_guard) && length(fetch_allow_ranges) > 0L) {
+    robots_abort(
+      paste(
+        "`ssrf_guard = FALSE` cannot be combined with a non-empty",
+        "`fetch_allow_ranges`. Drop `ssrf_guard = FALSE`: the listed ranges",
+        "are reopened on their own."
+      ),
+      "robotstxtr_invalid_ssrf_guard"
+    )
+  }
+  if (!is.character(fetch_allow_ranges)) {
+    invalid("It is not a character vector.")
+  }
+  ranges <- as.character(unname(fetch_allow_ranges))
+  for (i in seq_along(ranges)) {
+    entry <- ranges[[i]]
+    if (is.na(entry) || !nzchar(entry)) {
+      invalid(sprintf("Entry %d is missing or empty.", i))
+    }
+    # A CIDR range is printable ASCII; checked by bytes, so an entry in
+    # another encoding or with invalid UTF-8 never reaches ssrfr.
+    if (!grepl("^[!-~]+$", entry, useBytes = TRUE)) {
+      invalid(sprintf("Entry %d is not a range.", i))
+    }
+    policy <- tryCatch(
+      ssrfr::ssrf_policy(allow_ranges = entry),
+      ssrfr_error_invalid_policy = function(e) {
+        invalid(sprintf("Entry %d is not a range.", i))
+      }
+    )
+    if (fetch_range_admits_provider_endpoint(policy)) {
+      robots_abort(
+        sprintf(
+          paste(
+            "`fetch_allow_ranges` entry \"%s\" would reopen a cloud provider",
+            "metadata endpoint, which stays refused (ADR 0001 section 6)."
+          ),
+          entry
+        ),
+        "robotstxtr_invalid_fetch_allow_ranges"
+      )
+    }
+  }
+  # The entries are also checked together, as the fetch uses them: the check
+  # must not rest on endpoint admission being the union of each entry's.
+  if (length(ranges) > 1L &&
+        fetch_range_admits_provider_endpoint(
+          fetch_endpoint_check(ssrfr::ssrf_policy(allow_ranges = ranges))
+        )) {
+    robots_abort(
+      paste(
+        "`fetch_allow_ranges` together would reopen a cloud provider metadata",
+        "endpoint, which stays refused (ADR 0001 section 6)."
+      ),
+      "robotstxtr_invalid_fetch_allow_ranges"
+    )
+  }
+  ranges
+}
+
+# The addresses of ssrfr's provider-endpoint vocabulary. An empty or missing
+# vocabulary is an error, so the endpoint check fails closed rather than
+# passing every entry.
+fetch_provider_endpoint_addresses <- function() {
+  addresses <- fetch_endpoint_check(
+    ssrfr::ssrf_vocabulary("provider_endpoints")$address
+  )
+  if (!is.character(addresses) || length(addresses) == 0L ||
+        anyNA(addresses)) {
+    robots_abort(
+      paste(
+        "Cannot check `fetch_allow_ranges`: ssrfr's provider-endpoint",
+        "vocabulary is empty or unreadable, so no range is accepted."
+      ),
+      "robotstxtr_invalid_fetch_allow_ranges"
+    )
+  }
+  addresses
+}
+
+# Runs one step of the endpoint check, turning any error it raises (ssrfr's
+# included) into the classed refusal: the check fails closed, never open.
+fetch_endpoint_check <- function(expr) {
+  tryCatch(expr, error = function(e) {
+    if (inherits(e, "robotstxtr_invalid_fetch_allow_ranges")) {
+      stop(e)
+    }
+    robots_abort(
+      paste(
+        "Cannot check `fetch_allow_ranges` against ssrfr's provider",
+        "endpoints, so no range is accepted:", conditionMessage(e)
+      ),
+      "robotstxtr_invalid_fetch_allow_ranges"
+    )
+  })
+}
+
+# TRUE when `policy`, built from `fetch_allow_ranges` entries, admits any
+# address of ssrfr's provider-endpoint vocabulary, all of which its default
+# policy refuses as `cloud-metadata`. A probe ssrfr refuses for any other
+# reason proves nothing about the endpoint, so it is an error, not a pass.
+fetch_range_admits_provider_endpoint <- function(policy) {
+  for (address in fetch_provider_endpoint_addresses()) {
+    ipv6 <- grepl(":", address, fixed = TRUE)
+    url <- sprintf(if (ipv6) "http://[%s]/" else "http://%s/", address)
+    code <- fetch_endpoint_check(ssrfr::ssrf_inspect_url(url, policy)$code)
+    if (is.na(code)) {
+      return(TRUE)
+    }
+    if (!identical(code, "cloud-metadata")) {
+      robots_abort(
+        sprintf(
+          paste(
+            "Cannot check `fetch_allow_ranges`: ssrfr refused its provider",
+            "endpoint %s as \"%s\", not as cloud-metadata, so no range is",
+            "accepted."
+          ),
+          address, code
+        ),
+        "robotstxtr_invalid_fetch_allow_ranges"
+      )
+    }
+  }
+  FALSE
+}
+
 # The deprecation warning for `ssrf_guard = FALSE`, raised once per call by the
 # public entry points that fetch: robots_fetch() (which allowed_by_robots_url()
-# and robots_validate_url() call) and robots_evaluate_url_v1().
-warn_ssrf_guard_deprecated <- function(ssrf_guard) {
+# and robots_validate_url() call) and robots_evaluate_url_v1(). Under
+# `safety_level = "crawler"` a second warning follows, of its own class: the
+# deprecated switch makes internal addresses reachable, which no public
+# crawler can do (ADR 0001 section 6).
+warn_ssrf_guard_deprecated <- function(ssrf_guard, safety_level = "strict") {
   if (!isFALSE(ssrf_guard)) {
     return(invisible(NULL))
   }
@@ -124,13 +279,28 @@ warn_ssrf_guard_deprecated <- function(ssrf_guard) {
     ),
     list(
       message = paste(
-        "`ssrf_guard = FALSE` is deprecated. It no longer turns the guard",
-        "off: private and loopback addresses are reopened, but cloud",
-        "metadata endpoints and IPv6 transition forms stay refused."
+        "`ssrf_guard = FALSE` is deprecated; use `fetch_allow_ranges` to",
+        "reopen the ranges you need. It no longer turns the guard off:",
+        "private and loopback addresses are reopened, but cloud metadata",
+        "endpoints and IPv6 transition forms stay refused."
       ),
       call = NULL
     )
   ))
+  if (identical(safety_level, "crawler")) {
+    warning(structure(
+      class = c("robotstxtr_ssrf_guard_crawler", "warning", "condition"),
+      list(
+        message = paste(
+          "`ssrf_guard = FALSE` under `safety_level = \"crawler\"` makes",
+          "private and loopback addresses reachable, which no public crawler",
+          "can do; they are dialed, not recorded as unreachable."
+        ),
+        call = NULL
+      )
+    ))
+  }
+  invisible(NULL)
 }
 
 # The package fetch user agent (PRD 6.4): package name and version. Never the

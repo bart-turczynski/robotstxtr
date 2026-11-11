@@ -250,7 +250,14 @@ Why an allow-list and not a third level:
   appliance is `safety_level = "crawler"` with one allowed range, which no fixed level
   expresses.
 - It is a thin passthrough of an ssrfr argument that already exists, so robotstxtr adds no
-  guard logic of its own (ARCHITECTURE.md: nothing but `R/acquire.R` calls ssrfr).
+  guard logic of its own (ARCHITECTURE.md: ssrfr's guard runs only in `R/acquire.R`), with one
+  narrow exception. ssrfr reopens a provider endpoint for an exact `/32` or `/128` allow entry,
+  so robotstxtr refuses, at argument validation, any `fetch_allow_ranges` under which ssrfr
+  would admit an address of its `provider_endpoints` vocabulary. Each entry is checked alone and
+  then all of them together, and an empty vocabulary fails closed. robotstxtr only asks ssrfr
+  whether an exception admits a protected endpoint; it classifies no address itself.
+  (Amended 2026-11-11, ROBO-bamcjvwn; the rule is to move into ssrfr, SSRF-ntxhdswq, after
+  which this check can go.)
 
 ### 7. The downgrade needs one ssrfr change
 

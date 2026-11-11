@@ -425,9 +425,10 @@ Every request from `allowed_by_robots_url()`, `robots_fetch()`,
 `ssrfr` guard against server-side request forgery, for the first request
 and for every redirect. A host that is, or resolves to, a loopback,
 private, link-local or cloud-metadata address is refused before any
-connection. (The deprecated `ssrf_guard = FALSE` warns and reopens the
-private and loopback ranges; only exact cloud-provider metadata endpoints and
-some embedded address forms stay refused.)
+connection. To reach a known internal host, such as a staging site, list its
+range in `fetch_allow_ranges` (for example `"10.0.0.0/8"`); cloud-provider
+metadata endpoints stay refused whatever is listed. (The deprecated
+`ssrf_guard = FALSE` warns and reopens the private and loopback ranges.)
 The fetch also follows at most five redirects, refuses an
 `https` to `http` redirect, sends no cookies or credentials, caps the body
 at `max_bytes` (512 KiB by default) and has one `timeout` per origin.

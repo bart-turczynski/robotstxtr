@@ -79,12 +79,18 @@ acquire_max_header_fields <- 256L
 #   becomes a permissive policy: every address range reopened, and the
 #   metadata host names. Exact provider endpoints, and the transition and
 #   embedded forms ssrfr refuses whatever the policy, stay refused.
+# - `fetch_allow_ranges`, the validated CIDR ranges the caller lists
+#   (validate_fetch_allow_ranges()), becomes ssrfr's `allow_ranges` at either
+#   safety level: those ranges, and nothing else, are reopened. The metadata
+#   host names never are (ADR 0001 section 6, ROBO-bamcjvwn). It is empty
+#   whenever `ssrf_guard = FALSE`, which the validator makes a call error.
 # - `safety_level = "crawler"` sets `allow_downgrade = TRUE`: an https to http
 #   redirect is an ordinary hop within the budget, as public crawlers follow
 #   it (ADR 0001 section 3, ROBO-lwdxzdhw). Every other ssrfr check still
 #   applies. Under "strict" the downgrade stays refused.
 acquire_policy <- function(timeout, fetch_ua, max_bytes, ssrf_guard = TRUE,
-                           safety_level = "strict") {
+                           safety_level = "strict",
+                           fetch_allow_ranges = character()) {
   total <- max(1, ceiling(timeout))
   args <- list(
     allow_ports = 1:65535,
@@ -101,6 +107,8 @@ acquire_policy <- function(timeout, fetch_ua, max_bytes, ssrf_guard = TRUE,
   if (!isTRUE(ssrf_guard)) {
     args$allow_ranges <- c("0.0.0.0/0", "::/0")
     args$allow_hosts <- ssrfr::ssrf_vocabulary("metadata_hostnames")$hostname
+  } else if (length(fetch_allow_ranges) > 0L) {
+    args$allow_ranges <- unname(fetch_allow_ranges)
   }
   acquire_call(do.call(ssrfr::ssrf_policy, args))
 }
@@ -288,9 +296,10 @@ acquire_loop_result <- function(location, status, redirect_count,
 # not on where the redirects lead. `max_bytes` is the validated integer limit
 # on decoded body bytes.
 acquire_robots <- function(robots_url, timeout, fetch_ua, max_bytes,
-                           ssrf_guard = TRUE, safety_level = "strict") {
+                           ssrf_guard = TRUE, safety_level = "strict",
+                           fetch_allow_ranges = character()) {
   policy <- acquire_policy(
-    timeout, fetch_ua, max_bytes, ssrf_guard, safety_level
+    timeout, fetch_ua, max_bytes, ssrf_guard, safety_level, fetch_allow_ranges
   )
   redirect_count <- 0L
   redirect_hops <- list()

@@ -462,14 +462,16 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' @export
 robots_validate_url <- function(url, timeout = 10, max_bytes = 524288L,
                                 fetch_user_agent = NULL, ssrf_guard = TRUE,
-                                safety_level = "strict") {
+                                safety_level = "strict",
+                                fetch_allow_ranges = character()) {
   fetched <- robots_fetch(
     url = url,
     timeout = timeout,
     max_bytes = max_bytes,
     fetch_user_agent = fetch_user_agent,
     ssrf_guard = ssrf_guard,
-    safety_level = safety_level
+    safety_level = safety_level,
+    fetch_allow_ranges = fetch_allow_ranges
   )
   validate_fetched_documents(fetched)
 }

@@ -59,8 +59,8 @@ are defined in [`engine-profiles.md`](engine-profiles.md) §3a.
 
 The evidence frame gains two columns. `safety_level` (character) is the level a
 source was fetched under. `fetch_allow_ranges` (a list column) holds the CIDR
-ranges the caller passed in that argument, `character()` on every fetched row
-until it lands; a deprecated `ssrf_guard = FALSE`, which reopens every range,
+ranges the caller passed in that argument, as passed (`character()` by
+default; ROBO-bamcjvwn); a deprecated `ssrf_guard = FALSE`, which reopens every range,
 is recorded in `ssrf_guard`, not here. Both are `NA` on a row with no
 acquisition, a supplied body: there the list cell is `NA_character_`, length
 one, so tell a supplied row by `source_kind`, not by `lengths()`. `https_downgrade_guard` is

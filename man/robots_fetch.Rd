@@ -10,7 +10,8 @@ robots_fetch(
   max_bytes = 524288L,
   fetch_user_agent = NULL,
   ssrf_guard = TRUE,
-  safety_level = "strict"
+  safety_level = "strict",
+  fetch_allow_ranges = character()
 )
 }
 \arguments{
@@ -35,11 +36,14 @@ HTTP field value: no control character, and no leading or trailing
 whitespace.}
 
 \item{ssrf_guard}{A single logical, \code{TRUE} by default. \code{FALSE} is
-deprecated and warns: the guard has no off switch any more. It now
-selects a permissive policy, which reopens private, loopback and other
-internal address ranges and the metadata host names, for example to fetch
-\code{robots.txt} from a trusted intranet host. Known cloud-metadata endpoints
-and the IPv6 transition forms that embed an address stay refused.}
+deprecated and warns: use \code{fetch_allow_ranges} instead. The guard has no
+off switch any more, so \code{FALSE} selects a permissive policy, which
+reopens every private, loopback and other internal address range and the
+metadata host names at either safety level. Known cloud-metadata
+endpoints and the IPv6 transition forms that embed an address stay
+refused. Under \code{safety_level = "crawler"} it warns a second time, since
+no public crawler reaches internal addresses. \code{FALSE} together with a
+non-empty \code{fetch_allow_ranges} is a call-level error.}
 
 \item{safety_level}{A single string: what the fetch may do on the network,
 whatever ruleset reads the outcome. \code{"strict"}, the default, refuses an
@@ -48,6 +52,16 @@ whatever ruleset reads the outcome. \code{"strict"}, the default, refuses an
 \code{http} redirect as an ordinary hop within the five-redirect budget, and
 still refuses every address the guard refuses. Any other value is a
 call-level error.}
+
+\item{fetch_allow_ranges}{A character vector of CIDR ranges, such as
+\code{"10.0.0.0/8"} or \code{"fd00::/8"}, whose addresses are fetched although the
+guard would refuse them, at either safety level: for example to read
+\code{robots.txt} from a trusted intranet host. Defaults to \code{character()},
+which reopens nothing. Each entry is an address and a prefix length with
+no host bits set. The metadata host names are never reopened, and an
+entry naming exactly one cloud-metadata endpoint (such as
+\code{"169.254.169.254/32"}) is a call-level error, as is \code{NA}, an empty
+string or any other entry the guard cannot read.}
 }
 \value{
 An S3 object of class \code{robots_fetches}: a named list with two
@@ -109,7 +123,10 @@ target that is, or resolves to, a loopback, private, link-local, shared,
 multicast, reserved, or cloud-metadata address, an IPv6 form that embeds
 one, or a known metadata host name is refused before any connection, as
 \code{ssrf_blocked}; so is a URL whose host the two URL parsers read differently,
-or one on port 0.
+or one on port 0. An address inside a range listed in \code{fetch_allow_ranges}
+is fetched instead, at either safety level; the metadata host names, the
+cloud-metadata endpoints and the IPv6 transition forms stay refused whatever
+it lists.
 
 Each response is classified into a stable \code{fetch_outcome}. For a \code{fetched}
 outcome the exact decoded entity bytes are stored once as a raw vector in

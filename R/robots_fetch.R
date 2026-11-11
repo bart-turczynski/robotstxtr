@@ -46,7 +46,10 @@
 #' multicast, reserved, or cloud-metadata address, an IPv6 form that embeds
 #' one, or a known metadata host name is refused before any connection, as
 #' `ssrf_blocked`; so is a URL whose host the two URL parsers read differently,
-#' or one on port 0.
+#' or one on port 0. An address inside a range listed in `fetch_allow_ranges`
+#' is fetched instead, at either safety level; the metadata host names, the
+#' cloud-metadata endpoints and the IPv6 transition forms stay refused whatever
+#' it lists.
 #'
 #' Each response is classified into a stable `fetch_outcome`. For a `fetched`
 #' outcome the exact decoded entity bytes are stored once as a raw vector in
@@ -151,11 +154,14 @@
 #'   HTTP field value: no control character, and no leading or trailing
 #'   whitespace.
 #' @param ssrf_guard A single logical, `TRUE` by default. `FALSE` is
-#'   deprecated and warns: the guard has no off switch any more. It now
-#'   selects a permissive policy, which reopens private, loopback and other
-#'   internal address ranges and the metadata host names, for example to fetch
-#'   `robots.txt` from a trusted intranet host. Known cloud-metadata endpoints
-#'   and the IPv6 transition forms that embed an address stay refused.
+#'   deprecated and warns: use `fetch_allow_ranges` instead. The guard has no
+#'   off switch any more, so `FALSE` selects a permissive policy, which
+#'   reopens every private, loopback and other internal address range and the
+#'   metadata host names at either safety level. Known cloud-metadata
+#'   endpoints and the IPv6 transition forms that embed an address stay
+#'   refused. Under `safety_level = "crawler"` it warns a second time, since
+#'   no public crawler reaches internal addresses. `FALSE` together with a
+#'   non-empty `fetch_allow_ranges` is a call-level error.
 #' @param safety_level A single string: what the fetch may do on the network,
 #'   whatever ruleset reads the outcome. `"strict"`, the default, refuses an
 #'   `https` to `http` redirect and every address the guard refuses.
@@ -163,6 +169,15 @@
 #'   `http` redirect as an ordinary hop within the five-redirect budget, and
 #'   still refuses every address the guard refuses. Any other value is a
 #'   call-level error.
+#' @param fetch_allow_ranges A character vector of CIDR ranges, such as
+#'   `"10.0.0.0/8"` or `"fd00::/8"`, whose addresses are fetched although the
+#'   guard would refuse them, at either safety level: for example to read
+#'   `robots.txt` from a trusted intranet host. Defaults to `character()`,
+#'   which reopens nothing. Each entry is an address and a prefix length with
+#'   no host bits set. The metadata host names are never reopened, and an
+#'   entry naming exactly one cloud-metadata endpoint (such as
+#'   `"169.254.169.254/32"`) is a call-level error, as is `NA`, an empty
+#'   string or any other entry the guard cannot read.
 #'
 #' @return An S3 object of class `robots_fetches`: a named list with two
 #'   components, `map` (one row per input URL, in input order) and `robots` (one
@@ -191,7 +206,8 @@
 #' @export
 robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
                          fetch_user_agent = NULL, ssrf_guard = TRUE,
-                         safety_level = "strict") {
+                         safety_level = "strict",
+                         fetch_allow_ranges = character()) {
   # --- Call-level input validation / shared fetch controls (PRD 6.6). --------
   validate_url_type(url)
   timeout <- validate_timeout(timeout)
@@ -199,7 +215,10 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
   max_bytes_int <- validate_max_bytes(max_bytes)
   validate_ssrf_guard(ssrf_guard)
   safety_level <- validate_safety_level(safety_level)
-  warn_ssrf_guard_deprecated(ssrf_guard)
+  fetch_allow_ranges <- validate_fetch_allow_ranges(
+    fetch_allow_ranges, ssrf_guard
+  )
+  warn_ssrf_guard_deprecated(ssrf_guard, safety_level)
   fetch_ua <- if (is.null(fetch_user_agent)) {
     package_fetch_user_agent()
   } else {
@@ -228,7 +247,7 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
   for (i in seq_len(n_src)) {
     results[[i]] <- acquire_robots(
       distinct_origins[[i]], timeout, fetch_ua, max_bytes_int, ssrf_guard,
-      safety_level
+      safety_level, fetch_allow_ranges
     )
   }
 
