@@ -2,16 +2,20 @@
 # recorded as `evidence_status = unreachable_local` (ADR 0001 section 3, slice
 # 4). The address is never dialed, the L0 record is unchanged
 # (`fetch_outcome = ssrf_blocked`, the code in `safety_block_reason`), and the
-# ruleset reads it as it reads an unreachable file. URL-shape refusals stay
-# `safety_refused` at both levels. Offline: refusals are scripted at the ssrfr
-# boundary (helper-fake-ssrfr.R).
+# ruleset reads it as it reads an unreachable file. URL-shape refusals, and
+# 6to4, Teredo and ISATAP (ROBO-aoslfvnx), stay `safety_refused` at both
+# levels.
+# Offline: refusals are scripted at the ssrfr boundary (helper-fake-ssrfr.R).
 
 # ADR 0001 section 3 and design/engine-profiles.md section 3a, by hand.
 ul_address_codes <- c(
   "loopback", "private", "link-local", "cloud-metadata", "shared",
   "unspecified", "this-network", "multicast", "reserved", "ipv4-mapped",
-  "ipv4-translated", "ipv4-compatible", "nat64", "6to4", "teredo", "isatap"
+  "ipv4-translated", "ipv4-compatible", "nat64"
 )
+# ROBO-aoslfvnx: a refusal of these does not say the target is internal
+# (6to4 and Teredo whatever IPv4 they wrap, ISATAP even under a global prefix).
+ul_transition_codes <- c("6to4", "teredo", "isatap")
 ul_url_shape_codes <- c(
   "scheme", "userinfo", "port", "parse", "numeric-literal",
   "malformed-address"
@@ -62,9 +66,14 @@ test_that("every admitted refusal with a safety reason has a class", {
   reasoned <- table[table$admitted & !is.na(table$safety_block_reason), ,
                     drop = FALSE]
   expect_length(reasoned$class, nrow(reasoned))
-  expect_true(all(reasoned$class %in% c("address", "url_shape", "redirect")),
-              info = toString(reasoned$code[is.na(reasoned$class)]))
+  expect_true(
+    all(reasoned$class %in% c("address", "transition", "url_shape",
+                              "redirect")),
+    info = toString(reasoned$code[is.na(reasoned$class)])
+  )
   expect_setequal(table$code[which(table$class == "address")], ul_address_codes)
+  expect_setequal(table$code[which(table$class == "transition")],
+                  ul_transition_codes)
   expect_setequal(table$code[which(table$class == "url_shape")],
                   ul_url_shape_codes)
   expect_setequal(acquire_address_class_reasons(), ul_address_codes)
@@ -113,6 +122,25 @@ test_that("the same refusals stay safety_refused under strict", {
         expect_identical(e$safety_block_reason, code, info = label)
         expect_identical(calls$fetches, hop - 1L, info = label)
       })
+    }
+  }
+})
+
+test_that("transition-class refusals are safety_refused at both levels", {
+  for (code in ul_transition_codes) {
+    for (level in c("crawler", "strict")) {
+      for (hop in 1:2) {
+        local({
+          calls <- ul_local_refusal(code, on_hop = hop)
+          e <- ul_evaluate(level)$evidence
+          label <- paste(code, level, "hop", hop)
+          expect_identical(e$evidence_status, "safety_refused", info = label)
+          expect_identical(e$legacy_fetch_outcome, "ssrf_blocked",
+                           info = label)
+          expect_identical(e$safety_block_reason, code, info = label)
+          expect_identical(calls$fetches, hop - 1L, info = label)
+        })
+      }
     }
   }
 })
