@@ -60,19 +60,20 @@ plus one synthesized fixture or more per candidate class
 every library, to the reference and to two robotstxtr paths:
 `robots_evaluate_text_v1()` with the `google` ruleset and backend, and
 `allowed_by_robots_text()`. A body with a NUL byte reaches robotstxtr as
-the fetch path decodes it (NULs dropped, `R/body-decode.R`), since an R
-string cannot hold one. Library documentation is cited from what each
+the fetch path decodes it (each line cut at its first NUL,
+`R/body-decode.R`), since an R string cannot hold one. Library documentation is cited from what each
 library ships in its installed sources, by file relative to the package;
 where nothing is shipped, the entry says "no documented intent found".
 
 ### Result
 
-robotstxtr agrees with the reference on every row, on both paths, except
-the NUL-bearing `enc-utf16le-no-bom` on `/a`: upstream ends a line at its
-first NUL, robotstxtr drops every NUL. That split is deliberate
-(`design/engine-profiles.md` §5b, class 5), and it is the one row the
-runner's expected-split list names; the two other UTF-16 bodies bear NULs
-too and must agree. No class below is a robotstxtr bug.
+robotstxtr agrees with the reference on every row, on both paths. When
+the comparison ran, robotstxtr dropped every NUL, so it disallowed the
+NUL-bearing `enc-utf16le-no-bom` on `/a`, where upstream, which ends a line
+at its first NUL, allows. Since ROBO-pvqrfvol robotstxtr's Google backend
+ends a line at its first NUL too (`design/engine-profiles.md` §5b, class 5,
+resolved), so it allows; the runner's expected-split list is empty, and a
+re-run is expected to confirm it. No class below is a robotstxtr bug.
 
 ## Hypotheses
 
@@ -455,10 +456,10 @@ starts a comment at any `#`.
 Catalog `enc-utf16le-bom`, `enc-utf16be-bom`, `enc-utf16le-no-bom`, path
 `/a`. Reference: allow on all three. `jv` disallows the two with a BOM (it
 decodes them as UTF-16). `rtx` and `spb` disallow all three, an effect of
-the runner, which drops NUL bytes as robotstxtr's fetch path does.
-robotstxtr disallows `enc-utf16le-no-bom` for the same reason, the one
-deliberate split from the reference (Result). Documented intent: none
-found. Verdict: library deviation (`jv`); runner adaptation (`rtx`,
+the runner, which drops NUL bytes. robotstxtr disallowed
+`enc-utf16le-no-bom` for the same reason when the comparison ran; its
+Google backend now ends each line at its first NUL, as the reference does,
+and allows (ROBO-pvqrfvol, Result). Documented intent: none found. Verdict: library deviation (`jv`); runner adaptation (`rtx`,
 `spb`). RFC 9309 §2.3 requires UTF-8.
 
 ### 25. A Latin-1 byte in a rule

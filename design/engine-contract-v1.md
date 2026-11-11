@@ -265,7 +265,9 @@ write `NA` in both.
 
 1. `binary`: a NUL byte, or at least 8 of the window's bytes, and more than
    10% of them, not part of valid UTF-8 (so a short Latin-1 file is not
-   binary). NULs are still dropped before matching (`R/body-decode.R`).
+   binary). The flag decides nothing: the Google backend still ends each
+   line at its first NUL (`R/body-decode.R`, ROBO-pvqrfvol), and the Bing
+   and Yandex backends read a NUL as an ordinary byte.
 2. `html`: a line starting, after whitespace or a UTF-8 BOM, with
    `<!doctype html`, `<html`, `<head` or `<body`, in any letter case,
    possibly after `<?...?>` declarations and `<!--...-->` comments that close

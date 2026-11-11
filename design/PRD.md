@@ -573,20 +573,29 @@ C++. If a matched callback value is not valid UTF-8, return it as an R
 character value with `Encoding = "bytes"` rather than replacing bytes.
 
 Acquired bytes carrying a NUL: R's character type cannot hold a NUL byte, so
-every decode of acquired bytes must remove NUL bytes before those bytes become an
-R string — for the matcher, for the parse collector, and for the `robots_body()`
-preview. The document must not be truncated at the NUL and no other byte may be
-rewritten; `robots$body` keeps the acquired bytes verbatim, NUL included, so
-`raw = TRUE` still round-trips them. This is a deliberate, documented divergence
-from the reference matcher, which parses each line as a NUL-terminated C string:
-it reads `"\0Disallow: /x"` as an empty line and ignores it, and cuts
-`"Disallow: /a\0b"` to the rule `/a` (design/engine-profiles.md §5b, class 5).
-Neither reading is reachable through R's character type, and of the two
-representable rules, removal preserves every directive the document spells out
-where truncation would silently discard the rest of the file. Such a document is
-malformed, and `robots_validate_text()` reports it as a `nul_byte` error
-diagnostic, so the malformation stays visible — but a fetch must degrade, never
-abort, because of it.
+every decode of acquired bytes must leave the NUL bytes out before those bytes
+become an R string, and the document must never be truncated at a NUL.
+`robots$body` keeps the acquired bytes verbatim, NUL included, so `raw = TRUE`
+still round-trips them. Two readings follow, one per consumer:
+
+- The Google matcher and its parse collector read the body as the reference
+  matcher does, which parses each line as a NUL-terminated C string: each line
+  ends at its first NUL (ROBO-pvqrfvol). `"\0Disallow: /x"` is an empty line,
+  `"Disallow: /a\0b"` is the rule `/a`, and every later line is read whole.
+  Each line is cut at its first NUL and the lines are joined again with line
+  feeds, so line numbers hold; the result holds no NUL, so R's character type
+  carries it. This is parity with the open-source parser
+  (design/engine-profiles.md §5b, class 5, resolved), not a claim about
+  Googlebot in production. A UTF-16 file without a BOM therefore reads as no
+  rules: a decision change from the earlier rule, which removed every NUL and
+  read the ASCII text (ROBO-hcqrzikz).
+- The `robots_body()` preview removes the NUL bytes and rewrites no other
+  byte: it shows the document, it does not match it.
+
+The Bing and Yandex matchers take the raw bytes and read a NUL as an ordinary
+byte. Such a document is malformed, and `robots_validate_text()` reports it as
+a `nul_byte` error diagnostic, so the malformation stays visible — but a fetch
+must degrade, never abort, because of it.
 
 `robots_body()` must select from the `robots` table, render raw bytes safely when
 `raw = FALSE`, and return the raw vector unchanged when `raw = TRUE`. If

@@ -55,10 +55,9 @@ hex rule above.
 The Google decision comes from `allowed_by_robots_text()`, and the test also
 checks that `robots_evaluate_text_v1()` with the `google` ruleset and backend
 agrees on every NUL-free body. R strings cannot carry a NUL, so a NUL-bearing
-body (the UTF-16 cases) is decoded as the fetch path decodes it: NUL bytes
-dropped (`R/body-decode.R`, `nul_free_bytes()`), then handed to the same
-binding. Google's own C++ reads each line only up to its first NUL instead; see
-`enc-utf16le-no-bom`.
+body (the UTF-16 cases) is decoded as the fetch path decodes it: each line
+cut at its first NUL (`R/body-decode.R`, `decode_matcher_body()`), as
+Google's own C++ reads it, then handed to the same binding (ROBO-pvqrfvol).
 
 ## Sources
 
@@ -113,7 +112,7 @@ binding. Google's own C++ reads each line only up to its first NUL instead; see
 |---|---|
 | Content-Type and the `html`/`xml`/`json`/`binary` content flag | ROBO-nhuirvrd: `R/content-check.R`, `tests/testthat/test-content-type-nhuirvrd.R` |
 | BOM at the start, NUL, malformed UTF-8 (validator evidence) | `test-robots_validate-htvtajbr.R` ("BOM, NUL, and malformed UTF-8 hazards…") |
-| NUL bytes: dropped, not truncated; matched on the fetch and v1 paths | `test-nul-body-hcqrzikz.R` |
+| NUL bytes: on the Google backend each line ends at its first NUL, the document is not truncated; matched on the fetch and v1 paths | `test-nul-body-hcqrzikz.R`, `test-google-nul-line-end-pvqrfvol.R` |
 | An empty body; a rule-free body (blank lines, CRLF blanks, comments only, Sitemap only, both, User-agent only, Latin-1 comment) gets `no_rules` | `test-upstream-matcher-cases-r9.R` ("an empty supplied body…"), `test-no-rules-vxrzcqpe.R`, `test-robots_validate-htvtajbr.R` ("an empty document…") |
 | Percent-escaped and raw-UTF-8 rules matching an escaped URL; lower-case escape canonicalized in the reported value | `test-upstream-matcher-cases-r9.R`, `test-allowed_by_robots_text-r3.R` |
 | Path letter case; `*` and `$` basics; longest match; Allow wins a tie | `test-upstream-matcher-cases-r9.R` |
@@ -147,8 +146,8 @@ vendored matcher's decision today; "Validator" lists the codes.
 | `enc-bom-mid-file` — BOM before line 2 `Disallow: /a` | unspecified | not documented; a BOM is only skipped at the start | `/a` allow: the line's key is BOM+`Disallow`, unknown | `misplaced_byte_order_mark@2`, `unknown_directive@2`, `no_rules` | yes; covered by `misplaced_byte_order_mark`, which names the hidden Disallow (ROBO-atkmqcov) |
 | `enc-bom-before-user-agent` — BOM before a second group's `User-agent: FooBot` | unspecified | not documented | `/a` disallow, `/b` disallow: the FooBot line is unknown, so FooBot falls to `*`, and its `Disallow: /b` joins the `*` group | `misplaced_byte_order_mark@4`, `unknown_directive@4` | yes; covered by `misplaced_byte_order_mark`, which says the User-agent line is not read and its rules join the group before it (ROBO-atkmqcov) |
 | `enc-bom-doubled` — two BOMs, then the rules | unspecified | only one leading BOM is documented as ignored | `/a` allow: the second BOM hides `User-agent`, so the rule has no group | `byte_order_mark@1`, `misplaced_byte_order_mark@1`, `unknown_directive@1`, `rule_without_user_agent@2`, `missing_user_agent` | yes; covered by `misplaced_byte_order_mark`, which names the hidden User-agent (`byte_order_mark` alone would say the BOM is skipped) |
-| `enc-utf16le-bom` — UTF-16LE with BOM | not UTF-8 (§2.3, MUST); MAY bridge (§2.2.2): unspecified | must be UTF-8 | `/a` allow (NULs dropped, the `FF FE` prefix spoils line 1, the rule has no group) | `nul_byte@1..3`, `invalid_utf8@1`, `malformed_line@1`, `rules_after_nul_removal` | yes; covered by `nul_byte` (errors); `rules_after_nul_removal` says Google's matcher reads a rule once the NULs are dropped, though it has no group here |
-| `enc-utf16le-no-bom` — UTF-16LE, no BOM | as above | must be UTF-8 | `/a` **disallow**: with the NULs dropped the file is plain ASCII. Google's C++ reads each line only up to its first NUL, so no line holds a directive (allow); robotstxtr's drop is deliberate (`R/body-decode.R`) | `nul_byte@1..3`, `malformed_line@1`, `rules_after_nul_removal` | yes; covered by `rules_after_nul_removal` (warning), which replaces `no_rules` and says Google's matcher reads the rule once the NULs are dropped (ROBO-igrkabdb) |
+| `enc-utf16le-bom` — UTF-16LE with BOM | not UTF-8 (§2.3, MUST); MAY bridge (§2.2.2): unspecified | must be UTF-8 | `/a` allow (each line ends at its first NUL, so no line holds a directive) | `nul_byte@1..3`, `invalid_utf8@1`, `malformed_line@1`, `rules_after_nul_removal` | yes; covered by `nul_byte` (errors); `rules_after_nul_removal` says the NULs hide a rule, though with them removed it has no group here |
+| `enc-utf16le-no-bom` — UTF-16LE, no BOM | as above | must be UTF-8 | `/a` allow: Google's C++, and since ROBO-pvqrfvol robotstxtr's Google backend, read each line only up to its first NUL, so no line holds a directive. Until then robotstxtr dropped the NULs, read plain ASCII and disallowed | `nul_byte@1..3`, `malformed_line@1`, `rules_after_nul_removal` | yes; covered by `rules_after_nul_removal` (warning), which replaces `no_rules`, says the NULs hide the rule and asks for a UTF-8 file (ROBO-igrkabdb) |
 | `enc-utf16be-bom` — UTF-16BE with BOM | as above | must be UTF-8 | `/a` allow | `nul_byte@1..2`, `invalid_utf8@1`, `malformed_line@1`, `rules_after_nul_removal` | yes; covered by `nul_byte` (errors); `rules_after_nul_removal` as for `enc-utf16le-bom` |
 | `enc-latin1-rule` — `Disallow: /caf` + Latin-1 `é` (`E9`) | non-UTF-8 file (§2.3); unspecified | non-UTF-8 characters may be ignored, rules may become invalid | `/caf%E9` disallow (the byte is escaped to `%E9`), `/caf%C3%A9` allow | `invalid_utf8@2` | yes: the UTF-8 URL a browser sends is not blocked; covered by `invalid_utf8` (error) |
 | `enc-latin1-comment` — Latin-1 byte inside a comment only | the file is not UTF-8 (§2.3), though only a comment holds the byte: unspecified | as above | `/a` disallow, unaffected | `invalid_utf8_comment@1` (warning) | no |
@@ -265,8 +264,9 @@ block red. An item marked fixed names the diagnostic that now covers it.
    only an `unknown_directive`; a lost User-agent group is not called out. Fixed:
    `misplaced_byte_order_mark` names the BOM and the directive it hides.
 2. ROBO-igrkabdb — `enc-utf16le-no-bom`: `no_rules` said the file restricts nothing while the
-   NUL-dropping matcher enforces its rules. Fixed: `rules_after_nul_removal` (warning) counts
-   the rules Google's matcher reads once the NULs are dropped.
+   NUL-dropping matcher enforced its rules. Fixed: `rules_after_nul_removal` (warning) counts
+   the rules the NULs hide. Since ROBO-pvqrfvol the Google matcher ends each line at its first
+   NUL, as upstream does, so it no longer enforces them, and the warning asks for a UTF-8 file.
 3. ROBO-sniltuap — `enc-latin1-comment`: `invalid_utf8` had no line and was an error even when
    only a comment held the byte. Fixed: each line is reported, and bytes only after the first
    `#` give the `invalid_utf8_comment` warning.
