@@ -1527,7 +1527,11 @@ ai_training_preference_rows <- function(groups, exact, truncated,
 # counted, so an agent with no other rule is not exempt. A `*` Allow matching
 # every path is never a missing rule (ROBO-gkuuwbgc): the named group's own
 # rules are what the crawler follows. Rows come in anchor-line order: agents
-# are visited in the order they are first named.
+# are visited in the order they are first named. A full block (ROBO-bwpacxtq)
+# is a named agent whose merged groups disallow `/` (rule key `disallow /`,
+# so a `$`-anchored value is not one) and hold no non-empty Allow; an empty
+# Allow does not cancel it. Its lost `*` Disallows add nothing, so only its
+# lost `*` Allows are listed.
 wildcard_inheritance_diagnostics <- function(groups) {
   rules <- groups$rules
   # An empty key (a global line, or one led by a byte outside [A-Za-z_-])
@@ -1559,7 +1563,13 @@ wildcard_inheritance_diagnostics <- function(groups) {
     if (any(judged) && all(allow_all[judged])) {
       next
     }
+    root_block <- in_effect & !is.na(rules$key) & rules$key == "disallow /"
+    full_block <- any(root_block) &&
+      !any(in_effect & rules$type == "allow" & !rules$empty)
     missing <- which(!global$key %in% rules$key[in_effect])
+    if (full_block) {
+      missing <- missing[global$type[missing] == "allow"]
+    }
     if (length(missing) == 0L) {
       next
     }
@@ -1567,12 +1577,14 @@ wildcard_inheritance_diagnostics <- function(groups) {
       token = agents$token[[match(key, agents$key)]],
       first_group = min(agent_groups),
       one_group = length(agent_groups) == 1L,
+      full_block = full_block,
       missing = missing
     )
   }
 
   signature <- paste(
     vapply(losers, `[[`, integer(1L), "first_group"),
+    vapply(losers, `[[`, logical(1L), "full_block"),
     vapply(losers, function(x) paste(x$missing, collapse = ","), "")
   )
   sets <- split(seq_along(losers), factor(signature, unique(signature)))
@@ -1588,7 +1600,8 @@ wildcard_inheritance_diagnostics <- function(groups) {
       missing = global$line[missing],
       message = wildcard_inheritance_message(
         tokens, all(vapply(members, `[[`, TRUE, "one_group")),
-        global[missing, , drop = FALSE]
+        global[missing, , drop = FALSE],
+        full_block = members[[1L]]$full_block
       )
     )
   })
@@ -1739,7 +1752,7 @@ duplicate_rule_diagnostics <- function(groups) {
 }
 
 wildcard_inheritance_message <- function(tokens, one_group, missing,
-                                         cap = 10L) {
+                                         full_block = FALSE, cap = 10L) {
   several <- length(tokens) > 1L
   named <- if (several) {
     paste(toString(tokens[-length(tokens)]),
@@ -1768,17 +1781,33 @@ wildcard_inheritance_message <- function(tokens, one_group, missing,
   if (k > cap) {
     listed <- sprintf("%s, and %d more", listed, k - cap)
   }
-  sprintf(
-    paste0(
-      "%s %s only %s, so %s `User-agent: *` %s not apply to %s: %s. ",
-      "A crawler obeys only the groups that name it and ignores ",
-      "`User-agent: *` once any group does; `User-agent: *` applies only to ",
-      "crawlers no group names."
-    ),
-    named, if (several) "obey" else "obeys", where,
-    if (k == 1L) "this" else "these", if (k == 1L) "rule does" else "rules do",
-    if (several) "them" else "it", listed
-  )
+  if (full_block) {
+    text <- sprintf(
+      paste0(
+        "%s %s only %s, which %s `/`, so %s `User-agent: *` Allow %s may be ",
+        "meant as %s and %s not apply to %s: %s. A stricter policy for a ",
+        "named crawler may be deliberate."
+      ),
+      named, if (several) "obey" else "obeys", where,
+      if (one_group) "disallows" else "together disallow",
+      if (k == 1L) "this" else "these", if (k == 1L) "rule" else "rules",
+      if (k == 1L) "an exception" else "exceptions",
+      if (k == 1L) "does" else "do", if (several) "them" else "it", listed
+    )
+  } else {
+    text <- sprintf(
+      "%s %s only %s, so %s `User-agent: *` %s not apply to %s: %s.",
+      named, if (several) "obey" else "obeys", where,
+      if (k == 1L) "this" else "these",
+      if (k == 1L) "rule does" else "rules do",
+      if (several) "them" else "it", listed
+    )
+  }
+  paste(text, paste0(
+    "A crawler obeys only the groups that name it and ignores ",
+    "`User-agent: *` once any group does; `User-agent: *` applies only to ",
+    "crawlers no group names."
+  ))
 }
 
 # The parser's value is canonical: non-ASCII bytes are already %XX escapes,
