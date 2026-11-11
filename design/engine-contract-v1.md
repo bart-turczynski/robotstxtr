@@ -266,18 +266,26 @@ write `NA` in both.
    holds `<!doctype html`, `<html`, `<head`, `<body`, `<script` or `<style`
    anywhere, in any letter case, followed by whitespace, `>`, `/` or the
    window's end: a minified page opening with inline script or style
-   (ROBO-qquftxcx). The root is the first start tag after any `<?...?>` and
-   `<!--...-->` items: its name, after any namespace prefix and in any letter
-   case, is an HTML element name (ROBO-isbpzgqn: the WHATWG element names,
-   obsolete ones included, with `svg` and `math` left out). An `<!doctype
-   html` after those items makes the root HTML too. `<title`, `<link` and `<meta` are left out, since
-   RSS and Atom feeds use them.
+   (ROBO-qquftxcx). The root is the first start tag after any number of
+   leading items, each skipped whole (ROBO-isbpzgqn): `<?...?>` declarations;
+   comments, including the abrupt `<!-->` and `<!--->` and a `--!>` closer;
+   doctypes of any kind; and end tags. A `<!doctype html` among those items
+   makes the root HTML by itself. The root's name, after any namespace prefix
+   and in any letter case, is an HTML element name (the WHATWG element names,
+   obsolete ones included, with `svg` and `math` left out) or a custom element
+   name: a letter, then a hyphen, and not a reserved SVG or MathML name. A name
+   must end in whitespace, `/` or `>`, so a root cut at the window's end is
+   not read. `<title`, `<link` and `<meta` are left out, since RSS and Atom
+   feeds use them. A `<?php` left unclosed before the root hides the root (a
+   known limit: its `?>` is missing).
 3. `xml`: the first non-whitespace byte is `<`. No robots.txt line starts
    with `<`; a `<` inside a comment or a value never flags. Markup whose root
    is not HTML (an SVG, a KML, a feed, an S3 error) lands here even when it
-   holds those markers, and so does markup without any of the six markers
-   above, such as tag soup. A robots.txt that opens with a markup comment is
-   `xml` too: its first byte is `<`, and it has no root.
+   holds `<style` or another marker, unless a line starts with `<!doctype
+   html`, `<html`, `<head` or `<body`, which item 2 matches first. Markup
+   without any of the six markers above, such as tag soup, lands here too.
+   A robots.txt that opens with a markup comment and then rules is `xml`
+   too: no root follows the comment.
 4. `json`: the body opens with a JSON object (`{` then `"` or `}`) or array
    (`[` then a value or `]`).
 

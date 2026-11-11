@@ -165,9 +165,10 @@ no final response), and a heuristic \code{content_flag} read from the first
 and more than 10\% of them, not valid UTF-8), \code{"html"} (a line starting
 with \verb{<!doctype html}, \verb{<html}, \verb{<head} or \verb{<body}, possibly after an
 \verb{<?xml ...?>} or \verb{<!-- ... -->} on that line; or a body starting with \code{<}
-whose root element, after any leading declarations, comments, doctypes and
-end tags, is an HTML or custom element (or is a \verb{<!doctype html}), and that
-holds \verb{<!doctype html}, \verb{<html}, \verb{<head}, \verb{<body}, \verb{<script} or \verb{<style}
+whose root element, after any leading declarations, comments, end tags and
+\verb{<!doctype} declarations, is an HTML or custom element (or is a
+\verb{<!doctype html}), and that holds \verb{<!doctype html}, \verb{<html}, \verb{<head},
+\verb{<body}, \verb{<script} or \verb{<style}
 anywhere), \code{"xml"} (any other body starting with \code{<}, such as a feed or an
 XML error), \code{"json"} (the body starts with a JSON object or array), or \code{NA}.
 The flag comes from the body alone, never from \code{content_type}, and changes

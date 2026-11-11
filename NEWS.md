@@ -1,6 +1,6 @@
 # robotstxtr (development version)
 
-* `robots_fetch()`'s `content_flag` and the `html_body` warning no longer flag an SVG, feed or other non-HTML XML body, or a robots.txt opening with a markup comment, as `"html"` (ROBO-isbpzgqn).
+* `robots_fetch()`'s `content_flag` and `html_body` no longer flag an SVG, feed or non-HTML XML body, or a comment-led robots.txt, as `"html"` unless a line opens with `<html`, `<head`, `<body` or `<!doctype html` (ROBO-isbpzgqn).
 
 * Under `safety_level = "crawler"`, a refused internal address is now `evidence_status = "unreachable_local"`, which no ruleset reads as allow or deny; schema revision `2026-11-11.1` (ROBO-jqwukcog).
 
