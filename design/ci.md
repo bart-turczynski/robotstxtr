@@ -108,19 +108,33 @@ image and runs the Mac's own CRAN R at `/usr/local/bin` (ROBO-sdltipng).
 - **When.** The weekly `deep-check` schedule only (`.schedule-job` with
   `FLEET_JOB_SCHEDULE: deep-check`); start it by hand with the schedule's
   play button (Build > Pipeline schedules). It is not in `v*` tag or
-  `RELEASE=1` pipelines, where a sleeping Mac would hold `pages` back.
+  `RELEASE=1` pipelines. `mac-docker` is on the same Mac, so a sleeping Mac
+  stalls those pipelines anyway; the risk is `mac-shell` alone offline,
+  which would leave the job pending until GitLab's stuck-job timeout (its
+  `timeout: 1h` counts only once it runs), holding `pages` back meanwhile.
 - **Never red.** It has `allow_failure: true`, since the laptop may sleep
-  or the runner be offline, and it sits in the `report` stage, so it starts
-  after the Linux check legs and no later stage waits on it. Read its result
-  in each weekly pipeline: a failed or stuck `x-macos` is a finding, not a
-  pass, and the pipeline's green says nothing about macOS.
+  or the runner be offline. It sits in the `report` stage: it starts after
+  the check-stage legs and runs alongside the report-stage jobs (`coverage`,
+  `osv-audit`, `security-audit`) on `mac-docker`, and no later stage waits
+  on it. When a blocking check-stage leg fails, `x-macos` is skipped. Read
+  its result in each weekly pipeline: a failed, skipped or stuck `x-macos`
+  is not a pass, and the pipeline's green says nothing about macOS.
+  `resource_group: x-macos` keeps two runs from sharing its library.
 - **Its own library.** R's framework library is writable on that Mac, so
   the job installs nothing there: every dependency, pak and rcmdcheck
   included, goes into `R_LIBS_USER`, a per-project library per R minor under
   `~/Library/Caches/gitlab-ci/robotstxtr-R-lib/` (`MACOS_R_LIB_ROOT`
-  overrides the root), kept between runs; pak installs with
-  `upgrade = FALSE`. The template's `LC_ALL=C.UTF-8` is replaced by
-  `en_US.UTF-8` in the script; the case-folding legs stay with `t2-locale`.
+  overrides the root), kept between runs; pak upgrades it to current CRAN
+  each run (`upgrade = TRUE`), as the Linux legs' fresh installs track it.
+  The template's `LC_ALL=C.UTF-8` is replaced by `en_US.UTF-8` in the
+  script; the case-folding legs stay with `t2-locale`.
+- **None of the maintainer's R files.** The job runs as the maintainer,
+  whose `~/.Renviron` sets API keys (the OSS Index ones would turn on
+  `test-security.R`'s live audit) and whose `~/.Rprofile` and
+  `~/.R/Makevars` would change R's output and the compiler flags. The
+  script points `R_ENVIRON_USER`, `R_PROFILE_USER`, `R_MAKEVARS_USER`,
+  `R_CHECK_ENVIRON` and `R_BUILD_ENVIRON` at empty files before R first
+  starts, and still unsets `OSSINDEX_USER` and `OSSINDEX_TOKEN`.
 
 ## Platforms CI cannot cover
 

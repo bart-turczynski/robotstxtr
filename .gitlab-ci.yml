@@ -1,9 +1,10 @@
 # GitLab CI for robotstxtr: fleet-ci's template, pinned by commit SHA (seor
 # ADR 0012, fleet-ci README "The CI template"). The template owns the event
 # table, the jobs and the images; this file sets only the package's switches
-# and adds its x-floor and x-macos jobs. A push to main or a branch, and a merge request,
-# create no pipeline: the merge gate is the local one (.fleet-ci/gate, run by
-# the .fleet-ci/pre-push hook; settings in .fleet-ci.yml). T2 runs on the
+# and adds its x-floor and x-macos jobs. A push to main or a branch, and a
+# merge request, create no pipeline: the merge gate is the local one
+# (.fleet-ci/gate, run by the .fleet-ci/pre-push hook; settings in
+# .fleet-ci.yml). T2 runs on the
 # deep-check schedule (SCHEDULE_KIND=deep-check, schedule 4472810), T3 on a
 # RELEASE=1 web pipeline and a v* tag. The dependency-audit schedule
 # (4467473) gets no pipeline: osv-audit and security-audit run in T2.
@@ -125,16 +126,29 @@ x-floor:
 # - When: the deep-check schedule only, through .schedule-job, including a
 #   hand-started "Run pipeline schedule" (Build > Pipeline schedules, the play
 #   button). Not .t2-job: that would put it in v* tag and RELEASE=1 pipelines
-#   too, where a sleeping Mac would hold `pages` until the job timed out.
-# - Stage `report`, so it starts after the Linux check legs, not beside them
-#   on the same Mac, and no later stage waits on it in a deep-check pipeline.
+#   too. mac-docker is on the same Mac, so a sleeping Mac stalls those anyway;
+#   the risk is mac-shell alone offline, which leaves the job pending until
+#   GitLab's stuck-job timeout (`timeout:` only counts once it runs), holding
+#   `pages` back all that time.
+# - Stage `report`: it starts after the check-stage legs, and runs alongside
+#   the report-stage jobs (coverage, osv-audit, security-audit) on
+#   mac-docker. No later stage waits on it in a deep-check pipeline. When a
+#   blocking check-stage leg fails, x-macos is skipped, not run.
 # - allow_failure: a sleeping laptop or an offline runner must never turn the
 #   weekly pipeline red. A red x-macos is a finding to read, not a pass.
+# - resource_group: two runs never share the library at once.
 # - Library: R's framework library is writable on that Mac, so nothing may
 #   install into it. Every dependency, pak and rcmdcheck included, goes into
 #   R_LIBS_USER, a per-project library per R minor under
 #   ~/Library/Caches/gitlab-ci/ (MACOS_R_LIB_ROOT overrides the root), which
-#   persists between runs as a cache; pak installs with upgrade = FALSE.
+#   persists between runs; pak upgrades it to current CRAN each run
+#   (upgrade = TRUE), as the Linux legs' fresh installs do.
+# - Isolation: the job runs as the maintainer, whose ~/.Renviron sets API
+#   keys (OSS Index among them, which would turn on test-security.R's live
+#   audit) and could set R_LIBS_USER, and whose ~/.Rprofile and
+#   ~/.R/Makevars would change R's output and the compiler flags. So
+#   R_ENVIRON_USER, R_PROFILE_USER, R_MAKEVARS_USER, R_CHECK_ENVIRON and
+#   R_BUILD_ENVIRON point at empty files before the first Rscript.
 # - The check: --as-cran with incoming off, vignettes built (pandoc and qpdf
 #   are on the Mac), and x-floor's guard (a Status line, exit 0, no ERROR or
 #   WARNING). The template's LC_ALL is C.UTF-8, so the script sets
@@ -145,6 +159,7 @@ x-macos:
   tags:
     - macos
   allow_failure: true
+  resource_group: x-macos
   timeout: 1h
   variables:
     FLEET_JOB_SCHEDULE: "deep-check"
@@ -155,6 +170,10 @@ x-macos:
     - export PATH="/usr/local/bin:$PATH"
     - unset OSSINDEX_USER OSSINDEX_TOKEN
     - export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+    - R_EMPTY="$(mktemp -d)"
+    - touch "$R_EMPTY/Renviron" "$R_EMPTY/Rprofile" "$R_EMPTY/Makevars"
+    - export R_ENVIRON_USER="$R_EMPTY/Renviron" R_PROFILE_USER="$R_EMPTY/Rprofile" R_MAKEVARS_USER="$R_EMPTY/Makevars"
+    - export R_CHECK_ENVIRON="$R_EMPTY/Renviron" R_BUILD_ENVIRON="$R_EMPTY/Renviron"
     - R_MINOR="$(Rscript -e 'cat(R.version$major, sub("[.].*$", "", R.version$minor), sep = ".")')"
     - export R_LIBS_USER="${MACOS_R_LIB_ROOT:-$HOME/Library/Caches/gitlab-ci/robotstxtr-R-lib}/$R_MINOR"
     - mkdir -p "$R_LIBS_USER"
@@ -164,7 +183,7 @@ x-macos:
       options(repos = c(CRAN = "https://cloud.r-project.org"));
       if (!nzchar(system.file(package = "pak", lib.loc = lib))) install.packages("pak", lib = lib);
       library(pak, lib.loc = lib);
-      pak::pkg_install(c("deps::.", "any::rcmdcheck"), dependencies = TRUE, lib = lib, upgrade = FALSE);
+      pak::pkg_install(c("deps::.", "any::rcmdcheck"), dependencies = TRUE, lib = lib, upgrade = TRUE);
       print(R.version.string); print(.libPaths())'
     - >
       Rscript -e 'res <- rcmdcheck::rcmdcheck(args = c("--no-manual", "--as-cran"),
