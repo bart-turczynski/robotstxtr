@@ -55,7 +55,9 @@ test_that("ROBO-nhuirvrd: an HTML body is flagged and still matched", {
   expect_true(x$results$allowed)
   expect_identical(x$robots$content_type, "text/html")
   expect_identical(x$robots$content_flag, "html")
-  expect_identical(x$robots, robots_fetch("http://a/")$robots)
+  # allowed_by_robots_url() reads 512,000 bytes by default (ROBO-uwveumyp).
+  fetched <- robots_fetch("http://a/", max_bytes = 512000L)
+  expect_identical(x$robots, fetched$robots)
 })
 
 test_that("ROBO-nhuirvrd: a flagged body keeps the rules it spells out", {
