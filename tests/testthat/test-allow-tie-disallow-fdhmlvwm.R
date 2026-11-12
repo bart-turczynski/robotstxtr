@@ -269,8 +269,9 @@ test_that("a NUL in a User-agent leaves Google's group name", {
   x <- robots_validate_text(at_nul(
     "User-agent: *\nDisallow: /a\n\nUser-agent: bot", "x\nAllow: /b\n"
   ))
-  expect_identical(at_codes(x), c("nul_byte@4", "wildcard_rules_not_inherited@4",
-                                  "rules_after_nul_removal@NA"))
+  expect_identical(at_codes(x), c(
+    "nul_byte@4", "wildcard_rules_not_inherited@4", "rules_after_nul_removal@NA"
+  ))
   inherited <- x$diagnostics$message[[2L]]
   expect_match(inherited, "^bot obeys only this group")
   expect_match(inherited, "This is Google's reading", fixed = TRUE)

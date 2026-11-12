@@ -733,6 +733,19 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       !is.na(hash) &&
         validation_utf8_line(validation_raw_slice(line_bytes, 1L, hash - 1L))
     }, logical(1L))
+    # Indexed by 1 + in_comment + 2 * past_nul.
+    utf8_messages <- c(
+      "Line bytes are not well-formed UTF-8.",
+      paste0("Only a comment holds bytes that are not well-formed UTF-8; ",
+             "no rule changes."),
+      paste0("Bytes after the line's first NUL are not well-formed ",
+             "UTF-8: Google's matcher ends the line at the NUL and never ",
+             "reads them; Bing and Yandex read past it."),
+      paste0("Only bytes after the line's first NUL are not well-formed ",
+             "UTF-8, in a comment as Bing and Yandex read the line; ",
+             "Google's matcher ends the line at the NUL and never reads ",
+             "them; no rule changes.")
+    )
     # A `#` before the first NUL is a comment Google reads too, so only a
     # NUL before any `#` makes the message name the engines.
     past_nul <- vapply(raw_lines[bad_lines], function(line_bytes) {
@@ -747,25 +760,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       NA_character_,
       vapply(raw_lines[bad_lines], render_validation_line, "",
              USE.NAMES = FALSE),
-      ifelse(
-        past_nul,
-        ifelse(
-          in_comment,
-          paste0("Only bytes after the line's first NUL are not well-formed ",
-                 "UTF-8, in a comment as Bing and Yandex read the line; ",
-                 "Google's matcher ends the line at the NUL and never reads ",
-                 "them; no rule changes."),
-          paste0("Bytes after the line's first NUL are not well-formed ",
-                 "UTF-8: Google's matcher ends the line at the NUL and never ",
-                 "reads them; Bing and Yandex read past it.")
-        ),
-        ifelse(
-          in_comment,
-          paste0("Only a comment holds bytes that are not well-formed UTF-8; ",
-                 "no rule changes."),
-          "Line bytes are not well-formed UTF-8."
-        )
-      )
+      utf8_messages[1L + in_comment + 2L * past_nul]
     )
   }
   encoding <- if (encoding_valid) "utf-8" else "invalid-utf-8"
