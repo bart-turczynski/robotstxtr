@@ -215,9 +215,9 @@ test_that("a tie on an inner-dollar pattern keeps both warnings", {
   )
 })
 
-# The parser and Google's matcher stop a line at a NUL (ROBO-pvqrfvol), but
-# Bing and Yandex read the NUL as an ordinary byte, so the group checks are
-# skipped on any NUL.
+# The parser and Google's matcher stop a line at a NUL (ROBO-pvqrfvol), while
+# Bing and Yandex read the NUL as an ordinary byte. The group checks run on
+# Google's lines and say so (ROBO-xuusttbp).
 at_nul <- function(...) {
   parts <- list(...)
   out <- charToRaw(parts[[1L]])
@@ -227,31 +227,54 @@ at_nul <- function(...) {
   out
 }
 
-test_that("a NUL anywhere skips the tie check", {
-  for (body in list(
-    at_nul("User-agent: *\nAllow: /\nDisallow: /", "x\n"),
-    at_nul("User-agent: *\nAllow: /", "x\nDisallow: /\n"),
-    at_nul("User-agent: bot\nAllow: /x\n\nUser-agent: bot", "x\n",
-           "Disallow: /x\n"),
-    at_nul("User-agent: *\nAllow: /a\nDisallow: /a", "b\n")
-  )) {
-    x <- robots_validate_text(body)
-    expect_true("nul_byte" %in% x$diagnostics$code)
-    expect_false("disallow_tied_by_allow" %in% x$diagnostics$code)
-    expect_false("wildcard_rules_not_inherited" %in% x$diagnostics$code)
+at_codes <- function(x) {
+  paste0(x$diagnostics$code, "@", x$diagnostics$line)
+}
+
+test_that("a NUL leaves the tie check on Google's reading of each line", {
+  cases <- list(
+    # A NUL after the Disallow's path: Google reads `Disallow: /`.
+    list(at_nul("User-agent: *\nAllow: /\nDisallow: /", "x\n"),
+         c("nul_byte@3", "rule_cut_by_nul@3", "disallow_tied_by_allow@3")),
+    list(at_nul("User-agent: *\nAllow: /", "x\nDisallow: /\n"),
+         c("nul_byte@2", "rule_cut_by_nul@2", "disallow_tied_by_allow@3")),
+    # The NUL starts line 5, an empty line for Google: no Disallow to tie.
+    list(at_nul("User-agent: bot\nAllow: /x\n\nUser-agent: bot", "x\n",
+                "Disallow: /x\n"),
+         c("nul_byte@4", "nul_byte@5", "rules_after_nul_removal@NA")),
+    # The issue's case: Google reads `Disallow: /a`, which Allow: /a ties.
+    list(at_nul("User-agent: *\nAllow: /a\nDisallow: /a", "b\n"),
+         c("nul_byte@3", "rule_cut_by_nul@3", "disallow_tied_by_allow@3"))
+  )
+  for (case in cases) {
+    x <- robots_validate_text(case[[1L]])
+    expect_identical(at_codes(x), case[[2L]])
+    tie <- x$diagnostics$message[x$diagnostics$code ==
+                                   "disallow_tied_by_allow"]
+    for (message in tie) {
+      expect_match(message, "Google's reading", fixed = TRUE)
+      expect_match(message, "Bing and Yandex read the NUL", fixed = TRUE)
+    }
   }
 })
 
-test_that("a NUL in a User-agent skips wildcard_rules_not_inherited", {
-  # Without the NUL the second group is `botx`, which drops the * rule.
+test_that("a NUL in a User-agent leaves Google's group name", {
+  # Without the NUL the second group is `botx`; Google reads `bot`. Either
+  # way the named group drops the * rule.
   plain <- robots_validate_text(
     "User-agent: *\nDisallow: /a\n\nUser-agent: botx\nAllow: /b\n"
   )
   expect_identical(plain$diagnostics$code, "wildcard_rules_not_inherited")
+  expect_no_match(plain$diagnostics$message, "Google's reading", fixed = TRUE)
   x <- robots_validate_text(at_nul(
     "User-agent: *\nDisallow: /a\n\nUser-agent: bot", "x\nAllow: /b\n"
   ))
-  expect_identical(x$diagnostics$code, c("nul_byte", "rules_after_nul_removal"))
+  expect_identical(at_codes(x), c(
+    "nul_byte@4", "wildcard_rules_not_inherited@4", "rules_after_nul_removal@NA"
+  ))
+  inherited <- x$diagnostics$message[[2L]]
+  expect_match(inherited, "^bot obeys only this group")
+  expect_match(inherited, "This is Google's reading", fixed = TRUE)
 })
 
 test_that("edge inputs compare without error", {

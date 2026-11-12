@@ -266,17 +266,30 @@ dr_nul <- function(...) {
   out
 }
 
-test_that("a NUL anywhere skips the duplicate check", {
-  for (body in list(
-    dr_nul("User-agent: *\nDisallow: /x\nDisallow: /x", "y\n"),
-    dr_nul("User-agent: *\nDisallow: /x", "y\nDisallow: /x\n"),
-    dr_nul("User-agent: bot\nDisallow: /x\n\nUser-agent: bot", "x\n",
-           "Disallow: /x\n"),
-    dr_nul("# a", "\nUser-agent: *\nDisallow: /x\nDisallow: /x\n")
-  )) {
-    x <- robots_validate_text(body)
-    expect_true("nul_byte" %in% x$diagnostics$code)
-    expect_false("duplicate_rule" %in% x$diagnostics$code)
+test_that("a NUL leaves the duplicate check on Google's reading", {
+  # Google's parser and matcher end a line at its first NUL (ROBO-pvqrfvol);
+  # Bing and Yandex read past it, so the message names Google (ROBO-xuusttbp).
+  cases <- list(
+    list(dr_nul("User-agent: *\nDisallow: /x\nDisallow: /x", "y\n"),
+         c("nul_byte@3", "rule_cut_by_nul@3", "duplicate_rule@3")),
+    list(dr_nul("User-agent: *\nDisallow: /x", "y\nDisallow: /x\n"),
+         c("nul_byte@2", "rule_cut_by_nul@2", "duplicate_rule@3")),
+    # Line 5 starts with the NUL: an empty line, so no second rule.
+    list(dr_nul("User-agent: bot\nDisallow: /x\n\nUser-agent: bot", "x\n",
+                "Disallow: /x\n"),
+         c("nul_byte@4", "nul_byte@5", "rules_after_nul_removal@NA")),
+    list(dr_nul("# a", "\nUser-agent: *\nDisallow: /x\nDisallow: /x\n"),
+         c("nul_byte@1", "duplicate_rule@4"))
+  )
+  for (case in cases) {
+    d <- robots_validate_text(case[[1L]])$diagnostics
+    expect_identical(paste0(d$code, "@", d$line), case[[2L]])
+    # A NUL only in a comment changes no engine's reading: no note.
+    in_comment <- identical(case[[2L]][[1L]], "nul_byte@1")
+    for (message in d$message[d$code == "duplicate_rule"]) {
+      expect_identical(grepl("This is Google's reading", message, fixed = TRUE),
+                       !in_comment)
+    }
   }
 })
 

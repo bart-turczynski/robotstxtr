@@ -377,12 +377,17 @@ test_that("the check sits beside no_rules without overlapping it", {
   }
 })
 
-test_that("a NUL inside a * rule skips the group checks", {
-  # The parser reads `/a`, Google's matcher `/ab` (ROBO-fdhmlvwm).
+test_that("a NUL inside a * rule lists Google's reading of it", {
+  # The parser and Google's matcher read `/a` (ROBO-pvqrfvol); Bing and
+  # Yandex read `/a\0b`, so the finding names Google (ROBO-xuusttbp).
   body <- c(charToRaw("User-agent: *\nDisallow: /a"), as.raw(0),
             charToRaw("b\nUser-agent: Bingbot\nDisallow: /x\n"))
-  x <- robots_validate_text(body)
-  expect_identical(x$diagnostics$code, "nul_byte")
+  d <- robots_validate_text(body)$diagnostics
+  expect_identical(paste0(d$code, "@", d$line),
+                   c("nul_byte@2", "rule_cut_by_nul@2",
+                     "wildcard_rules_not_inherited@3"))
+  expect_match(d$message[[3L]], "/a", fixed = TRUE)
+  expect_match(d$message[[3L]], "This is Google's reading", fixed = TRUE)
 })
 
 test_that("a large document keeps every message capped", {

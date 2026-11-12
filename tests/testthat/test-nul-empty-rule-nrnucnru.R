@@ -102,10 +102,11 @@ test_that("a plain empty Disallow keeps today's message", {
 })
 
 test_that("a NUL in the middle of a path is not hidden", {
+  # The value is cut, not emptied: rule_cut_by_nul (ROBO-xuusttbp).
   bytes <- c(charToRaw("User-agent: *\nDisallow: /a"), nr_nul,
              charToRaw("b\n"))
   x <- robots_validate_text(bytes)
-  expect_identical(nr_codes(x), "nul_byte@2")
+  expect_identical(nr_codes(x), c("nul_byte@2", "rule_cut_by_nul@2"))
   expect_false(any(x$diagnostics$code == "empty_rule_value"))
 })
 

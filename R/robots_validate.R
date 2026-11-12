@@ -60,10 +60,15 @@ validation_unsupported <- c(
 #'     A line holds NUL bytes, which can truncate parsing. \cr
 #'   \code{invalid_utf8} \tab error \tab
 #'     A line holds bytes that are not well-formed UTF-8 before the line's
-#'     first \code{#}. \cr
+#'     first \code{#}. A NUL byte counts as a character of its own, so a
+#'     NUL inside a multi-byte sequence breaks it. When every bad byte lies
+#'     after the line's first NUL, the message says Google's matcher never
+#'     reads them while Bing and Yandex do. \cr
 #'   \code{invalid_utf8_comment} \tab warning \tab
 #'     A line's bytes that are not well-formed UTF-8 all sit in its comment,
-#'     after the first \code{#}; no rule changes. \cr
+#'     after the first \code{#}; no rule changes. A \code{#} after a NUL
+#'     counts: Bing and Yandex read past the NUL, and Google's matcher reads
+#'     nothing after it, which the message then says. \cr
 #'   \code{malformed_line} \tab error \tab
 #'     An active line is not a key-value directive. \cr
 #'   \code{line_too_long} \tab error \tab
@@ -106,6 +111,13 @@ validation_unsupported <- c(
 #'     A \code{#} with no space or tab before it starts a comment inside an
 #'     Allow or Disallow value, cutting the rule at the \code{#}. A vertical
 #'     tab or form feed before the \code{#} still counts as no space. \cr
+#'   \code{rule_cut_by_nul} \tab warning \tab
+#'     A NUL byte inside an Allow or Disallow value: Google's matcher ends
+#'     the line at its first NUL, so the rule is cut there, while Bing and
+#'     Yandex read the NUL as a byte of the rule, even one at the value's
+#'     end. A NUL in a comment, which every engine ignores, right after the
+#'     colon (\code{empty_rule_value}) or past the line buffer is not
+#'     reported. \cr
 #'   \code{rule_inner_dollar} \tab warning \tab
 #'     A \code{$} before a pattern's end; it matches a literal \code{$}. \cr
 #'   \code{rule_inner_whitespace} \tab warning \tab
@@ -304,8 +316,9 @@ validation_unsupported <- c(
 #' `ai_training_group_extra_line` leaves it out unless the group is the
 #' file's last. A key such as `DisallowAITraining` is
 #' `accepted_directive_prefix`. A body cut at `max_bytes` is checked, and
-#' the info then says the lines past the cut were not read; a document
-#' holding a NUL byte gets none of these codes.
+#' the info then says the lines past the cut were not read. On a document
+#' holding a NUL byte they follow Google's reading, as the other group
+#' checks do.
 #' Which crawler operators read the token, and from when, is recorded with
 #' dates in `design/engine-profiles.md` section 7a.
 #'
@@ -332,11 +345,13 @@ validation_unsupported <- c(
 #' reported when a User-agent line follows it: that line keeps the next
 #' User-agent line from joining its group.
 #'
-#' A document holding a NUL byte gets none of `wildcard_rules_not_inherited`,
-#' `disallow_tied_by_allow` or `duplicate_rule`: it is already a `nul_byte`
-#' error, and while the parser and Google's matcher end a line at its first
-#' NUL, the Bing and Yandex matchers read the NUL as an ordinary byte, so its
-#' groups depend on the engine.
+#' On a document holding a NUL byte, `wildcard_rules_not_inherited`,
+#' `disallow_tied_by_allow`, `duplicate_rule` and the AI-training codes
+#' follow Google's reading: the parser and Google's matcher end a line at its
+#' first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
+#' byte, so each such message says it is Google's reading, unless every NUL
+#' sits in a comment. `user_agent_cut` runs too; its message already names
+#' Google's matcher.
 #'
 #' @param robots_txt A single non-missing character string or a raw vector.
 #' @param source_id A single non-empty character string identifying the supplied
@@ -697,23 +712,47 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   }
 
   # RFC 9309 section 2.3: the file MUST be UTF-8. LF and CR are ASCII, so the
-  # document is well-formed exactly when every line is. A line is checked
-  # without its NUL bytes, which nul_byte already reports; the bytes on both
-  # sides of a NUL are still the file's, so they are checked. The parser cuts
-  # a line at its first `#` (GetKeyAndValueFrom), and `#` is never part of a
-  # multi-byte sequence, so bad bytes only after it change no rule
-  # (ROBO-sniltuap).
+  # document is well-formed exactly when every line is. NUL is a one-byte
+  # UTF-8 character (nul_byte reports it), so a line is checked as it is
+  # written: each run of bytes between NULs must be well-formed, and a
+  # sequence a NUL splits (`\xC3\0\xA9`) is not (ROBO-xuusttbp). The parser
+  # cuts a line at its first `#` (GetKeyAndValueFrom), and `#` is never part
+  # of a multi-byte sequence, so bad bytes only after it change no rule
+  # (ROBO-sniltuap). Google's parser and matcher end a line at its first NUL
+  # (ROBO-pvqrfvol) and never read bytes after it; the Bing and Yandex
+  # matchers read past the NUL and cut at `#` too. So the code follows the
+  # line as written, as Bing and Yandex read it, and the message says when
+  # every bad byte lies after the first NUL, where Google reads nothing.
   # Its rows go in as one frame: a file can hold thousands of bad lines.
   nul_free_lines <- lapply(raw_lines, nul_free_bytes)
-  bad_lines <- which(!vapply(nul_free_lines, function(line_bytes) {
-    validUTF8(rawToChar(line_bytes))
-  }, logical(1L)))
+  bad_lines <- which(!vapply(raw_lines, validation_utf8_line, logical(1L)))
   encoding_valid <- length(bad_lines) == 0L
   if (!encoding_valid) {
-    in_comment <- vapply(nul_free_lines[bad_lines], function(line_bytes) {
+    in_comment <- vapply(raw_lines[bad_lines], function(line_bytes) {
       hash <- match(as.raw(0x23), line_bytes)
       !is.na(hash) &&
-        validUTF8(rawToChar(validation_raw_slice(line_bytes, 1L, hash - 1L)))
+        validation_utf8_line(validation_raw_slice(line_bytes, 1L, hash - 1L))
+    }, logical(1L))
+    # Indexed by 1 + in_comment + 2 * past_nul.
+    utf8_messages <- c(
+      "Line bytes are not well-formed UTF-8.",
+      paste0("Only a comment holds bytes that are not well-formed UTF-8; ",
+             "no rule changes."),
+      paste0("Bytes after the line's first NUL are not well-formed ",
+             "UTF-8: Google's matcher ends the line at the NUL and never ",
+             "reads them; Bing and Yandex read past it."),
+      paste0("Only bytes after the line's first NUL are not well-formed ",
+             "UTF-8, in a comment as Bing and Yandex read the line; ",
+             "Google's matcher ends the line at the NUL and never reads ",
+             "them; no rule changes.")
+    )
+    # A `#` before the first NUL is a comment Google reads too, so only a
+    # NUL before any `#` makes the message name the engines.
+    past_nul <- vapply(raw_lines[bad_lines], function(line_bytes) {
+      nul <- match(as.raw(0x00), line_bytes)
+      hash <- match(as.raw(0x23), line_bytes)
+      !is.na(nul) && (is.na(hash) || nul < hash) &&
+        validation_utf8_line(validation_raw_slice(line_bytes, 1L, nul - 1L))
     }, logical(1L))
     add_chunk(
       bad_lines, ifelse(in_comment, "warning", "error"),
@@ -721,12 +760,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       NA_character_,
       vapply(raw_lines[bad_lines], render_validation_line, "",
              USE.NAMES = FALSE),
-      ifelse(
-        in_comment,
-        paste0("Only a comment holds bytes that are not well-formed UTF-8; ",
-               "no rule changes."),
-        "Line bytes are not well-formed UTF-8."
-      )
+      utf8_messages[1L + in_comment + 2L * past_nul]
     )
   }
   encoding <- if (encoding_valid) "utf-8" else "invalid-utf-8"
@@ -858,6 +892,18 @@ validate_document_bytes <- function(bytes, source_id, source_type,
                  "so the rule is cut at the '#'.")
         )
       }
+      # A NUL inside the value cuts it the same way, on Google's reading
+      # only: the Bing and Yandex matchers read the NUL as a byte of the
+      # rule (ROBO-xuusttbp).
+      if (nzchar(value) && nul_counts[[line]] > 0L &&
+            rule_cut_by_nul(raw_lines[[line]])) {
+        add_diagnostic(
+          line, "warning", "rule_cut_by_nul", type,
+          paste0("Google's matcher ends this line at its first NUL, so the ",
+                 "rule is cut at the NUL; Bing and Yandex read the NUL as a ",
+                 "byte of the rule. Remove the NUL.")
+        )
+      }
     } else if (identical(type, "sitemap") && !nzchar(value)) {
       add_diagnostic(
         line, "warning", "empty_sitemap_value", type,
@@ -883,79 +929,90 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     }
   }
 
-  # A document with any NUL (already a `nul_byte` error) gets none of the
-  # group checks. The parser and Google's matcher both end a line at its first
-  # NUL, but the Bing and Yandex matchers read the NUL as an ordinary byte, so
-  # the groups depend on the engine.
-  if (length(nul_lines) == 0L) {
-    groups <- validation_groups(parsed)
-    # Google's matcher reads a User-agent value only up to its first byte
-    # outside [A-Za-z_-], so the group names another crawler than written,
-    # or none (ROBO-zvhrayhx). The message names the token only (ASCII):
-    # the value may not be valid UTF-8, and `raw_text` carries it.
-    agents <- groups$agents
-    for (i in which(agents$cut)) {
-      token <- agents$token[[i]]
-      add_diagnostic(
-        agents$line[[i]], "warning", "user_agent_cut", "user-agent",
-        if (nzchar(token)) {
-          sprintf(paste0("User-agent value is read as '%s' by Google's ",
-                         "matcher, which stops at the first character ",
-                         "outside letters, '_' and '-'."), token)
-        } else {
-          paste0("User-agent value names no crawler: Google's matcher ",
-                 "reads a product token only from a leading run of letters, ",
-                 "'_' and '-'.")
-        }
-      )
-    }
-    # The AI-training policy token (ROBO-kzyfejcv). A cut body is checked on
-    # the lines before the cut: a User-agent line past it could still join
-    # the last group (stacking the token, or making a token-only group
-    # mixed), and rules past it are unread, which the info says.
-    found <- ai_training_diagnostics(groups, parsed,
-                                     truncated = body_truncated)
-    if (nrow(found) > 0L) {
-      add_chunk(
-        found$line, found$severity, found$code, found$directive,
-        vapply(raw_lines[found$line], render_validation_line, "",
-               USE.NAMES = FALSE),
-        found$message
-      )
-    }
-    # A named group drops the `*` rules for its crawlers (ROBO-gfjotdrr). On
-    # a cut body a group's rules may lie past the cut, so it is skipped.
-    if (!body_truncated) {
-      inheritance <- wildcard_inheritance_diagnostics(groups)
-      for (found in inheritance) {
-        add_diagnostic(
-          found$line, "info", "wildcard_rules_not_inherited", "user-agent",
-          found$message
-        )
+  # The group checks read the parser's groups. With a NUL in the file (already
+  # a `nul_byte` error) those are Google's groups only: the parser and
+  # Google's matcher end a line at its first NUL (ROBO-pvqrfvol), while the
+  # Bing and Yandex matchers read the NUL as an ordinary byte. So each such
+  # finding names Google's reading (ROBO-xuusttbp).
+  # A NUL after a line's first `#` sits in a comment every engine ignores,
+  # so it changes no group and needs no note.
+  nul_active <- vapply(raw_lines[nul_lines], function(line_bytes) {
+    hash <- match(as.raw(0x23), line_bytes)
+    is.na(hash) || match(as.raw(0x00), line_bytes) < hash
+  }, logical(1L))
+  nul_reading <- if (any(nul_active)) {
+    paste0(" This is Google's reading, which ends each line at its first ",
+           "NUL; Bing and Yandex read the NUL as an ordinary byte.")
+  } else {
+    ""
+  }
+  groups <- validation_groups(parsed)
+  # Google's matcher reads a User-agent value only up to its first byte
+  # outside [A-Za-z_-], so the group names another crawler than written,
+  # or none (ROBO-zvhrayhx). The message names the token only (ASCII):
+  # the value may not be valid UTF-8, and `raw_text` carries it.
+  agents <- groups$agents
+  for (i in which(agents$cut)) {
+    token <- agents$token[[i]]
+    add_diagnostic(
+      agents$line[[i]], "warning", "user_agent_cut", "user-agent",
+      if (nzchar(token)) {
+        sprintf(paste0("User-agent value is read as '%s' by Google's ",
+                       "matcher, which stops at the first character ",
+                       "outside letters, '_' and '-'."), token)
+      } else {
+        paste0("User-agent value names no crawler: Google's matcher ",
+               "reads a product token only from a leading run of letters, ",
+               "'_' and '-'.")
       }
-    }
-    # A Disallow an identical Allow ties never applies (ROBO-fdhmlvwm).
-    # Lines past a cut can only add Allows or groups, which cannot revive
-    # it, so a cut body is checked too.
-    for (found in tied_disallow_diagnostics(groups)) {
+    )
+  }
+  # The AI-training policy token (ROBO-kzyfejcv). A cut body is checked on
+  # the lines before the cut: a User-agent line past it could still join
+  # the last group (stacking the token, or making a token-only group
+  # mixed), and rules past it are unread, which the info says.
+  found <- ai_training_diagnostics(groups, parsed,
+                                   truncated = body_truncated)
+  if (nrow(found) > 0L) {
+    add_chunk(
+      found$line, found$severity, found$code, found$directive,
+      vapply(raw_lines[found$line], render_validation_line, "",
+             USE.NAMES = FALSE),
+      paste0(found$message, nul_reading)
+    )
+  }
+  # A named group drops the `*` rules for its crawlers (ROBO-gfjotdrr). On
+  # a cut body a group's rules may lie past the cut, so it is skipped.
+  if (!body_truncated) {
+    inheritance <- wildcard_inheritance_diagnostics(groups)
+    for (found in inheritance) {
       add_diagnostic(
-        found$line, "warning", "disallow_tied_by_allow", "disallow",
-        found$message
+        found$line, "info", "wildcard_rules_not_inherited", "user-agent",
+        paste0(found$message, nul_reading)
       )
     }
-    # A rule an earlier identical rule already gives the same crawlers has
-    # no effect (ROBO-xexjgecr). Lines past a cut cannot give it one, so a
-    # cut body is checked too.
-    # Its rows go in as one frame: a file can repeat thousands of rules.
-    found <- duplicate_rule_diagnostics(groups)
-    if (nrow(found) > 0L) {
-      add_chunk(
-        found$line, "info", "duplicate_rule", found$type,
-        vapply(raw_lines[found$line], render_validation_line, "",
-               USE.NAMES = FALSE),
-        found$message
-      )
-    }
+  }
+  # A Disallow an identical Allow ties never applies (ROBO-fdhmlvwm).
+  # Lines past a cut can only add Allows or groups, which cannot revive
+  # it, so a cut body is checked too.
+  for (found in tied_disallow_diagnostics(groups)) {
+    add_diagnostic(
+      found$line, "warning", "disallow_tied_by_allow", "disallow",
+      paste0(found$message, nul_reading)
+    )
+  }
+  # A rule an earlier identical rule already gives the same crawlers has
+  # no effect (ROBO-xexjgecr). Lines past a cut cannot give it one, so a
+  # cut body is checked too.
+  # Its rows go in as one frame: a file can repeat thousands of rules.
+  found <- duplicate_rule_diagnostics(groups)
+  if (nrow(found) > 0L) {
+    add_chunk(
+      found$line, "info", "duplicate_rule", found$type,
+      vapply(raw_lines[found$line], render_validation_line, "",
+             USE.NAMES = FALSE),
+      paste0(found$message, nul_reading)
+    )
   }
 
   # A file with no Allow or Disallow line restricts nothing (RFC 9309
@@ -1291,7 +1348,7 @@ ai_training_draft <- "draft-kelley-aipref-training-preference-signal-00"
 # - ai_training_preference: one info per group naming the token, on its first
 #   such line, listing the group's own rules; `*` rules are never merged in.
 #   `truncated` adds that lines past a `max_bytes` cut were not read.
-# Like the other group checks, the caller skips it for a body with a NUL.
+# Like the other group checks, it reads Google's lines on a body with a NUL.
 ai_training_diagnostics <- function(groups, parsed, truncated = FALSE) {
   agents <- groups$agents
   exact <- !agents$cut & agents$key == ai_training_token
@@ -2217,6 +2274,39 @@ split_validation_lines <- function(bytes) {
 
 validation_raw_slice <- function(bytes, first, last) {
   if (first > last) raw() else bytes[first:last]
+}
+
+# TRUE when a line's bytes are well-formed UTF-8, NUL bytes included: each
+# run of bytes between NULs must be well-formed on its own, since a NUL is a
+# character of its own and cannot sit inside a multi-byte sequence
+# (ROBO-xuusttbp). `rawToChar()` refuses an embedded NUL, so the runs are
+# checked one by one.
+validation_utf8_line <- function(line_bytes) {
+  nul <- which(line_bytes == as.raw(0x00))
+  if (length(nul) == 0L) {
+    return(validUTF8(rawToChar(line_bytes)))
+  }
+  starts <- c(1L, nul + 1L)
+  ends <- c(nul - 1L, length(line_bytes))
+  all(vapply(seq_along(starts), function(k) {
+    validUTF8(rawToChar(validation_raw_slice(line_bytes, starts[[k]],
+                                             ends[[k]])))
+  }, logical(1L)))
+}
+
+# TRUE when the first NUL of a line the parser reads as a non-empty rule
+# lies before the line's first `#` and inside the parser's line buffer. The
+# parser and Google's matcher end the line there (ROBO-pvqrfvol), so
+# `Disallow: /private\0-drafts/` is the rule `/private`, as `#` cuts
+# `Disallow: /a#b`; the Bing and Yandex matchers read the NUL as a byte of
+# the rule, even a trailing one (`/a\0`), so they read another rule
+# (ROBO-xuusttbp). A NUL in a comment, which every engine cuts away, or past
+# the buffer, which the parser never read, is not counted. The caller checks
+# that the value is non-empty, so the NUL lies after the value's start.
+rule_cut_by_nul <- function(raw_line) {
+  nul <- match(as.raw(0x00), raw_line)
+  hash <- match(as.raw(0x23), raw_line)
+  !is.na(nul) && nul <= validation_line_bytes && (is.na(hash) || nul < hash)
 }
 
 # TRUE when the first `#` of a raw line follows a byte other than a space or

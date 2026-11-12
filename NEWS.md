@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* `robots_validate_text()` and `robots_validate_url()` now read a NUL-bearing line as Google does: the group checks run, a NUL cutting a rule warns `rule_cut_by_nul`, and NUL-split UTF-8 is `invalid_utf8` (ROBO-xuusttbp).
+
 * On the v1 `google` ruleset, Googlebot-Image and other Google crawlers without a group fall back to their parent token's group, the AdsBot family ignores `*`, and results gain `group_token`; schema revision `2026-11-12.1` (ROBO-fbbmvbob).
 
 * `allowed_by_robots_url()` now reads 512,000 bytes by default (Google's 500 KiB window, not 524,288), up to the last complete line; only responses over 512,000 bytes are affected (ROBO-uwveumyp).

@@ -69,10 +69,15 @@ it stay with the group before it until the next User-agent line. \cr
 A line holds NUL bytes, which can truncate parsing. \cr
 \code{invalid_utf8} \tab error \tab
 A line holds bytes that are not well-formed UTF-8 before the line's
-first \code{#}. \cr
+first \code{#}. A NUL byte counts as a character of its own, so a
+NUL inside a multi-byte sequence breaks it. When every bad byte lies
+after the line's first NUL, the message says Google's matcher never
+reads them while Bing and Yandex do. \cr
 \code{invalid_utf8_comment} \tab warning \tab
 A line's bytes that are not well-formed UTF-8 all sit in its comment,
-after the first \code{#}; no rule changes. \cr
+after the first \code{#}; no rule changes. A \code{#} after a NUL
+counts: Bing and Yandex read past the NUL, and Google's matcher reads
+nothing after it, which the message then says. \cr
 \code{malformed_line} \tab error \tab
 An active line is not a key-value directive. \cr
 \code{line_too_long} \tab error \tab
@@ -115,6 +120,13 @@ A pattern not led by \code{/} or \code{*}; it never matches. \cr
 A \code{#} with no space or tab before it starts a comment inside an
 Allow or Disallow value, cutting the rule at the \code{#}. A vertical
 tab or form feed before the \code{#} still counts as no space. \cr
+\code{rule_cut_by_nul} \tab warning \tab
+A NUL byte inside an Allow or Disallow value: Google's matcher ends
+the line at its first NUL, so the rule is cut there, while Bing and
+Yandex read the NUL as a byte of the rule, even one at the value's
+end. A NUL in a comment, which every engine ignores, right after the
+colon (\code{empty_rule_value}) or past the line buffer is not
+reported. \cr
 \code{rule_inner_dollar} \tab warning \tab
 A \code{$} before a pattern's end; it matches a literal \code{$}. \cr
 \code{rule_inner_whitespace} \tab warning \tab
@@ -313,8 +325,9 @@ line after a token group's last rule may head the next group, so
 \code{ai_training_group_extra_line} leaves it out unless the group is the
 file's last. A key such as \code{DisallowAITraining} is
 \code{accepted_directive_prefix}. A body cut at \code{max_bytes} is checked, and
-the info then says the lines past the cut were not read; a document
-holding a NUL byte gets none of these codes.
+the info then says the lines past the cut were not read. On a document
+holding a NUL byte they follow Google's reading, as the other group
+checks do.
 Which crawler operators read the token, and from when, is recorded with
 dates in \code{design/engine-profiles.md} section 7a.
 
@@ -341,11 +354,13 @@ values and patterns that never match are skipped, and a body cut at
 reported when a User-agent line follows it: that line keeps the next
 User-agent line from joining its group.
 
-A document holding a NUL byte gets none of \code{wildcard_rules_not_inherited},
-\code{disallow_tied_by_allow} or \code{duplicate_rule}: it is already a \code{nul_byte}
-error, and while the parser and Google's matcher end a line at its first
-NUL, the Bing and Yandex matchers read the NUL as an ordinary byte, so its
-groups depend on the engine.
+On a document holding a NUL byte, \code{wildcard_rules_not_inherited},
+\code{disallow_tied_by_allow}, \code{duplicate_rule} and the AI-training codes
+follow Google's reading: the parser and Google's matcher end a line at its
+first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
+byte, so each such message says it is Google's reading, unless every NUL
+sits in a comment. \code{user_agent_cut} runs too; its message already names
+Google's matcher.
 }
 
 \examples{
