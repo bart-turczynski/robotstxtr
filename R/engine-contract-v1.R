@@ -183,6 +183,104 @@ bing_supported_profiles_v1 <- function() {
   )
 }
 
+# The group-selection modes of Google's crawler tokens (ROBO-fbbmvbob). Kept
+# apart from supported_profile_selection_modes_v1(), so a bounded backend can
+# never publish the parent mode.
+#
+#   exact_else_parent_else_wildcard  The groups naming this token. Only if no
+#                                    group names it, the groups naming
+#                                    `parent_token`. Only if none names that
+#                                    either, the `User-agent: *` groups. The
+#                                    groups of the two tokens are never
+#                                    merged.
+#   exact_only                       The groups naming this token, never the
+#                                    `User-agent: *` groups: Google says
+#                                    these crawlers ignore `*`.
+google_crawler_selection_modes_v1 <- function() {
+  c("exact_else_parent_else_wildcard", "exact_only")
+}
+
+# Google's crawler tokens whose group selection differs from the plain
+# matcher's (own group, else `*`), as data (ROBO-fbbmvbob). The rows are the
+# "User-agent token in robots.txt" cells of Google's common-crawlers page (a
+# crawler listing two tokens "need[s] to match only one") and the
+# special-case crawlers that ignore `*`, both under
+# https://developers.google.com/crawling/docs/crawlers-fetchers/ and read
+# 2026-11-09 (design/engine-profiles.md sections 5a and 10); `source` names
+# each page. The retired Google Favicon and AdsBot-Google-Mobile-Apps rows
+# are left out.
+# `token_comparison`: the caller's token is compared with `crawler_token`
+# whole and ASCII case-insensitively, with no trimming, prefix or suffix
+# matching (`Googlebot-Image/1.0` is not `Googlebot-Image`). A token not
+# listed selects as the plain matcher does.
+google_crawler_tokens_v1 <- function() {
+  parent <- c(
+    `Googlebot-Image` = "Googlebot",
+    `Googlebot-Video` = "Googlebot",
+    `Googlebot-News` = "Googlebot",
+    `Google-InspectionTool` = "Googlebot",
+    `Google-CloudVertexBot` = "Googlebot",
+    `GoogleOther-Image` = "GoogleOther",
+    `GoogleOther-Video` = "GoogleOther"
+  )
+  ignore_star <- c(
+    "AdsBot-Google", "AdsBot-Google-Mobile", "Mediapartners-Google",
+    "APIs-Google"
+  )
+  page <- "https://developers.google.com/crawling/docs/crawlers-fetchers/"
+  data.frame(
+    crawler_token = c(names(parent), ignore_star),
+    parent_token = c(unname(parent), rep(NA_character_, length(ignore_star))),
+    group_selection = c(
+      rep("exact_else_parent_else_wildcard", length(parent)),
+      rep("exact_only", length(ignore_star))
+    ),
+    token_comparison = "ascii_case_insensitive_exact",
+    source = c(
+      rep(paste0(page, "google-common-crawlers"), length(parent)),
+      rep(paste0(page, "google-special-case-crawlers"), length(ignore_star))
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+# The rows the crawler-token layer applies to (ROBO-fbbmvbob): the google
+# ruleset with the google backend, as for ceiling_cut_readable_v1(). Other
+# rulesets read a Google match as the plain matcher's, and the legacy
+# functions never reach here.
+google_crawler_layered_v1 <- function(ruleset, matcher_backend) {
+  ruleset == "google" & matcher_backend == "google"
+}
+
+# The per-row crawler profile the Google adapter applies (ROBO-fbbmvbob):
+# `parent_token` (NA for none) and `ignore_global`, from
+# google_crawler_tokens_v1() for the rows where `layered` is TRUE (the v1
+# google ruleset with the google backend) and none elsewhere. A token with a
+# byte outside ASCII matches no row, so it is never lowered.
+google_crawler_profiles_v1 <- function(product_tokens, layered) {
+  n <- length(product_tokens)
+  out <- data.frame(
+    parent_token = rep(NA_character_, n),
+    ignore_global = rep(FALSE, n),
+    stringsAsFactors = FALSE
+  )
+  candidate <- layered & !is.na(product_tokens) &
+    !grepl("[^\\x01-\\x7F]", product_tokens, perl = TRUE, useBytes = TRUE)
+  if (!any(candidate)) {
+    return(out)
+  }
+  table <- google_crawler_tokens_v1()
+  hit <- rep(NA_integer_, n)
+  hit[candidate] <- match(
+    ascii_lower(product_tokens[candidate]), ascii_lower(table$crawler_token)
+  )
+  found <- !is.na(hit)
+  out$parent_token[found] <- table$parent_token[hit[found]]
+  out$ignore_global[found] <-
+    table$group_selection[hit[found]] == "exact_only"
+  out
+}
+
 # Build-time invariant over the published capability object. Keeps the two
 # axes from drifting apart: a bounded backend must publish a profile table and
 # an unbounded one must not, and every published selection mode must be one the
@@ -1039,7 +1137,17 @@ resolve_policy_v1 <- function(evidence, ruleset, policy_table,
 # at `max_bytes` (ROBO-ldpahknv), matching stops at the last complete line
 # inside the window. `matcher_input_bytes` counts the bytes fed to the
 # matcher; `matcher_body_truncated` says the body exceeded the window.
-match_google_v1 <- function(body, url, product_token) {
+#
+# `crawler_profile` is one row of google_crawler_profiles_v1() (ROBO-fbbmvbob):
+# with a parent token, the parent's group decides when no group names the
+# token; with `ignore_global`, `*` never decides. NULL is no profile. The
+# matcher runs each token on its own parse. `group_token` records which
+# token's group decided: the caller's token, the parent token, "*" when no
+# specific group was seen, or NA for a `*`-ignoring crawler with no group.
+match_google_v1 <- function(body, url, product_token, crawler_profile = NULL) {
+  parent <- crawler_profile$parent_token
+  parent <- if (is.null(parent) || is.na(parent)) "" else parent
+  ignore_global <- isTRUE(crawler_profile$ignore_global)
   limit <- 512000L
   truncated <- length(body) > limit
   matcher_body <- if (truncated) {
@@ -1050,10 +1158,12 @@ match_google_v1 <- function(body, url, product_token) {
     body
   }
   body_string <- matcher_string_v1(matcher_body)
-  allowed <- robotstxtr_allowed_text_(body_string, url, product_token)[[1L]]
-  line <- robotstxtr_matching_line_text_(
-    body_string, url, product_token
-  )[[1L]]
+  native <- robotstxtr_google_crawler_row_(
+    body_string, url, product_token, parent, ignore_global
+  )
+  allowed <- native$allowed
+  line <- native$matching_line
+  group_token <- google_group_token_v1(native$group, product_token, parent)
   matched_line <- if (line > 0L) line else NA_integer_
   matched_rule_type <- if (!allowed) {
     "disallow"
@@ -1094,17 +1204,45 @@ match_google_v1 <- function(body, url, product_token) {
     matched_rule_type = matched_rule_type,
     matched_rule_value = matched_rule_value,
     matcher_input_bytes = length(matcher_body),
-    matcher_body_truncated = truncated
+    matcher_body_truncated = truncated,
+    group_token = group_token
   )
+}
+
+# The native group kind (src/matcher_binding.cpp, GroupKind) as `group_token`:
+# 1 the caller's token, 2 the parent token, 3 "*", 0 NA. Vectorized.
+google_group_token_v1 <- function(group, product_tokens, parents) {
+  out <- rep(NA_character_, length(group))
+  own <- group == 1L
+  out[own] <- rep_len(product_tokens, length(group))[own]
+  parent <- group == 2L
+  out[parent] <- rep_len(parents, length(group))[parent]
+  out[group == 3L] <- "*"
+  out
+}
+
+# Rows with no crawler profile: no parent token, `*` read as usual.
+google_no_crawler_profiles_v1 <- function(n) {
+  google_crawler_profiles_v1(rep(NA_character_, n), rep(FALSE, n))
 }
 
 # A decision frame from a row matcher: `row_match(body, url, product_token)`
 # returns one row's fields as a list, called on each row in order. Every row
 # is `evaluated` with no error; `matched_rule_value_raw` is NULL on every row.
-row_matcher_frame_v1 <- function(row_match, bodies, urls, product_tokens) {
+# With `crawler_profiles` (one row per input row), each row's profile is
+# passed as the fourth argument and the frame begins with the rows'
+# `group_token`, where the Google adapter's frame carries it.
+row_matcher_frame_v1 <- function(row_match, bodies, urls, product_tokens,
+                                 crawler_profiles = NULL) {
   n <- length(bodies)
   rows <- lapply(seq_len(n), function(k) {
-    row_match(bodies[[k]], urls[[k]], product_tokens[[k]])
+    if (is.null(crawler_profiles)) {
+      return(row_match(bodies[[k]], urls[[k]], product_tokens[[k]]))
+    }
+    row_match(
+      bodies[[k]], urls[[k]], product_tokens[[k]],
+      as.list(crawler_profiles[k, , drop = FALSE])
+    )
   })
   field <- function(name, type) vapply(rows, `[[`, type, name)
   out <- data.frame(
@@ -1121,6 +1259,15 @@ row_matcher_frame_v1 <- function(row_match, bodies, urls, product_tokens) {
     error_message = rep(NA_character_, n),
     stringsAsFactors = FALSE
   )
+  if (!is.null(crawler_profiles)) {
+    out <- cbind(
+      data.frame(
+        group_token = field("group_token", character(1L)),
+        stringsAsFactors = FALSE
+      ),
+      out
+    )
+  }
   out$matched_rule_value_raw <- vector("list", n)
   out
 }
@@ -1136,22 +1283,37 @@ row_matcher_frame_v1 <- function(row_match, bodies, urls, product_tokens) {
 # goes to the row matcher, so the same row fails first
 # (google_batch_refused_v1()). Google rows carry no raw rule value yet
 # (`matched_rule_value_raw` NULL).
-match_google_batch_v1 <- function(bodies, urls, product_tokens) {
+#
+# `crawler_profiles` is optional (ROBO-fbbmvbob): one row of
+# google_crawler_profiles_v1() per input row, which evaluate_rows_v1() passes
+# because this adapter's formals name it; NULL means no profile on any row.
+# The frame's first column is `group_token`, carried as the batch module's
+# one native column; the evaluator copies it into the results.
+match_google_batch_v1 <- function(bodies, urls, product_tokens,
+                                  crawler_profiles = NULL) {
   n <- length(bodies)
+  if (is.null(crawler_profiles)) {
+    crawler_profiles <- google_no_crawler_profiles_v1(n)
+  }
   if (is.list(bodies) && n > 0L &&
         google_batch_refused_v1(bodies, urls, product_tokens)) {
     return(row_matcher_frame_v1(
       match_google_v1, bodies, rep(urls, length.out = n),
-      rep(product_tokens, length.out = n)
+      rep(product_tokens, length.out = n), crawler_profiles
     ))
   }
   run_batch_matcher_v1(
     bodies, urls, product_tokens,
     bodies_class = "robotstxtr_invalid_google_bodies",
     extract_target = google_request_target_v1,
-    native_eval = google_evaluate_batch_v1,
+    native_eval = function(bodies, body_index, product_tokens, targets) {
+      google_evaluate_batch_v1(
+        bodies, body_index, product_tokens, targets,
+        crawler_profiles = crawler_profiles
+      )
+    },
     map_status = google_map_native_v1,
-    native_columns = character()
+    native_columns = "group_token"
   )
 }
 
@@ -1238,7 +1400,9 @@ bing_matcher_revision_v1 <- function() {
 # availability and, when available, its matcher adapter. Every adapter has
 # the one batch interface `callable(bodies, urls, product_tokens)` and
 # returns a decision frame (matcher_decision_columns_v1()); evaluate_rows_v1()
-# dispatches on the entry alone, never on a backend's name.
+# dispatches on the entry alone, never on a backend's name. An adapter whose
+# formals also name `crawler_profiles` (Google's, ROBO-fbbmvbob) receives the
+# per-row crawler profiles too; that is read from the callable, not the name.
 engine_matcher_registry_v1 <- function() {
   list(
     google = list(
@@ -1397,8 +1561,12 @@ check_matcher_output_v1 <- function(output, n, backend) {
 # Run one backend's adapter over its rows and check what comes back. An
 # adapter reports every per-row outcome as a row; it aborts only on an
 # internal invariant violation, and that abort is not caught here.
+#
+# `crawler_profiles` (ROBO-fbbmvbob) goes only to a callable whose formals
+# name it: the decision is the entry's, never the backend name's, and a
+# three-argument adapter (Yandex, Bing, a test fake) is called as before.
 dispatch_matcher_v1 <- function(registry, backend, bodies, urls,
-                                product_tokens) {
+                                product_tokens, crawler_profiles = NULL) {
   entry <- registry[[backend]]
   if (!is.list(entry) || !identical(entry$availability, "available") ||
         !is.function(entry$callable)) {
@@ -1407,9 +1575,17 @@ dispatch_matcher_v1 <- function(registry, backend, bodies, urls,
       "robotstxtr_matcher_backend_unavailable"
     )
   }
-  output <- entry$callable(
-    bodies = bodies, urls = urls, product_tokens = product_tokens
-  )
+  output <- if (!is.null(crawler_profiles) &&
+                  "crawler_profiles" %in% names(formals(entry$callable))) {
+    entry$callable(
+      bodies = bodies, urls = urls, product_tokens = product_tokens,
+      crawler_profiles = crawler_profiles
+    )
+  } else {
+    entry$callable(
+      bodies = bodies, urls = urls, product_tokens = product_tokens
+    )
+  }
   check_matcher_output_v1(output, length(bodies), backend)
 }
 
@@ -1543,17 +1719,31 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
   # whose matcher parses once per distinct body (google, yandex, bing; Google's
   # line collector reads a body with a matched row once more) dedupe inside.
   matched_rule_value_raw <- vector("list", n)
+  group_token <- rep(NA_character_, n)
   matcher_rows <- which(needs_matcher)
   matcher_sources <- source_of[matcher_rows]
   row_backends <- matcher_backend[matcher_rows]
+  # The crawler-token layer (ROBO-fbbmvbob): a row under the google ruleset
+  # with the google backend follows Google's crawler tokens
+  # (google_crawler_tokens_v1()); every other row gets no profile. The
+  # profiles reach an adapter only through its formals (dispatch_matcher_v1()).
+  crawler_profiles <- google_crawler_profiles_v1(
+    product_token[matcher_rows],
+    google_crawler_layered_v1(ruleset[matcher_rows], row_backends)
+  )
   for (backend in unique(row_backends)) {
     picked <- row_backends == backend
     rows <- matcher_rows[picked]
     decided <- dispatch_matcher_v1(
       matcher_registry, backend,
       bodies = readable_bodies[matcher_sources[picked]],
-      urls = url[rows], product_tokens = product_token[rows]
+      urls = url[rows], product_tokens = product_token[rows],
+      crawler_profiles = crawler_profiles[picked, , drop = FALSE]
     )
+    # Adapters that do not report a group leave `group_token` NA.
+    if ("group_token" %in% names(decided)) {
+      group_token[rows] <- decided$group_token
+    }
     matcher_status[rows] <- decided$matcher_status
     url_decision[rows] <- decided$url_decision
     reason[rows] <- decided$reason
@@ -1614,6 +1804,10 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
     error_stage = error_stage,
     error_class = error_class,
     error_message = error_message,
+    # Whose group decided a Google row (ROBO-fbbmvbob): the caller's token,
+    # the crawler's parent token, "*", or NA (no adapter set it, or a
+    # `*`-ignoring crawler with no group of its own).
+    group_token = group_token,
     stringsAsFactors = FALSE
   )
   # Public list column, unchanged since schema 2026-07-18.2: exactly one

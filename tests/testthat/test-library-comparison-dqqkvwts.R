@@ -86,9 +86,11 @@ lc_answer <- function(body, path, token = "FooBot") {
   c(v1 = v1$url_decision, text = text)
 }
 
-lc_expect <- function(body, path, want, token = "FooBot") {
+# `v1` is the v1 google/google answer where it parts from the legacy one: the
+# crawler-token layer (ROBO-fbbmvbob) applies to v1 only.
+lc_expect <- function(body, path, want, token = "FooBot", v1 = want) {
   expect_identical(
-    lc_answer(body, path, token), c(v1 = want, text = want),
+    lc_answer(body, path, token), c(v1 = v1, text = want),
     info = paste(token, path)
   )
 }
@@ -243,10 +245,12 @@ test_that("class 11: a group whose name only starts the token", {
   lc_expect(lc_fixture("grp-star-and-named"), "/x", "allow")
   # grp-googlebot-image-fallback: reference takes `*`; py pro go take the
   # Googlebot group (x allow / y disallow under the reference, the reverse
-  # for py pro go).
+  # for py pro go). The legacy path keeps the reference's answer; v1
+  # google/google takes the Googlebot group, as Google's common-crawlers
+  # page lists it (ROBO-fbbmvbob).
   body <- lc_catalog("grp-googlebot-image-fallback")
-  lc_expect(body, "/x", "allow", token = "Googlebot-Image")
-  lc_expect(body, "/y", "disallow", token = "Googlebot-Image")
+  lc_expect(body, "/x", "allow", token = "Googlebot-Image", v1 = "disallow")
+  lc_expect(body, "/y", "disallow", token = "Googlebot-Image", v1 = "allow")
 })
 
 test_that("class 12: Google cuts a file's User-agent value", {

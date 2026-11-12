@@ -116,8 +116,13 @@ gb_grid <- function() {
   )
 }
 
+# No crawler profile, as the adapter has with none passed; crawler rows are
+# compared in test-crawler-tokens-fbbmvbob.R.
 gb_oracle <- function(bodies, urls, tokens) {
-  row_matcher_frame_v1(match_google_v1, bodies, urls, tokens)
+  row_matcher_frame_v1(
+    match_google_v1, bodies, urls, tokens,
+    google_no_crawler_profiles_v1(length(bodies))
+  )
 }
 
 gb_strip <- function(frame) {
@@ -130,10 +135,10 @@ gb_spy_run <- function(bodies, urls, tokens, seen = new.env()) {
   real <- google_evaluate_batch_v1
   local_mocked_bindings(
     google_evaluate_batch_v1 = function(bodies, body_index, product_tokens,
-                                        targets) {
+                                        targets, crawler_profiles = NULL) {
       seen$bodies <- bodies
       seen$targets <- targets
-      real(bodies, body_index, product_tokens, targets)
+      real(bodies, body_index, product_tokens, targets, crawler_profiles)
     }
   )
   match_google_batch_v1(bodies, urls, tokens)
@@ -142,7 +147,8 @@ gb_spy_run <- function(bodies, urls, tokens, seen = new.env()) {
 # The adapter frame on the grid as main gave it before the batch (593300b,
 # where the adapter was row_matcher_frame_v1(match_google_v1, ...)), its
 # n_parse_calls attribute aside, with the two NUL bodies read as each line
-# cut at its first NUL (ROBO-pvqrfvol).
+# cut at its first NUL (ROBO-pvqrfvol), and without the group_token column
+# the crawler-token layer adds first (ROBO-fbbmvbob), pinned on its own.
 gb_pinned <- "64f27439bc2fe73d5b4818ba5452b593"
 
 test_that("the Google adapter's frame on the grid is unchanged", {
@@ -151,7 +157,19 @@ test_that("the Google adapter's frame on the grid is unchanged", {
   expect_identical(
     check_matcher_output_v1(frame, length(g$bodies), "google"), frame
   )
-  expect_identical(seam_digest(frame), gb_pinned)
+  expect_identical(names(frame)[[1L]], "group_token")
+  expect_identical(seam_digest(frame[-1L]), gb_pinned)
+  # With no crawler profile, a row's group is its own token's or `*`:
+  # FooBot and foobot have a group in `groups`, `comment_disallow` and
+  # `multi_agent`, BarBot nowhere.
+  own <- vapply(g$bodies, function(b) {
+    any(vapply(
+      gb_bodies[c("groups", "comment_disallow", "multi_agent")],
+      identical, logical(1L), b
+    ))
+  }, logical(1L)) & g$tokens != "BarBot"
+  expect_identical(frame$group_token[own], g$tokens[own])
+  expect_identical(unique(frame$group_token[!own]), "*")
 })
 
 test_that("the batch adapter equals the row matcher, row for row", {
@@ -197,14 +215,15 @@ test_that("each distinct body is parsed once", {
   )
 })
 
-test_that("the Google frame has the decision columns and no native ones", {
+test_that("the Google frame has group_token, then the decision columns", {
+  # group_token is the batch module's one native column (ROBO-fbbmvbob).
   out <- match_google_batch_v1(
     list(gb_bodies$groups), "https://example.com/", "FooBot"
   )
-  expect_named(out, matcher_decision_columns_v1())
+  expect_named(out, c("group_token", matcher_decision_columns_v1()))
   expect_identical(
     match_google_batch_v1(list(), character(), character()),
-    matcher_batch_empty_frame_v1(character())
+    matcher_batch_empty_frame_v1("group_token")
   )
   expect_error(
     match_google_batch_v1(gb_bodies$groups, "https://example.com/", "FooBot"),

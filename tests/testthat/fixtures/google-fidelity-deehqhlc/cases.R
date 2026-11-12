@@ -385,10 +385,13 @@ gf_expect <- function(class, ids, paths, allowed, line, reason,
 
 # What robotstxtr returns where it differs from the reference: one entry per
 # set of cases, with the entry points (`paths`) where they differ and the
-# answer there. `reason` is the legacy paths' `decision_source`, `v1_reason`
-# the v1 paths' `reason`. The classes are design/engine-profiles.md §5b's.
-# The pinned test, gf_check_rows() and the differential all read this table;
-# it is the only list of the differing case ids.
+# answer there. A path is an entry point ("v1_text", matching every ruleset's
+# row) or a ruleset-qualified v1 row ("v1_text:google", that row only).
+# `reason` is the legacy paths' `decision_source`, `v1_reason` the v1 paths'
+# `reason`. The classes are design/engine-profiles.md §5b's; class 5 is
+# resolved and lists nothing. The pinned test, gf_check_rows() and the
+# differential all read this table; it is the only list of the differing
+# case ids.
 gf_expected <- list(
   gf_expect(1L, c("ev-disallow", "ev-allow", "ev-both", "ev-comment",
                   "ev-beside-rule-miss"),
@@ -401,7 +404,14 @@ gf_expected <- list(
   gf_expect(4L, c("in-empty-url", "in-empty-token"), gf_all_paths,
             NA, NA, "input_unknown", "input_invalid"),
   gf_expect(4L, c("in-schemeless-url", "in-ftp-url"), gf_url_paths,
-            NA, NA, "input_unknown", "input_invalid")
+            NA, NA, "input_unknown", "input_invalid"),
+  # The crawler-token layer of the v1 google ruleset (ROBO-fbbmvbob):
+  # Googlebot-Image with no group of its own takes the Googlebot group,
+  # where the reference's one token falls through to `*`.
+  gf_expect(6L, "ua-image-not-parent", c("v1_text:google", "v1_url:google"),
+            FALSE, 2L, "rule_disallow"),
+  gf_expect(6L, "ua-image-star", c("v1_text:google", "v1_url:google"),
+            TRUE, NA, "default_allow")
 )
 
 # Every case id gf_expected lists.
@@ -413,7 +423,8 @@ gf_expected_ids <- function() {
 # list(class, allowed, line, reason), or NULL where it must agree.
 gf_expected_difference <- function(id, path) {
   for (e in gf_expected) {
-    if (id %in% e$ids && gf_entry_point(path) %in% e$paths) {
+    if (id %in% e$ids &&
+          (path %in% e$paths || gf_entry_point(path) %in% e$paths)) {
       reason <- if (gf_v1_path(path)) e$v1_reason else e$reason
       return(list(class = e$class, allowed = e$allowed, line = e$line,
                   reason = reason))
@@ -470,9 +481,13 @@ gf_check_rows <- function(rows, ref_allowed, ref_line) {
 # before its yandex branch, which resolves a fetched 2xx over 500,000 bytes
 # `allow_all` (design/engine-profiles.md §7). So every row reaches the
 # matcher, the over-limit yandex rows included. With the google backend each
-# ruleset's row therefore equals the google row by construction, so the
-# `window` family's 0.5 to 0.6 MB bodies run under `google` only
-# (ROBO-oxjmtaon). That a supplied body over 500,000 bytes keeps use_rules
+# ruleset's row equals the google row, save the crawler-token layer, which
+# applies under the google ruleset only (ROBO-fbbmvbob, class 6): a crawler
+# token with a parent token or one that ignores `*` can split the google row
+# from the others. The `window` family's 0.5 to 0.6 MB bodies are read with
+# a plain token, so every ruleset's row would equal the google row, and they
+# run under `google` only (ROBO-oxjmtaon). That a supplied body over 500,000
+# bytes keeps use_rules
 # under yandex is pinned in test-size-status-etlkvljs.R and
 # test-yandex-edge-matrices-qfytjxev.R.
 gf_v1_rulesets <- c("google", "rfc9309", "assumed_rfc9309", "bing", "yandex")
