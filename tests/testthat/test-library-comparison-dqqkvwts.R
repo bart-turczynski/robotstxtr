@@ -133,7 +133,10 @@ test_that("every catalog row: the recorded answers (ROBO-tanodypz)", {
                                  c("id", "class", "body_file", "path",
                                    "token")))
   for (col in libs) {
-    expect_true(all(rec[[col]] %in% c("0", "1", "ERR")), info = col)
+    # Only a library raises an error; the reference and robotstxtr answer.
+    ok <- if (col %in% c("google_ref", "robotstxtr")) c("0", "1") else
+      c("0", "1", "ERR")
+    expect_true(all(rec[[col]] %in% ok), info = col)
   }
   # The reference's answer is the catalog's Google decision.
   expect_identical(rec$google_ref,

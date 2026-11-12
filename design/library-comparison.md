@@ -527,10 +527,15 @@ Rscript dev/library-comparison/run.R <libcmp> [out_dir]
 
 `<libcmp>` is the one-command-per-library runner (its interface is in the
 script's header). The script rebuilds the manifests from the committed
-fixtures, writes `matrix.tsv`, and exits 1 when a class fixture's live
-answer drifts from the answer recorded in its `manifest.csv`, when
-robotstxtr differs from the reference on a row its expected-split list does
-not name, or when a named row stops differing. It stops with a message
-when `google-ref` gives no answers. The pinned test reads the same fixtures
-and checks robotstxtr's recorded answer on every class row, with no
-runner.
+fixtures, writes `matrix.tsv` and `catalog-answers.csv`, and exits 1 when
+a class fixture's live answer drifts from the answer recorded in its
+`manifest.csv`, when a catalog row's live answer drifts from the committed
+`catalog-answers.csv`, when that file misses a catalog row or column or
+names a row that is gone, when robotstxtr differs from the reference on a
+row its expected-split list does not name (the list covers the v1 path
+only; `allowed_by_robots_text()` must agree everywhere), or when a named
+row stops differing. To refresh the record once a drift is understood,
+copy the output's `catalog-answers.csv` over the committed one. It stops
+with a message when `google-ref` gives no answers. The pinned test reads
+the same fixtures and checks robotstxtr's recorded answer on every class
+and catalog row, with no runner.

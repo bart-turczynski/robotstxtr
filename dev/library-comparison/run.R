@@ -22,7 +22,8 @@
 # `<body_file>\t<agent>\t<url>` and writes
 # `<allowed>\t<matching_line>\t<ever_seen>`. `out_dir` (default: a
 # fresh temporary directory) receives the bodies, the manifests, each
-# library's raw output and `matrix.tsv`.
+# library's raw output, `matrix.tsv` and `catalog-answers.csv` (the
+# catalog rows' answers in the committed record's form).
 #
 # Exit status 1 when a class fixture's live answer drifts from the answer its
 # manifest row records (the doc and the pinned test would then be stale), when
@@ -248,23 +249,24 @@ cat("output in", out_dir, "\n")
 
 failed <- FALSE
 # The rows where robotstxtr deliberately differs from the reference, as
-# (id, path). Since ROBO-fbbmvbob the v1 path under the google ruleset lets
-# Googlebot-Image fall back to the Googlebot group, as Google documents and
-# upstream's open-source parser does not; allowed_by_robots_text() still
-# agrees with the reference there. The NUL-bearing UTF-16LE body without a
+# (id, path, token), on the v1 path only: allowed_by_robots_text() must
+# agree with the reference on every row. Since ROBO-fbbmvbob the v1 path
+# under the google ruleset lets Googlebot-Image fall back to the Googlebot
+# group, as Google documents and upstream's open-source parser does not.
+# The NUL-bearing UTF-16LE body without a
 # BOM was a split until ROBO-pvqrfvol, when robotstxtr's Google backend
 # began to end a line at its first NUL as upstream does
 # (design/engine-profiles.md section 5b, class 5, resolved); all three
 # UTF-16 bodies must now agree.
 expected_split <- data.frame(
   id = c("grp-googlebot-image-fallback", "grp-googlebot-image-fallback"),
-  path = c("/x", "/y")
+  path = c("/x", "/y"),
+  token = c("Googlebot-Image", "Googlebot-Image")
 )
-splits <- cases$robotstxtr_v1 != cases$google_ref |
-  cases$robotstxtr_text != cases$google_ref
-expected <- paste(cases$id, cases$path) %in%
-  paste(expected_split$id, expected_split$path)
-unexpected <- splits & !expected
+key <- function(x) paste(x$id, x$path, x$token, sep = "\r")
+splits <- cases$robotstxtr_v1 != cases$google_ref
+expected <- key(cases) %in% key(expected_split)
+unexpected <- (splits & !expected) | cases$robotstxtr_text != cases$google_ref
 if (any(unexpected)) {
   cat("robotstxtr differs from the reference:\n",
       paste0("  ", cases$id[unexpected], " ", cases$path[unexpected], "\n"),
@@ -277,8 +279,7 @@ if (any(gone)) {
       paste0("  ", cases$id[gone], " ", cases$path[gone], "\n"), sep = "")
   failed <- TRUE
 }
-unmatched <- !paste(expected_split$id, expected_split$path) %in%
-  paste(cases$id, cases$path)
+unmatched <- !key(expected_split) %in% key(cases)
 if (any(unmatched)) {
   cat("an expected split names no case:\n",
       paste0("  ", expected_split$id[unmatched], " ",
@@ -324,7 +325,12 @@ catalog_want <- if (file.exists(catalog_record)) {
 } else {
   catalog_live[0L, ]
 }
-key <- function(x) paste(x$id, x$path, x$token, sep = "\r")
+unrecorded_cols <- setdiff(record_cols, names(catalog_want))
+if (nrow(catalog_want) > 0L && length(unrecorded_cols) > 0L) {
+  cat("catalog-answers.csv has no column for:",
+      toString(unrecorded_cols), "\n")
+  failed <- TRUE
+}
 unrecorded <- !key(catalog_live) %in% key(catalog_want)
 if (any(unrecorded)) {
   cat("catalog cases with no recorded answers:\n",
