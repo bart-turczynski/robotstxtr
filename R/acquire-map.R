@@ -85,7 +85,9 @@ acquire_refusal_table <- function() {
 # never this failure), any other limit (a header limit) a `network_error`. A row
 # with `check = NA` matches any check. acquire_failure_result() reads the
 # status before this table for a body over `max_bytes` on a 4xx or 5xx, and
-# for several Location fields on a 3xx.
+# for several Location fields on a 3xx (check "location"; libcurl >= 8.18
+# refuses those first, a "transport" protocol-error and so a `network_error`,
+# ssrfr SSRF-xhobpkza).
 acquire_cause_table <- function() {
   data.frame(
     cause = c("unresolvable", "pin-mismatch", "connect-failed", "tls-failed",

@@ -22,7 +22,10 @@
 #   `truncate_body` keeps a 2xx body's first `max_response_size` bytes as a
 #   response marked `truncated` with `observed_bytes` (ROBO-ldpahknv); and,
 #   for any status, more than one Location field the "protocol-error" failure
-#   with `check = "location"`.
+#   with `check = "location"`. That is ssrfr under libcurl < 8.18; libcurl
+#   >= 8.18 refuses such a response first, which ssrfr reports as a
+#   "protocol-error" with `check = "transport"` (ssrfr SSRF-xhobpkza). The
+#   fake models the older libcurl; the wire tests see whichever is linked.
 #   The header byte limit is not modeled: the loopback tests cover it.
 #
 # The handler is `function(req)`: `req$url` is the URL the hop requests,
