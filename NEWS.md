@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* `allowed_by_robots_url()` now reads 512,000 bytes by default (Google's 500 KiB window, not 524,288), up to the last complete line; only responses over 512,000 bytes are affected (ROBO-uwveumyp).
+
 * Under `safety_level = "crawler"`, `robots_validate_url()` reads a refused internal address as an unreachable file, with each engine's reading, not as having no engine reading (ROBO-akfbbake).
 
 * On the Google backend a NUL byte in a fetched robots.txt now ends its line, as in Google's open-source parser, instead of being removed (ROBO-pvqrfvol).

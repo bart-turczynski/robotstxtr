@@ -200,7 +200,16 @@ application policy and is never reported as Bing.
 
 The existing `allowed_by_robots_text()`, `allowed_by_robots_url()`,
 `robots_fetch()`, and `robots_body()` remain unchanged, apart from the additive
-Retry-After and Content-Type columns below. For consumers migrating
+Retry-After and Content-Type columns below and one default:
+`allowed_by_robots_url()`'s `max_bytes` is 512,000 bytes, Google's window, no
+longer 524,288 (ROBO-uwveumyp; "A robots.txt over `max_bytes`" below). That
+changes results only on a response whose decoded body is 512,001 to 524,288
+bytes: a 2xx is now cut and read to its last complete line; a 3xx, an
+unknown status or a status mismatch is now `body_too_large` (`NA`,
+`fetch_unknown`) where its redirect was followed before; a 4xx or 5xx keeps
+its status outcome but is built from the status alone, so `retry_after` is
+`NA` (a 404 or 410 still decides `missing_allow`). No v1 enum,
+column, schema revision or policy revision moves. For consumers migrating
 incrementally, `as_legacy_robots_decisions_v1()` explicitly converts a v1 result
 whose policy and matcher are both Google into the original `robots_decisions`
 schema. The adapter deliberately keeps legacy generic HTTP/redirect failures
@@ -330,7 +339,7 @@ split a character.
 | legacy `body`, `body_size` | the first `max_bytes` bytes; `body_size` equals `max_bytes` |
 | legacy `body_truncated` | `TRUE`; `FALSE` on every other row |
 | `robots_validate_url()` documents | the prefix is validated up to its last complete line; `body_truncated` and `limit_exceeded` are `TRUE`, `final_newline` is `NA`, `byte_size` is the stored size; one `body_truncated` warning diagnostic, no `acquisition_limit_exceeded` |
-| legacy matching (`allowed_by_robots_url()`) | the prefix is matched up to its last CR or LF; the partial line after it, and every rule after the cut, do not exist; a prefix with no line break yields no rules |
+| legacy matching (`allowed_by_robots_url()`) | the prefix, 512,000 bytes at the default `max_bytes` (ROBO-uwveumyp), is matched up to its last CR or LF; the partial line after it, and every rule after the cut, do not exist; a prefix with no line break yields no rules |
 | `content_flag` | read from the prefix; a split character at the end is at most three invalid bytes, under the eight `binary` needs |
 | v1 `body_present`, `stored_bytes` | `TRUE`, `max_bytes` |
 | v1 `body_truncated` | `TRUE`; `FALSE` on every other row |
@@ -411,14 +420,24 @@ Decisions:
   class. At or above it the rows are matched (ROBO-ptibdnvy) and carry
   `allowed` and the match `reason` as `decision_source`, read from the first
   512,000 bytes, where `allowed_by_robots_url()` reads the whole stored
-  prefix. Its documentation says so.
+  prefix (512,000 bytes at its default `max_bytes`). Its documentation says
+  so.
   `observed_bytes` stays in the v1 evidence only.
 - `robots_validate_url()` validates a cut prefix and reports the cut in its
   documents frame. A body refused whole (a 3xx, an unknown status, or a 2xx
   whose libcurl and status-line statuses disagree, over `max_bytes`) is still
   `not_validated` with `acquisition_limit_exceeded`.
 - `max_bytes` below RFC 9309's 500 KiB floor (`512000`) stays accepted, and
-  is documented as below it. The default, `524288`, meets the floor.
+  is documented as below it. Every default meets the floor: `524288` for
+  `robots_fetch()`, `robots_validate_url()` and `robots_evaluate_url_v1()`,
+  and `512000` for `allowed_by_robots_url()` (ROBO-uwveumyp), which then
+  reads what Google's window holds: a rule after byte 512,000, or a line
+  that byte splits, is not read. Its cut is at byte 512,000 itself, so a
+  line ending there whose line break is byte 512,001 is dropped, where the
+  v1 google reading, with one byte to look at past the window, keeps it.
+  That edge is accepted: fetching 512,001 bytes would change the recorded
+  `max_bytes`. An explicit `max_bytes = 524288` reads the complete lines
+  up to byte 524,288 again.
 
 ### Redirect and safety reasons in the legacy frame (ROBO-bsloeclp)
 

@@ -51,6 +51,19 @@
 #' callbacks of the same source body (the canonical value the matcher used,
 #' after upstream `MaybeEscapePattern` canonicalization).
 #'
+#' A robots.txt over 512,000 bytes (Google's documented 500 KiB limit) is read
+#' differently by each Google entry point (`design/engine-profiles.md`
+#' section 7). This function stores the first `max_bytes` bytes of a 2xx body,
+#' 512,000 by default, and matches its complete lines: a rule after the cut,
+#' or a line the cut splits, is not read, and neither is a line that ends at
+#' byte 512,000 when its line break is byte 512,001, since that break is not
+#' stored. [robots_evaluate_text_v1()] and [robots_evaluate_url_v1()] with the
+#' Google backend match the complete lines of the first 512,000 bytes too, but
+#' look one byte past them, so they keep that last line.
+#' [allowed_by_robots_text()] has no window: it reads the whole supplied body,
+#' as Google's open-source engine does. Google does not document how it reads
+#' a split line; dropping it is this package's choice.
+#'
 #' @inheritParams allowed_by_robots_text
 #' @inheritParams robots_fetch
 #' @param url A character vector of target URLs. May have length zero (an empty
@@ -60,11 +73,14 @@
 #'   limit no greater than `.Machine$integer.max`, coerced to integer. A
 #'   whole-number double (for example `524288`) is accepted; fractional,
 #'   non-positive, out-of-range, or non-scalar values are call-level errors.
-#'   Defaults to `524288L` (512 KiB). A 2xx body over the limit is cut at it
-#'   and matched up to its last complete line, as RFC 9309 section 2.5 allows;
-#'   its source row has `body_truncated = TRUE`. RFC 9309 section 2.5 asks a
-#'   crawler to parse at least 500 KiB (`512000` bytes); a smaller value is
-#'   accepted but falls below that floor.
+#'   Defaults to `512000L` (500 KiB), the window Google parses. A 2xx body over
+#'   the limit is cut at it and matched up to its last complete line, as RFC
+#'   9309 section 2.5 allows; its source row has `body_truncated = TRUE`. A
+#'   larger value reads further than Google does: `524288L`, the default of
+#'   [robots_fetch()], [robots_validate_url()] and [robots_evaluate_url_v1()],
+#'   also reads the complete lines between bytes 512,000 and 524,288. RFC 9309
+#'   section 2.5 asks a crawler to parse at least 500 KiB (`512000` bytes); a
+#'   smaller value is accepted but falls below that floor.
 #' @param fetch_user_agent `NULL` (use the package fetch user agent) or a single
 #'   non-empty character HTTP user agent to send instead. This is never the
 #'   matcher `user_agent`.
@@ -98,7 +114,7 @@
 #'   and [robots_fetch()] for the fetch stage on its own.
 #' @export
 allowed_by_robots_url <- function(url, user_agent, timeout = 10,
-                                  max_bytes = 524288L,
+                                  max_bytes = 512000L,
                                   fetch_user_agent = NULL,
                                   ssrf_guard = TRUE,
                                   safety_level = "strict",
@@ -176,10 +192,11 @@ allowed_by_robots_url <- function(url, user_agent, timeout = 10,
   error_message_col[invalid_ua] <- "User agent is missing or empty."
 
   # --- Decode each fetched source body to the matcher string ONCE (PRD 6.2
-  # bridge, mirrors allowed_by_robots_text): `decode_matcher_body()` drops NUL
-  # bytes and marks the result UTF-8 (R/body-decode.R). Non-fetched sources
-  # store no body and are not matched. Keyed by source_id so the per-(source,
-  # UA) matcher grouping below reuses one decoded body per source.
+  # bridge, mirrors allowed_by_robots_text): `decode_matcher_body()` ends each
+  # line at its first NUL byte, as Google's parser does (ROBO-pvqrfvol), and
+  # marks the result UTF-8 (R/body-decode.R). Non-fetched sources store no
+  # body and are not matched. Keyed by source_id so the per-(source, UA)
+  # matcher grouping below reuses one decoded body per source.
   source_body_utf8 <- vector("list", nrow(robots))
   names(source_body_utf8) <- robots$source_id
   for (i in seq_len(nrow(robots))) {

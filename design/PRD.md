@@ -303,8 +303,10 @@ Response behavior:
 
 Additional response rules:
 
-- `max_bytes` defaults to 524,288 bytes and must be a positive whole-number
-  scalar no greater than R's maximum integer.
+- `max_bytes` defaults to 524,288 bytes for `robots_fetch()`,
+  `robots_validate_url()` and `robots_evaluate_url_v1()`, and to 512,000
+  bytes, Google's window, for `allowed_by_robots_url()` (ROBO-uwveumyp). It
+  must be a positive whole-number scalar no greater than R's maximum integer.
 - Enforce the body limit on decoded entity bytes and abort reading when the
   limit is exceeded. Do not match a truncated body.
 - HTTP content decoding may be performed by the HTTP stack. Do not perform
@@ -350,7 +352,7 @@ product-level caching.
 Public V1 API and committed signatures:
 
 - `allowed_by_robots_url(url, user_agent, timeout = 10,
-  max_bytes = 524288L, fetch_user_agent = NULL)` fetches and matches.
+  max_bytes = 512000L, fetch_user_agent = NULL)` fetches and matches.
 - `allowed_by_robots_text(robots_txt, url, user_agent,
   source_id = "supplied")` matches one supplied body without HTTP.
 - `robots_fetch(url, timeout = 10, max_bytes = 524288L,

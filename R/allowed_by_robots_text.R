@@ -44,6 +44,14 @@
 #' `matched_rule_type` (`"none"` for `default_allow`, `"unknown"` for
 #' `input_unknown`).
 #'
+#' No size window applies: the whole supplied body is matched, as Google's
+#' open-source engine matches a body it is handed. The other Google entry
+#' points stop at 512,000 bytes (Google's documented 500 KiB limit), reading
+#' complete lines only: [allowed_by_robots_url()] by its `max_bytes` default,
+#' and [robots_evaluate_text_v1()] and [robots_evaluate_url_v1()] with the
+#' Google backend by their window. So a rule after byte 512,000 can decide a
+#' URL here and not there (`design/engine-profiles.md` section 7).
+#'
 #' @param robots_txt A single, non-missing character scalar holding the
 #'   robots.txt body. An empty body is valid. A body marked UTF-8 is used as
 #'   written. An unmarked body (as `rawToChar()` gives) is taken as UTF-8 bytes

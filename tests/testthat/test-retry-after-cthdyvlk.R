@@ -59,7 +59,8 @@ test_that("ROBO-cthdyvlk: allowed_by_robots_url() carries the fetch row", {
       503L, headers = list("Retry-After" = "120")
     )
   )))
-  fetched <- robots_fetch("http://a/")
+  # allowed_by_robots_url() reads 512,000 bytes by default (ROBO-uwveumyp).
+  fetched <- robots_fetch("http://a/", max_bytes = 512000L)
   decided <- allowed_by_robots_url("http://a/", "bot")
   expect_identical(decided$robots, fetched$robots)
   expect_identical(decided$robots$retry_after, "120")

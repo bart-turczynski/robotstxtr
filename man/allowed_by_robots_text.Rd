@@ -77,6 +77,14 @@ Rows where no rule matched keep \code{matched_rule_value = NA} and a
 decision-derived
 \code{matched_rule_type} (\code{"none"} for \code{default_allow}, \code{"unknown"} for
 \code{input_unknown}).
+
+No size window applies: the whole supplied body is matched, as Google's
+open-source engine matches a body it is handed. The other Google entry
+points stop at 512,000 bytes (Google's documented 500 KiB limit), reading
+complete lines only: \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} by its \code{max_bytes} default,
+and \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}} and \code{\link[=robots_evaluate_url_v1]{robots_evaluate_url_v1()}} with the
+Google backend by their window. So a rule after byte 512,000 can decide a
+URL here and not there (\code{design/engine-profiles.md} section 7).
 }
 \examples{
 allowed_by_robots_text("user-agent: *\ndisallow: /x", "http://a/x", "bot")

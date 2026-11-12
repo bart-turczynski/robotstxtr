@@ -209,7 +209,8 @@ test_that("ROBO-bsloeclp: a body, or a redirect followed, is none and NA", {
 test_that("ROBO-bsloeclp: allowed_by_robots_*() carry the same columns", {
   local_fake_ssrfr(bsl_redirect_to("ftp://a/robots.txt"))
   url <- allowed_by_robots_url("http://a/x", "bot")
-  fetch <- robots_fetch("http://a/x")
+  # allowed_by_robots_url() reads 512,000 bytes by default (ROBO-uwveumyp).
+  fetch <- robots_fetch("http://a/x", max_bytes = 512000L)
   expect_identical(url$robots, fetch$robots)
   expect_identical(url$robots$terminal_redirect_reason, "non_http_target")
   expect_identical(url$robots$safety_block_reason, "scheme")

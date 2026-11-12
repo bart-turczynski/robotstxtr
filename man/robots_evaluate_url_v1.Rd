@@ -105,6 +105,16 @@ only under the \code{rfc9309} backend. See
 
 A Google row whose selected rule has an empty value reports
 \code{reason = "default_allow"} with no line, as in \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}.
+
+The Google backend reads a fetched body as \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}
+does: the complete lines of its first 512,000 bytes, looking one byte past
+them. \code{max_bytes} keeps the 524,288 default of \code{\link[=robots_fetch]{robots_fetch()}}, so a body
+cut at it holds that window and the byte after it. With \code{max_bytes = 512000}, the default of \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}}, the byte after the
+window is not stored, and a line whose line break is byte 512,001 is
+dropped. A cut body is matched only under the \code{google} ruleset with the
+\code{google} backend, and only when it stored at least 512,000 bytes; a
+smaller google cut is \code{incomplete_evidence}, and other rulesets read a cut
+as \code{design/engine-profiles.md} section 7 sets out.
 }
 \examples{
 # A refused origin is decided before any request, so this runs offline. The
