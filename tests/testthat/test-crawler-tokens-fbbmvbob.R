@@ -72,6 +72,70 @@ test_that("the token table is the seven children and the AdsBot family", {
   # The retired crawlers are not rows.
   expect_false(any(c("AdsBot-Google-Mobile-Apps", "Googlebot-Favicon") %in%
                      table$crawler_token))
+  expect_true(all(startsWith(
+    table$source, "https://developers.google.com/crawling/docs/"
+  )))
+})
+
+test_that("the contract publishes the table and the moved revisions", {
+  for (contract in list(robots_engine_contract_v1(),
+                        robots_engine_contract_v2())) {
+    cap <- contract$matcher_capability
+    expect_identical(cap$google$crawler_tokens, google_crawler_tokens_v1())
+    expect_identical(cap$google$token_policy, "arbitrary_valid")
+    expect_identical(contract$schema_revision, "2026-11-12.1")
+    expect_identical(
+      contract$policy_revisions[["google"]], "google-robots-policy-2026-11-12"
+    )
+    # Only Google publishes one; the bounded backends keep their profiles.
+    for (backend in c("yandex", "bing", "rfc9309")) {
+      expect_null(cap[[backend]]$crawler_tokens, label = backend)
+    }
+  }
+  # The parent mode is Google's alone: no bounded backend may publish it.
+  expect_false("exact_else_parent_else_wildcard" %in%
+                 supported_profile_selection_modes_v1())
+  expect_identical(
+    google_crawler_selection_modes_v1(),
+    c("exact_else_parent_else_wildcard", "exact_only")
+  )
+})
+
+test_that("the validator refuses a malformed crawler_tokens table", {
+  base <- engine_backend_capability_v1()
+  invalid <- function(cap) {
+    expect_error(
+      validate_backend_capability_v1(cap),
+      class = "robotstxtr_matcher_capability_invariant"
+    )
+  }
+  cap <- base
+  cap$google$crawler_tokens$group_selection[[1L]] <- "exact_else_wildcard"
+  invalid(cap)
+  cap <- base
+  cap$google$crawler_tokens$parent_token[[1L]] <- NA_character_
+  invalid(cap)
+  cap <- base
+  cap$google$crawler_tokens$parent_token[[8L]] <- "Googlebot"
+  invalid(cap)
+  cap <- base
+  cap$google$crawler_tokens$crawler_token[[2L]] <- "GOOGLEBOT-IMAGE"
+  invalid(cap)
+  cap <- base
+  cap$google$crawler_tokens$token_comparison[[1L]] <- "prefix"
+  invalid(cap)
+  cap <- base
+  cap$google$crawler_tokens$source <- NULL
+  invalid(cap)
+  # A bounded backend may publish neither the table nor the parent mode.
+  cap <- base
+  cap$bing$crawler_tokens <- google_crawler_tokens_v1()
+  invalid(cap)
+  cap <- base
+  cap$bing$supported_profiles$group_selection[[1L]] <-
+    "exact_else_parent_else_wildcard"
+  invalid(cap)
+  expect_identical(validate_backend_capability_v1(base), base)
 })
 
 test_that("a child with no group of its own follows its parent's group", {

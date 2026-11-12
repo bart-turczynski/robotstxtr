@@ -10,6 +10,13 @@ engine_contract_id_v1 <- function() {
   "robotstxtr.engine-aware/v1"
 }
 
+# 2026-11-12.1: `results` gains `group_token`, whose group decided a Google
+# row, and the google `matcher_capability` publishes `crawler_tokens`, the
+# crawler tokens the google ruleset follows with the google backend (a
+# parent token's group before `*`, or `*` ignored; ROBO-fbbmvbob). The
+# google policy revision moved with it. Both facades share the results
+# schema, so both moved.
+#
 # 2026-11-11.1: `evidence_status` gains `unreachable_local`, an address-class
 # refusal under `safety_level = "crawler"`, and the policy table an
 # `unreachable_local` row per ruleset with the transport cells (ADR 0001
@@ -27,7 +34,7 @@ engine_contract_id_v1 <- function() {
 # (ROBO-jbralthm; design/engine-profiles.md section 2). Both facades share the
 # evidence schema, so both revisions moved.
 engine_schema_revision_v1 <- function() {
-  "2026-11-11.1"
+  "2026-11-12.1"
 }
 
 # The engine-aware/v2 facade identity (BI-V2-SCHEMA, spec SS15). Introduced by
@@ -42,7 +49,7 @@ engine_contract_id_v2 <- function() {
 }
 
 engine_schema_revision_v2 <- function() {
-  "2026-11-11.1"
+  "2026-11-12.1"
 }
 
 engine_rulesets_v1 <- function() {
@@ -102,7 +109,7 @@ validate_matcher_status_v2 <- function(matcher_status) {
 
 engine_policy_revisions_v1 <- function() {
   c(
-    google = "google-robots-policy-2026-11-09",
+    google = "google-robots-policy-2026-11-12",
     yandex = "yandex-robots-policy-2026-11-09",
     rfc9309 = "rfc9309-policy-2022",
     bing = "bing-documentation-gap-2026-07-17",
@@ -308,6 +315,9 @@ validate_backend_capability_v1 <- function(capability) {
         backend, toString(profile_fields[present])
       ))
     }
+    if ("crawler_tokens" %in% names(entry)) {
+      validate_crawler_tokens_v1(entry, backend)
+    }
     if (!bounded) next
 
     profiles <- entry$supported_profiles
@@ -349,6 +359,54 @@ validate_backend_capability_v1 <- function(capability) {
   capability
 }
 
+# A published `crawler_tokens` table (ROBO-fbbmvbob): only an
+# `arbitrary_valid` backend publishes one, with the columns of
+# google_crawler_tokens_v1(), a google-only selection mode per row, a parent
+# token exactly on the parent-mode rows, and no token twice under ASCII case.
+validate_crawler_tokens_v1 <- function(entry, backend) {
+  if (!identical(entry$token_policy, "arbitrary_valid")) {
+    capability_abort_v1(sprintf(
+      "backend %s is not arbitrary_valid but publishes crawler_tokens.",
+      backend
+    ))
+  }
+  table <- entry$crawler_tokens
+  expected_cols <- c(
+    "crawler_token", "parent_token", "group_selection", "token_comparison",
+    "source"
+  )
+  if (!is.data.frame(table) || !identical(names(table), expected_cols) ||
+        nrow(table) == 0L) {
+    capability_abort_v1(sprintf(
+      "backend %s crawler_tokens must be a non-empty frame with columns: %s.",
+      backend, toString(expected_cols)
+    ))
+  }
+  bad_mode <- !table$group_selection %in% google_crawler_selection_modes_v1()
+  if (any(bad_mode)) {
+    capability_abort_v1(sprintf(
+      "backend %s publishes unknown crawler group_selection: %s.",
+      backend, toString(unique(table$group_selection[bad_mode]))
+    ))
+  }
+  parent_mode <- table$group_selection == "exact_else_parent_else_wildcard"
+  has_parent <- !is.na(table$parent_token) & nzchar(table$parent_token)
+  if (!identical(parent_mode, has_parent)) {
+    capability_abort_v1(sprintf(
+      "backend %s crawler_tokens must name a parent token exactly on the %s",
+      backend, "exact_else_parent_else_wildcard rows."
+    ))
+  }
+  if (!all(table$token_comparison == "ascii_case_insensitive_exact") ||
+        anyDuplicated(ascii_lower(table$crawler_token)) > 0L) {
+    capability_abort_v1(sprintf(
+      "backend %s crawler_tokens must compare tokens %s, each once.",
+      backend, "ascii_case_insensitive_exact"
+    ))
+  }
+  invisible(entry)
+}
+
 capability_abort_v1 <- function(detail) {
   robots_abort(
     sprintf("Matcher capability invariant failed: %s", detail),
@@ -363,8 +421,12 @@ capability_abort_v1 <- function(detail) {
 # any valid Google robots product token), `"bounded_profiles"` for the
 # vendor-bounded backends, and `"rfc9309"` for the RFC backend.
 # `matcher_semantics` names the sole vendor/semantics a backend owns; a Google
-# decision on any token reflects Google parsing/matching, never a prediction of
-# the crawler the token names.
+# decision on any token reflects Google parsing/matching. Google alone also
+# publishes `crawler_tokens` (google_crawler_tokens_v1(), ROBO-fbbmvbob): the
+# crawler tokens whose group selection the google ruleset takes from Google's
+# crawler documentation, a crawler-aware layer above the matcher. Outside
+# that layer a Google decision is not a prediction of the crawler the token
+# names.
 #
 # The two `bounded_profiles` backends additionally publish which selectors they
 # accept, because passing an unaccepted one is not an error a caller can miss
@@ -387,9 +449,15 @@ engine_backend_capability_v1 <- function() {
       note = paste0(
         "Google backend accepts any valid Google robots product token for ",
         "user-agent group selection; the result reflects Google ",
-        "parsing/matching semantics applied to that token, not behavioral ",
-        "compatibility with or a prediction of the crawler the token names."
-      )
+        "parsing/matching semantics applied to that token. Under the google ",
+        "ruleset, a token listed in crawler_tokens also selects its group as ",
+        "Google documents for that crawler (a parent token's group before ",
+        "`*`, or `*` ignored): a crawler-aware layer above the matcher, read ",
+        "from Google's documentation, not from the crawler. Elsewhere, and ",
+        "for any other token, the result is not a prediction of the crawler ",
+        "the token names."
+      ),
+      crawler_tokens = google_crawler_tokens_v1()
     ),
     yandex = list(
       token_policy = "bounded_profiles",

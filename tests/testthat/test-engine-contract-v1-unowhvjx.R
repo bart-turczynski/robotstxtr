@@ -37,7 +37,7 @@ test_that("contract metadata publishes revisions and sibling ranges", {
   contract <- robots_engine_contract_v1()
   expect_s3_class(contract, "robots_engine_contract_v1")
   expect_identical(contract$contract_id, "robotstxtr.engine-aware/v1")
-  expect_identical(contract$schema_revision, "2026-11-11.1")
+  expect_identical(contract$schema_revision, "2026-11-12.1")
   expect_match(contract$matcher_revisions[["google"]], "22b355ff")
   expect_identical(
     contract$matcher_availability[["google"]], "available"
@@ -463,7 +463,7 @@ test_that("Google ignores a rule past byte 512,000 under 524,288", {
   expect_identical(x$results$policy_body_limit_bytes, 512000L)
   expect_identical(policy_limit_v1("google"), 512000L)
   expect_identical(
-    x$results$policy_ruleset_revision, "google-robots-policy-2026-11-09"
+    x$results$policy_ruleset_revision, "google-robots-policy-2026-11-12"
   )
   expect_identical(policy_limit_v1("yandex"), 500000L)
 })

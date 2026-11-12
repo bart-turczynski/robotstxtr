@@ -384,9 +384,10 @@ test_that("ROBO-ptibdnvy: resolve_policy_v1() needs the cut flag", {
 })
 
 test_that("ROBO-ptibdnvy: the google policy revision", {
-  # google-robots-policy-2026-11-09 covers the 512,000-byte window
-  # (ROBO-phfbpfiy) and the cut reading (ROBO-ptibdnvy).
+  # google-robots-policy-2026-11-12 covers the 512,000-byte window
+  # (ROBO-phfbpfiy), the cut reading (ROBO-ptibdnvy) and the crawler-token
+  # layer (ROBO-fbbmvbob).
   expect_identical(
-    engine_policy_revisions_v1()[["google"]], "google-robots-policy-2026-11-09"
+    engine_policy_revisions_v1()[["google"]], "google-robots-policy-2026-11-12"
   )
 })

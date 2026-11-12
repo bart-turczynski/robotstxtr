@@ -117,7 +117,7 @@ test_that("the evidence records fetch_allow_ranges as passed", {
     "user-agent: *\n", "https://example.com/", "Googlebot", "google", "google"
   )$evidence
   expect_identical(supplied$fetch_allow_ranges, list(NA_character_))
-  expect_identical(engine_schema_revision_v1(), "2026-11-11.1")
+  expect_identical(engine_schema_revision_v1(), "2026-11-12.1")
 })
 
 test_that("the metadata host names are never reopened by a range", {

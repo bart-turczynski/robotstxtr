@@ -222,8 +222,8 @@ test_that("the contract publishes an unreachable_local row per ruleset", {
   rownames(local) <- NULL
   rownames(transport) <- NULL
   expect_identical(local, transport)
-  expect_identical(engine_schema_revision_v1(), "2026-11-11.1")
-  expect_identical(engine_schema_revision_v2(), "2026-11-11.1")
+  expect_identical(engine_schema_revision_v1(), "2026-11-12.1")
+  expect_identical(engine_schema_revision_v2(), "2026-11-12.1")
 })
 
 # --- the legacy frame and the invariants --------------------------------------
