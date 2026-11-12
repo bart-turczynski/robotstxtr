@@ -397,11 +397,23 @@ validate_crawler_tokens_v1 <- function(entry, backend) {
       backend, "exact_else_parent_else_wildcard rows."
     ))
   }
-  if (!all(table$token_comparison == "ascii_case_insensitive_exact") ||
+  # An NA anywhere fails here, through the invariant abort.
+  comparison <- table$token_comparison == "ascii_case_insensitive_exact"
+  if (!isTRUE(all(comparison)) || anyNA(table$crawler_token) ||
         anyDuplicated(ascii_lower(table$crawler_token)) > 0L) {
     capability_abort_v1(sprintf(
       "backend %s crawler_tokens must compare tokens %s, each once.",
       backend, "ascii_case_insensitive_exact"
+    ))
+  }
+  # The layer reads one parent token per row, so a parent may not itself be
+  # a listed crawler token.
+  chained <- ascii_lower(table$parent_token[has_parent]) %in%
+    ascii_lower(table$crawler_token)
+  if (any(chained)) {
+    capability_abort_v1(sprintf(
+      "backend %s crawler_tokens chains parent tokens: %s.",
+      backend, toString(table$parent_token[has_parent][chained])
     ))
   }
   invisible(entry)

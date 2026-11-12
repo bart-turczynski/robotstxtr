@@ -127,6 +127,18 @@ test_that("the validator refuses a malformed crawler_tokens table", {
   cap <- base
   cap$google$crawler_tokens$source <- NULL
   invalid(cap)
+  # An NA comparison fails through the invariant, not an R error.
+  cap <- base
+  cap$google$crawler_tokens$token_comparison[[3L]] <- NA_character_
+  invalid(cap)
+  # An empty table.
+  cap <- base
+  cap$google$crawler_tokens <- cap$google$crawler_tokens[0L, ]
+  invalid(cap)
+  # A parent chain: a parent that is itself a listed crawler token.
+  cap <- base
+  cap$google$crawler_tokens$parent_token[[1L]] <- "googlebot-news"
+  invalid(cap)
   # A bounded backend may publish neither the table nor the parent mode.
   cap <- base
   cap$bing$crawler_tokens <- google_crawler_tokens_v1()
@@ -480,4 +492,27 @@ test_that("crawler profiles go by the callable's formals, not its name", {
   )
   expect_identical(calls$profiles$parent_token, c("Googlebot", NA))
   expect_identical(calls$profiles$ignore_global, c(FALSE, TRUE))
+})
+
+test_that("a row with no parent token never reads a `User-agent: NA` group", {
+  # No parent is NA in the profile; it must reach the matcher as no token,
+  # never as the string "NA", on the batch path and on the row path.
+  body <- ct_lines("User-agent: NA", "Disallow: /")
+  tokens <- c("FooBot", "AdsBot-Google", "Storebot-Google")
+  urls <- rep("https://x.com/a", 3L)
+  want_group <- c("*", NA, "*")
+  r <- ct_eval(body, urls, tokens)
+  expect_identical(r$url_decision, rep("allow", 3L))
+  expect_identical(r$group_token, want_group)
+  row_registry <- fake_matcher_registry(
+    google = function(bodies, urls, product_tokens, crawler_profiles) {
+      row_matcher_frame_v1(
+        match_google_v1, bodies, urls, product_tokens, crawler_profiles
+      )
+    }
+  )
+  local_matcher_registry(row_registry)
+  r <- ct_eval(body, urls, tokens)
+  expect_identical(r$url_decision, rep("allow", 3L))
+  expect_identical(r$group_token, want_group)
 })
