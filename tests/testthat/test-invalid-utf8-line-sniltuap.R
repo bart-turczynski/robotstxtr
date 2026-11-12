@@ -62,21 +62,36 @@ test_that("bad bytes before the # make the line an error", {
   expect_identical(d$line, c(2L, 2L))
 })
 
-test_that("NUL bytes are dropped before the line is checked", {
+test_that("a line with NUL bytes is checked as written", {
+  # NUL is a one-byte UTF-8 character, so the runs between NULs are checked
+  # (ROBO-xuusttbp). Google ends the line at its first NUL, reading the rule
+  # `/x`; Bing and Yandex read the bad byte after it.
   d <- iu_rows(iu_bytes("User-agent: *\nDisallow: /x", 0x00, 0xff, "\n"))
-  expect_identical(d$code, c("nul_byte", "invalid_utf8"))
-  expect_identical(d$line, c(2L, 2L))
-  # A NUL between a lead and a continuation byte: the line is checked
-  # NUL-free, so only nul_byte reports it.
+  expect_identical(d$code, c("nul_byte", "invalid_utf8", "rule_cut_by_nul"))
+  expect_identical(d$line, c(2L, 2L, 2L))
+  expect_match(d$message[[2L]], "after the line's first NUL", fixed = TRUE)
+  expect_match(d$message[[2L]], "Bing and Yandex read past it", fixed = TRUE)
+  # A NUL between a lead and a continuation byte splits the sequence: the
+  # line is not UTF-8, and Google reads the rule `/` plus a lone lead byte.
   d <- iu_rows(iu_bytes("User-agent: *\nDisallow: /", 0xc3, 0x00, 0xa9,
                         "\n"))
-  expect_identical(d$code, "nul_byte")
-  # A NUL before the #: the # is still found on the NUL-free line. It cuts
-  # no rule: the line ends at the NUL, for the parser and Google's matcher
-  # alike (ROBO-pvqrfvol), so no rule_cut_by_comment (ROBO-gjhpykcj).
+  expect_identical(d$code, c("nul_byte", "invalid_utf8", "rule_cut_by_nul"))
+  expect_identical(d$severity, c("error", "error", "warning"))
+  expect_identical(d$message[[2L]], "Line bytes are not well-formed UTF-8.")
+  # A NUL before the #: Google never reads the comment, and the parser cuts
+  # no rule (no rule_cut_by_comment, ROBO-gjhpykcj); Bing and Yandex read
+  # past the NUL and cut at the #, so the bad byte is in their comment.
   d <- iu_rows(iu_bytes("User-agent: *\nDisallow: /a", 0x00, "# ", 0xff,
                         "\n"))
   expect_identical(d$code, c("nul_byte", "invalid_utf8_comment"))
+  expect_match(d$message[[2L]], "Google's matcher ends the line at the NUL",
+               fixed = TRUE)
+  expect_match(d$message[[2L]], "in a comment as Bing and Yandex read",
+               fixed = TRUE)
+  # Bad bytes before the first NUL keep the plain message.
+  d <- iu_rows(iu_bytes("User-agent: *\nDisallow: /", 0xff, 0x00, "b\n"))
+  expect_identical(d$code, c("nul_byte", "invalid_utf8", "rule_cut_by_nul"))
+  expect_identical(d$message[[2L]], "Line bytes are not well-formed UTF-8.")
 })
 
 test_that("several bad lines get one row each, in line order", {

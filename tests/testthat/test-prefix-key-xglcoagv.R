@@ -154,18 +154,22 @@ test_that("a latin1 key is converted once and its bytes escaped", {
 test_that("a NUL on the line leaves the key and the warning unchanged", {
   body <- c(charToRaw("User-agent: *\nDisallow-x: /a"), as.raw(0),
             charToRaw("b\n"))
+  # The NUL also cuts the value to `/a` (ROBO-xuusttbp).
   expect_identical(robots_validate_text(body)$diagnostics$code,
-                   c("nul_byte", "accepted_directive_prefix"))
+                   c("nul_byte", "accepted_directive_prefix",
+                     "rule_cut_by_nul"))
   body <- c(charToRaw("User-agent: *\nDisallow-x"), as.raw(0),
             charToRaw(": /\n"))
   # The line ends at its first NUL, for Google's matcher too, so the rule it
   # spells out NUL-free is hidden (ROBO-igrkabdb, ROBO-pvqrfvol).
   expect_identical(robots_validate_text(body)$diagnostics$code,
                    c("nul_byte", "malformed_line", "rules_after_nul_removal"))
-  # An exact key whose line holds a NUL after the colon does not warn.
+  # An exact key whose line holds a NUL after the colon gets no prefix
+  # warning; the NUL cuts its value (ROBO-xuusttbp).
   body <- c(charToRaw("User-agent: *\nDisallow: /a"), as.raw(0),
             charToRaw("x: y\n"))
-  expect_identical(robots_validate_text(body)$diagnostics$code, "nul_byte")
+  expect_identical(robots_validate_text(body)$diagnostics$code,
+                   c("nul_byte", "rule_cut_by_nul"))
 })
 
 test_that("an oversized prefix line warns as well as line_too_long", {

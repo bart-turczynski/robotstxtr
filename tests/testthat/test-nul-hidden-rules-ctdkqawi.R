@@ -141,15 +141,22 @@ test_that("a raw-rule-free body keeps today's count, grouped or not", {
 })
 
 test_that("NUL lines that hide no rule stay silent", {
+  # A value the NUL only shortens hides no rule; rule_cut_by_nul reports
+  # the cut (ROBO-xuusttbp).
   cases <- list(
-    "NUL in a comment" = c(charToRaw("User-agent: *\nDisallow: /a # x"),
-                           ch_nul, charToRaw("y\n")),
-    "NUL mid-value" = c(charToRaw("User-agent: *\nDisallow: /a"), ch_nul,
-                        charToRaw("b\n"))
+    "NUL in a comment" = list(
+      c(charToRaw("User-agent: *\nDisallow: /a # x"), ch_nul,
+        charToRaw("y\n")),
+      "nul_byte@2"
+    ),
+    "NUL mid-value" = list(
+      c(charToRaw("User-agent: *\nDisallow: /a"), ch_nul, charToRaw("b\n")),
+      c("nul_byte@2", "rule_cut_by_nul@2")
+    )
   )
   for (case in names(cases)) {
-    expect_identical(ch_rows(robots_validate_text(cases[[case]])),
-                     "nul_byte@2", label = case)
+    expect_identical(ch_rows(robots_validate_text(cases[[case]][[1L]])),
+                     cases[[case]][[2L]], label = case)
   }
   expect_identical(
     ch_rows(robots_validate_text(as.raw(c(0, 0x0a, 0, 0x0a)))),

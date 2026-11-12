@@ -413,9 +413,9 @@ names the token says the token's line carries the preference. Every agent name i
 elided past 64 characters (its first 60 and `...`), so message size stays linear in the rows.
 
 The token is never reported as `wildcard_rules_not_inherited`, and neither is a value Google's
-matcher reads as the token. All four codes are skipped for a body holding a NUL byte, like the
-other group checks (it is a `nul_byte` error, and Bing and Yandex read the NUL as a byte where
-Google ends the line at it), and kept for a body cut at `max_bytes`, where the info says lines past the cut
+matcher reads as the token. On a body holding a NUL byte all four codes follow Google's reading,
+like the other group checks, and their messages say so (Google ends the line at the NUL, Bing and
+Yandex read it as a byte; ROBO-xuusttbp). They are kept for a body cut at `max_bytes`, where the info says lines past the cut
 were not read; a User-agent line past the cut could still join the last group. A
 `DisallowAITraining:`-style key is a different mistake, read by Google as `Disallow` for the whole
 group: `accepted_directive_prefix` (ROBO-xglcoagv) reports it, and its message points to the

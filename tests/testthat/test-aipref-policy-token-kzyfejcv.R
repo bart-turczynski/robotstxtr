@@ -510,14 +510,21 @@ test_that("a file without the token draws no new code", {
   }
 })
 
-test_that("a body with a NUL gets no AI-training code", {
+test_that("a body with a NUL gets the AI-training codes on Google's reading", {
   body <- c(charToRaw(paste0(
     "User-agent: *\nContent-Signal: x\nUser-agent: __usage_ai_training\n",
     "Crawl-delay: 5\nUser-agent: __usage_ai-training\nDisallow: /"
   )), as.raw(0), charToRaw("a\n"))
   d <- robots_validate_text(body)$diagnostics
   expect_true("nul_byte" %in% d$code)
-  expect_identical(ai_new_codes(d), character())
+  # Google ends line 6 at the NUL (`Disallow: /`); the checks run on that
+  # reading and say so, since Bing and Yandex read past it (ROBO-xuusttbp).
+  expect_identical(ai_new_codes(d), c(
+    "ai_training_token_near_miss", "ai_training_token_stacked",
+    "ai_training_token_stacked", "ai_training_preference"
+  ))
+  ai <- d$message[d$code %in% ai_new_codes(d)]
+  expect_true(all(grepl("This is Google's reading", ai, fixed = TRUE)))
 })
 
 test_that("a cut body keeps every check and says the info may be partial", {
