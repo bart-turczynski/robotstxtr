@@ -28,16 +28,16 @@ robotstxtr_matching_line_text_ <- function(body, url, user_agent) {
   .Call(`_robotstxtr_robotstxtr_matching_line_text_`, body, url, user_agent)
 }
 
-robotstxtr_google_crawler_row_ <- function(body, url, user_agent, parent, ignore_global) {
-  .Call(`_robotstxtr_robotstxtr_google_crawler_row_`, body, url, user_agent, parent, ignore_global)
+robotstxtr_crawler_row_ <- function(body, url, agent, parent, ignore) {
+  .Call(`_robotstxtr_robotstxtr_crawler_row_`, body, url, agent, parent, ignore)
 }
 
 robotstxtr_google_request_target_ <- function(url) {
   .Call(`_robotstxtr_robotstxtr_google_request_target_`, url)
 }
 
-robotstxtr_google_eval_batch_ <- function(bodies, ids, agents, urls, parents, ignore_global) {
-  .Call(`_robotstxtr_robotstxtr_google_eval_batch_`, bodies, ids, agents, urls, parents, ignore_global)
+robotstxtr_google_eval_batch_ <- function(bodies, per_row) {
+  .Call(`_robotstxtr_robotstxtr_google_eval_batch_`, bodies, per_row)
 }
 
 robotstxtr_batch_body_groups_ <- function(bodies) {

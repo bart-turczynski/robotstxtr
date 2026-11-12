@@ -1234,7 +1234,7 @@ match_google_v1 <- function(body, url, product_token, crawler_profile = NULL) {
     body
   }
   body_string <- matcher_string_v1(matcher_body)
-  native <- robotstxtr_google_crawler_row_(
+  native <- robotstxtr_crawler_row_(
     body_string, url, product_token, parent, ignore_global
   )
   allowed <- native$allowed

@@ -19,7 +19,7 @@
 // the end serves the shared batch module (R/matcher-batch-v1.R) of all three
 // engines: it only groups bodies, and touches no engine.
 //
-// The crawler-token layer (ROBO-fbbmvbob): robotstxtr_google_crawler_row_()
+// The crawler-token layer (ROBO-fbbmvbob): robotstxtr_crawler_row_()
 // and the batch run a second matcher for a crawler's parent token and read
 // ever_seen_specific_agent() and disallow_ignore_global(), so the v1 google
 // ruleset can follow Google's crawler tokens. The two single-token functions
@@ -124,31 +124,32 @@ CrawlerDecision decide_crawler_row(const googlebot::RobotsMatcher& own,
 }  // namespace
 
 // One crawler-aware row (ROBO-fbbmvbob), the reference for the batch below:
-// `url` (one string) under `body` for `user_agent`, with `parent` the parent
-// token ("" for none) and `ignore_global` whether the crawler ignores `*`.
-// Each token gets its own matcher and its own parse, as
-// OneAgentAllowedByRobots() runs it. Returns `allowed`, `matching_line` (0
-// when no directive matched or none is reported) and `group` (GroupKind).
+// `url` (one string) under `body` for `agent`, with `parent` the parent
+// token ("" for none) and `ignore` whether the crawler ignores `*`. Each
+// token gets its own matcher and its own parse, as OneAgentAllowedByRobots()
+// runs it. Returns `allowed`, `matching_line` (0 when no directive matched or
+// none is reported) and `group` (GroupKind). The short argument names keep
+// the generated R/cpp11.R within 80 columns.
 [[cpp11::register]]
-cpp11::writable::list robotstxtr_google_crawler_row_(std::string body,
-                                                     cpp11::strings url,
-                                                     std::string user_agent,
-                                                     std::string parent,
-                                                     bool ignore_global) {
+cpp11::writable::list robotstxtr_crawler_row_(std::string body,
+                                              cpp11::strings url,
+                                              std::string agent,
+                                              std::string parent,
+                                              bool ignore) {
   if (url.size() != 1) {
     cpp11::stop("`url` must be a single string");
   }
   const std::string u(url[0]);
   const std::string_view body_view(body);
   googlebot::RobotsMatcher own;
-  own.OneAgentAllowedByRobots(body_view, user_agent, u);
+  own.OneAgentAllowedByRobots(body_view, agent, u);
   googlebot::RobotsMatcher parent_matcher;
   const googlebot::RobotsMatcher* parent_ptr = nullptr;
   if (!parent.empty()) {
     parent_matcher.OneAgentAllowedByRobots(body_view, parent, u);
     parent_ptr = &parent_matcher;
   }
-  const CrawlerDecision d = decide_crawler_row(own, parent_ptr, ignore_global);
+  const CrawlerDecision d = decide_crawler_row(own, parent_ptr, ignore);
   using namespace cpp11::literals;
   return cpp11::writable::list({
       "allowed"_nm = cpp11::as_sexp(d.allowed),
@@ -258,14 +259,18 @@ cpp11::writable::strings robotstxtr_google_request_target_(
 // `matching_line` (0 when no directive matched or none is reported) and
 // `group` (GroupKind), plus the scalar `n_parse_calls`, the number of
 // ParseRobotsTxt() runs.
+//
+// The per-row vectors come in one named list, `per_row` (`ids`, `agents`,
+// `urls`, `parents`, `ignore_global`), which keeps the generated R/cpp11.R
+// within 80 columns.
 [[cpp11::register]]
 cpp11::writable::list robotstxtr_google_eval_batch_(cpp11::strings bodies,
-                                                    cpp11::integers ids,
-                                                    cpp11::strings agents,
-                                                    cpp11::list urls,
-                                                    cpp11::strings parents,
-                                                    cpp11::logicals
-                                                        ignore_global) {
+                                                    cpp11::list per_row) {
+  const cpp11::integers ids(per_row["ids"]);
+  const cpp11::strings agents(per_row["agents"]);
+  const cpp11::list urls(per_row["urls"]);
+  const cpp11::strings parents(per_row["parents"]);
+  const cpp11::logicals ignore_global(per_row["ignore_global"]);
   const R_xlen_t n = ids.size();
   if (agents.size() != n || urls.size() != n || parents.size() != n ||
       ignore_global.size() != n) {
