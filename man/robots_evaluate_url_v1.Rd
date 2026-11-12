@@ -24,7 +24,10 @@ robots_evaluate_url_v1(
 \verb{User-agent:} group label, NOT an HTTP \code{User-Agent} crawler identity. It is
 never sent as a header. A character vector of length one or \code{length(url)}.
 The Google backend accepts any valid Google robots product token and
-yields Google semantics for it, not a prediction of the named crawler. The
+yields Google semantics for it. Under the \code{"google"} ruleset, a token in
+\code{matcher_capability$google$crawler_tokens} also selects its group as
+Google documents for that crawler (see Details); any other token, or any
+other ruleset, is not a prediction of the named crawler. The
 \code{"yandex"} and \code{"bing"} backends accept only a closed set of selectors,
 published on the engine contract as
 \verb{matcher_capability$<backend>$supported_profiles} and checkable up front
@@ -97,11 +100,15 @@ request User-Agent and is never used as \code{robots_product_token}.
 As with \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}, the \code{robots_product_token} drives ONLY
 user-agent group selection. Each matcher backend is authoritative only for
 its own vendor semantics; the Google backend accepts any valid Google robots
-product token and returns Google semantics for it, which is not a claim of
-compatibility with the named crawler, while the Yandex and Bing backends are
-bounded to their supported vendor profiles and RFC 9309 behavior is available
-only under the \code{rfc9309} backend. See
-\code{robots_engine_contract_v1()$matcher_capability}.
+product token and returns Google semantics for it, while the Yandex and Bing
+backends are bounded to their supported vendor profiles and RFC 9309
+behavior is available only under the \code{rfc9309} backend. See
+\code{robots_engine_contract_v1()$matcher_capability}. Under the \code{google}
+ruleset with the \code{google} backend, the Google crawler tokens in
+\code{matcher_capability$google$crawler_tokens} select their group as Google
+documents for those crawlers, and \code{group_token} says whose group decided,
+as in \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}; for any other token or ruleset the
+result is not a claim of compatibility with the named crawler.
 
 A Google row whose selected rule has an empty value reports
 \code{reason = "default_allow"} with no line, as in \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}.

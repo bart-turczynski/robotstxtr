@@ -27,7 +27,10 @@ and one marked \code{Encoding = "bytes"} is used verbatim.}
 \verb{User-agent:} group label, NOT an HTTP \code{User-Agent} crawler identity. It is
 never sent as a header. A character vector of length one or \code{length(url)}.
 The Google backend accepts any valid Google robots product token and
-yields Google semantics for it, not a prediction of the named crawler. The
+yields Google semantics for it. Under the \code{"google"} ruleset, a token in
+\code{matcher_capability$google$crawler_tokens} also selects its group as
+Google documents for that crawler (see Details); any other token, or any
+other ruleset, is not a prediction of the named crawler. The
 \code{"yandex"} and \code{"bing"} backends accept only a closed set of selectors,
 published on the engine contract as
 \verb{matcher_capability$<backend>$supported_profiles} and checkable up front
@@ -59,11 +62,33 @@ selection; it is never sent as an HTTP header. Each matcher backend is
 authoritative only for its own vendor semantics: \code{google} for Google,
 \code{yandex} for Yandex, \code{bing} for Bing, and RFC 9309 behavior only under the
 \code{rfc9309} backend. The Google backend additionally accepts any valid Google
-robots product token and returns Google parsing/matching semantics for it;
-that is NOT a claim of compatibility with, or a prediction of, the crawler
-the token names. The Yandex and Bing backends are bounded to their supported
-vendor profiles only and never generalize to arbitrary tokens. This boundary
-is published as \code{robots_engine_contract_v1()$matcher_capability}.
+robots product token and returns Google parsing/matching semantics for it.
+The Yandex and Bing backends are bounded to their supported vendor profiles
+only and never generalize to arbitrary tokens. This boundary is published
+as \code{robots_engine_contract_v1()$matcher_capability}.
+
+Under the \code{google} ruleset with the \code{google} backend, the result is also a
+crawler-aware layer above the matcher for the Google crawler tokens
+published as \code{matcher_capability$google$crawler_tokens} (schema revision
+\code{2026-11-12.1}). A crawler that Google's common-crawlers page lists with a
+parent token (\code{Googlebot-Image}, \code{Googlebot-Video}, \code{Googlebot-News},
+\code{Google-InspectionTool} and \code{Google-CloudVertexBot} list \code{Googlebot};
+\code{GoogleOther-Image} and \code{GoogleOther-Video} list \code{GoogleOther}) obeys the
+groups naming its own token, else those naming its parent token, else
+\code{*}; the two are never merged. \code{AdsBot-Google}, \code{AdsBot-Google-Mobile},
+\code{Mediapartners-Google} and \code{APIs-Google} ignore \code{*}, so with no group of
+their own they are allowed, with no line. The token is compared whole and
+ASCII case-insensitively (\code{Googlebot-Image/1.0} is not listed). For these
+tokens the result follows what Google documents for its crawlers; it is
+read from Google's documentation, not observed from the crawlers. Under
+every other ruleset, and for every other token, it is Google's matching
+for the token, NOT a claim of compatibility with, or a prediction of, the
+crawler the token names. The \code{group_token} column says whose group
+decided a Google row: the token as given, its parent token, \code{"*"} when no
+group names it (the \code{*} rules, if any), or \code{NA} for a \code{*}-ignoring
+crawler with no group of its own, a row of another backend, or a row no
+matcher decided. \code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}} and \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}}
+apply none of this layer.
 
 The Yandex backend is active (since schema revision \code{2026-07-18.2}). An
 evaluated Yandex row publishes \code{reason} as one of \code{default_allow},

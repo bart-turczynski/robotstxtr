@@ -59,7 +59,11 @@ the URL error is reported (URL validity is checked first).
 A crawler obeys the groups whose User-agent product token equals the
 crawler's (ASCII case-insensitive), combined when several do, and then
 ignores every \verb{User-agent: *} rule; \verb{User-agent: *} applies only to a
-crawler no group names (RFC 9309 section 2.2.1). \code{\link[=robots_validate_text]{robots_validate_text()}}
+crawler no group names (RFC 9309 section 2.2.1). The token is matched as
+given and alone: no parent-token fallback (\code{Googlebot-Image} never reads a
+\code{Googlebot} group) and no exemption from \code{*} (\code{AdsBot-Google} obeys it),
+unlike the \code{google} ruleset of \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}
+(\code{design/engine-profiles.md} section 5a). \code{\link[=robots_validate_text]{robots_validate_text()}}
 reports a named group that lacks \verb{User-agent: *} rules as
 \code{wildcard_rules_not_inherited}, except for the AI-training policy token
 \verb{__usage_ai-training}, which \code{*} never covers (an Internet-Draft,

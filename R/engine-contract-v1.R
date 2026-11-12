@@ -644,7 +644,9 @@ engine_policy_table_v1 <- function() {
 #' Returns the stable identifiers, value sets, backend capability states,
 #' the matcher token/semantics capability boundary (`matcher_capability`,
 #' which for a `bounded_profiles` backend also publishes the accepted
-#' matcher-profile selectors in `supported_profiles`),
+#' matcher-profile selectors in `supported_profiles`, and for `google` the
+#' crawler tokens whose group selection the `google` ruleset takes from
+#' Google's crawler documentation in `crawler_tokens`),
 #' the separately inspectable vendored-matcher identity fields
 #' (`matcher_identity`, e.g. library/payload/profile/corpus/evidence/
 #' profile-source for the Yandex backend), status-policy table, and supported
@@ -669,6 +671,12 @@ engine_policy_table_v1 <- function() {
 #' # group. `Yandex` falls back to `User-agent: *`; `YandexAdditionalBot`
 #' # never does, so the two are not interchangeable.
 #' contract$matcher_capability$yandex$supported_profiles
+#'
+#' # The Google crawler tokens the google ruleset follows: a parent token's
+#' # group before `*`, or `*` ignored.
+#' contract$matcher_capability$google$crawler_tokens[
+#'   c("crawler_token", "parent_token", "group_selection")
+#' ]
 #'
 #' # Status policy is a lookup keyed by acquisition category and ruleset:
 #' # how each ruleset treats a 4xx response to the robots.txt request.
@@ -1900,11 +1908,33 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' authoritative only for its own vendor semantics: `google` for Google,
 #' `yandex` for Yandex, `bing` for Bing, and RFC 9309 behavior only under the
 #' `rfc9309` backend. The Google backend additionally accepts any valid Google
-#' robots product token and returns Google parsing/matching semantics for it;
-#' that is NOT a claim of compatibility with, or a prediction of, the crawler
-#' the token names. The Yandex and Bing backends are bounded to their supported
-#' vendor profiles only and never generalize to arbitrary tokens. This boundary
-#' is published as `robots_engine_contract_v1()$matcher_capability`.
+#' robots product token and returns Google parsing/matching semantics for it.
+#' The Yandex and Bing backends are bounded to their supported vendor profiles
+#' only and never generalize to arbitrary tokens. This boundary is published
+#' as `robots_engine_contract_v1()$matcher_capability`.
+#'
+#' Under the `google` ruleset with the `google` backend, the result is also a
+#' crawler-aware layer above the matcher for the Google crawler tokens
+#' published as `matcher_capability$google$crawler_tokens` (schema revision
+#' `2026-11-12.1`). A crawler that Google's common-crawlers page lists with a
+#' parent token (`Googlebot-Image`, `Googlebot-Video`, `Googlebot-News`,
+#' `Google-InspectionTool` and `Google-CloudVertexBot` list `Googlebot`;
+#' `GoogleOther-Image` and `GoogleOther-Video` list `GoogleOther`) obeys the
+#' groups naming its own token, else those naming its parent token, else
+#' `*`; the two are never merged. `AdsBot-Google`, `AdsBot-Google-Mobile`,
+#' `Mediapartners-Google` and `APIs-Google` ignore `*`, so with no group of
+#' their own they are allowed, with no line. The token is compared whole and
+#' ASCII case-insensitively (`Googlebot-Image/1.0` is not listed). For these
+#' tokens the result follows what Google documents for its crawlers; it is
+#' read from Google's documentation, not observed from the crawlers. Under
+#' every other ruleset, and for every other token, it is Google's matching
+#' for the token, NOT a claim of compatibility with, or a prediction of, the
+#' crawler the token names. The `group_token` column says whose group
+#' decided a Google row: the token as given, its parent token, `"*"` when no
+#' group names it (the `*` rules, if any), or `NA` for a `*`-ignoring
+#' crawler with no group of its own, a row of another backend, or a row no
+#' matcher decided. [allowed_by_robots_text()] and [allowed_by_robots_url()]
+#' apply none of this layer.
 #'
 #' The Yandex backend is active (since schema revision `2026-07-18.2`). An
 #' evaluated Yandex row publishes `reason` as one of `default_allow`,
@@ -1951,7 +1981,10 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #'   `User-agent:` group label, NOT an HTTP `User-Agent` crawler identity. It is
 #'   never sent as a header. A character vector of length one or `length(url)`.
 #'   The Google backend accepts any valid Google robots product token and
-#'   yields Google semantics for it, not a prediction of the named crawler. The
+#'   yields Google semantics for it. Under the `"google"` ruleset, a token in
+#'   `matcher_capability$google$crawler_tokens` also selects its group as
+#'   Google documents for that crawler (see Details); any other token, or any
+#'   other ruleset, is not a prediction of the named crawler. The
 #'   `"yandex"` and `"bing"` backends accept only a closed set of selectors,
 #'   published on the engine contract as
 #'   `matcher_capability$<backend>$supported_profiles` and checkable up front
@@ -2017,11 +2050,15 @@ robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
 #' As with [robots_evaluate_text_v1()], the `robots_product_token` drives ONLY
 #' user-agent group selection. Each matcher backend is authoritative only for
 #' its own vendor semantics; the Google backend accepts any valid Google robots
-#' product token and returns Google semantics for it, which is not a claim of
-#' compatibility with the named crawler, while the Yandex and Bing backends are
-#' bounded to their supported vendor profiles and RFC 9309 behavior is available
-#' only under the `rfc9309` backend. See
-#' `robots_engine_contract_v1()$matcher_capability`.
+#' product token and returns Google semantics for it, while the Yandex and Bing
+#' backends are bounded to their supported vendor profiles and RFC 9309
+#' behavior is available only under the `rfc9309` backend. See
+#' `robots_engine_contract_v1()$matcher_capability`. Under the `google`
+#' ruleset with the `google` backend, the Google crawler tokens in
+#' `matcher_capability$google$crawler_tokens` select their group as Google
+#' documents for those crawlers, and `group_token` says whose group decided,
+#' as in [robots_evaluate_text_v1()]; for any other token or ruleset the
+#' result is not a claim of compatibility with the named crawler.
 #'
 #' A Google row whose selected rule has an empty value reports
 #' `reason = "default_allow"` with no line, as in [robots_evaluate_text_v1()].
@@ -2135,6 +2172,16 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
 #' are matched on the complete lines of the first 512,000 bytes and carry the
 #' match as `allowed` and `decision_source`, unlike [allowed_by_robots_url()],
 #' which matches the complete lines of the whole stored prefix.
+#'
+#' The rows it accepts carry the crawler-token layer of the `google` ruleset
+#' (see [robots_evaluate_text_v1()]), so for a token in
+#' `robots_engine_contract_v1()$matcher_capability$google$crawler_tokens` its
+#' output can differ from [allowed_by_robots_text()] and
+#' [allowed_by_robots_url()] on the same body: `Googlebot-Image` on a body
+#' with only a `Googlebot` group and a `*` group gets the `Googlebot` group
+#' here and the `*` group there, and `AdsBot-Google` on a body with only a
+#' `*` group is allowed here and obeys `*` there. The `group_token` column is
+#' not carried over.
 #'
 #' @param x A `robots_engine_decisions_v1` object using the Google policy and
 #'   Google matcher backend for every row.
