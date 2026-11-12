@@ -18,6 +18,12 @@
 // selects it. See the comment above it. robotstxtr_batch_body_groups_() at
 // the end serves the shared batch module (R/matcher-batch-v1.R) of all three
 // engines: it only groups bodies, and touches no engine.
+//
+// The crawler-token layer (ROBO-fbbmvbob): robotstxtr_crawler_row_()
+// and the batch run a second matcher for a crawler's parent token and read
+// ever_seen_specific_agent() and disallow_ignore_global(), so the v1 google
+// ruleset can follow Google's crawler tokens. The two single-token functions
+// first below stay as they are, for the legacy functions.
 
 #include <cstddef>
 #include <memory>
@@ -71,6 +77,85 @@ cpp11::writable::integers robotstxtr_matching_line_text_(std::string body,
     out[i] = matcher.matching_line();
   }
   return out;
+}
+
+namespace {
+
+// Which token's group decided a crawler-aware row (ROBO-fbbmvbob). R maps
+// these onto `group_token`: the caller's token, the parent token, "*", or NA.
+enum GroupKind : int {
+  kGroupNone = 0,    // a `*`-ignoring crawler with no group of its own
+  kGroupOwn = 1,     // a group names the caller's token
+  kGroupParent = 2,  // no group names it; one names its parent token
+  kGroupGlobal = 3,  // no specific group: the `*` rules, if any
+};
+
+struct CrawlerDecision {
+  bool allowed;
+  int line;
+  int group;
+};
+
+// The crawler-token layer over finished matchers (ROBO-fbbmvbob). `own` ran
+// the caller's token; `parent` ran the parent token, or is null when the
+// crawler lists none. "No specific group" is the matcher's own
+// ever_seen_specific_agent(), never inferred from a decision, and groups are
+// never merged: the own group wins, else the parent's, else `*`. A crawler
+// that ignores `*` decides from its specific group alone
+// (disallow_ignore_global()) and, with no group of its own, reports no line:
+// matching_line() would report the `*` line there.
+CrawlerDecision decide_crawler_row(const googlebot::RobotsMatcher& own,
+                                   const googlebot::RobotsMatcher* parent,
+                                   bool ignore_global) {
+  if (own.ever_seen_specific_agent()) {
+    const bool disallowed =
+        ignore_global ? own.disallow_ignore_global() : own.disallow();
+    return {!disallowed, own.matching_line(), kGroupOwn};
+  }
+  if (parent != nullptr && parent->ever_seen_specific_agent()) {
+    return {!parent->disallow(), parent->matching_line(), kGroupParent};
+  }
+  if (ignore_global) {
+    return {!own.disallow_ignore_global(), 0, kGroupNone};
+  }
+  return {!own.disallow(), own.matching_line(), kGroupGlobal};
+}
+
+}  // namespace
+
+// One crawler-aware row (ROBO-fbbmvbob), the reference for the batch below:
+// `url` (one string) under `body` for `agent`, with `parent` the parent
+// token ("" for none) and `ignore` whether the crawler ignores `*`. Each
+// token gets its own matcher and its own parse, as OneAgentAllowedByRobots()
+// runs it. Returns `allowed`, `matching_line` (0 when no directive matched or
+// none is reported) and `group` (GroupKind). The short argument names keep
+// the generated R/cpp11.R within 80 columns.
+[[cpp11::register]]
+cpp11::writable::list robotstxtr_crawler_row_(std::string body,
+                                              cpp11::strings url,
+                                              std::string agent,
+                                              std::string parent,
+                                              bool ignore) {
+  if (url.size() != 1) {
+    cpp11::stop("`url` must be a single string");
+  }
+  const std::string u(url[0]);
+  const std::string_view body_view(body);
+  googlebot::RobotsMatcher own;
+  own.OneAgentAllowedByRobots(body_view, agent, u);
+  googlebot::RobotsMatcher parent_matcher;
+  const googlebot::RobotsMatcher* parent_ptr = nullptr;
+  if (!parent.empty()) {
+    parent_matcher.OneAgentAllowedByRobots(body_view, parent, u);
+    parent_ptr = &parent_matcher;
+  }
+  const CrawlerDecision d = decide_crawler_row(own, parent_ptr, ignore);
+  using namespace cpp11::literals;
+  return cpp11::writable::list({
+      "allowed"_nm = cpp11::as_sexp(d.allowed),
+      "matching_line"_nm = cpp11::as_sexp(d.line),
+      "group"_nm = cpp11::as_sexp(d.group),
+  });
 }
 
 namespace {
@@ -163,17 +248,35 @@ cpp11::writable::strings robotstxtr_google_request_target_(
 // the matcher's own GetPathParamsQuery() takes the path. Each row gets its own
 // RobotsMatcher, set up as AllowedByRobots() sets it up, and one
 // ParseRobotsTxt() per body drives all of that body's matchers through the
-// fan-out handler. Returns, per row, `allowed` (as AllowedByRobots()) and
-// `matching_line` (0 when no directive matched), plus the scalar
-// `n_parse_calls`, the number of ParseRobotsTxt() runs.
+// fan-out handler.
+//
+// The crawler-token layer (ROBO-fbbmvbob): `parents` is the parent token per
+// row ("" for none) and `ignore_global` whether the row's crawler ignores
+// `*`. A row with a parent gets a second matcher, for the parent token, on
+// the same parse, so a body is still parsed once; decide_crawler_row()
+// above picks between them as the row function does. A row with neither
+// decides as AllowedByRobots() would. Returns, per row, `allowed`,
+// `matching_line` (0 when no directive matched or none is reported) and
+// `group` (GroupKind), plus the scalar `n_parse_calls`, the number of
+// ParseRobotsTxt() runs.
+//
+// The per-row vectors come in one named list, `per_row` (`ids`, `agents`,
+// `urls`, `parents`, `ignore_global`), which keeps the generated R/cpp11.R
+// within 80 columns.
 [[cpp11::register]]
 cpp11::writable::list robotstxtr_google_eval_batch_(cpp11::strings bodies,
-                                                    cpp11::integers ids,
-                                                    cpp11::strings agents,
-                                                    cpp11::list urls) {
+                                                    cpp11::list per_row) {
+  const cpp11::integers ids(per_row["ids"]);
+  const cpp11::strings agents(per_row["agents"]);
+  const cpp11::list urls(per_row["urls"]);
+  const cpp11::strings parents(per_row["parents"]);
+  const cpp11::logicals ignore_global(per_row["ignore_global"]);
   const R_xlen_t n = ids.size();
-  if (agents.size() != n || urls.size() != n) {
-    cpp11::stop("`ids`, `agents` and `urls` need one element per row");
+  if (agents.size() != n || urls.size() != n || parents.size() != n ||
+      ignore_global.size() != n) {
+    cpp11::stop(
+        "`ids`, `agents`, `urls`, `parents` and `ignore_global` need one "
+        "element per row");
   }
   const R_xlen_t n_bodies = bodies.size();
   std::vector<std::vector<R_xlen_t>> rows_by_body(
@@ -188,6 +291,7 @@ cpp11::writable::list robotstxtr_google_eval_batch_(cpp11::strings bodies,
 
   cpp11::writable::logicals allowed(n);
   cpp11::writable::integers matching_line(n);
+  cpp11::writable::integers group(n);
   int n_parse_calls = 0;
 
   for (R_xlen_t b = 0; b < n_bodies; ++b) {
@@ -196,11 +300,14 @@ cpp11::writable::list robotstxtr_google_eval_batch_(cpp11::strings bodies,
     const std::size_t k = rows.size();
 
     // Sized up front and never resized: each matcher keeps pointers into its
-    // row's path and agent vector for the whole parse.
+    // row's path and agent vectors for the whole parse.
     std::vector<std::string> paths(k);
     std::vector<std::vector<std::string>> row_agents(k);
+    std::vector<std::vector<std::string>> parent_agents(k);
     std::vector<std::unique_ptr<RowMatcher>> owned(k);
-    std::vector<RowMatcher*> matchers(k);
+    std::vector<std::unique_ptr<RowMatcher>> parent_owned(k);
+    std::vector<RowMatcher*> matchers;
+    matchers.reserve(2 * k);
     for (std::size_t j = 0; j < k; ++j) {
       const R_xlen_t i = rows[j];
       const std::string url =
@@ -208,10 +315,20 @@ cpp11::writable::list robotstxtr_google_eval_batch_(cpp11::strings bodies,
       paths[j] = googlebot::GetPathParamsQuery(url);
       row_agents[j].push_back(std::string(agents[i]));
       owned[j] = std::make_unique<RowMatcher>();
-      matchers[j] = owned[j].get();
+      matchers.push_back(owned[j].get());
+      const std::string parent(parents[i]);
+      if (!parent.empty()) {
+        parent_agents[j].push_back(parent);
+        parent_owned[j] = std::make_unique<RowMatcher>();
+        matchers.push_back(parent_owned[j].get());
+      }
     }
     for (std::size_t j = 0; j < k; ++j) {
-      matchers[j]->InitUserAgentsAndPath(&row_agents[j], paths[j].c_str());
+      owned[j]->InitUserAgentsAndPath(&row_agents[j], paths[j].c_str());
+      if (parent_owned[j]) {
+        parent_owned[j]->InitUserAgentsAndPath(&parent_agents[j],
+                                               paths[j].c_str());
+      }
     }
 
     const std::string body(bodies[b]);
@@ -221,8 +338,11 @@ cpp11::writable::list robotstxtr_google_eval_batch_(cpp11::strings bodies,
 
     for (std::size_t j = 0; j < k; ++j) {
       const R_xlen_t i = rows[j];
-      allowed[i] = matchers[j]->disallow() ? FALSE : TRUE;
-      matching_line[i] = matchers[j]->matching_line();
+      const CrawlerDecision d = decide_crawler_row(
+          *owned[j], parent_owned[j].get(), ignore_global[i] == TRUE);
+      allowed[i] = d.allowed ? TRUE : FALSE;
+      matching_line[i] = d.line;
+      group[i] = d.group;
     }
   }
 
@@ -230,6 +350,7 @@ cpp11::writable::list robotstxtr_google_eval_batch_(cpp11::strings bodies,
   return cpp11::writable::list({
       "allowed"_nm = allowed,
       "matching_line"_nm = matching_line,
+      "group"_nm = group,
       "n_parse_calls"_nm = cpp11::as_sexp(n_parse_calls),
   });
 }

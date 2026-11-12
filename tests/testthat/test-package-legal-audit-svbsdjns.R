@@ -299,5 +299,5 @@ test_that("DATA-ONLY Yandex available, schema bumped", {
     engine_matcher_availability_v1()[["yandex"]],
     "available"
   )
-  expect_identical(engine_schema_revision_v1(), "2026-11-11.1")
+  expect_identical(engine_schema_revision_v1(), "2026-11-12.1")
 })

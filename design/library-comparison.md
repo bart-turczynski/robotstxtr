@@ -74,7 +74,11 @@ ends a line at its first NUL, allows. Since ROBO-pvqrfvol robotstxtr's
 Google backend ends a line at its first NUL too (`design/engine-profiles.md`
 §5b, class 5, resolved), so that row is expected to agree as well. The
 runner's expected-split list is now empty; the comparison has not been
-re-run since the change. No class below is a robotstxtr bug.
+re-run since the change. No class below is a robotstxtr bug. Since
+ROBO-fbbmvbob the v1 path, under the `google` ruleset, follows Google's
+crawler tokens, so on the catalog's `grp-googlebot-image-fallback` (token
+`Googlebot-Image`) it parts from the reference by design, while
+`allowed_by_robots_text()` still agrees (class 11).
 
 ## Hypotheses
 
@@ -288,7 +292,10 @@ disallow. Fixture `grp-suffix-name` (`User-agent: Bot`): only `py`
 disallows. Control `grp-news-only` (`User-agent: Googlebot-News`, token
 `Googlebot`): every library allows. Catalog `grp-googlebot-image-fallback`,
 token `Googlebot-Image`: the reference reads `*`; `py`, `pro`, `go` take the
-`Googlebot` group.
+`Googlebot` group. So does robotstxtr's v1 `google` ruleset with the `google`
+backend, by Google's common-crawlers token listing rather than a prefix
+match (ROBO-fbbmvbob); `allowed_by_robots_text()` reads `*`, as the
+reference does.
 
 Documented intent:
 

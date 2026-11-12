@@ -54,7 +54,10 @@ hex rule above.
 
 The Google decision comes from `allowed_by_robots_text()`, and the test also
 checks that `robots_evaluate_text_v1()` with the `google` ruleset and backend
-agrees on every NUL-free body. R strings cannot carry a NUL, so a NUL-bearing
+agrees on every NUL-free body, save the two `grp-googlebot-image-fallback`
+rows, where that ruleset's crawler-token layer gives Googlebot-Image the
+`Googlebot` group (ROBO-fbbmvbob; the test lists the v1 answers beside the
+manifest's). R strings cannot carry a NUL, so a NUL-bearing
 body (the UTF-16 cases) is decoded as the fetch path decodes it: each line
 cut at its first NUL (`R/body-decode.R`, `decode_matcher_body()`), as
 Google's own C++ reads it, then handed to the same binding (ROBO-pvqrfvol).
@@ -129,7 +132,7 @@ Google's own C++ reads it, then handed to the same binding (ROBO-pvqrfvol).
 | Lines over the 16,663-byte buffer (validator) | `test-robots_validate-htvtajbr.R` ("overlong parser lines are errors") |
 | Size: the 512,000-byte Google window, a body cut at `max_bytes`, the Yandex 500 KB rule | ROBO-ldpahknv: `test-truncated-robots-ldpahknv.R`; `test-engine-contract-v1-unowhvjx.R` (window tests); ROBO-ptibdnvy: `test-google-cut-prefix-ptibdnvy.R`; ROBO-arrtietl: `test-yandex-cut-file-arrtietl.R` |
 | ASCII-only case folding of tokens under any locale | `test-ascii-case-folding-tldlaxgq.R` |
-| Googlebot-Image (and GoogleOther-Image) not falling back to the parent token's group, both directions | ROBO-mxsphtoo: `test-token-fallback-mxsphtoo.R`; `grp-googlebot-image-fallback` below adds the manifest rows |
+| Googlebot-Image (and GoogleOther-Image) not falling back to the parent token's group, both directions | ROBO-mxsphtoo: `test-token-fallback-mxsphtoo.R` (legacy path); `grp-googlebot-image-fallback` below adds the manifest rows. The v1 `google` ruleset falls back (ROBO-fbbmvbob: `test-crawler-tokens-fbbmvbob.R`) |
 
 ## The cases
 
@@ -217,7 +220,7 @@ the matcher decision for the comparison work.
 | `grp-rule-before-user-agent` | a rule outside a group is not valid syntax | invalid lines ignored | `/x` allow, `/y` disallow | `rule_without_user_agent@1` | no |
 | `grp-token-version-in-file` — `User-agent: Googlebot/2.1` | `/` is not allowed in a token; unspecified | `googlebot/1.2` equals `googlebot` | `/x` as `Googlebot` disallow | `user_agent_cut@1` (warning; names `Googlebot`) | no |
 | `grp-token-letter-case-in-file` — `User-agent: GOOGLEBOT`, token `googlebot` | case-insensitive | case-insensitive | disallow | none | no |
-| `grp-googlebot-image-fallback` — a `Googlebot` group and a `*` group, token `Googlebot-Image` | `*` applies (no group names the token) | the common-crawlers page lists `Googlebot` as Googlebot-Image's second token, so Google's crawler follows the `Googlebot` group (engine-profiles.md §5a) | `/x` allow, `/y` disallow (the `*` group): the binding reads the one token only | `wildcard_rules_not_inherited@1` | yes; **known gap**, a maintainer decision: ROBO-fbbmvbob |
+| `grp-googlebot-image-fallback` — a `Googlebot` group and a `*` group, token `Googlebot-Image` | `*` applies (no group names the token) | the common-crawlers page lists `Googlebot` as Googlebot-Image's second token, so Google's crawler follows the `Googlebot` group (engine-profiles.md §5a) | `/x` allow, `/y` disallow (the `*` group): the legacy binding reads the one token only; the v1 `google` ruleset with the `google` backend gives `/x` disallow, `/y` allow (the `Googlebot` group) | `wildcard_rules_not_inherited@1` | yes; **known gap** on the legacy path; closed on v1 `google`/`google` by ROBO-fbbmvbob |
 | `grp-user-agent-with-space` — `User-agent: Foo Bot` | not a valid token; unspecified | not documented | as `Foo` disallow, as `FooBot` allow: the value is cut at the space | `user_agent_cut@1` (warning; names `Foo`) | yes; covered by `user_agent_cut` |
 | `grp-digit-in-token` — `User-agent: Bot2` | digits are not allowed in a token (§2.2.1); unspecified | not documented | as `Bot2` allow, as `Bot` disallow: the value is cut at the digit | `user_agent_cut@1` (warning; names `Bot`) | yes; covered by `user_agent_cut` |
 | `grp-star-prefixed-token` — `User-agent: *bot` | not a valid token; unspecified | not documented | allow: `*bot` is neither global nor a token | `user_agent_cut@1` (warning; names no crawler) | yes; covered by `user_agent_cut` |
@@ -283,8 +286,11 @@ block red. An item marked fixed names the diagnostic that now covers it.
    the matcher reads, or says the value names no crawler.
 8. ROBO-ccfsanhq — `content-spam-html`: no validator diagnostic names an HTML body.
    Fixed by ROBO-ccfsanhq: the `html_body` warning.
-9. ROBO-fbbmvbob (maintainer decision) — `grp-googlebot-image-fallback`: the
-   binding ignores Googlebot-Image's documented parent token `Googlebot`.
+9. ROBO-fbbmvbob — `grp-googlebot-image-fallback`: the legacy binding
+   ignores Googlebot-Image's documented parent token `Googlebot`. Still a
+   gap on the legacy path; closed on the v1 `google` ruleset with the
+   `google` backend, whose crawler-token layer falls back to the parent's
+   group.
 10. ROBO-kormmfyg — `esc-lower-hex-rule`: the matcher upper-cases a rule's
     lower-case escape but not the URL's, so `Disallow: /a%3cb` allows the
     exact path `/a%3cb`; no diagnostic. Fixed: `rule_lowercase_escape`.

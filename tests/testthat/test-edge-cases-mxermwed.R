@@ -132,8 +132,17 @@ test_that("ROBO-mxermwed: the Google matcher's decision on every check", {
   }
 })
 
+# The rows where v1 google/google parts from the manifest's legacy
+# `google_decision`: the crawler-token layer (ROBO-fbbmvbob) gives
+# Googlebot-Image the Googlebot group, which the legacy binding never reads.
+edge_v1_decisions <- c(
+  "grp-googlebot-image-fallback /x Googlebot-Image" = "disallow",
+  "grp-googlebot-image-fallback /y Googlebot-Image" = "allow"
+)
+
 test_that("ROBO-mxermwed: the v1 google engine agrees on every NUL-free body", {
   m <- edge_manifest
+  seen <- character()
   for (i in seq_len(nrow(m))) {
     row <- m[i, ]
     bytes <- edge_body(row$body_file)
@@ -142,12 +151,20 @@ test_that("ROBO-mxermwed: the v1 google engine agrees on every NUL-free body", {
       edge_text(bytes), edge_url(row$path), row$token,
       robots_policy_ruleset = "google", matcher_backend = "google"
     )
+    key <- paste(row$id, row$path, row$token)
+    want <- row$google_decision
+    if (key %in% names(edge_v1_decisions)) {
+      want <- edge_v1_decisions[[key]]
+      expect_false(identical(want, row$google_decision), label = key)
+      seen <- c(seen, key)
+    }
     expect_identical(
-      x$results$url_decision, row$google_decision,
+      x$results$url_decision, want,
       label = sprintf("%s %s as %s", row$id, substr(row$path, 1L, 40L),
                       row$token)
     )
   }
+  expect_setequal(seen, names(edge_v1_decisions))
 })
 
 test_that("ROBO-mxermwed: the validator's diagnostics on every body", {
@@ -239,11 +256,12 @@ test_that("ROBO-mxermwed: a # inside a rule widens it, flagged", {
 })
 
 test_that("ROBO-mxermwed: Googlebot-Image does not fall back to Googlebot", {
-  # known gap (ROBO-fbbmvbob, a maintainer decision): Google's common-crawlers
-  # page lists Googlebot as Googlebot-Image's second token, so Google's crawler
-  # would follow the Googlebot group (design/engine-profiles.md section 5a).
-  # The binding compares the one token whole and falls through to `*`; this
-  # pins that.
+  # known gap on the legacy path only: Google's common-crawlers page lists
+  # Googlebot as Googlebot-Image's second token, so Google's crawler would
+  # follow the Googlebot group (design/engine-profiles.md section 5a). The
+  # legacy binding compares the one token whole and falls through to `*`;
+  # this pins that. The v1 google ruleset with the google backend closes the
+  # gap (ROBO-fbbmvbob; the v1-agreement loop above).
   bytes <- edge_case("grp-googlebot-image-fallback")
   expect_identical(edge_decision(bytes, "/x", "Googlebot-Image"), "allow")
   expect_identical(edge_decision(bytes, "/y", "Googlebot-Image"), "disallow")

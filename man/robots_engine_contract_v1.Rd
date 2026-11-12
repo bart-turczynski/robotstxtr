@@ -14,7 +14,9 @@ A named list of contract metadata with class
 Returns the stable identifiers, value sets, backend capability states,
 the matcher token/semantics capability boundary (\code{matcher_capability},
 which for a \code{bounded_profiles} backend also publishes the accepted
-matcher-profile selectors in \code{supported_profiles}),
+matcher-profile selectors in \code{supported_profiles}, and for \code{google} the
+crawler tokens whose group selection the \code{google} ruleset takes from
+Google's crawler documentation in \code{crawler_tokens}),
 the separately inspectable vendored-matcher identity fields
 (\code{matcher_identity}, e.g. library/payload/profile/corpus/evidence/
 profile-source for the Yandex backend), status-policy table, and supported
@@ -37,6 +39,12 @@ contract$matcher_capability$yandex$token_policy
 # group. `Yandex` falls back to `User-agent: *`; `YandexAdditionalBot`
 # never does, so the two are not interchangeable.
 contract$matcher_capability$yandex$supported_profiles
+
+# The Google crawler tokens the google ruleset follows: a parent token's
+# group before `*`, or `*` ignored.
+contract$matcher_capability$google$crawler_tokens[
+  c("crawler_token", "parent_token", "group_selection")
+]
 
 # Status policy is a lookup keyed by acquisition category and ruleset:
 # how each ruleset treats a 4xx response to the robots.txt request.

@@ -55,6 +55,13 @@ extern "C" SEXP _robotstxtr_robotstxtr_matching_line_text_(SEXP body, SEXP url, 
   END_CPP11
 }
 // matcher_binding.cpp
+cpp11::writable::list robotstxtr_crawler_row_(std::string body, cpp11::strings url, std::string agent, std::string parent, bool ignore);
+extern "C" SEXP _robotstxtr_robotstxtr_crawler_row_(SEXP body, SEXP url, SEXP agent, SEXP parent, SEXP ignore) {
+  BEGIN_CPP11
+    return cpp11::as_sexp(robotstxtr_crawler_row_(cpp11::as_cpp<cpp11::decay_t<std::string>>(body), cpp11::as_cpp<cpp11::decay_t<cpp11::strings>>(url), cpp11::as_cpp<cpp11::decay_t<std::string>>(agent), cpp11::as_cpp<cpp11::decay_t<std::string>>(parent), cpp11::as_cpp<cpp11::decay_t<bool>>(ignore)));
+  END_CPP11
+}
+// matcher_binding.cpp
 cpp11::writable::strings robotstxtr_google_request_target_(cpp11::strings url);
 extern "C" SEXP _robotstxtr_robotstxtr_google_request_target_(SEXP url) {
   BEGIN_CPP11
@@ -62,10 +69,10 @@ extern "C" SEXP _robotstxtr_robotstxtr_google_request_target_(SEXP url) {
   END_CPP11
 }
 // matcher_binding.cpp
-cpp11::writable::list robotstxtr_google_eval_batch_(cpp11::strings bodies, cpp11::integers ids, cpp11::strings agents, cpp11::list urls);
-extern "C" SEXP _robotstxtr_robotstxtr_google_eval_batch_(SEXP bodies, SEXP ids, SEXP agents, SEXP urls) {
+cpp11::writable::list robotstxtr_google_eval_batch_(cpp11::strings bodies, cpp11::list per_row);
+extern "C" SEXP _robotstxtr_robotstxtr_google_eval_batch_(SEXP bodies, SEXP per_row) {
   BEGIN_CPP11
-    return cpp11::as_sexp(robotstxtr_google_eval_batch_(cpp11::as_cpp<cpp11::decay_t<cpp11::strings>>(bodies), cpp11::as_cpp<cpp11::decay_t<cpp11::integers>>(ids), cpp11::as_cpp<cpp11::decay_t<cpp11::strings>>(agents), cpp11::as_cpp<cpp11::decay_t<cpp11::list>>(urls)));
+    return cpp11::as_sexp(robotstxtr_google_eval_batch_(cpp11::as_cpp<cpp11::decay_t<cpp11::strings>>(bodies), cpp11::as_cpp<cpp11::decay_t<cpp11::list>>(per_row)));
   END_CPP11
 }
 // matcher_binding.cpp
@@ -99,8 +106,9 @@ static const R_CallMethodDef CallEntries[] = {
     {"_robotstxtr_robotstxtr_bing_extract_request_target_", (DL_FUNC) &_robotstxtr_robotstxtr_bing_extract_request_target_, 1},
     {"_robotstxtr_robotstxtr_checked_batch_",               (DL_FUNC) &_robotstxtr_robotstxtr_checked_batch_,               4},
     {"_robotstxtr_robotstxtr_collect_directives_",          (DL_FUNC) &_robotstxtr_robotstxtr_collect_directives_,          1},
+    {"_robotstxtr_robotstxtr_crawler_row_",                 (DL_FUNC) &_robotstxtr_robotstxtr_crawler_row_,                 5},
     {"_robotstxtr_robotstxtr_extract_request_target_",      (DL_FUNC) &_robotstxtr_robotstxtr_extract_request_target_,      1},
-    {"_robotstxtr_robotstxtr_google_eval_batch_",           (DL_FUNC) &_robotstxtr_robotstxtr_google_eval_batch_,           4},
+    {"_robotstxtr_robotstxtr_google_eval_batch_",           (DL_FUNC) &_robotstxtr_robotstxtr_google_eval_batch_,           2},
     {"_robotstxtr_robotstxtr_google_request_target_",       (DL_FUNC) &_robotstxtr_robotstxtr_google_request_target_,       1},
     {"_robotstxtr_robotstxtr_matching_line_text_",          (DL_FUNC) &_robotstxtr_robotstxtr_matching_line_text_,          3},
     {"_robotstxtr_robotstxtr_validation_parse_",            (DL_FUNC) &_robotstxtr_robotstxtr_validation_parse_,            1},

@@ -196,7 +196,9 @@ Selected **before** path matching; a capability + ruleset revision, not a contex
 - `google` — most-specific matching user-agent; merge that agent's groups; do NOT combine specific
   with global. (Google robots.txt spec, "Order of precedence for user agents") A crawler may list
   two tokens, matched by either (`Googlebot-Image` also by `Googlebot`; common crawlers); the
-  `google` matcher binding reads the caller's one token only (§5a).
+  v1 `google` ruleset with the `google` backend follows that listing, and the `*` exemption of
+  the AdsBot family, from a published token table; the legacy functions and the other rulesets
+  read the caller's one token only (§5a, ROBO-fbbmvbob).
 - `yandex` — specific Yandex robot entry > `Yandex` > `*`. (Yandex, User-agent)
 - `bing` — `bingbot` > `msnbot` > `*`, discarding others. (Bing, "To crawl or not to crawl", 2012)
 
@@ -226,8 +228,10 @@ token's groups count as one specific group, their rules compete by longest match
 if any token was named (`robots.h`: "allowed to be fetched by any member"). Passing
 `{Googlebot-Image, Googlebot}` merges the two groups instead of preferring the first. The vendored
 matcher also ships `RobotsMatcher::disallow_ignore_global()` (`src/robots.cc`), which decides from the
-specific groups only and never reads `*`: the upstream hook for the `*`-ignoring crawlers below. The
-binding does not call it.
+specific groups only and never reads `*`: the upstream hook for the `*`-ignoring crawlers below.
+Until ROBO-fbbmvbob the binding called neither it nor `ever_seen_specific_agent()`; the
+crawler-token layer of the v1 `google` ruleset now calls both (Decision, below). The legacy
+functions' single-token calls are unchanged, and this paragraph describes them.
 
 **What Google documents.** The common-crawlers page gives each crawler a "User-agent token in
 robots.txt" cell and says: "Some crawlers have more than one user agent token; you need to match only
@@ -275,38 +279,47 @@ What the pages leave open:
   matching" means "matching one of the crawler's listed tokens", which neither page says
   `[documentation_conflict]`.
 
-**Divergence.** robotstxtr's single-agent binding diverges from the common-crawlers token listing for
-the seven two-token crawlers: a caller asking for `Googlebot-Image` on a body with a `Googlebot` group
-and a `*` group gets the `*` rules, where Google's listing applies the `Googlebot` group. It agrees for
-the single-token crawlers. The `*`-ignoring special-case crawlers are a second divergence: given a
-token with no group, the binding falls back to `*`. §6's `token_policy = arbitrary_valid` (Google's
-matching for the token, never a prediction of the named crawler) covers both in letter, but a caller
-naming a Google crawler token will reasonably read the result as that crawler's.
+**Divergence (before ROBO-fbbmvbob; still the legacy functions').** robotstxtr's single-agent
+binding diverges from the common-crawlers token listing for the seven two-token crawlers: a caller
+asking for `Googlebot-Image` on a body with a `Googlebot` group and a `*` group gets the `*` rules,
+where Google's listing applies the `Googlebot` group. It agrees for the single-token crawlers. The
+`*`-ignoring special-case crawlers are a second divergence: given a token with no group, the binding
+falls back to `*`. §6's `token_policy = arbitrary_valid` (Google's matching for the token) covered
+both in letter, but a caller naming a Google crawler token will reasonably read the result as that
+crawler's.
 
-**Recommendation (for the maintainer; not a decision).** Options:
+**Options considered.** (1) a documented token map, as an opt-in; (2) leave it to the caller, who
+cannot see from R whether a specific group was seen (`decision_source = default_allow` covers both
+"own group, no rule matched" and "no group, no `*` rule matched"); (3) document only. Feeding the map
+to the multi-agent `AllowedByRobots` is cheaper but wrong: it merges the two groups by longest match,
+against "Only one group is valid".
 
-1. **Model the fallback with a documented token map**, as an opt-in (default unchanged): query the
-   crawler's own token with the single-agent call; when `ever_seen_specific_agent()` is false and the
-   map lists a parent token, query again with the parent; else `*`. This follows the common-crawlers
-   listing and the spec's `googlebot-news` example (own group wins; never a merge). Costs: new binding
-   code; the map is data copied from a Google page and must be versioned on the contract and
-   re-checked; the own-group-wins precedence is `[inferred]` beyond the one example; the "Otherbot
-   (news)" conflict stays open. Feeding the map to the multi-agent `AllowedByRobots` instead is
-   cheaper but wrong: it merges the two groups by longest match, against "Only one group is valid".
-   The same opt-in could route the AdsBot family through `disallow_ignore_global()`.
-2. **Leave it to the caller**: no code; the docs say the matcher reads one token, and a caller who
-   wants Googlebot-Image's documented behavior makes the second call with `Googlebot` itself when the
-   first finds no group. Every caller re-implements the map, and the binding does not expose whether
-   a specific group was seen (`ever_seen_specific_agent()` is not called from R; `decision_source =
-   default_allow` covers both "own group, no rule matched" and "no group, no `*` rule matched"), so
-   the caller has to scan the file's `User-agent` lines itself.
-3. **Document only**: add the missing "no parent-token fallback" sentence to the
-   `allowed_by_robots_text()` roxygen and point here. No behavior change; the divergence stays.
+**Decision (ROBO-fbbmvbob, settled 2026-11-11).** Option 1, as the default of the v1 `google`
+ruleset with the `google` backend, not an opt-in, with a NEWS bullet: the tool answers "would this
+crawler be allowed", and Google documents this as its crawlers' behavior.
 
-Recommended: 3 now, plus 1 as an opt-in if the maintainer wants crawler-level answers. The default
-must not change silently: results for the seven two-token crawlers would move from `*` to the parent
-group. Option 1 changes matcher behavior and the published contract under the opt-in, and needs a
-decision issue first.
+- The token map is data, `google_crawler_tokens_v1()`, published as
+  `robots_engine_contract_v1()$matcher_capability$google$crawler_tokens` (`engine-contract-v1.md`,
+  "Google crawler tokens"): the seven two-token crawlers above with their parent tokens
+  (`exact_else_parent_else_wildcard`), and AdsBot-Google, AdsBot-Google-Mobile, Mediapartners-Google
+  and APIs-Google (`exact_only`). The retired Favicon and AdsBot-Google-Mobile-Apps rows are left
+  out. The caller's token is compared whole and ASCII case-insensitively.
+- A two-token crawler queries its own token first; when no group names it specifically
+  (`ever_seen_specific_agent()`, read in the binding, never inferred from a decision), it queries
+  the parent token; else `*`. The groups are never merged: own group wins, as in the spec's
+  `googlebot-news` example; beyond that example the precedence is `[inferred]`, and the
+  "Otherbot (news)" conflict stays open.
+- The AdsBot family decides through `disallow_ignore_global()`; with no group of its own it is
+  allowed, with no line (the `matching_line()` of the matcher reports the `*` line there).
+- The result records which token's group decided (`group_token`: the token, the parent token, `*`
+  or `NA`).
+- Scope: the legacy functions and the other rulesets keep the single-token answer, and
+  `allowed_by_robots_text()` says so; `as_legacy_robots_decisions_v1()` converts `google`/`google`
+  rows, so it carries the layer's answer. The google policy
+  revision moves to `google-robots-policy-2026-11-12` and the schema revision to `2026-11-12.1`.
+
+Caveat: this makes `google` a crawler-aware layer above the matcher, read from Google's crawler
+documentation. The map must be re-checked against the pages in §10 when they change.
 
 ### 5b. Google fidelity audit (ROBO-deehqhlc)
 
@@ -316,7 +329,8 @@ calls `RobotsMatcher::OneAgentAllowedByRobots()` on the raw body bytes and repor
 `matching_line()`. The same body, token and URL go to each robotstxtr Google path:
 `robots_evaluate_text_v1()` with the `google` backend under every ruleset (`google`, `rfc9309`,
 `assumed_rfc9309`, `bing`, `yandex`: each reads a supplied body as `use_rules` at any size, so every
-row that passes input screening reaches the matcher and equals the `google` row, so the window bodies run
+row that passes input screening reaches the matcher and equals the `google` row, save the
+crawler-token layer of the `google` ruleset (class 6), so the window bodies run
 under `google` only); `allowed_by_robots_text()`; and `allowed_by_robots_url()` and `robots_evaluate_url_v1()`
 (`google`/`google`), which take no body argument, so the body is served at the ssrfr boundary
 (`tests/testthat/helper-fake-ssrfr.R`), with no network. The decision and the matched line are
@@ -343,6 +357,7 @@ Every path agrees with the reference on decision and line, outside these classes
 | 3 | the `max_bytes` cut (`allowed_by_robots_url()`) | a rule starting at byte 520,001 or 530,001; `Disallow: /private-drafts/` across byte 512,000; `Disallow: /private` ending at byte 512,000, its line feed byte 512,001 | disallowed, line 3 | allowed, `default_allow`, `body_truncated` | DELIBERATE: `allowed_by_robots_url()` `max_bytes` (512,000 by default, Google's window, ROBO-uwveumyp; complete lines, ROBO-ldpahknv); §7; §9 delta (c). The v1 paths read the last fixture (class 2 agrees there): accepted, §7 |
 | 4 | input screening | URL `""`, token `""`; on the URL paths also `example.com/private`, `ftp://example.com/private` | a decision (`""` is path `/`; `""` as agent reads `*`) | no decision, `input_unknown` / `input_invalid` | DELIBERATE: PRD §6.6 input rules; the roxygen of `allowed_by_robots_text()` and `allowed_by_robots_url()` (HTTP(S) only) |
 | 5 | a NUL byte in a fetched body: upstream parses each line as a NUL-terminated C string, so the line ends at its first NUL | `User-agent: *` / `\0Disallow: /x`, URL `/x`; `User-agent: *` / `Disallow: /a\0b`, URLs `/a`, `/ab` and `/ac` | `/x` allowed, no line (an empty line); `/a`, `/ab`, `/ac` disallowed, line 2 (the rule `/a`) | the same: the Google backend cuts each line at its first NUL (`R/body-decode.R`). Until ROBO-pvqrfvol it removed every NUL and read on (ROBO-hcqrzikz): `/x` disallowed, `/a` and `/ac` allowed | RESOLVED (ROBO-pvqrfvol): upstream parity; the cases stay in the fixtures as agreeing cases, out of `gf_expected`. What Googlebot does in production is unverified |
+| 6 | the crawler-token layer (`v1_text:google` and `v1_url:google` rows only) | the `agent` body (`Googlebot` group, `*` group, `googlebot-news` group), token `Googlebot-Image`, URLs `/g` and `/star` | `/g` allowed, no line; `/star` disallowed, line 5 (the one token reaches only `*`) | `/g` disallowed, line 2, `rule_disallow`; `/star` allowed, `default_allow`, no line (the `Googlebot` group) | DELIBERATE: §5a Decision (ROBO-fbbmvbob), Google's common-crawlers token listing. The legacy paths and the other rulesets' v1 rows agree with the reference |
 
 Classes 2 and 3 split the entry points. `allowed_by_robots_text()` has no window, so it agrees with
 the reference on any over-window body. `allowed_by_robots_url()` reads a fetched body up to its
@@ -413,7 +428,7 @@ on this path opted out?". Pinned by `tests/testthat/test-aipref-policy-token-kzy
 
 | `matcher_backend` | availability | token_policy |
 |---|---|---|
-| `google` | **available** — vendored `robotstxt-cpp` (Google's production parser; intentionally non-strict-RFC, `src/robots.h:23-25`; PRD forbids RFC-correcting it, `design/PRD.md:75-76,202`). | `arbitrary_valid` — accepts any valid Google robots product token for group selection; the result is Google parsing/matching semantics for that token, never a prediction of the named crawler. |
+| `google` | **available** — vendored `robotstxt-cpp` (Google's production parser; intentionally non-strict-RFC, `src/robots.h:23-25`; PRD forbids RFC-correcting it, `design/PRD.md:75-76,202`). | `arbitrary_valid` — accepts any valid Google robots product token for group selection; the result is Google parsing/matching semantics for that token. Under the `google` ruleset, the tokens in `crawler_tokens` also select their group as Google documents for those crawlers (§5a Decision; a crawler-aware layer, read from Google's documentation); for any other token or ruleset the result is not a prediction of the named crawler. |
 | `rfc9309` | **capability_unavailable** — no strict-RFC matcher built; `google/robotstxt` is NOT an RFC reference impl and cannot back it. | `rfc9309` — RFC 9309 behavior only, and only under this backend. |
 | `yandex` | **available** — as of schema revision `2026-07-18.2`; vendored, SHA-pinned `robotstxtyandex` payload bounded to profile `yandex-0.1.0` (crawlers `Yandex` + `YandexAdditionalBot`). Independent, unofficial compatibility profile; no production-crawler parity claim. Yandex Allow/Disallow **precedence is equivalent to longest-match**, so the distinct matcher is justified by group-selection/parsing/Clean-param, not precedence. | `bounded_profiles` — bounded to supported Yandex vendor profiles (`yandex-0.1.0`) only; never generalized to arbitrary tokens or backed by Google matching. |
 | `bing` | **available** — since the atomic v2 activation (ROBO-qetsyvwv, `robots_engine_contract_v2()`); vendored, SHA-pinned `robotstxtbing` payload bounded to profiles `bingbot-2026-07-23.1` and `adidxbot-2026-07-23.1` (product tokens `bingbot` + `adidxbot`). Independent, unofficial compatibility profile, not affiliated with Microsoft; no production-crawler parity claim. | `bounded_profiles` — bounded to supported Bing vendor profiles only; never generalized to arbitrary tokens or backed by Google matching. |
@@ -546,7 +561,8 @@ spec is accepted; ADR-009 §3 (safety precedence) and §6 (findings encoding) go
   (fetchers ignore robots.txt). Vendored code: `src/robots.h` / `src/robots.cc`
   (`AllowedByRobots`, `OneAgentAllowedByRobots`, `HandleUserAgent`, `ExtractUserAgent`, `disallow`,
   `disallow_ignore_global`, `ever_seen_specific_agent`),
-  `src/matcher_binding.cpp`.
+  `src/matcher_binding.cpp`; the token map these pages give, `google_crawler_tokens_v1()` in
+  `R/engine-contract-v1.R` (ROBO-fbbmvbob).
 - **Yandex** —
   https://yandex.com/support/webmaster/en/controlling-robot/robots-txt (200 required, cross-site
   redirect, open fallback, 500 KB, Cyrillic, case);

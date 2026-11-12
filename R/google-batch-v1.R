@@ -7,7 +7,9 @@
 # selects it (the line collector reads each body with a matched row once
 # more); match_google_v1() stays the reference row matcher, and the batch
 # gives, row for row, the frame row_matcher_frame_v1(match_google_v1, ...)
-# gives (tests/testthat/test-google-batch-iooslxvj.R).
+# gives (tests/testthat/test-google-batch-iooslxvj.R). Both apply the
+# crawler-token layer of the v1 google ruleset (ROBO-fbbmvbob) from the
+# per-row crawler profiles evaluate_rows_v1() passes.
 
 # Whether a Google batch holds a row the row matcher refuses: a body that is
 # not raw, a URL or product token that is not a string, or a "bytes"-marked
@@ -38,8 +40,18 @@ google_request_target_v1 <- function(url) {
 # as no line, type "none" and no value, as match_google_v1() restates it
 # (design/engine-contract-v1.md). `n_parse_calls` counts the matcher's
 # parses, one per distinct body; the collector's parses are not counted.
+#
+# `crawler_profiles` (ROBO-fbbmvbob) is one row of google_crawler_profiles_v1()
+# per row, NULL for none. A row with a parent token runs a second matcher on
+# its body's one parse; `group_token` says whose group decided, as
+# match_google_v1() says it.
 google_evaluate_batch_v1 <- function(bodies, body_index, product_tokens,
-                                     targets) {
+                                     targets, crawler_profiles = NULL) {
+  if (is.null(crawler_profiles)) {
+    crawler_profiles <- google_no_crawler_profiles_v1(length(body_index))
+  }
+  parents <- crawler_profiles$parent_token
+  parents[is.na(parents)] <- ""
   limit <- 512000L
   truncated <- lengths(bodies) > limit
   matcher_bodies <- lapply(seq_along(bodies), function(b) {
@@ -55,8 +67,11 @@ google_evaluate_batch_v1 <- function(bodies, body_index, product_tokens,
   body_index <- as.integer(body_index)
 
   native <- robotstxtr_google_eval_batch_(
-    bodies = strings, ids = body_index,
-    agents = product_tokens, urls = targets
+    bodies = strings,
+    per_row = list(
+      ids = body_index, agents = product_tokens, urls = targets,
+      parents = parents, ignore_global = crawler_profiles$ignore_global
+    )
   )
   allowed <- native$allowed
   line <- native$matching_line
@@ -66,7 +81,8 @@ google_evaluate_batch_v1 <- function(bodies, body_index, product_tokens,
   matched_line <- line
   matched_line[!matched] <- NA_integer_
   # A matched row takes its type from the collector below; a disallowed row
-  # always has a matched line.
+  # always has a matched line, also for a crawler that ignores `*`, whose
+  # disallow comes from its own group.
   matched_rule_type <- rep("none", n)
   matched_rule_value <- rep(NA_character_, n)
   matched_rows <- split(which(matched), body_index[matched])
@@ -92,6 +108,7 @@ google_evaluate_batch_v1 <- function(bodies, body_index, product_tokens,
   matched_rule_value[empty] <- NA_character_
 
   list(
+    group_token = google_group_token_v1(native$group, product_tokens, parents),
     url_decision = allowed,
     matched_line = matched_line,
     matched_rule_type = matched_rule_type,

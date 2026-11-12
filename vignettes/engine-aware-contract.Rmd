@@ -76,9 +76,14 @@ robots_evaluate_text_v1(
 ## Bounded vendor profiles
 
 The Google backend accepts any valid product token and returns Google
-semantics for it, which is not a claim about the crawler that token names. The
-Yandex and Bing backends are bounded to their supported profiles and never
-generalize to other tokens:
+semantics for it. Under the `google` ruleset, the Google crawler tokens in
+`matcher_capability$google$crawler_tokens` also select their group as Google
+documents for those crawlers: `Googlebot-Image` falls back to a `Googlebot`
+group before `*`, and the AdsBot family ignores `*`; the `group_token` column
+says whose group decided. For any other token, or under any other ruleset,
+the result is not a claim about the crawler that token names. The Yandex and
+Bing backends are bounded to their supported profiles and never generalize to
+other tokens:
 
 ```{r}
 contract <- robots_engine_contract_v1()

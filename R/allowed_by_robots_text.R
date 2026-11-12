@@ -25,7 +25,11 @@
 #' A crawler obeys the groups whose User-agent product token equals the
 #' crawler's (ASCII case-insensitive), combined when several do, and then
 #' ignores every `User-agent: *` rule; `User-agent: *` applies only to a
-#' crawler no group names (RFC 9309 section 2.2.1). [robots_validate_text()]
+#' crawler no group names (RFC 9309 section 2.2.1). The token is matched as
+#' given and alone: no parent-token fallback (`Googlebot-Image` never reads a
+#' `Googlebot` group) and no exemption from `*` (`AdsBot-Google` obeys it),
+#' unlike the `google` ruleset of [robots_evaluate_text_v1()]
+#' (`design/engine-profiles.md` section 5a). [robots_validate_text()]
 #' reports a named group that lacks `User-agent: *` rules as
 #' `wildcard_rules_not_inherited`, except for the AI-training policy token
 #' `__usage_ai-training`, which `*` never covers (an Internet-Draft,

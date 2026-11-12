@@ -101,8 +101,8 @@ test_that("the published safety_block_reason set is the 2026-11-05.1 set", {
     "malformed-address", "numeric-literal", "scheme", "https_downgrade",
     "userinfo", "port", "parse", "multicast", "reserved"
   ))
-  expect_identical(engine_schema_revision_v1(), "2026-11-11.1")
-  expect_identical(engine_schema_revision_v2(), "2026-11-11.1")
+  expect_identical(engine_schema_revision_v1(), "2026-11-12.1")
+  expect_identical(engine_schema_revision_v2(), "2026-11-12.1")
 })
 
 test_that("a code or cause outside the tables aborts, never falls through", {

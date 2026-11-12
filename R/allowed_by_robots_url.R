@@ -51,6 +51,10 @@
 #' callbacks of the same source body (the canonical value the matcher used,
 #' after upstream `MaybeEscapePattern` canonicalization).
 #'
+#' The user agent selects its group as in [allowed_by_robots_text()]: no
+#' parent-token fallback and no exemption from `*`, unlike the `google`
+#' ruleset of [robots_evaluate_url_v1()].
+#'
 #' A robots.txt over 512,000 bytes (Google's documented 500 KiB limit) is read
 #' differently by each Google entry point (`design/engine-profiles.md`
 #' section 7). This function stores the first `max_bytes` bytes of a 2xx body,

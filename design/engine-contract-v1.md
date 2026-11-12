@@ -1,7 +1,7 @@
 # Engine-aware robots evaluation contract v1
 
 - Contract ID: `robotstxtr.engine-aware/v1`
-- Schema revision: `2026-11-11.1`
+- Schema revision: `2026-11-12.1`
 - First package release: `robotstxtr 0.2.0`
 - Normative policy source: [`engine-profiles.md`](engine-profiles.md)
 
@@ -187,6 +187,63 @@ legacy functions and `as_legacy_robots_decisions_v1()` report the same
 differs: when the selected rule is an empty `Disallow`, the row reports
 `effective_empty_disallow` with that rule's line.
 
+### Google crawler tokens (ROBO-fbbmvbob)
+
+Under the `google` ruleset with the `google` backend, and nowhere else, the
+Google row is a crawler-aware layer above the matcher. It reads Google's
+crawler documentation (`engine-profiles.md` §5a, §10) as data, published as
+`robots_engine_contract_v1()$matcher_capability$google$crawler_tokens`, one
+row per crawler token with `crawler_token`, `parent_token`,
+`group_selection`, `token_comparison` and `source`:
+
+| `crawler_token` | `parent_token` | `group_selection` |
+|---|---|---|
+| `Googlebot-Image`, `Googlebot-Video`, `Googlebot-News`, `Google-InspectionTool`, `Google-CloudVertexBot` | `Googlebot` | `exact_else_parent_else_wildcard` |
+| `GoogleOther-Image`, `GoogleOther-Video` | `GoogleOther` | `exact_else_parent_else_wildcard` |
+| `AdsBot-Google`, `AdsBot-Google-Mobile`, `Mediapartners-Google`, `APIs-Google` | none | `exact_only` |
+
+The caller's token is compared with `crawler_token` whole and ASCII
+case-insensitively (`token_comparison = ascii_case_insensitive_exact`): no
+trimming, no prefix or suffix, so `Googlebot-Image/1.0` and
+`Googlebot-Imagex` are not listed. A token that is not listed selects its
+group as the plain matcher does: the groups naming it, else `*`. The retired
+Google Favicon and AdsBot-Google-Mobile-Apps rows are left out.
+
+- `exact_else_parent_else_wildcard`: the groups naming the token; only if
+  none does, the groups naming `parent_token`; only if none names that
+  either, `*`. The groups of the two tokens are never merged, and "none
+  names it" is the vendored matcher's `ever_seen_specific_agent()`, read in
+  the binding, not inferred from a decision: a group naming the token with
+  no rule that matches still keeps the parent out.
+- `exact_only`: the groups naming the token, through the vendored
+  `RobotsMatcher::disallow_ignore_global()`; `*` never decides. With no
+  group of its own the row is `allow`, `default_allow`, with no line: the
+  matcher's `matching_line()` would report the `*` line there, and the row
+  does not.
+
+The window and the NUL line end come first: the layer reads the body the
+matcher reads (the first 512,000 bytes, each line cut at its first NUL), so
+a parent group after the window is not seen.
+
+The `results` frame gains `group_token` (character), between
+`error_message` and `matched_rule_value_raw`: whose group decided a Google
+row. It is the caller's token as given when a group names it, the parent
+token as `crawler_tokens` spells it when the parent's group decided, `"*"`
+when no specific group was seen (the `*` rules, if any), and `NA` for an
+`exact_only` crawler with no group of its own, for every row of another
+backend and for every row no matcher decided. A Google row under another
+ruleset carries its own token or `"*"`, since no parent is consulted there.
+The column is not one of the decision-frame columns
+(`matcher_decision_columns_v1()`): the Google adapter adds it, and the
+evaluator fills `NA` where an adapter does not. Schema revision
+`2026-11-12.1` (both facades) adds the column and the `crawler_tokens`
+field; the google policy revision moves to `google-robots-policy-2026-11-12`.
+
+This makes `google` more than Google's matching for a token: for the listed
+tokens it answers as Google documents those crawlers to select groups. It
+is read from Google's documentation, not observed from the crawlers. The
+legacy functions apply none of it (below).
+
 RFC 9309 matcher requests return `matcher_status = "capability_unavailable"`
 (reason `matcher_capability_unavailable`; the rfc9309 revision is
 `capability-unavailable-v1`). Bing matcher
@@ -215,6 +272,16 @@ whose policy and matcher are both Google into the original `robots_decisions`
 schema. The adapter deliberately keeps legacy generic HTTP/redirect failures
 unknown even where the new Google policy has a documented `allow_all` action;
 this prevents a silent semantic change in old consumers.
+
+The legacy functions read the caller's one token: no parent-token fallback
+and no exemption from `*` ("Google crawler tokens" above). The rows
+`as_legacy_robots_decisions_v1()` accepts are exactly the rows that layer
+applies to, so for a listed crawler token its legacy frame can differ from
+`allowed_by_robots_text()` and `allowed_by_robots_url()` on the same body:
+`Googlebot-Image` with only a `Googlebot` group and a `*` group gets the
+`Googlebot` group from the adapter and `*` from the legacy functions, and
+`AdsBot-Google` on a `*`-only body is allowed by the adapter and obeys `*`
+there. The adapter's frame does not carry `group_token`.
 
 ### Retry-After on legacy fetch rows (ROBO-cthdyvlk)
 
@@ -400,8 +467,9 @@ Decisions:
   reading is the google matcher's; and `rfc9309`, `assumed_rfc9309` and
   `bing` keep every cut incomplete. The evidence row
   and the schema revision do not move. The google policy revision
-  `google-robots-policy-2026-11-09`, not yet released, covers both the
-  512,000-byte window (ROBO-phfbpfiy) and this reading of the cut.
+  `google-robots-policy-2026-11-12`, not yet released, covers the
+  512,000-byte window (ROBO-phfbpfiy), this reading of the cut and the
+  crawler-token layer (ROBO-fbbmvbob, "Google crawler tokens" above).
 - Every legacy `robots` frame gains a logical `body_truncated` column,
   between `content_flag` and `body`, under the one-schema rule of the
   Retry-After and Content-Type columns above: `robots_fetch()` and
@@ -497,7 +565,16 @@ carrying `matcher_status`, `url_decision`, `reason`, `matched_line`,
 `matcher_body_truncated`, `error_stage`, `error_class`, `error_message` and
 the list column `matched_rule_value_raw` (`matcher_decision_columns_v1()`).
 Extra columns (`native_*`) and attributes (`n_parse_calls`) are allowed and
-ignored. Every per-row outcome, an unsupported profile included, is a row;
+ignored, save `group_token`, which the evaluator copies into the results
+(`NA` where the frame has none). An adapter may also take an optional
+fourth argument, `crawler_profiles`: a data frame with one row per input
+row, `parent_token` (`NA` for none) and `ignore_global`. The evaluator
+resolves it per row from `crawler_tokens` (the `google` ruleset with the
+`google` backend only; no profile elsewhere) and passes it only to a
+callable whose formals name it, so the dispatch still reads the entry, not
+the backend's name. Google's adapter takes it; Yandex's and Bing's do not,
+and a three-argument fake is called as before (ROBO-fbbmvbob). Every
+per-row outcome, an unsupported profile included, is a row;
 an adapter aborts only on an internal invariant violation, and the evaluator
 does not catch that abort. The evaluator checks each frame's row count and
 columns (`check_matcher_output_v1()`) and fails with
@@ -511,7 +588,9 @@ frame's `matcher_body_truncated`. In the Google adapter the matcher parses
 each distinct body once, cut to Google's 512,000-byte window, and the line
 collector reads each body that has a matched row once more; row for row it
 gives what its reference row matcher `match_google_v1()` gives, and its
-`matched_rule_value_raw` is `NULL`.
+`matched_rule_value_raw` is `NULL`. A row with a parent token runs a second
+matcher on its body's one parse, so a body is still parsed once; the row
+matcher runs each token on its own parse.
 
 To add a backend without changing the core result schema:
 
@@ -546,7 +625,11 @@ boundary is published as data on the contract object as
 `robots_engine_contract_v1()$matcher_capability`, keyed per backend with
 `token_policy`, `matcher_semantics`, and a human-readable `note`. Google
 accepting an arbitrary valid token yields Google parsing/matching semantics for
-that token and is never a claim of compatibility with — or a prediction of — the
+that token. Under the `google` ruleset, a token listed in `crawler_tokens`
+also selects its group as Google documents for that crawler ("Google crawler
+tokens" above): a crawler-aware layer, read from Google's documentation, not
+from the crawler. For any other token, and under any other ruleset, the
+result is never a claim of compatibility with — or a prediction of — the
 crawler the token names.
 
 ## Accepted matcher-profile selectors
@@ -594,6 +677,15 @@ A backend whose `token_policy` is `arbitrary_valid` (`google`) or `rfc9309`
 publishes none of the three fields — its accepted set is not closed, so there
 is nothing to enumerate. `rfc9309` is both `capability_unavailable` and
 unbounded; it publishes no profile table for the second reason, not the first.
+
+`google` publishes `crawler_tokens` instead ("Google crawler tokens" above),
+which lists not what it accepts but the tokens whose group selection the
+`google` ruleset changes. Its `group_selection` takes `exact_only` or a
+third value, `exact_else_parent_else_wildcard`, that only `crawler_tokens`
+may use; the contract validator refuses it in a `supported_profiles` table,
+and refuses `crawler_tokens` on a backend that is not `arbitrary_valid`.
+`robots_resolve_matcher_profile_v1()` is unchanged: it still reports no
+`group_selection` for a `google` token.
 
 Passing an unaccepted selector is not an error at evaluation time, and the two
 backends do not report it identically:

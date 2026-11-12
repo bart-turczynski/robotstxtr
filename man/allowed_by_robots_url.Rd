@@ -132,6 +132,10 @@ fetch failure yields \code{fetch_unknown}/\code{NA}. For matched rows, \code{mat
 callbacks of the same source body (the canonical value the matcher used,
 after upstream \code{MaybeEscapePattern} canonicalization).
 
+The user agent selects its group as in \code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}}: no
+parent-token fallback and no exemption from \code{*}, unlike the \code{google}
+ruleset of \code{\link[=robots_evaluate_url_v1]{robots_evaluate_url_v1()}}.
+
 A robots.txt over 512,000 bytes (Google's documented 500 KiB limit) is read
 differently by each Google entry point (\code{design/engine-profiles.md}
 section 7). This function stores the first \code{max_bytes} bytes of a 2xx body,

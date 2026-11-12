@@ -313,7 +313,7 @@ test_that("M1 matcher revisions and schema stay pinned", {
   expect_identical(
     registry$yandex$revision, robotstxtr:::yandex_matcher_revision_v1()
   )
-  expect_identical(engine_schema_revision_v1(), "2026-11-11.1")
+  expect_identical(engine_schema_revision_v1(), "2026-11-12.1")
 })
 
 test_that("M2 PROVENANCE and NOTICE pin the Google commits", {
@@ -358,7 +358,7 @@ test_that("DATA-ONLY Yandex active, schema bumped, Google live", {
     engine_matcher_availability_v1()[["yandex"]],
     "available"
   )
-  expect_identical(engine_schema_revision_v1(), "2026-11-11.1")
+  expect_identical(engine_schema_revision_v1(), "2026-11-12.1")
 
   registry <- engine_matcher_registry_v1()
   expect_identical(registry$google$availability, "available")
@@ -601,14 +601,22 @@ test_that("BD3 Bing separation is enforced at the registry", {
   expect_type(registry$bing$callable, "closure")
   # Every registered adapter has the one batch signature the dispatcher
   # invokes (ROBO-bukqpjli); Google's row matcher sits behind its adapter.
-  for (backend in c("google", "yandex", "bing")) {
+  # Google's adapter alone adds the optional `crawler_profiles`, which the
+  # dispatcher passes by the callable's formals (ROBO-fbbmvbob); Yandex and
+  # Bing never receive it.
+  for (backend in c("yandex", "bing")) {
     expect_named(
       formals(registry[[backend]]$callable),
       c("bodies", "urls", "product_tokens")
     )
   }
   expect_named(
+    formals(registry$google$callable),
+    c("bodies", "urls", "product_tokens", "crawler_profiles")
+  )
+  expect_null(formals(registry$google$callable)$crawler_profiles)
+  expect_named(
     formals(match_google_v1),
-    c("body", "url", "product_token")
+    c("body", "url", "product_token", "crawler_profile")
   )
 })

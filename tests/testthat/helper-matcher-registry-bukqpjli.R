@@ -3,11 +3,14 @@
 #
 # Every matcher adapter has one batch interface,
 # `callable(bodies, urls, product_tokens)` -> a decision frame, and the
-# evaluator dispatches on the registry entry alone. So a test swaps an
-# engine by swapping its registry entry: fake_matcher_registry() builds one
-# from the production registry, and local_matcher_registry() makes the
-# public entry points use it. evaluate_rows_v1() also takes the registry as
-# its internal `matcher_registry` argument.
+# evaluator dispatches on the registry entry alone. A callable whose formals
+# also name `crawler_profiles` (Google's adapter, ROBO-fbbmvbob) receives the
+# per-row crawler profiles; a three-argument fake is called as before. So a
+# test swaps an engine by swapping its registry entry:
+# fake_matcher_registry() builds one from the production registry, and
+# local_matcher_registry() makes the public entry points use it.
+# evaluate_rows_v1() also takes the registry as its internal
+# `matcher_registry` argument.
 
 # The production registry with the named adapters swapped in. A backend
 # named here becomes available; an unavailable backend gets a fake revision,

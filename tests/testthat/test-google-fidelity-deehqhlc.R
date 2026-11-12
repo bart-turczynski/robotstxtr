@@ -20,6 +20,8 @@
 #   4. input screening: an empty URL or token, a URL that is not HTTP(S);
 #   5. a NUL byte in a fetched body: resolved (ROBO-pvqrfvol). Both read a
 #      line only up to its first NUL; the nul cases now agree.
+#   6. the crawler-token layer (v1 google ruleset rows only, ROBO-fbbmvbob):
+#      Googlebot-Image with no group of its own takes the Googlebot group.
 
 # Into this file's environment, which sees helper-fake-ssrfr.R and the
 # namespace; globalenv sees neither under an installed-package check.
@@ -67,7 +69,7 @@ test_that("ROBO-oxjmtaon: every fidelity case runs", {
   }
 })
 
-test_that("ROBO-deehqhlc: every path agrees with the reference outside 1-4", {
+test_that("ROBO-deehqhlc: every path agrees with the reference but a class", {
   seen <- integer()
   differing <- character()
   for (case in gf_case_list) {
@@ -96,7 +98,7 @@ test_that("ROBO-deehqhlc: every path agrees with the reference outside 1-4", {
       }
     }
   }
-  expect_setequal(seen, 1:4)
+  expect_setequal(seen, c(1:4, 6L))
   # Every case the table lists names a case and reaches a path where it
   # differs.
   expect_setequal(differing, gf_expected_ids())
@@ -418,4 +420,32 @@ test_that("ROBO-pvqrfvol class 5: a NUL inside a value ends the rule", {
   expect_identical(v$url_decision, rep("disallow", 3L))
   expect_identical(v$matched_line, c(2L, 2L, 2L))
   expect_identical(v$matched_rule_value, rep("/a", 3L))
+})
+
+# --- Class 6: the crawler-token layer (ROBO-fbbmvbob) ------------------------
+
+test_that("ROBO-fbbmvbob class 6: Googlebot-Image takes the Googlebot group", {
+  # The reference's one token never reaches the Googlebot group, so /g is
+  # allowed with no line and /star disallowed on line 5. The v1 google
+  # ruleset's rows follow Google's common-crawlers listing instead: no group
+  # names Googlebot-Image, so the Googlebot group decides. Every other path,
+  # and the other rulesets' rows, keep the reference's answer.
+  not_parent <- gf_rows("ua-image-not-parent")
+  star <- gf_rows("ua-image-star")
+  layered <- c("v1_text:google", "v1_url:google")
+  for (path in not_parent$path) {
+    k <- not_parent$path == path
+    if (path %in% layered) {
+      expect_false(not_parent$allowed[k], label = path)
+      expect_identical(not_parent$line[k], 2L, label = path)
+      expect_true(star$allowed[star$path == path], label = path)
+      expect_identical(star$line[star$path == path], NA_integer_,
+                       label = path)
+    } else {
+      expect_true(not_parent$allowed[k], label = path)
+      expect_false(star$allowed[star$path == path], label = path)
+    }
+  }
+  expect_true(all(layered %in% not_parent$path))
+  expect_true("v1_text:rfc9309" %in% not_parent$path)
 })
