@@ -170,7 +170,10 @@ acquire_refusal_message <- function(code, terminal) {
 # ssrfr fails a response with more than one Location field as
 # "protocol-error" with check "location", whatever its status. On a 3xx that
 # is the redirect without a usable Location it would have been. On any other
-# status ssrfr has refused the body, so it stays a `network_error`.
+# status ssrfr has refused the body, so it stays a `network_error`. libcurl
+# >= 8.18 refuses such a response first ("Multiple Location headers"), which
+# ssrfr reports as a "protocol-error" with check "transport" and no status,
+# so it is a `network_error` whatever its status (ssrfr SSRF-xhobpkza).
 acquire_failure_result <- function(x, binding, redirect_count, redirect_hops,
                                    max_bytes) {
   if (identical(x$cause, "protocol-error") &&
@@ -331,7 +334,8 @@ acquire_robots <- function(robots_url, timeout, fetch_ua, max_bytes,
 
     # A 3xx. Only a 301, 302, 303, 307 or 308 with a non-empty Location is
     # followed. ssrfr returns a response with at most one Location field
-    # (several are a failure, acquire_failure_result()).
+    # (several are a failure, acquire_failure_result(); under libcurl >=
+    # 8.18 a transport failure, ssrfr SSRF-xhobpkza).
     location <- binding$state$location
     if (!acquire_followable(status) || is.null(location) || !nzchar(location)) {
       return(acquire_no_location_result(

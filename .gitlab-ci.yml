@@ -52,11 +52,14 @@ variables:
 #   curl since 7.0.0 wants libcurl >= 7.73 while focal has 7.68.0, so the
 #   curl binary is in the apt line: curl's configure then fetches a static
 #   libcurl with it. webfakes serves the loopback fetch tests.
-# - TEMPORARY ssrfr pin. ssrfr 1.0.0 is in CRAN's queue, so it comes from
-#   GitLab at SSRFR_SHA, the commit submitted to CRAN, as DESCRIPTION's
-#   Remotes says, without dependencies (they are installed above). Once CRAN
-#   serves ssrfr, move it into the CRAN list and drop SSRFR_SHA and this
-#   item (ROBO-eqmoyyho).
+# - TEMPORARY ssrfr pin. ssrfr is not on CRAN yet, so it comes from GitLab at
+#   the commit DESCRIPTION's Remotes names, read from DESCRIPTION at run time
+#   so the two cannot drift (they did: ROBO-vnrtqxed), without dependencies
+#   (they are installed above). Only the `gitlab::bart-turczynski/ssrfr@<sha>`
+#   form is accepted. The installed version must meet the `ssrfr (>= x)`
+#   floor in DESCRIPTION's Imports, so a pin below it stops here with that
+#   message instead of in R CMD check. Once CRAN serves ssrfr, move it into
+#   the CRAN list and drop this step and item (ROBO-eqmoyyho).
 # - Only what the check needs is installed: the hard dependencies, the test
 #   and vignette Suggests, and rcmdcheck. oysteR and rosv serve the audits,
 #   whose tests skip without them, so _R_CHECK_FORCE_SUGGESTS_=false lets
@@ -67,15 +70,14 @@ variables:
 #
 # BLOCKING, like every T2 leg: a scheduled detector that cannot go red is
 # worthless. A cold docker run of this job's script in rocker/r-ver:4.1.3
-# (arm64) passed on 2026-11-05 with rurl 3.1.0, ssrfr at SSRFR_SHA and curl
-# on its static libcurl 8.14.1: 4 NOTEs, no WARNING (ROBO-jbralthm).
+# (arm64) passed on 2026-11-05 with rurl 3.1.0, ssrfr at ddb3389 (1.0.0) and
+# curl on its static libcurl 8.14.1: 4 NOTEs, no WARNING (ROBO-jbralthm).
+# The current pin has no recorded floor pass yet (ROBO-vnrtqxed).
 x-floor:
   extends: .t2-job
   image: rocker/r-ver:4.1.3
   variables:
     FLOOR_SNAPSHOT: "https://packagemanager.posit.co/cran/2025-07-15"
-    # The ssrfr commit submitted to CRAN (comment above, ROBO-eqmoyyho).
-    SSRFR_SHA: "ddb33892d343c890bcca8345c8f15e9f82da9f63"
     R_CRAN_SRC: "https://cloud.r-project.org"
     R_CRAN_WEB: "https://cloud.r-project.org"
     _R_CHECK_FORCE_SUGGESTS_: "false"
@@ -94,11 +96,19 @@ x-floor:
       repos = "https://cloud.r-project.org", Ncpus = 4L);
       install.packages(c("curl", "webfakes"), repos = "https://cloud.r-project.org",
       dependencies = FALSE, Ncpus = 4L);
-      sha <- Sys.getenv("SSRFR_SHA"); tgz <- file.path(tempdir(), "ssrfr.tar.gz");
+      rem <- trimws(strsplit(read.dcf("DESCRIPTION", "Remotes")[1, 1], ",")[[1]]);
+      rem <- rem[grepl("^gitlab::bart-turczynski/ssrfr@", rem)];
+      if (length(rem) != 1L) stop("DESCRIPTION Remotes must pin ssrfr once", call. = FALSE);
+      sha <- sub("^.*@", "", rem); tgz <- file.path(tempdir(), "ssrfr.tar.gz");
+      imp <- trimws(strsplit(read.dcf("DESCRIPTION", "Imports")[1, 1], ",")[[1]]);
+      imp <- imp[grepl("^ssrfr[[:space:](]", imp)];
+      flo <- gsub("^ssrfr[[:space:]]*[(]>=[[:space:]]*|[[:space:]]*[)]$", "", imp);
+      if (length(flo) != 1L || !grepl("^[0-9.-]+$", flo)) stop("DESCRIPTION Imports must give ssrfr one (>= x) floor", call. = FALSE);
       download.file(paste0("https://gitlab.com/bart-turczynski/ssrfr/-/archive/", sha, "/ssrfr-", sha, ".tar.gz"), tgz, mode = "wb");
       install.packages(tgz, repos = NULL, type = "source");
       stopifnot(all(vapply(c("cpp11", "ssrfr", "rurl", "webfakes", "testthat", "rcmdcheck"), requireNamespace, NA, quietly = TRUE)));
-      stopifnot(packageVersion("curl") >= "7.0.0", packageVersion("ssrfr") >= "1.0.0");
+      if (packageVersion("ssrfr") < flo) stop("ssrfr ", packageVersion("ssrfr"), " at Remotes ", sha, " is below the DESCRIPTION Imports floor ", flo, call. = FALSE);
+      stopifnot(packageVersion("curl") >= "7.0.0");
       print(R.version.string); print(curl::curl_version()$version)'
     # The template's guard: rcmdcheck reads a check that halted partway as
     # 0/0/0 and returns normally, so the check must have written a Status
