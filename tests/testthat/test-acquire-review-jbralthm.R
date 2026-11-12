@@ -139,9 +139,29 @@ test_that("a 302 with two Location fields over the wire is no_location", {
     res$add_header("Location", "/b")
     res$send("")
   })
+  # Record what ssrfr returned, to tell which layer refused the response.
+  seen <- NULL
+  real_fetch <- acquire_fetch
+  local_mocked_bindings(acquire_fetch = function(binding) {
+    seen <<- real_fetch(binding)
+    seen
+  })
   e <- robots_evaluate_url_v1(
     url, "Googlebot", "google", "google", timeout = 5
   )$evidence
+  # A newer libcurl (8.18.0 on Ubuntu 26.04; not 8.5.0) fails the transfer
+  # itself, "Multiple Location headers" (CURLE_WEIRD_SERVER_REPLY), before
+  # ssrfr reads the header: ssrfr reports a transport failure with no
+  # status, which is a network_error, still never followed (ROBO-vnrtqxed).
+  if (inherits(seen, "ssrfr_failure") &&
+        identical(seen$detail$check, "transport")) {
+    expect_identical(seen$cause, "protocol-error")
+    expect_identical(e$legacy_fetch_outcome, "network_error")
+    expect_identical(e$terminal_redirect_reason, "none")
+    expect_true(is.na(e$final_http_status))
+    return(invisible())
+  }
+  expect_identical(seen$detail$check, "location")
   expect_identical(e$legacy_fetch_outcome, "redirect_error")
   expect_identical(e$terminal_redirect_reason, "no_location")
   expect_identical(e$final_http_status, 302L)
