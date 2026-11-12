@@ -26,6 +26,8 @@
 #
 # Exit status 1 when a class fixture's live answer drifts from the answer its
 # manifest row records (the doc and the pinned test would then be stale), when
+# a catalog row's live answer drifts from catalog-answers.csv in that
+# directory or the file misses a catalog row or names one that is gone, when
 # robotstxtr differs from the reference on a row `expected_split` does not
 # name, or when a row it names no longer differs (the documented split policy
 # changed, so the list, the pinned test and the doc must change with it);
@@ -246,13 +248,17 @@ cat("output in", out_dir, "\n")
 
 failed <- FALSE
 # The rows where robotstxtr deliberately differs from the reference, as
-# (id, path): none. The NUL-bearing UTF-16LE body without a BOM was one
-# until ROBO-pvqrfvol, when robotstxtr's Google backend began to end a line
-# at its first NUL as upstream does (design/engine-profiles.md section 5b,
-# class 5, resolved); all three UTF-16 bodies must now agree.
+# (id, path). Since ROBO-fbbmvbob the v1 path under the google ruleset lets
+# Googlebot-Image fall back to the Googlebot group, as Google documents and
+# upstream's open-source parser does not; allowed_by_robots_text() still
+# agrees with the reference there. The NUL-bearing UTF-16LE body without a
+# BOM was a split until ROBO-pvqrfvol, when robotstxtr's Google backend
+# began to end a line at its first NUL as upstream does
+# (design/engine-profiles.md section 5b, class 5, resolved); all three
+# UTF-16 bodies must now agree.
 expected_split <- data.frame(
-  id = character(),
-  path = character()
+  id = c("grp-googlebot-image-fallback", "grp-googlebot-image-fallback"),
+  path = c("/x", "/y")
 )
 splits <- cases$robotstxtr_v1 != cases$google_ref |
   cases$robotstxtr_text != cases$google_ref
@@ -284,20 +290,77 @@ if (any(splits & expected)) {
       paste0("  ", cases$id[splits & expected], " ",
              cases$path[splits & expected], "\n"), sep = "")
 }
-recorded <- intersect(c("google_ref", "robotstxtr", col_of(libs)), names(own))
-own_rows <- which(cases$source == "dqqkvwts")
-drift <- character()
-for (col in recorded) {
-  live <- if (col == "robotstxtr") cases$robotstxtr_v1 else cases[[col]]
-  live <- short(live[own_rows])
-  want <- own[[col]]
-  bad <- nzchar(want) & live != want
-  if (any(bad)) {
-    drift <- c(drift, sprintf("%s %s %s: recorded %s, live %s", col,
-                              own$id[bad], own$token[bad], want[bad],
-                              live[bad]))
+record_cols <- c("google_ref", "robotstxtr", col_of(libs))
+# The live answers in the recorded form: `robotstxtr` is the v1 path, an
+# error is `ERR`.
+live_record <- function(rows) {
+  out <- cases[rows, c("id", "path", "token")]
+  for (col in record_cols) {
+    live <- if (col == "robotstxtr") cases$robotstxtr_v1 else cases[[col]]
+    out[[col]] <- short(live[rows])
   }
+  out
 }
+
+# The catalog rows' answers, recorded in catalog_record (ROBO-tanodypz): one
+# row per catalog case, in manifest order. This run's answers go to
+# out_dir/catalog-answers.csv in the same form; once a drift is understood,
+# copy that file over the committed one.
+catalog_rows <- which(cases$source == "catalog")
+catalog_live <- live_record(catalog_rows)
+utils::write.csv(
+  catalog_live, file.path(out_dir, "catalog-answers.csv"),
+  row.names = FALSE, fileEncoding = "UTF-8"
+)
+catalog_record <- file.path(
+  root, "tests", "testthat", "fixtures", "library-comparison-dqqkvwts",
+  "catalog-answers.csv"
+)
+catalog_want <- if (file.exists(catalog_record)) {
+  utils::read.csv(
+    catalog_record, colClasses = "character", na.strings = character(),
+    encoding = "UTF-8", check.names = FALSE
+  )
+} else {
+  catalog_live[0L, ]
+}
+key <- function(x) paste(x$id, x$path, x$token, sep = "\r")
+unrecorded <- !key(catalog_live) %in% key(catalog_want)
+if (any(unrecorded)) {
+  cat("catalog cases with no recorded answers:\n",
+      paste0("  ", catalog_live$id[unrecorded], " ",
+             catalog_live$path[unrecorded], " ",
+             catalog_live$token[unrecorded], "\n"), sep = "")
+  failed <- TRUE
+}
+stale <- !key(catalog_want) %in% key(catalog_live)
+if (any(stale)) {
+  cat("recorded catalog answers that name no case:\n",
+      paste0("  ", catalog_want$id[stale], " ", catalog_want$path[stale],
+             " ", catalog_want$token[stale], "\n"), sep = "")
+  failed <- TRUE
+}
+
+# Compares the recorded answers with the live ones on the rows they share.
+drift_of <- function(want, live) {
+  live <- live[match(key(want), key(live)), , drop = FALSE]
+  shared <- !is.na(live$id)
+  out <- character()
+  for (col in intersect(record_cols, names(want))) {
+    bad <- shared & nzchar(want[[col]]) & live[[col]] != want[[col]]
+    bad[is.na(bad)] <- FALSE
+    if (any(bad)) {
+      out <- c(out, sprintf("%s %s %s %s: recorded %s, live %s", col,
+                            want$id[bad], want$path[bad], want$token[bad],
+                            want[[col]][bad], live[[col]][bad]))
+    }
+  }
+  out
+}
+drift <- c(
+  drift_of(own, live_record(which(cases$source == "dqqkvwts"))),
+  drift_of(catalog_want, catalog_live)
+)
 if (length(drift) > 0L) {
   cat("recorded answers drifted:\n", paste0("  ", drift, "\n"), sep = "")
   failed <- TRUE

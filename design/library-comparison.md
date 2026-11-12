@@ -1,10 +1,10 @@
 # Library comparison: robotstxtr against eight robots.txt libraries (ROBO-dqqkvwts)
 
-- Status: comparison record, 2026-11-10
+- Status: comparison record, 2026-11-10; re-run 2026-11-12
 - Pins: `tests/testthat/test-library-comparison-dqqkvwts.R`
 - Runner: `dev/library-comparison/run.R`; class fixtures:
   `tests/testthat/fixtures/library-comparison-dqqkvwts/` (`manifest.csv`
-  records every answer)
+  records every answer; `catalog-answers.csv` the catalog rows')
 - Related: `design/edge-case-catalog.md` (whose fixtures are the first
   input), `design/engine-profiles.md` §5b (Google fidelity),
   `design/engine-disagreements.md` (the Bing and Yandex backends);
@@ -67,18 +67,28 @@ where nothing is shipped, the entry says "no documented intent found".
 
 ### Result
 
-When the comparison ran, robotstxtr agreed with the reference on every
-row, on both paths, except the NUL-bearing `enc-utf16le-no-bom` on `/a`:
-robotstxtr then dropped every NUL and disallowed, where upstream, which
-ends a line at its first NUL, allows. Since ROBO-pvqrfvol robotstxtr's
-Google backend ends a line at its first NUL too (`design/engine-profiles.md`
-§5b, class 5, resolved), so that row is expected to agree as well. The
-runner's expected-split list is now empty; the comparison has not been
-re-run since the change. No class below is a robotstxtr bug. Since
-ROBO-fbbmvbob the v1 path, under the `google` ruleset, follows Google's
-crawler tokens, so on the catalog's `grp-googlebot-image-fallback` (token
-`Googlebot-Image`) it parts from the reference by design, while
-`allowed_by_robots_text()` still agrees (class 11).
+When the comparison first ran (2026-11-10), robotstxtr agreed with the
+reference on every row, on both paths, except the NUL-bearing
+`enc-utf16le-no-bom` on `/a`: robotstxtr then dropped every NUL and
+disallowed, where upstream, which ends a line at its first NUL, allows.
+Since ROBO-pvqrfvol robotstxtr's Google backend ends a line at its first
+NUL too (`design/engine-profiles.md` §5b, class 5, resolved). The re-run of
+2026-11-12, in the same environment, confirms that row now agrees, and no
+library answer on a class fixture changed. No class below is a robotstxtr
+bug. Since ROBO-fbbmvbob the v1 path, under the `google` ruleset, follows
+Google's crawler tokens, so on the catalog's `grp-googlebot-image-fallback`
+(token `Googlebot-Image`) it parts from the reference by design, while
+`allowed_by_robots_text()` still agrees (class 11). Those two rows are the
+runner's expected-split list.
+
+Every answer on the catalog rows is recorded too, in
+`tests/testthat/fixtures/library-comparison-dqqkvwts/catalog-answers.csv`
+(one row per catalog row, in manifest order; ROBO-tanodypz). The runner
+fails when a live answer drifts from it or when it misses a catalog row,
+and writes a fresh copy to its output directory. The pinned test checks
+that the file covers exactly the catalog's rows, that its reference column
+is the catalog's Google decision and that robotstxtr still gives its
+recorded answer.
 
 ## Hypotheses
 

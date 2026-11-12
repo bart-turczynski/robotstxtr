@@ -17,7 +17,9 @@
 # "others" in a comment means every library not named. robotstxtr agrees
 # with the reference on every row here, the three UTF-16 bodies included:
 # since ROBO-pvqrfvol its Google matcher ends each line at its first NUL, as
-# the reference does, so run.R's expected-split list is empty.
+# the reference does. run.R's expected-split list names only the catalog's
+# grp-googlebot-image-fallback rows, where the v1 path's crawler-token layer
+# parts from the reference by design (ROBO-fbbmvbob).
 #
 # The bodies are the committed fixtures: the class fixtures in
 # fixtures/library-comparison-dqqkvwts/ (manifest.csv there records every
@@ -107,6 +109,45 @@ test_that("every class fixture row: robotstxtr's recorded answer", {
                 m$path[[k]], m$token[[k]]),
       c(v1 = want, text = want),
       info = paste(m$id[[k]], m$token[[k]], m$path[[k]])
+    )
+  }
+})
+
+test_that("every catalog row: the recorded answers (ROBO-tanodypz)", {
+  # catalog-answers.csv records what the reference, robotstxtr's v1 path and
+  # each library answered on every edge-case catalog row, in manifest order.
+  # A catalog row added or changed without it fails here: rerun
+  # dev/library-comparison/run.R and copy its out_dir/catalog-answers.csv.
+  rec <- utils::read.csv(
+    file.path(lc_class_dir, "catalog-answers.csv"), colClasses = "character",
+    na.strings = character(), encoding = "UTF-8", check.names = FALSE
+  )
+  catalog <- utils::read.csv(
+    file.path(lc_edge_dir, "manifest.csv"), colClasses = "character",
+    na.strings = character(), encoding = "UTF-8", check.names = FALSE
+  )
+  expect_identical(rec[c("id", "path", "token")],
+                   catalog[c("id", "path", "token")])
+  libs <- setdiff(names(rec), c("id", "path", "token"))
+  expect_identical(libs, setdiff(names(lc_class_manifest),
+                                 c("id", "class", "body_file", "path",
+                                   "token")))
+  for (col in libs) {
+    expect_true(all(rec[[col]] %in% c("0", "1", "ERR")), info = col)
+  }
+  # The reference's answer is the catalog's Google decision.
+  expect_identical(rec$google_ref,
+                   ifelse(catalog$google_decision == "allow", "1", "0"))
+  decision <- function(x) if (x == "1") "allow" else "disallow"
+  for (k in seq_len(nrow(rec))) {
+    # The legacy path agrees with the reference on every row; v1 parts from
+    # it only where the crawler-token layer applies (ROBO-fbbmvbob).
+    body <- lc_text(lc_read_bytes(lc_edge_dir, catalog$body_file[[k]]))
+    expect_identical(
+      lc_answer(body, catalog$path[[k]], catalog$token[[k]]),
+      c(v1 = decision(rec$robotstxtr[[k]]),
+        text = decision(rec$google_ref[[k]])),
+      info = paste(rec$id[[k]], rec$token[[k]], rec$path[[k]])
     )
   }
 })
