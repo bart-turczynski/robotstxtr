@@ -140,15 +140,16 @@ test_that("a wire 302 with two Locations: no_location or libcurl's refusal", {
     res$send("")
   })
   # Record what ssrfr returned, to tell which layer refused the response.
-  seen <- NULL
+  rec <- new.env()
   real_fetch <- acquire_fetch
   local_mocked_bindings(acquire_fetch = function(binding) {
-    seen <<- real_fetch(binding)
-    seen
+    rec$seen <- real_fetch(binding)
+    rec$seen
   })
   e <- robots_evaluate_url_v1(
     url, "Googlebot", "google", "google", timeout = 5
   )$evidence
+  seen <- rec$seen
   # libcurl >= 8.18 (8.18.0 on Ubuntu 26.04; not 8.14.1 or 8.5.0) fails the
   # transfer itself, "Multiple Location headers" (CURLE_WEIRD_SERVER_REPLY),
   # before ssrfr reads the header: ssrfr reports a transport failure with no
