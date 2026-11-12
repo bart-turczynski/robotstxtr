@@ -1,10 +1,10 @@
 # Library comparison: robotstxtr against eight robots.txt libraries (ROBO-dqqkvwts)
 
-- Status: comparison record, 2026-11-10
+- Status: comparison record, 2026-11-10; re-run 2026-11-12
 - Pins: `tests/testthat/test-library-comparison-dqqkvwts.R`
 - Runner: `dev/library-comparison/run.R`; class fixtures:
   `tests/testthat/fixtures/library-comparison-dqqkvwts/` (`manifest.csv`
-  records every answer)
+  records every answer; `catalog-answers.csv` the catalog rows')
 - Related: `design/edge-case-catalog.md` (whose fixtures are the first
   input), `design/engine-profiles.md` §5b (Google fidelity),
   `design/engine-disagreements.md` (the Bing and Yandex backends);
@@ -67,18 +67,28 @@ where nothing is shipped, the entry says "no documented intent found".
 
 ### Result
 
-When the comparison ran, robotstxtr agreed with the reference on every
-row, on both paths, except the NUL-bearing `enc-utf16le-no-bom` on `/a`:
-robotstxtr then dropped every NUL and disallowed, where upstream, which
-ends a line at its first NUL, allows. Since ROBO-pvqrfvol robotstxtr's
-Google backend ends a line at its first NUL too (`design/engine-profiles.md`
-§5b, class 5, resolved), so that row is expected to agree as well. The
-runner's expected-split list is now empty; the comparison has not been
-re-run since the change. No class below is a robotstxtr bug. Since
-ROBO-fbbmvbob the v1 path, under the `google` ruleset, follows Google's
-crawler tokens, so on the catalog's `grp-googlebot-image-fallback` (token
-`Googlebot-Image`) it parts from the reference by design, while
-`allowed_by_robots_text()` still agrees (class 11).
+When the comparison first ran (2026-11-10), robotstxtr agreed with the
+reference on every row, on both paths, except the NUL-bearing
+`enc-utf16le-no-bom` on `/a`: robotstxtr then dropped every NUL and
+disallowed, where upstream, which ends a line at its first NUL, allows.
+Since ROBO-pvqrfvol robotstxtr's Google backend ends a line at its first
+NUL too (`design/engine-profiles.md` §5b, class 5, resolved). The re-run of
+2026-11-12, in the same environment, confirms that row now agrees, and no
+library answer on a class fixture changed. No class below is a robotstxtr
+bug. Since ROBO-fbbmvbob the v1 path, under the `google` ruleset, follows
+Google's crawler tokens, so on the catalog's `grp-googlebot-image-fallback`
+(token `Googlebot-Image`) it parts from the reference by design, while
+`allowed_by_robots_text()` still agrees (class 11). Those two rows are the
+runner's expected-split list.
+
+Every answer on the catalog rows is recorded too, in
+`tests/testthat/fixtures/library-comparison-dqqkvwts/catalog-answers.csv`
+(one row per catalog row, in manifest order; ROBO-tanodypz). The runner
+fails when a live answer drifts from it or when it misses a catalog row,
+and writes a fresh copy to its output directory. The pinned test checks
+that the file covers exactly the catalog's rows, that its reference column
+is the catalog's Google decision and that robotstxtr still gives its
+recorded answer.
 
 ## Hypotheses
 
@@ -517,10 +527,15 @@ Rscript dev/library-comparison/run.R <libcmp> [out_dir]
 
 `<libcmp>` is the one-command-per-library runner (its interface is in the
 script's header). The script rebuilds the manifests from the committed
-fixtures, writes `matrix.tsv`, and exits 1 when a class fixture's live
-answer drifts from the answer recorded in its `manifest.csv`, when
-robotstxtr differs from the reference on a row its expected-split list does
-not name, or when a named row stops differing. It stops with a message
-when `google-ref` gives no answers. The pinned test reads the same fixtures
-and checks robotstxtr's recorded answer on every class row, with no
-runner.
+fixtures, writes `matrix.tsv` and `catalog-answers.csv`, and exits 1 when
+a class fixture's live answer drifts from the answer recorded in its
+`manifest.csv`, when a catalog row's live answer drifts from the committed
+`catalog-answers.csv`, when that file misses a catalog row or column or
+names a row that is gone, when robotstxtr differs from the reference on a
+row its expected-split list does not name (the list covers the v1 path
+only; `allowed_by_robots_text()` must agree everywhere), or when a named
+row stops differing. To refresh the record once a drift is understood,
+copy the output's `catalog-answers.csv` over the committed one. It stops
+with a message when `google-ref` gives no answers. The pinned test reads
+the same fixtures and checks robotstxtr's recorded answer on every class
+and catalog row, with no runner.
