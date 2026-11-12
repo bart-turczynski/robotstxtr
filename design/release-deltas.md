@@ -12,14 +12,19 @@ robotstxtr's deltas:
   creates nothing). It runs the R release, oldrel, devel and floor checks,
   the sanitizers, the locale leg, `--as-cran` with incoming checks, coverage,
   the dependency audits and the PDF manual (design/ci.md).
-- **Step 6 is the only Windows, macOS and valgrind check.** Every CI job is
-  Linux (design/ci.md): the fleet's runners are Docker on an arm64 Mac,
-  which can host neither Windows nor R-hub's x86_64 valgrind image. That was
-  chosen on 2026-10-08 instead of Windows and macOS CI legs (ROBO-mkuskipr).
+- **Step 6 is the only Windows and valgrind check, and the release's macOS
+  check.** Every CI job but one is Linux (design/ci.md): the fleet's runners
+  are Docker on an arm64 Mac, which can host neither Windows nor R-hub's
+  x86_64 valgrind image. That was chosen on 2026-10-08 instead of Windows and
+  macOS CI legs (ROBO-mkuskipr). Since then `x-macos` checks macOS arm64
+  weekly, on the `deep-check` schedule, through the Mac's shell runner
+  (ROBO-sdltipng); it may not run, allows failure, and is not in the release
+  pipeline, so read its latest result here, and it does not replace R-hub.
   So step 6, on the release SHA, gates the release on:
   - win-builder devel, release and oldrelease, the Windows check, because
     they test the tarball itself;
-  - R-hub `macos` and `macos-arm64`, the macOS check;
+  - R-hub `macos` and `macos-arm64`, the macOS check on the release SHA
+    (x86_64 among it, which `x-macos` does not cover);
   - R-hub `linux`, `clang-asan` and `clang-ubsan`. The sanitizers matter here
     because of the compiled code.
 

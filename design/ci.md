@@ -2,9 +2,10 @@
 
 robotstxtr runs fleet-ci's tiered CI (seor ADR 0012). `.gitlab-ci.yml`
 includes fleet-ci's `templates/r-package.yml`, pinned by commit SHA (v1.3.0,
-`66d8d2d4`), and sets package variables and one job of its own, `x-floor`,
+`66d8d2d4`), and sets package variables and two jobs of its own: `x-floor`,
 in place of the template's `t2-floor` (`FLEET_FLOOR: "false"`; "Gaps
-accepted", below); `.fleet-ci.yml` holds the local gate's settings, and
+accepted", below), and `x-macos`, the macOS check ("macOS", below);
+`.fleet-ci.yml` holds the local gate's settings, and
 `.fleet-ci/` is fleet-ci's vendored gate (re-run fleet-ci's `bin/vendor`,
 never edit it). The other job names below are the template's.
 
@@ -13,7 +14,7 @@ never edit it). The other job names below are the template's.
 | hygiene hooks | pre-commit, at commit and at push | `.pre-commit-config.yaml`. At commit and again at push: the hygiene fixers (end of file, trailing whitespace, line endings; the vendored trees, the Yandex corpus and testthat snapshots excluded), the large-file, merge-conflict, YAML and case-conflict checks, and codespell. At push only: the toolchain, citation, BugReports and NEWS terseness checks, the `check-citation.py`, `check-bugreports.py` and `check-news.py` self-tests when those scripts change, and the `fleet-ci-hook-installed` check (refuses the push when fleet-ci's hook is not installed) |
 | T0 | every push whose diff against `main` is docs-only (`design/**/*.md` and the like, minus `.fleet-ci.yml`'s `docs_exclude`: `_pkgdown.yml`, `design/engine-profiles.md`), locally, the pre-push hook | the gate's docs tier, `.fleet-ci/gate` in the fleet image (`fleet-r`): spelling and `pkgdown::check_pkgdown()` |
 | T1 | every other push, locally, the pre-push hook | the gate's full tier: T0's checks, then the `NEWS.md` heading (`scripts/check-news-version.R`), `codemeta.json` against `DESCRIPTION` (`scripts/check-codemeta.R`), cpp11's register needs (`scripts/cpp-register-needs.R`), docs drift with a stale-cpp11-glue check (`scripts/check-docs-drift-glue.sh`), lintr, README drift (`scripts/check-readme-drift.sh`), the two vendored-tree fidelity checks (`dev/verify-yandex-vendor.R`, `dev/verify-bing-vendor.R`), the policy-anchor check (`scripts/check-policy-anchors.R`), the URL check, one `R CMD check --as-cran` (incoming checks off) with the Turkish and Azeri locales built, then a second check under `LC_ALL=C` and `scripts/check-locale-legs.R` against it |
-| T2 | the weekly `deep-check` schedule; every T3 run | `t2-check-release`, `t2-check-oldrel`, `t2-check-devel`, `x-floor` (R 4.1.3, in place of `t2-floor`), `t2-sanitizers` (R-hub's clang-asan container), `t2-locale` (the locales built, `R CMD check` under `LC_ALL=C`, then `scripts/check-locale-legs.R`), `t2-ascran`, `coverage` (fails below 95%), `osv-audit`, `security-audit`, `citation-version` |
+| T2 | the weekly `deep-check` schedule; every T3 run | `t2-check-release`, `t2-check-oldrel`, `t2-check-devel`, `x-floor` (R 4.1.3, in place of `t2-floor`), `t2-sanitizers` (R-hub's clang-asan container), `t2-locale` (the locales built, `R CMD check` under `LC_ALL=C`, then `scripts/check-locale-legs.R`), `t2-ascran`, `coverage` (fails below 95%), `osv-audit`, `security-audit`, `citation-version`; on the schedule only, `x-macos` (allowed to fail) |
 | T3 | a `RELEASE=1` web pipeline on `main`; a `v*` tag | all of T2 plus `t3-manual` (the PDF manual); the tag, or `RELEASE=1` on a tag, adds `pages` |
 
 Pushes to `main` or a branch, merge requests and API pipelines (`glab ci run`)
@@ -83,8 +84,9 @@ pass to `R CMD check`, so two things prove the legs ran:
 
 ## Runner
 
-Every job runs on robotstxtr's own project runner, a self-hosted Docker
-runner on one Mac (seor `design/adr/0003-fleet-ci-runs-on-self-hosted-runners.md`).
+Every job but `x-macos` runs on robotstxtr's own project runner, a
+self-hosted Docker runner on one Mac (`mac-docker`, seor
+`design/adr/0003-fleet-ci-runs-on-self-hosted-runners.md`).
 The template's jobs carry no `tags:`, and that runner also runs untagged
 jobs, so the former `default: tags: [local-docker]` is gone. The tag existed
 to keep jobs off GitLab's shared runners (SEOR-hhtzaknn). Shared runners are
@@ -96,10 +98,35 @@ with the job token (seor ADR 0013). `t2-sanitizers` runs R-hub's clang-asan
 container, an amd64 image, under emulation on the arm64 runner, as the
 former `sanitizers` job did.
 
+## macOS
+
+`x-macos` runs one `R CMD check --as-cran` (incoming checks off, vignettes
+built) on macOS arm64 with Apple clang, on `mac-shell`: a shell-executor
+runner on the same Mac (tag `macos`, untagged jobs refused), so it uses no
+image and runs the Mac's own CRAN R at `/usr/local/bin` (ROBO-sdltipng).
+
+- **When.** The weekly `deep-check` schedule only (`.schedule-job` with
+  `FLEET_JOB_SCHEDULE: deep-check`); start it by hand with the schedule's
+  play button (Build > Pipeline schedules). It is not in `v*` tag or
+  `RELEASE=1` pipelines, where a sleeping Mac would hold `pages` back.
+- **Never red.** It has `allow_failure: true`, since the laptop may sleep
+  or the runner be offline, and it sits in the `report` stage, so it starts
+  after the Linux check legs and no later stage waits on it. Read its result
+  in each weekly pipeline: a failed or stuck `x-macos` is a finding, not a
+  pass, and the pipeline's green says nothing about macOS.
+- **Its own library.** R's framework library is writable on that Mac, so
+  the job installs nothing there: every dependency, pak and rcmdcheck
+  included, goes into `R_LIBS_USER`, a per-project library per R minor under
+  `~/Library/Caches/gitlab-ci/robotstxtr-R-lib/` (`MACOS_R_LIB_ROOT`
+  overrides the root), kept between runs; pak installs with
+  `upgrade = FALSE`. The template's `LC_ALL=C.UTF-8` is replaced by
+  `en_US.UTF-8` in the script; the case-folding legs stay with `t2-locale`.
+
 ## Platforms CI cannot cover
 
-Every job is Linux. Windows, macOS and valgrind are checked once per
-release, by win-builder and R-hub, not in CI
+Every job but `x-macos` is Linux. Windows and valgrind are checked once per
+release, by win-builder and R-hub, not in CI, and R-hub's `macos` and
+`macos-arm64` still gate the release beside the weekly `x-macos`
 ([release-deltas.md](release-deltas.md), release checklist step 6;
 ROBO-mkuskipr). R-hub v2 dispatches workflows inside a GitHub repository, so
 it cannot be ported to GitLab, and GitHub holds a read-only mirror that runs
@@ -230,9 +257,10 @@ would inherit it.
   the site documents the release CRAN serves.
 - **The per-push check left macOS.** The former hook ran `R CMD check` on
   the maintainer's macOS R and Apple clang; T1 runs it on Linux in the fleet
-  image. macOS's compiler warnings now show only at R-hub, per release (step
-  6), while the case-folding legs, which macOS's libc cannot turn red, now
-  run where they can.
+  image. macOS's compiler warnings now show weekly in `x-macos` ("macOS",
+  above), which may not run, and at R-hub per release (step 6), while the
+  case-folding legs, which macOS's libc cannot turn red, now run where they
+  can.
 - **Self-tests run when their script changes.** The former
   `citation-version` job ran the `check-citation.py`, `check-bugreports.py`
   and `check-news.py` self-tests on every push to `main`.
