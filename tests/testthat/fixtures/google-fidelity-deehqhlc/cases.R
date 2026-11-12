@@ -129,11 +129,12 @@ gf_cases <- function() {
             "FooBot", "https://example.com/private", 0, 3),
 
     # --- The 512,000-byte window and the complete-line cut ----------------
-    # A rule wholly after the window, inside the URL path's 524,288 cut.
+    # A rule wholly after the window, before byte 524,288: past the URL
+    # path's default 512,000 cut, inside an explicit 524,288 one.
     gf_case("win-after", "window",
             gf_edge_body("Disallow: /after\n", 520000L),
             "FooBot", "https://example.com/after", 0, 3),
-    # A rule after the URL path's default 524,288-byte cut too.
+    # A rule after byte 524,288: past an explicit 524,288-byte cut too.
     gf_case("win-after-ceiling", "window",
             gf_edge_body("Disallow: /after\n", 530000L),
             "FooBot", "https://example.com/after", 0, 3),

@@ -1,6 +1,6 @@
 # robotstxtr (development version)
 
-* `allowed_by_robots_url()` now reads 512,000 bytes by default (Google's 500 KiB window, not 524,288), up to the last complete line; decisions change only on files over 512,000 bytes (ROBO-uwveumyp).
+* `allowed_by_robots_url()` now reads 512,000 bytes by default (Google's 500 KiB window, not 524,288), up to the last complete line; only responses over 512,000 bytes are affected (ROBO-uwveumyp).
 
 * Under `safety_level = "crawler"`, `robots_validate_url()` reads a refused internal address as an unreachable file, with each engine's reading, not as having no engine reading (ROBO-akfbbake).
 

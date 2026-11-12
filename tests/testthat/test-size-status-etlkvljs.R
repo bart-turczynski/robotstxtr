@@ -461,8 +461,8 @@ test_that("ROBO-etlkvljs: allowed_by_robots_text() reads past byte 512,000", {
 test_that("ROBO-etlkvljs: allowed_by_robots_url() drops a split last line", {
   # engine-contract-v1.md: the legacy path matches a cut prefix up to its
   # last line break, with no separate 512,000-byte window: the rule tail
-  # runs on either side of it, every tail at the default max_bytes, 512,000
-  # (ROBO-uwveumyp).
+  # runs on either side of it, and every tail is cut at 512,000, the default
+  # (ROBO-uwveumyp), passed explicitly.
   for (name in names(ss_tails)) {
     tail <- ss_tails[[name]]
     paths <- names(tail$probes)

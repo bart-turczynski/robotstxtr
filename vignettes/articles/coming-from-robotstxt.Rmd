@@ -431,8 +431,10 @@ metadata endpoints stay refused whatever is listed. (The deprecated
 `ssrf_guard = FALSE` warns and reopens the private and loopback ranges.)
 The fetch also follows at most five redirects, refuses an
 `https` to `http` redirect, sends no cookies or credentials, caps the body
-at `max_bytes` (512,000 bytes, Google's 500 KiB, by default; matching stops
-at the last complete line) and has one `timeout` per origin.
+at `max_bytes` and has one `timeout` per origin. `max_bytes` defaults to
+512,000 bytes, Google's 500 KiB, for `allowed_by_robots_url()`, which
+matches up to the last complete line, and to 512 KiB (524,288 bytes) for
+the other three.
 
 ```{r, eval = FALSE}
 # Not evaluated here. The loopback origin is refused before any request:
