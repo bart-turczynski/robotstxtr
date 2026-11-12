@@ -123,9 +123,10 @@ tab or form feed before the \code{#} still counts as no space. \cr
 \code{rule_cut_by_nul} \tab warning \tab
 A NUL byte inside an Allow or Disallow value: Google's matcher ends
 the line at its first NUL, so the rule is cut there, while Bing and
-Yandex read the NUL as a byte of the rule. A NUL in a comment, right
-after the colon (\code{empty_rule_value}) or past the line buffer
-changes no value and is not reported. \cr
+Yandex read the NUL as a byte of the rule, even one at the value's
+end. A NUL in a comment, which every engine ignores, right after the
+colon (\code{empty_rule_value}) or past the line buffer is not
+reported. \cr
 \code{rule_inner_dollar} \tab warning \tab
 A \code{$} before a pattern's end; it matches a literal \code{$}. \cr
 \code{rule_inner_whitespace} \tab warning \tab
@@ -357,7 +358,9 @@ On a document holding a NUL byte, \code{wildcard_rules_not_inherited},
 \code{disallow_tied_by_allow}, \code{duplicate_rule} and the AI-training codes
 follow Google's reading: the parser and Google's matcher end a line at its
 first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
-byte, so each such message says it is Google's reading.
+byte, so each such message says it is Google's reading, unless every NUL
+sits in a comment. \code{user_agent_cut} runs too; its message already names
+Google's matcher.
 }
 
 \examples{

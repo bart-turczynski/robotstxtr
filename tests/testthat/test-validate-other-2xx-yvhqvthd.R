@@ -103,7 +103,9 @@ test_that("ROBO-yvhqvthd: a 203 with a NUL byte gets nul_byte and the code", {
   body <- c(charToRaw("User-agent: *\nDisallow: /a"), as.raw(0L), as.raw(10L))
   x <- yv_fetch(203L, body = body)
   expect_identical(x$documents$validation_status, "error")
-  expect_identical(x$diagnostics$code, c("nul_byte", yv_code))
+  # The trailing NUL also splits the rule's reading (ROBO-xuusttbp).
+  expect_identical(x$diagnostics$code,
+                   c("nul_byte", "rule_cut_by_nul", yv_code))
 })
 
 test_that("ROBO-yvhqvthd: validate_document_bytes() fires on a fetched 2xx", {

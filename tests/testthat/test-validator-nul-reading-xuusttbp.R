@@ -70,11 +70,6 @@ test_that("a NUL that leaves the value whole is no rule_cut_by_nul", {
     xn_codes(xn_bytes("User-agent: *\nDisallow: /a #x", xn_nul, "y\n")),
     "nul_byte@2"
   )
-  # At the end of the value.
-  expect_identical(
-    xn_codes(xn_bytes("User-agent: *\nDisallow: /a", xn_nul, "\n")),
-    "nul_byte@2"
-  )
   # Right after the colon: the value is empty, which empty_rule_value says.
   expect_identical(
     xn_codes(xn_bytes("User-agent: *\nDisallow:", xn_nul, "/a\n")),
@@ -89,6 +84,30 @@ test_that("a NUL that leaves the value whole is no rule_cut_by_nul", {
   expect_false("rule_cut_by_nul" %in% robots_validate_text(
     xn_bytes("User-agent: Foo", xn_nul, "Bot\nDisallow: /x\n")
   )$diagnostics$code)
+})
+
+test_that("a NUL at the value's end splits the engines too", {
+  # Google reads `/a`; Bing and Yandex read the NUL as a byte of the rule.
+  for (body in list(
+    xn_bytes("User-agent: *\nDisallow: /a", xn_nul, "\n"),
+    xn_bytes("User-agent: *\nDisallow: /a ", xn_nul, "  \n"),
+    xn_bytes("User-agent: *\nDisallow: /a ", xn_nul, "#x\n")
+  )) {
+    expect_identical(xn_codes(body), c("nul_byte@2", "rule_cut_by_nul@2"))
+    url <- "https://example.com/a/x"
+    expect_identical(match_google_v1(body, url, "FooBot")$url_decision,
+                     "disallow")
+    expect_identical(match_bing_v1(list(body), url, "bingbot")$url_decision,
+                     "allow")
+  }
+})
+
+test_that("a NUL only in comments adds no engine note", {
+  body <- xn_bytes("User-agent: *\nDisallow: /a\nAllow: /a\n# x", xn_nul,
+                   "\n")
+  d <- robots_validate_text(body)$diagnostics
+  expect_identical(d$code, c("nul_byte", "disallow_tied_by_allow"))
+  expect_false(any(grepl("Google's reading", d$message, fixed = TRUE)))
 })
 
 test_that("a NUL before a glued # cuts at the NUL, not the #", {
@@ -109,8 +128,9 @@ test_that("a NUL splitting a UTF-8 sequence is invalid UTF-8", {
 test_that("invalid UTF-8 after a NUL and a # stays a comment warning", {
   body <- xn_bytes("User-agent: *\nDisallow: /a", xn_nul, "# ", 0xff, "\n")
   x <- robots_validate_text(body)$diagnostics
-  expect_identical(x$code, c("nul_byte", "invalid_utf8_comment"))
-  expect_identical(x$severity, c("error", "warning"))
+  expect_identical(x$code,
+                   c("nul_byte", "invalid_utf8_comment", "rule_cut_by_nul"))
+  expect_identical(x$severity, c("error", "warning", "warning"))
   expect_identical(x$message[[2L]], paste0(
     "Only bytes after the line's first NUL are not well-formed UTF-8, in a ",
     "comment as Bing and Yandex read the line; Google's matcher ends the ",
@@ -123,6 +143,16 @@ test_that("invalid UTF-8 after a NUL and a # stays a comment warning", {
                    "disallow")
   expect_identical(match_yandex_v1(list(glued), url, "Yandex")$url_decision,
                    "disallow")
+})
+
+test_that("a # before the NUL is a comment Google reads too", {
+  body <- xn_bytes("User-agent: *\nDisallow: /a #c", xn_nul, 0xff, "\n")
+  d <- robots_validate_text(body)$diagnostics
+  expect_identical(d$code, c("nul_byte", "invalid_utf8_comment"))
+  expect_identical(d$message[[2L]], paste0(
+    "Only a comment holds bytes that are not well-formed UTF-8; ",
+    "no rule changes."
+  ))
 })
 
 test_that("well-formed runs around NULs keep the encoding valid", {

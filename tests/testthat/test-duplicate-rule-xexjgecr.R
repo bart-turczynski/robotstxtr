@@ -284,8 +284,11 @@ test_that("a NUL leaves the duplicate check on Google's reading", {
   for (case in cases) {
     d <- robots_validate_text(case[[1L]])$diagnostics
     expect_identical(paste0(d$code, "@", d$line), case[[2L]])
+    # A NUL only in a comment changes no engine's reading: no note.
+    in_comment <- identical(case[[2L]][[1L]], "nul_byte@1")
     for (message in d$message[d$code == "duplicate_rule"]) {
-      expect_match(message, "This is Google's reading", fixed = TRUE)
+      expect_identical(grepl("This is Google's reading", message, fixed = TRUE),
+                       !in_comment)
     }
   }
 })

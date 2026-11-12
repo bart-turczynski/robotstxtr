@@ -114,9 +114,10 @@ validation_unsupported <- c(
 #'   \code{rule_cut_by_nul} \tab warning \tab
 #'     A NUL byte inside an Allow or Disallow value: Google's matcher ends
 #'     the line at its first NUL, so the rule is cut there, while Bing and
-#'     Yandex read the NUL as a byte of the rule. A NUL in a comment, right
-#'     after the colon (\code{empty_rule_value}) or past the line buffer
-#'     changes no value and is not reported. \cr
+#'     Yandex read the NUL as a byte of the rule, even one at the value's
+#'     end. A NUL in a comment, which every engine ignores, right after the
+#'     colon (\code{empty_rule_value}) or past the line buffer is not
+#'     reported. \cr
 #'   \code{rule_inner_dollar} \tab warning \tab
 #'     A \code{$} before a pattern's end; it matches a literal \code{$}. \cr
 #'   \code{rule_inner_whitespace} \tab warning \tab
@@ -348,7 +349,9 @@ validation_unsupported <- c(
 #' `disallow_tied_by_allow`, `duplicate_rule` and the AI-training codes
 #' follow Google's reading: the parser and Google's matcher end a line at its
 #' first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
-#' byte, so each such message says it is Google's reading.
+#' byte, so each such message says it is Google's reading, unless every NUL
+#' sits in a comment. `user_agent_cut` runs too; its message already names
+#' Google's matcher.
 #'
 #' @param robots_txt A single non-missing character string or a raw vector.
 #' @param source_id A single non-empty character string identifying the supplied
@@ -730,9 +733,12 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       !is.na(hash) &&
         validation_utf8_line(validation_raw_slice(line_bytes, 1L, hash - 1L))
     }, logical(1L))
+    # A `#` before the first NUL is a comment Google reads too, so only a
+    # NUL before any `#` makes the message name the engines.
     past_nul <- vapply(raw_lines[bad_lines], function(line_bytes) {
       nul <- match(as.raw(0x00), line_bytes)
-      !is.na(nul) &&
+      hash <- match(as.raw(0x23), line_bytes)
+      !is.na(nul) && (is.na(hash) || nul < hash) &&
         validation_utf8_line(validation_raw_slice(line_bytes, 1L, nul - 1L))
     }, logical(1L))
     add_chunk(
@@ -895,7 +901,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       # only: the Bing and Yandex matchers read the NUL as a byte of the
       # rule (ROBO-xuusttbp).
       if (nzchar(value) && nul_counts[[line]] > 0L &&
-            rule_cut_by_nul(nul_free_lines[[line]], type, value)) {
+            rule_cut_by_nul(raw_lines[[line]])) {
         add_diagnostic(
           line, "warning", "rule_cut_by_nul", type,
           paste0("Google's matcher ends this line at its first NUL, so the ",
@@ -933,7 +939,13 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # Google's matcher end a line at its first NUL (ROBO-pvqrfvol), while the
   # Bing and Yandex matchers read the NUL as an ordinary byte. So each such
   # finding names Google's reading (ROBO-xuusttbp).
-  nul_reading <- if (length(nul_lines) > 0L) {
+  # A NUL after a line's first `#` sits in a comment every engine ignores,
+  # so it changes no group and needs no note.
+  nul_active <- vapply(raw_lines[nul_lines], function(line_bytes) {
+    hash <- match(as.raw(0x23), line_bytes)
+    is.na(hash) || match(as.raw(0x00), line_bytes) < hash
+  }, logical(1L))
+  nul_reading <- if (any(nul_active)) {
     paste0(" This is Google's reading, which ends each line at its first ",
            "NUL; Bing and Yandex read the NUL as an ordinary byte.")
   } else {
@@ -2287,16 +2299,19 @@ validation_utf8_line <- function(line_bytes) {
   }, logical(1L)))
 }
 
-# TRUE when a NUL byte cut a non-empty rule value short: the line, parsed
-# with its NULs removed, is a rule of the same type with a different value.
-# The parser and Google's matcher end the line at its first NUL
-# (ROBO-pvqrfvol), so `Disallow: /private\0-drafts/` is the rule `/private`,
-# as `#` cuts `Disallow: /a#b` (ROBO-xuusttbp). A NUL in a comment or past
-# the parser's line buffer leaves the value unchanged.
-rule_cut_by_nul <- function(nul_free_line, type, value) {
-  parsed <- robotstxtr_validation_parse_(c(nul_free_line, as.raw(0x0a)))
-  identical(parsed$type[[1L]], type) &&
-    !identical(parsed$value[[1L]], value)
+# TRUE when the first NUL of a line the parser reads as a non-empty rule
+# lies before the line's first `#` and inside the parser's line buffer. The
+# parser and Google's matcher end the line there (ROBO-pvqrfvol), so
+# `Disallow: /private\0-drafts/` is the rule `/private`, as `#` cuts
+# `Disallow: /a#b`; the Bing and Yandex matchers read the NUL as a byte of
+# the rule, even a trailing one (`/a\0`), so they read another rule
+# (ROBO-xuusttbp). A NUL in a comment, which every engine cuts away, or past
+# the buffer, which the parser never read, is not counted. The caller checks
+# that the value is non-empty, so the NUL lies after the value's start.
+rule_cut_by_nul <- function(raw_line) {
+  nul <- match(as.raw(0x00), raw_line)
+  hash <- match(as.raw(0x23), raw_line)
+  !is.na(nul) && nul <= validation_line_bytes && (is.na(hash) || nul < hash)
 }
 
 # TRUE when the first `#` of a raw line follows a byte other than a space or
