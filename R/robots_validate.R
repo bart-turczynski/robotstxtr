@@ -165,6 +165,16 @@ validation_unsupported <- c(
 #'     shares a group with \code{User-agent: *}, or with a crawler or other
 #'     policy token from which a directive line separates it, so the group's
 #'     rules reach them too. \cr
+#'   \code{user_agent_joined_across_directive} \tab warning \tab
+#'     A User-agent line joins the open group across a directive such as
+#'     Sitemap or Crawl-delay, so that group's rules also reach the agents
+#'     before it; the message names those agents, the rule lines, a full
+#'     block, and where Bing (and, where tested, Yandex) ends the group.
+#'     Anchored on the joined line. \cr
+#'   \code{user_agent_joined_across_blank} \tab info \tab
+#'     A User-agent line shares a group with the agents before it across
+#'     blank or comment lines only: Google and Bing join them, Yandex ends
+#'     the group at the first such line. Anchored on the joined line. \cr
 #'   \code{disallow_tied_by_allow} \tab warning \tab
 #'     A Disallow never takes effect: an Allow with the identical pattern
 #'     applies to the same crawlers and wins the tie. Anchored on the
@@ -321,6 +331,33 @@ validation_unsupported <- c(
 #' checks do.
 #' Which crawler operators read the token, and from when, is recorded with
 #' dates in `design/engine-profiles.md` section 7a.
+#'
+#' For `user_agent_joined_across_directive` and
+#' `user_agent_joined_across_blank`, Google's parser starts a new group only
+#' after an Allow or Disallow line, so every User-agent line before a group's
+#' first rule joins that group, and its rules reach every agent named there.
+#' Consecutive User-agent lines are the deliberate way to share rules and stay
+#' silent. A break between two User-agent lines of one group is reported on
+#' the later line: a warning when a directive (`Sitemap`, `Crawl-delay`,
+#' `Host`, `Clean-param`, `Content-Signal` or any unknown field) lies between,
+#' since Bing ends the group at the directive (`design/engine-disagreements.md`
+#' class 1); an info when only blank or comment lines do, which Google and Bing
+#' join and Yandex's tester splits; it names only the agents since the last
+#' directive, since Bing ended the group of any agent before it. Yandex is
+#' named only for a blank, comment or `Crawl-delay` line, the lines its
+#' tester was seen to end a group at; its reading of a Sitemap or unknown
+#' field is untested. A policy-token line is
+#' left to `ai_training_token_stacked` and is never named as an earlier agent;
+#' a line naming no crawler, a line whose only earlier agents share its name
+#' and a group with no rule or only empty ones draw nothing, and the info is
+#' left out when a directive follows later in the run. For agents not meant
+#' to get the rules, the message suggests an empty `Disallow:` ending their
+#' group; moving a Sitemap out of the run is offered only to agents meant to
+#' share them, since it makes the User-agent lines adjacent. Each message
+#' names at most five earlier agents and three directive lines, and counts
+#' the rest. On a document
+#' holding a NUL byte the check follows Google's reading, as the other group
+#' checks do.
 #'
 #' For `disallow_tied_by_allow`, an Allow and a Disallow with the same
 #' pattern match the same paths with the same priority, and Allow wins the
@@ -981,6 +1018,17 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       paste0(found$message, nul_reading)
     )
   }
+  # A User-agent line Google joins to the open group across a directive, or
+  # across blank and comment lines only (ROBO-xepnhfgs).
+  found <- joined_user_agent_diagnostics(groups, parsed)
+  if (nrow(found) > 0L) {
+    add_chunk(
+      found$line, found$severity, found$code, found$directive,
+      vapply(raw_lines[found$line], render_validation_line, "",
+             USE.NAMES = FALSE),
+      paste0(found$message, nul_reading)
+    )
+  }
   # A named group drops the `*` rules for its crawlers (ROBO-gfjotdrr). On
   # a cut body a group's rules may lie past the cut, so it is skipped.
   if (!body_truncated) {
@@ -1351,9 +1399,10 @@ ai_training_draft <- "draft-kelley-aipref-training-preference-signal-00"
 # Like the other group checks, it reads Google's lines on a body with a NUL.
 ai_training_diagnostics <- function(groups, parsed, truncated = FALSE) {
   agents <- groups$agents
-  exact <- !agents$cut & agents$key == ai_training_token
-  near <- !exact & gsub("[_-]", "", agents$key) == "usageaitraining"
-  family <- exact | near | startsWith(agents$key, "__usage_")
+  kind <- ai_training_kind(agents)
+  exact <- kind$exact
+  near <- kind$near
+  family <- kind$family
   class <- ifelse(exact | near, "usageaitraining", agents$key)
   found <- list(
     ai_training_near_miss_rows(agents, near, exact),
@@ -1363,6 +1412,15 @@ ai_training_diagnostics <- function(groups, parsed, truncated = FALSE) {
   )
   found <- do.call(rbind, c(list(ai_training_rows()), found))
   found[order(found$line), , drop = FALSE]
+}
+
+# Which agent lines name the policy token exactly, a near miss of it, or any
+# policy token (a `__usage_` key, the token or a near miss).
+ai_training_kind <- function(agents) {
+  exact <- !agents$cut & agents$key == ai_training_token
+  near <- !exact & gsub("[_-]", "", agents$key) == "usageaitraining"
+  list(exact = exact, near = near,
+       family = exact | near | startsWith(agents$key, "__usage_"))
 }
 
 ai_training_rows <- function(line = integer(), severity = character(),
@@ -1586,6 +1644,355 @@ ai_training_preference_rows <- function(groups, exact, truncated,
   ai_training_rows(agents$line, rep("info", nrow(agents)),
                    rep("ai_training_preference", nrow(agents)),
                    rep("user-agent", nrow(agents)), message)
+}
+
+# User-agent lines joined into one group across a non-rule line
+# (ROBO-xepnhfgs), as a data frame like ai_training_rows(). Google's parser
+# starts a new group only after an Allow or Disallow line (src/robots.cc,
+# HandleUserAgent and seen_separator_), so each User-agent line of a group
+# but the first joins the agents before it. Consecutive lines are the
+# deliberate way to share rules and stay silent; a break between two agent
+# lines of one group is reported on the later line:
+# - user_agent_joined_across_directive (warning): a directive sits between
+#   them. Bing ends the run at any directive (design/engine-disagreements.md
+#   class 1). Yandex ends it at a blank, comment or Crawl-delay line
+#   (tester Y5, ROBO-bpywsjwv), and is named only when one of those lies
+#   between: its reading of a Sitemap or unknown field is untested
+#   (ROBO-traxexwm).
+# - user_agent_joined_across_blank (info): only blank or comment lines sit
+#   between. Google and Bing join; Yandex splits (Y5).
+# Policy-token lines are left to ai_training_token_stacked (one line, one
+# report), and never count as earlier agents. A line naming no crawler, a
+# line whose only earlier agents share its name and a group with no rule (or
+# only empty ones) draw nothing. Linear in the lines: each message names at
+# most five agents and three directive lines, and counts the rest.
+joined_user_agent_diagnostics <- function(groups, parsed, cap = 5L) {
+  agents <- groups$agents
+  rules <- groups$rules
+  n <- nrow(agents)
+  if (n < 2L || nrow(rules) == 0L) {
+    return(ai_training_rows())
+  }
+  family <- ai_training_kind(agents)$family
+  names_crawler <- (agents$global | nzchar(agents$key)) & !family
+  id <- ifelse(agents$global, "*", agents$key)
+
+  last_line <- max(parsed$line, agents$line)
+  is_directive <- logical(last_line)
+  is_directive[parsed$line[parsed$has_directive &
+                             parsed$type != "user-agent"]] <- TRUE
+  is_blank <- logical(last_line)
+  is_blank[parsed$line[parsed$is_empty | parsed$is_comment]] <- TRUE
+  action <- ifelse(parsed$type == "unknown",
+                   ascii_lower(ifelse(Encoding(parsed$action) == "bytes", "",
+                                      parsed$action)),
+                   parsed$type)
+  ends_yandex <- is_blank
+  ends_yandex[parsed$line[parsed$has_directive &
+                            action == "crawl-delay"]] <- TRUE
+  # next_*[l]: the first such line after line l, NA when none; so each
+  # report finds its lines without scanning the file.
+  next_after <- function(flags) {
+    at <- ifelse(flags, seq_along(flags), NA_integer_)
+    nxt <- rev(cummin(rev(ifelse(is.na(at), .Machine$integer.max, at))))
+    nxt <- c(nxt[-1L], .Machine$integer.max)
+    nxt[nxt == .Machine$integer.max] <- NA_integer_
+    nxt
+  }
+  lines <- list(
+    next_directive = next_after(is_directive),
+    next_yandex = next_after(ends_yandex),
+    row_of = match(seq_len(last_line), parsed$line)
+  )
+  blank_count <- cumsum(is_blank)
+  # Directives that belong to a group, not the file: moving one out of the
+  # run would change its meaning.
+  group_level <- is_directive
+  group_level[parsed$line[action %in% c("sitemap", "host", "clean-param")]] <-
+    FALSE
+  group_count <- cumsum(group_level)
+  directive_count <- cumsum(is_directive)
+  group_first_rule <- integer(max(agents$group))
+  group_first_rule[rev(rules$group)] <- rev(rules$line)
+
+  # The rule summary of each group, once.
+  by_group <- split(seq_len(nrow(rules)), rules$group)
+  rule_text <- vapply(by_group, function(rows) {
+    # Empty values restrict nothing, so sharing them changes nothing.
+    if (all(rules$empty[rows])) {
+      return(NA_character_)
+    }
+    joined_rule_lines(rules$line[rows])
+  }, "")
+  block_text <- vapply(by_group, function(rows) {
+    root <- rows[!is.na(rules$key[rows]) & rules$key[rows] == "disallow /"]
+    allows <- rules$type[rows] == "allow" & !rules$empty[rows]
+    if (length(root) == 0L || any(allows)) {
+      return("")
+    }
+    sprintf(", including a full block (`Disallow: %s`, line %d)",
+            render_validation_line(charToRaw(rules$value[[root[[1L]]]])),
+            rules$line[[root[[1L]]]])
+  }, "")
+
+  # Indexed by group number; NA for a group with no rule, or none that
+  # restricts anything.
+  group_rules <- rep(NA_character_, max(agents$group))
+  group_rules[as.integer(names(by_group))] <- rule_text
+  group_block <- character(max(agents$group))
+  group_block[as.integer(names(by_group))] <- block_text
+
+  # Two trackers of the distinct agents named so far: in the group (Google's
+  # reading, for the warning) and since its last directive break (the run
+  # Bing still joins, for the info). An agent is seen in a span when
+  # seen_*[its id] is the span's number, so no reset is needed; `firsts_*`
+  # keeps the first cap + 1 distinct agents, enough to name `cap` besides
+  # the joined one.
+  # Plain vectors, not a list: assigning into a vector held in a list (or
+  # passed to a function) would copy it on every agent line.
+  id_index <- match(id, unique(id))
+  seen_group <- integer(max(id_index))
+  seen_run <- integer(max(id_index))
+  span_group <- 0L
+  span_run <- 0L
+  firsts_group <- integer()
+  firsts_run <- integer()
+  distinct_group <- 0L
+  distinct_run <- 0L
+  out <- list()
+  for (i in seq_len(n)) {
+    g <- agents$group[[i]]
+    k <- id_index[[i]]
+    if (i == 1L || agents$group[[i - 1L]] != g) {
+      span_group <- span_group + 1L
+      firsts_group <- integer()
+      distinct_group <- 0L
+      span_run <- span_run + 1L
+      firsts_run <- integer()
+      distinct_run <- 0L
+      group_start <- i
+    } else {
+      prev <- agents$line[[i - 1L]]
+      cur <- agents$line[[i]]
+      span <- cur - prev - 1L
+      directives <- directive_count[[cur]] - directive_count[[prev]]
+      blanks <- blank_count[[cur]] - blank_count[[prev]]
+      kind <- if (directives > 0L) {
+        "directive"
+      } else if (span > 0L && blanks == span &&
+                   group_first_rule[[g]] > 0L &&
+                   directive_count[[group_first_rule[[g]] - 1L]] ==
+                     directive_count[[cur]]) {
+        # A directive later in the run ends this part of it for Bing; that
+        # break's warning names these agents.
+        "blank"
+      } else {
+        NA_character_
+      }
+      if (!is.na(kind) && names_crawler[[i]] && !is.na(group_rules[[g]])) {
+        if (identical(kind, "directive")) {
+          own_seen <- seen_group[[k]] == span_group
+          earlier <- firsts_group
+          total <- distinct_group - own_seen
+        } else {
+          own_seen <- seen_run[[k]] == span_run
+          earlier <- firsts_run
+          total <- distinct_run - own_seen
+        }
+        earlier <- earlier[id_index[earlier] != k]
+        shown <- min(cap, length(earlier))
+        if (total > 0L) {
+          out[[length(out) + 1L]] <- joined_user_agent_row(
+            kind, agents, i, group_start, earlier[seq_len(shown)],
+            total - shown, prev, cur, directives,
+            group_count[[cur]] == group_count[[prev]], lines, parsed, action,
+            group_rules[[g]], group_block[[g]]
+          )
+        }
+      }
+      if (identical(kind, "directive")) {
+        span_run <- span_run + 1L
+        firsts_run <- integer()
+        distinct_run <- 0L
+      }
+    }
+    if (names_crawler[[i]]) {
+      if (seen_group[[k]] != span_group) {
+        seen_group[[k]] <- span_group
+        distinct_group <- distinct_group + 1L
+        if (length(firsts_group) <= cap) firsts_group <- c(firsts_group, i)
+      }
+      if (seen_run[[k]] != span_run) {
+        seen_run[[k]] <- span_run
+        distinct_run <- distinct_run + 1L
+        if (length(firsts_run) <= cap) firsts_run <- c(firsts_run, i)
+      }
+    }
+  }
+  if (length(out) == 0L) {
+    return(ai_training_rows())
+  }
+  ai_training_rows(
+    vapply(out, `[[`, 0L, "line"), vapply(out, `[[`, "", "severity"),
+    vapply(out, `[[`, "", "code"), "user-agent",
+    vapply(out, `[[`, "", "message")
+  )
+}
+
+# The lines of a group's rules for a message: up to five as written, with
+# consecutive lines as a range, and more as a range plus a count.
+joined_rule_lines <- function(lines, cap = 5L) {
+  if (length(lines) > cap) {
+    return(sprintf("lines %d-%d (%d rules)", min(lines), max(lines),
+                   length(lines)))
+  }
+  run <- cumsum(c(TRUE, diff(lines) != 1L))
+  parts <- vapply(split(lines, run), function(x) {
+    if (length(x) == 1L) as.character(x) else sprintf("%d-%d", x[[1L]],
+                                                       x[[length(x)]])
+  }, "", USE.NAMES = FALSE)
+  paste(if (length(lines) == 1L) "line" else "lines",
+        joined_and(parts, 0L))
+}
+
+# "a", "a and b", "a, b and c", with "and k more" for a count left out.
+joined_and <- function(items, more) {
+  if (more > 0L) {
+    items <- c(items, sprintf("%d more", more))
+  }
+  k <- length(items)
+  if (k == 1L) {
+    return(items)
+  }
+  paste(toString(items[-k]), "and", items[[k]])
+}
+
+# One report as list(line, severity, code, message). `n_directives` counts
+# the directive lines between `prev` and `cur`; `lines` holds the next-line
+# lookups of joined_user_agent_diagnostics().
+joined_user_agent_row <- function(kind, agents, i, group_start, earlier, more,
+                                  prev, cur, n_directives, file_level, lines,
+                                  parsed, action, rule_text, block_text) {
+  name <- function(rows) {
+    ifelse(agents$global[rows], "*", ai_training_name(agents$token[rows]))
+  }
+  crawlers <- function(rows) {
+    ifelse(agents$global[rows], "every crawler without a group of its own",
+           ai_training_name(agents$token[rows]))
+  }
+  plural <- length(earlier) + more > 1L
+  agent <- name(i)
+  yandex <- lines$next_yandex[[prev]]
+  if (!is.na(yandex) && yandex >= cur) {
+    yandex <- NA_integer_
+  }
+  if (identical(kind, "blank")) {
+    shared <- joined_and(
+      sprintf("`User-agent: %s` (line %d)", name(earlier),
+              agents$line[earlier]), more
+    )
+    short <- joined_and(
+      ifelse(agents$global[earlier], "`*`", name(earlier)), more
+    )
+    message <- sprintf(
+      paste0("`User-agent: %s` (line %d) shares a group with %s: only blank ",
+             "or comment lines come between them, and a `User-agent` line ",
+             "starts a new group only after an `Allow` or `Disallow` line. ",
+             "Google and Bing read one group, so the rules on %s apply to ",
+             "%s%s. Yandex ends a group at every blank or comment line, as ",
+             "at line %d, and gives %s no rules. ",
+             "If %s meant to share these rules, remove the blank or comment ",
+             "lines; if not, give %s %s own rules before line %d."),
+      agent, cur, shared, rule_text, if (plural) "all of them" else "both",
+      block_text, yandex, short, if (plural) "they are all" else "both are",
+      short, if (plural) "their" else "its", cur
+    )
+    return(list(line = cur, severity = "info",
+                code = "user_agent_joined_across_blank", message = message))
+  }
+
+  # The first three directive lines between; n_directives counts them all.
+  between <- integer()
+  at <- lines$next_directive[[prev]]
+  while (length(between) < 3L && at < cur) {
+    between <- c(between, at)
+    at <- lines$next_directive[[at]]
+    if (is.na(at)) break
+  }
+  rows <- lines$row_of[between]
+  # A key not in printable ASCII is not quoted; `raw_text` carries it.
+  key <- parsed$action[rows]
+  unprintable <- Encoding(key) == "bytes" |
+    !grepl("^[ -~]+$", key, useBytes = TRUE)
+  key[unprintable] <- "unknown field"
+  key[!unprintable] <- ai_training_name(key[!unprintable])
+  key[parsed$type[rows] == "sitemap"] <- "Sitemap"
+  more_lines <- n_directives - length(between)
+  named <- joined_and(
+    sprintf("the `%s` on line %d", key, between), more_lines
+  )
+  if (more_lines > 0L) {
+    named <- paste(named, "lines")
+  }
+  verb <- if (n_directives == 1L) "does" else "do"
+  first_line <- agents$line[[group_start]]
+  gainers <- joined_and(crawlers(earlier), more)
+  bing <- between[[1L]]
+  engines <- if (is.na(yandex)) {
+    sprintf("Bing ends the group at line %d, so it does not give", bing)
+  } else if (yandex == prev + 1L && yandex == bing) {
+    sprintf("Bing and Yandex end the group at line %d, so neither gives",
+            bing)
+  } else {
+    sprintf("Bing ends the group at line %d, and Yandex %s line %d, so %s",
+            bing, if (yandex == prev + 1L) "at" else "by", yandex,
+            "neither gives")
+  }
+  ticks <- joined_and(sprintf("`%s`", name(earlier)), more)
+  fix <- sprintf(
+    paste0("end %s group before line %d with an empty `Disallow:` line, ",
+           "which blocks nothing%s"),
+    if (plural) "their" else "its", cur,
+    if (file_level && i - group_start == 1L) {
+      sprintf(", or delete line %d if it is there only to hold %s",
+              first_line, if (n_directives == 1L) {
+                sprintf("the `%s`", key)
+              } else {
+                "the lines after it"
+              })
+    } else {
+      ""
+    }
+  )
+  if (file_level) {
+    moved <- if (n_directives == 1L) {
+      sprintf("line %d", between)
+    } else {
+      paste("lines", joined_and(as.character(between), more_lines))
+    }
+    fix <- sprintf(paste0("%s; if %s meant to, move %s out from between the ",
+                          "`User-agent` lines, so Bing reads one group too"),
+                   fix, if (plural) "they were" else "it was", moved)
+  }
+  opener <- name(group_start)
+  opener <- if (nzchar(opener)) {
+    sprintf("`User-agent: %s` opened", opener)
+  } else {
+    "opened"
+  }
+  message <- sprintf(
+    paste0("`User-agent: %s` (line %d) joins the group that ",
+           "%s on line %d. For Google, a `User-agent` ",
+           "line starts a new group only after an `Allow` or `Disallow` ",
+           "line, and lines %d-%d have none; %s %s not end a group. So the ",
+           "rules on %s apply to %s as well as to %s%s. %s these rules to ",
+           "%s. If %s %s not meant to get these rules, %s."),
+    agent, cur, opener, first_line, first_line, cur, named, verb,
+    rule_text, gainers, crawlers(i), block_text, engines, gainers, ticks,
+    if (plural) "were" else "was", fix
+  )
+  list(line = cur, severity = "warning",
+       code = "user_agent_joined_across_directive", message = message)
 }
 
 # A crawler obeys only the groups that name it (merged, as Google does) and

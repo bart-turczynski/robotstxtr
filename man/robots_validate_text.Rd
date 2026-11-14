@@ -174,6 +174,16 @@ A policy-token User-agent line (\code{__usage_}, or a near miss)
 shares a group with \code{User-agent: *}, or with a crawler or other
 policy token from which a directive line separates it, so the group's
 rules reach them too. \cr
+\code{user_agent_joined_across_directive} \tab warning \tab
+A User-agent line joins the open group across a directive such as
+Sitemap or Crawl-delay, so that group's rules also reach the agents
+before it; the message names those agents, the rule lines, a full
+block, and where Bing (and, where tested, Yandex) ends the group.
+Anchored on the joined line. \cr
+\code{user_agent_joined_across_blank} \tab info \tab
+A User-agent line shares a group with the agents before it across
+blank or comment lines only: Google and Bing join them, Yandex ends
+the group at the first such line. Anchored on the joined line. \cr
 \code{disallow_tied_by_allow} \tab warning \tab
 A Disallow never takes effect: an Allow with the identical pattern
 applies to the same crawlers and wins the tie. Anchored on the
@@ -330,6 +340,33 @@ holding a NUL byte they follow Google's reading, as the other group
 checks do.
 Which crawler operators read the token, and from when, is recorded with
 dates in \code{design/engine-profiles.md} section 7a.
+
+For \code{user_agent_joined_across_directive} and
+\code{user_agent_joined_across_blank}, Google's parser starts a new group only
+after an Allow or Disallow line, so every User-agent line before a group's
+first rule joins that group, and its rules reach every agent named there.
+Consecutive User-agent lines are the deliberate way to share rules and stay
+silent. A break between two User-agent lines of one group is reported on
+the later line: a warning when a directive (\code{Sitemap}, \code{Crawl-delay},
+\code{Host}, \code{Clean-param}, \code{Content-Signal} or any unknown field) lies between,
+since Bing ends the group at the directive (\code{design/engine-disagreements.md}
+class 1); an info when only blank or comment lines do, which Google and Bing
+join and Yandex's tester splits; it names only the agents since the last
+directive, since Bing ended the group of any agent before it. Yandex is
+named only for a blank, comment or \code{Crawl-delay} line, the lines its
+tester was seen to end a group at; its reading of a Sitemap or unknown
+field is untested. A policy-token line is
+left to \code{ai_training_token_stacked} and is never named as an earlier agent;
+a line naming no crawler, a line whose only earlier agents share its name
+and a group with no rule or only empty ones draw nothing, and the info is
+left out when a directive follows later in the run. For agents not meant
+to get the rules, the message suggests an empty \verb{Disallow:} ending their
+group; moving a Sitemap out of the run is offered only to agents meant to
+share them, since it makes the User-agent lines adjacent. Each message
+names at most five earlier agents and three directive lines, and counts
+the rest. On a document
+holding a NUL byte the check follows Google's reading, as the other group
+checks do.
 
 For \code{disallow_tied_by_allow}, an Allow and a Disallow with the same
 pattern match the same paths with the same priority, and Allow wins the

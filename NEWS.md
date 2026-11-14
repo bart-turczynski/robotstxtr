@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* Validator: `robots_validate_text()` warns `user_agent_joined_across_directive` when a Sitemap, Crawl-delay or other directive joins User-agent lines into one group, and notes blank-line joins as `user_agent_joined_across_blank` (ROBO-xepnhfgs).
+
 * `robots_validate_text()` and `robots_validate_url()` now read a NUL-bearing line as Google does: the group checks run, a NUL cutting a rule warns `rule_cut_by_nul`, and NUL-split UTF-8 is `invalid_utf8` (ROBO-xuusttbp).
 
 * On the v1 `google` ruleset, Googlebot-Image and other Google crawlers without a group fall back to their parent token's group, the AdsBot family ignores `*`, and results gain `group_token`; schema revision `2026-11-12.1` (ROBO-fbbmvbob).
