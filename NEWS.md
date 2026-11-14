@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* Validator: `robots_validate_text()` notes a crawler named again in a later group (`user_agent_repeated_group`) and warns `empty_disallow_with_full_block`, which Google and Bing block and Yandex allows (ROBO-vnhirero).
+
 * Validator: `robots_validate_text()` warns `user_agent_joined_across_directive` when a Sitemap, Crawl-delay or other directive joins User-agent lines into one group, and notes blank-line joins as `user_agent_joined_across_blank` (ROBO-xepnhfgs).
 
 * `robots_validate_text()` and `robots_validate_url()` now read a NUL-bearing line as Google does: the group checks run, a NUL cutting a rule warns `rule_cut_by_nul`, and NUL-split UTF-8 is `invalid_utf8` (ROBO-xuusttbp).

@@ -455,6 +455,32 @@ group's first `User-agent` line, which on a joined group is the earlier agent's 
 internetcom.jp, the second `*`), not the named crawler's. On a body holding a NUL byte the codes
 follow Google's reading and say so. Pinned by `tests/testthat/test-user-agent-joined-xepnhfgs.R`.
 
+### 5e. Repeated groups for one crawler (ROBO-vnhirero; validator only)
+
+A crawler named in two or more groups follows all of them merged. Google merges them (`src/robots.cc`;
+RFC 9309 section 2.2.1), and so do Bing (tester, bing-corpus `body-sel-bingbot-repeated-tier`) and
+Yandex (tester, yandex-corpus ydx-02). Publishers rarely mean it: it usually comes from pasted
+blocks, such as a plugin's block plus a hand-written one. In news-ai-access's stored files,
+internetcom.jp and jornaldiabo.com each have two `User-agent: *` groups, and timeschronicle.ca has
+four. It is worst when the merged rules contradict: jornaldiabo.com's Yoast block (`User-agent: *` /
+`Disallow:`) and a later `User-agent: *` / `Disallow: /`. Google ignores the empty value, and so
+does Bing (tester, `body-ea-bingbot-empty-disallow-before-rule`), so both block every path; Yandex
+reads it as allowing every path that no longer `Disallow` matches (tester, ydx-11). An every-path
+`Allow` (`Allow: /`, `Allow: /*`) beside `Disallow: /` is no such split: all three backends allow
+(`Allow: /` is `disallow_tied_by_allow`'s; `Allow: /*` with `Disallow: /` stays unreported).
+
+| Code | Severity | When |
+|---|---|---|
+| `user_agent_repeated_group` | info | A crawler token (`*` for a global line, the merge key otherwise) is named in a later group as well as an earlier one, Google's groups, so a joined line counts. One report per later group and token, on the first line of that group naming it; the message lists the first line naming it in each earlier group (five at most, then a count). |
+| `empty_disallow_with_full_block` | warning | The rules one crawler follows, in one group or merged, hold an empty `Disallow:`, a `disallow /` key and no non-empty `Allow`. Anchored on the first full-block line; crawlers sharing that line get one report. The message names the empty lines, says which engines block and which allow, and offers deleting one side. Skipped on a cut body. |
+
+A line a `user_agent_joined_*` (§5d), `user_agent_cut` or `wildcard_rules_not_inherited` report
+owns, and a policy-token line (§5c), draw no repeat: one line, one report. Such a line still counts
+for later groups. A later group with no rule line adds no rules and draws nothing. Where the
+full-block or empty line's group also names crawlers outside the warning, deleting it is not offered:
+the message suggests a group of their own instead. Pinned by
+`tests/testthat/test-repeated-groups-vnhirero.R`.
+
 ## 6. Matcher capability availability
 
 `robots_policy_ruleset` (§4) is pure data and always available. `matcher_backend` is separate:
