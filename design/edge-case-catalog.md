@@ -215,7 +215,7 @@ the matcher decision for the comparison work.
 | `grp-shared-group` — two User-agent lines, one rule | both tokens share the group | repeated user-agent lines share a group | FooBot, BarBot `/x` disallow; BazBot allow | none | no |
 | `grp-user-agent-after-rule` — `User-agent` after a rule | a new group starts | same | FooBot: `/x` disallow, `/y` allow; BarBot: `/x` allow, `/y` disallow | none | no |
 | `grp-blank-line-in-group` — blank line between User-agent and rule | `emptyline` allowed inside a group (§2.2) | not documented | `/x` disallow | none | no |
-| `grp-blank-line-between-agents` | as above | not documented | FooBot and BarBot `/x` disallow | none | no |
+| `grp-blank-line-between-agents` | as above | not documented | FooBot and BarBot `/x` disallow | `user_agent_joined_across_blank@3` (info; Yandex splits the group, Y5) | no |
 | `grp-same-agent-twice` — FooBot twice (second as `foobot`), BarBot between | combined (§2.2.1) | combined | `/x`, `/y` disallow, `/z` (BarBot's) allow | none | no |
 | `grp-rule-before-user-agent` | a rule outside a group is not valid syntax | invalid lines ignored | `/x` allow, `/y` disallow | `rule_without_user_agent@1` | no |
 | `grp-token-version-in-file` — `User-agent: Googlebot/2.1` | `/` is not allowed in a token; unspecified | `googlebot/1.2` equals `googlebot` | `/x` as `Googlebot` disallow | `user_agent_cut@1` (warning; names `Googlebot`) | no |
@@ -225,7 +225,7 @@ the matcher decision for the comparison work.
 | `grp-digit-in-token` — `User-agent: Bot2` | digits are not allowed in a token (§2.2.1); unspecified | not documented | as `Bot2` allow, as `Bot` disallow: the value is cut at the digit | `user_agent_cut@1` (warning; names `Bot`) | yes; covered by `user_agent_cut` |
 | `grp-star-prefixed-token` — `User-agent: *bot` | not a valid token; unspecified | not documented | allow: `*bot` is neither global nor a token | `user_agent_cut@1` (warning; names no crawler) | yes; covered by `user_agent_cut` |
 | `grp-sitemap-mid-group` — Sitemap between two rules | MUST NOT terminate a group (§2.2.4) | "Rules other than allow, disallow, and user-agent are ignored by the robots.txt parser" ("Order of precedence for user agents"; its example has a sitemap line inside a group of two user-agent lines); a sitemap line between rules is not shown | `/x`, `/y` disallow | none | no |
-| `grp-unknown-between-agents` — `Crawl-delay` between two User-agent lines | other records; unspecified for the first agent | unsupported fields ignored | FooBot and BarBot `/x` disallow: the unknown line does not split them | `unsupported_directive@2` | no |
+| `grp-unknown-between-agents` — `Crawl-delay` between two User-agent lines | other records; unspecified for the first agent | unsupported fields ignored | FooBot and BarBot `/x` disallow: the unknown line does not split them | `unsupported_directive@2`, `user_agent_joined_across_directive@3` (warning; Bing and Yandex end the group at line 2) | no |
 
 ### Size and limits
 
