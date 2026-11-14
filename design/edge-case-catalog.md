@@ -216,7 +216,7 @@ the matcher decision for the comparison work.
 | `grp-user-agent-after-rule` — `User-agent` after a rule | a new group starts | same | FooBot: `/x` disallow, `/y` allow; BarBot: `/x` allow, `/y` disallow | none | no |
 | `grp-blank-line-in-group` — blank line between User-agent and rule | `emptyline` allowed inside a group (§2.2) | not documented | `/x` disallow | none | no |
 | `grp-blank-line-between-agents` | as above | not documented | FooBot and BarBot `/x` disallow | `user_agent_joined_across_blank@3` (info; Yandex splits the group, Y5) | no |
-| `grp-same-agent-twice` — FooBot twice (second as `foobot`), BarBot between | combined (§2.2.1) | combined | `/x`, `/y` disallow, `/z` (BarBot's) allow | none | no |
+| `grp-same-agent-twice` — FooBot twice (second as `foobot`), BarBot between | combined (§2.2.1) | combined | `/x`, `/y` disallow, `/z` (BarBot's) allow | `user_agent_repeated_group@7` (info; ROBO-vnhirero) | no |
 | `grp-rule-before-user-agent` | a rule outside a group is not valid syntax | invalid lines ignored | `/x` allow, `/y` disallow | `rule_without_user_agent@1` | no |
 | `grp-token-version-in-file` — `User-agent: Googlebot/2.1` | `/` is not allowed in a token; unspecified | `googlebot/1.2` equals `googlebot` | `/x` as `Googlebot` disallow | `user_agent_cut@1` (warning; names `Googlebot`) | no |
 | `grp-token-letter-case-in-file` — `User-agent: GOOGLEBOT`, token `googlebot` | case-insensitive | case-insensitive | disallow | none | no |

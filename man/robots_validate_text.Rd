@@ -184,6 +184,16 @@ Anchored on the joined line. \cr
 A User-agent line shares a group with the agents before it across
 blank or comment lines only: Google and Bing join them, Yandex ends
 the group at the first such line. Anchored on the joined line. \cr
+\code{user_agent_repeated_group} \tab info \tab
+A crawler (or \code{*}) is named in a later group as well as an
+earlier one, so Google, Bing and Yandex merge the groups. Anchored on
+the later group's first line naming it; the message lists the earlier
+lines. \cr
+\code{empty_disallow_with_full_block} \tab warning \tab
+The rules one crawler follows hold an empty \code{Disallow:} and a
+full block (\code{Disallow: /}, no non-empty Allow): Google and Bing
+block every path, Yandex allows the paths no longer Disallow matches.
+Anchored on the full-block line. \cr
 \code{disallow_tied_by_allow} \tab warning \tab
 A Disallow never takes effect: an Allow with the identical pattern
 applies to the same crawlers and wins the tie. Anchored on the
@@ -367,6 +377,14 @@ names at most five earlier agents and three directive lines, and counts
 the rest. On a document
 holding a NUL byte the check follows Google's reading, as the other group
 checks do.
+
+For \code{user_agent_repeated_group} and \code{empty_disallow_with_full_block}, every
+engine merges the groups that name one crawler (\code{design/engine-profiles.md}
+section 5e): a repeat is reported once per later group and crawler, and a
+line a \verb{user_agent_joined_*} report already owns, or a policy-token line,
+draws nothing but still counts for later groups. The warning fires within
+one group too, where the engines split the same way. An every-path Allow
+beside \verb{Disallow: /} is no split (every engine allows) and draws neither.
 
 For \code{disallow_tied_by_allow}, an Allow and a Disallow with the same
 pattern match the same paths with the same priority, and Allow wins the

@@ -175,6 +175,16 @@ validation_unsupported <- c(
 #'     A User-agent line shares a group with the agents before it across
 #'     blank or comment lines only: Google and Bing join them, Yandex ends
 #'     the group at the first such line. Anchored on the joined line. \cr
+#'   \code{user_agent_repeated_group} \tab info \tab
+#'     A crawler (or \code{*}) is named in a later group as well as an
+#'     earlier one, so Google, Bing and Yandex merge the groups. Anchored on
+#'     the later group's first line naming it; the message lists the earlier
+#'     lines. \cr
+#'   \code{empty_disallow_with_full_block} \tab warning \tab
+#'     The rules one crawler follows hold an empty \code{Disallow:} and a
+#'     full block (\code{Disallow: /}, no non-empty Allow): Google and Bing
+#'     block every path, Yandex allows the paths no longer Disallow matches.
+#'     Anchored on the full-block line. \cr
 #'   \code{disallow_tied_by_allow} \tab warning \tab
 #'     A Disallow never takes effect: an Allow with the identical pattern
 #'     applies to the same crawlers and wins the tie. Anchored on the
@@ -358,6 +368,14 @@ validation_unsupported <- c(
 #' the rest. On a document
 #' holding a NUL byte the check follows Google's reading, as the other group
 #' checks do.
+#'
+#' For `user_agent_repeated_group` and `empty_disallow_with_full_block`, every
+#' engine merges the groups that name one crawler (`design/engine-profiles.md`
+#' section 5e): a repeat is reported once per later group and crawler, and a
+#' line a `user_agent_joined_*` report already owns, or a policy-token line,
+#' draws nothing but still counts for later groups. The warning fires within
+#' one group too, where the engines split the same way. An every-path Allow
+#' beside `Disallow: /` is no split (every engine allows) and draws neither.
 #'
 #' For `disallow_tied_by_allow`, an Allow and a Disallow with the same
 #' pattern match the same paths with the same priority, and Allow wins the
@@ -1021,6 +1039,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # A User-agent line Google joins to the open group across a directive, or
   # across blank and comment lines only (ROBO-xepnhfgs).
   found <- joined_user_agent_diagnostics(groups, parsed)
+  joined_lines <- found$line
   if (nrow(found) > 0L) {
     add_chunk(
       found$line, found$severity, found$code, found$directive,
@@ -1028,6 +1047,31 @@ validate_document_bytes <- function(bytes, source_id, source_type,
              USE.NAMES = FALSE),
       paste0(found$message, nul_reading)
     )
+  }
+  # A crawler named again in a later group (ROBO-vnhirero); a line a join
+  # report owns is skipped.
+  found <- repeated_group_diagnostics(groups, skip = joined_lines)
+  if (nrow(found) > 0L) {
+    add_chunk(
+      found$line, found$severity, found$code, found$directive,
+      vapply(raw_lines[found$line], render_validation_line, "",
+             USE.NAMES = FALSE),
+      paste0(found$message, nul_reading)
+    )
+  }
+  # An empty Disallow and a full block one crawler follows: Google and Bing
+  # block, Yandex allows (ROBO-vnhirero). A cut body is skipped: lines past
+  # the cut could add an Allow.
+  if (!body_truncated) {
+    found <- empty_disallow_full_block_diagnostics(groups)
+    if (nrow(found) > 0L) {
+      add_chunk(
+        found$line, "warning", "empty_disallow_with_full_block", "disallow",
+        vapply(raw_lines[found$line], render_validation_line, "",
+               USE.NAMES = FALSE),
+        paste0(found$message, nul_reading)
+      )
+    }
   }
   # A named group drops the `*` rules for its crawlers (ROBO-gfjotdrr). On
   # a cut body a group's rules may lie past the cut, so it is skipped.
@@ -1837,6 +1881,178 @@ joined_user_agent_diagnostics <- function(groups, parsed, cap = 5L) {
     vapply(out, `[[`, "", "code"), "user-agent",
     vapply(out, `[[`, "", "message")
   )
+}
+
+# A crawler named in a later group as well as an earlier one
+# (ROBO-vnhirero): Google merges every group that names it (src/robots.cc;
+# RFC 9309 section 2.2.1), and so do Bing (tester, bing-corpus
+# `body-sel-bingbot-repeated-tier`) and Yandex (tester, ydx-02). A token is
+# `*` for a global line and the merge key otherwise; groups are Google's, so
+# a line joined into a group (ROBO-xepnhfgs) counts there. One info per
+# later group and token, on the first line of that group naming it, listing
+# the first line naming it in each earlier group (five at most, then a
+# count). Policy-token lines are left to ai_training_token_stacked, and a
+# line in `skip` (one a join report already owns) draws nothing but still
+# counts for later groups: one line, one report.
+repeated_group_diagnostics <- function(groups, skip = integer(), cap = 5L) {
+  agents <- groups$agents
+  if (nrow(agents) < 2L) {
+    return(ai_training_rows())
+  }
+  family <- ai_training_kind(agents)$family
+  keep <- (agents$global | nzchar(agents$key)) & !family
+  id <- ifelse(agents$global, "*", agents$key)[keep]
+  line <- agents$line[keep]
+  group <- agents$group[keep]
+  token <- agents$token[keep]
+  global <- agents$global[keep]
+  first <- !duplicated(paste(id, group, sep = "\n"))
+  id <- id[first]
+  line <- line[first]
+  group <- group[first]
+  token <- token[first]
+  global <- global[first]
+  # Rows are in file order, so a token's rows come in group order.
+  rank <- stats::ave(seq_along(id), id, FUN = seq_along)
+  later <- which(rank > 1L & !line %in% skip)
+  if (length(later) == 0L) {
+    return(ai_training_rows())
+  }
+  by_id <- split(seq_along(id), id)
+  message <- vapply(later, function(i) {
+    earlier <- by_id[[id[[i]]]]
+    earlier <- earlier[seq_len(rank[[i]] - 1L)]
+    shown <- line[earlier[seq_len(min(cap, length(earlier)))]]
+    more <- length(earlier) - length(shown)
+    several <- length(earlier) > 1L
+    named <- if (global[[i]]) {
+      "every crawler without a group of its own"
+    } else {
+      ai_training_name(token[[earlier[[1L]]]])
+    }
+    follows <- if (global[[i]]) {
+      "those crawlers follow"
+    } else {
+      paste(named, "follows")
+    }
+    sprintf(
+      paste0("`User-agent: %s` (line %d) names %s, as %s %s in %s already ",
+             "%s. Google, Bing and Yandex merge every group that names the ",
+             "same crawler, so %s the rules of %s together. If the groups ",
+             "came from separate blocks, put their rules in one group."),
+      if (global[[i]]) "*" else ai_training_name(token[[i]]), line[[i]],
+      named, if (several) "lines" else "line",
+      joined_and(as.character(shown), more),
+      if (several) "earlier groups" else "an earlier group",
+      if (several) "do" else "does", follows,
+      if (several) "all these groups" else "both groups"
+    )
+  }, "")
+  ai_training_rows(line[later], "info", "user_agent_repeated_group",
+                   "user-agent", message)
+}
+
+# An empty `Disallow:` and a full block in the rules one crawler follows
+# (ROBO-vnhirero): Google ignores the empty value, and Bing does too
+# (tester, bing-corpus `body-ea-bingbot-empty-disallow-before-rule`), so
+# both block every path; Yandex reads it as allowing every path that no
+# longer Disallow matches (tester, ydx-11). Tokens merge as in
+# tied_disallow_diagnostics(), within one group or across groups. A full
+# block is as in wildcard_inheritance_diagnostics(): a `disallow /` key and
+# no non-empty Allow. An every-path Allow is no such split: every engine
+# allows, and `Allow: /` is disallow_tied_by_allow's. One warning per
+# full-block line, on the first one a token follows, naming every token
+# whose first it is. Returns a data frame of `line` and `message`.
+empty_disallow_full_block_diagnostics <- function(groups, cap = 5L) {
+  none <- data.frame(line = integer(), message = character(),
+                     stringsAsFactors = FALSE)
+  rules <- groups$rules
+  agents <- groups$agents
+  if (nrow(rules) == 0L || !any(rules$type == "disallow" & rules$empty)) {
+    return(none)
+  }
+  family <- ai_training_kind(agents)$family
+  keep <- (agents$global | nzchar(agents$key)) & !family
+  id <- ifelse(agents$global, "*", agents$key)[keep]
+  agent_group <- agents$group[keep]
+  token <- agents$token[keep]
+  ids <- unique(id)
+  found <- lapply(ids, function(k) {
+    in_effect <- rules$group %in% agent_group[id == k]
+    empty <- in_effect & rules$type == "disallow" & rules$empty
+    root <- in_effect & !is.na(rules$key) & rules$key == "disallow /"
+    if (!any(empty) || !any(root) ||
+          any(in_effect & rules$type == "allow" & !rules$empty)) {
+      return(NULL)
+    }
+    longer <- in_effect & rules$type == "disallow" & !rules$empty & !root
+    root_line <- rules$line[root][[1L]]
+    list(
+      id = k, anchor = root_line,
+      anchor_group = rules$group[root][[1L]],
+      roots = rules$line[root], empties = rules$line[empty],
+      empty_groups = rules$group[empty], longer = any(longer),
+      name = if (identical(k, "*")) "*" else
+        ai_training_name(token[[match(k, id)]])
+    )
+  })
+  found <- Filter(Negate(is.null), found)
+  if (length(found) == 0L) {
+    return(none)
+  }
+  anchors <- vapply(found, `[[`, 0L, "anchor")
+  sets <- split(seq_along(found), factor(anchors, unique(sort(anchors))))
+  message <- vapply(sets, function(members) {
+    hit <- found[members]
+    names <- vapply(hit, `[[`, "", "name")
+    global_only <- identical(names, "*")
+    crawlers <- if (global_only) {
+      "every crawler without a group of its own"
+    } else {
+      shown <- names[seq_len(min(cap, length(names)))]
+      shown[shown == "*"] <- "every crawler without a group of its own"
+      joined_and(shown, length(names) - length(shown))
+    }
+    first <- hit[[1L]]
+    empties <- sort(unique(unlist(lapply(hit, `[[`, "empties"))))
+    roots <- sort(unique(unlist(lapply(hit, `[[`, "roots"))))
+    same_group <- all(vapply(hit, function(x) {
+      all(x$empty_groups == x$anchor_group)
+    }, TRUE))
+    lines_of <- function(x) {
+      paste(if (length(x) == 1L) "line" else "lines",
+            joined_and(as.character(x), 0L))
+    }
+    reach <- if (same_group) {
+      "is in the same group"
+    } else {
+      sprintf("reaches %s through the group merge",
+              if (global_only) "the same crawlers" else crawlers)
+    }
+    yandex <- if (any(vapply(hit, `[[`, TRUE, "longer"))) {
+      "allowing every path that no longer `Disallow` matches"
+    } else {
+      "allowing every path and blocks nothing"
+    }
+    sprintf(
+      paste0("`Disallow: %s` (line %d) blocks every path for %s, and the ",
+             "empty `Disallow:` on %s %s. Google and Bing ignore an empty ",
+             "`Disallow:` and block every path; Yandex reads it as %s. If ",
+             "%s meant to be let in, delete %s; if %s meant to be kept out, ",
+             "delete %s."),
+      render_validation_line(charToRaw(
+        groups$rules$value[[match(first$anchor, groups$rules$line)]]
+      )),
+      first$anchor, crawlers, lines_of(empties), reach, yandex,
+      if (global_only || length(names) > 1L) "these crawlers are" else
+        paste(names[[1L]], "is"),
+      lines_of(roots),
+      if (global_only || length(names) > 1L) "they are" else "it is",
+      lines_of(empties)
+    )
+  }, "")
+  data.frame(line = as.integer(names(sets)), message = unname(message),
+             stringsAsFactors = FALSE)
 }
 
 # The lines of a group's rules for a message: up to five as written, with

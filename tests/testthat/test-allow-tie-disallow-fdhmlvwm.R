@@ -241,7 +241,9 @@ test_that("a NUL leaves the tie check on Google's reading of each line", {
     # The NUL starts line 5, an empty line for Google: no Disallow to tie.
     list(at_nul("User-agent: bot\nAllow: /x\n\nUser-agent: bot", "x\n",
                 "Disallow: /x\n"),
-         c("nul_byte@4", "nul_byte@5", "rules_after_nul_removal@NA")),
+         # Line 4 names `bot` again: a repeated group (ROBO-vnhirero).
+         c("nul_byte@4", "nul_byte@5", "user_agent_repeated_group@4",
+           "rules_after_nul_removal@NA")),
     # The issue's case: Google reads `Disallow: /a`, which Allow: /a ties.
     list(at_nul("User-agent: *\nAllow: /a\nDisallow: /a", "b\n"),
          c("nul_byte@3", "rule_cut_by_nul@3", "disallow_tied_by_allow@3"))
