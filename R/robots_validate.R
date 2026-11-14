@@ -348,8 +348,12 @@ validation_unsupported <- c(
 #' tester was seen to end a group at; its reading of a Sitemap or unknown
 #' field is untested. A policy-token line is
 #' left to `ai_training_token_stacked` and is never named as an earlier agent;
-#' a line naming no crawler, a repeat of an agent the group already names and
-#' a group with no rule draw nothing. Each message names at most five earlier
+#' a line naming no crawler, a line whose only earlier agents share its name
+#' and a group with no rule or only empty ones draw nothing, and the info is
+#' left out when a directive follows later in the run. For agents not meant
+#' to get the rules, the message suggests an empty `Disallow:` ending their
+#' group; moving a Sitemap out of the run is offered only to agents meant to
+#' share them, since it makes the User-agent lines adjacent. Each message names at most five earlier
 #' agents and three directive lines, and counts the rest. On a document
 #' holding a NUL byte the check follows Google's reading, as the other group
 #' checks do.
@@ -1658,8 +1662,8 @@ ai_training_preference_rows <- function(groups, exact, truncated,
 #   between. Google and Bing join; Yandex splits (Y5).
 # Policy-token lines are left to ai_training_token_stacked (one line, one
 # report), and never count as earlier agents. A line naming no crawler, a
-# repeat of an agent already in the group and a group with no rule draw
-# nothing. Linear in the lines: each message names at most five agents and
+# line whose only earlier agents share its name and a group with no rule (or
+# only empty ones) draw nothing. Linear in the lines: each message names at most five agents and
 # three directive lines, and counts the rest.
 joined_user_agent_diagnostics <- function(groups, parsed, cap = 5L) {
   agents <- groups$agents
@@ -1707,10 +1711,16 @@ joined_user_agent_diagnostics <- function(groups, parsed, cap = 5L) {
     FALSE
   group_count <- cumsum(group_level)
   directive_count <- cumsum(is_directive)
+  group_first_rule <- integer(max(agents$group))
+  group_first_rule[rev(rules$group)] <- rev(rules$line)
 
   # The rule summary of each group, once.
   by_group <- split(seq_len(nrow(rules)), rules$group)
   rule_text <- vapply(by_group, function(rows) {
+    # Empty values restrict nothing, so sharing them changes nothing.
+    if (all(rules$empty[rows])) {
+      return(NA_character_)
+    }
     joined_rule_lines(rules$line[rows])
   }, "")
   block_text <- vapply(by_group, function(rows) {
@@ -1724,7 +1734,8 @@ joined_user_agent_diagnostics <- function(groups, parsed, cap = 5L) {
             rules$line[[root[[1L]]]])
   }, "")
 
-  # Indexed by group number; NA for a group with no rule.
+  # Indexed by group number; NA for a group with no rule, or none that
+  # restricts anything.
   group_rules <- rep(NA_character_, max(agents$group))
   group_rules[as.integer(names(by_group))] <- rule_text
   group_block <- character(max(agents$group))
@@ -1767,7 +1778,12 @@ joined_user_agent_diagnostics <- function(groups, parsed, cap = 5L) {
       blanks <- blank_count[[cur]] - blank_count[[prev]]
       kind <- if (directives > 0L) {
         "directive"
-      } else if (span > 0L && blanks == span) {
+      } else if (span > 0L && blanks == span &&
+                   group_first_rule[[g]] > 0L &&
+                   directive_count[[group_first_rule[[g]] - 1L]] ==
+                     directive_count[[cur]]) {
+        # A directive later in the run ends this part of it for Bing; that
+        # break's warning names these agents.
         "blank"
       } else {
         NA_character_
@@ -1882,7 +1898,8 @@ joined_user_agent_row <- function(kind, agents, i, group_start, earlier, more,
              "or comment lines come between them, and a `User-agent` line ",
              "starts a new group only after an `Allow` or `Disallow` line. ",
              "Google and Bing read one group, so the rules on %s apply to ",
-             "%s%s. Yandex ends the group at line %d and gives %s no rules. ",
+             "%s%s. Yandex ends a group at every blank or comment line, as ",
+             "at line %d, and gives %s no rules. ",
              "If %s meant to share these rules, remove the blank or comment ",
              "lines; if not, give %s %s own rules before line %d."),
       agent, cur, shared, rule_text, if (plural) "all of them" else "both",
@@ -1930,34 +1947,45 @@ joined_user_agent_row <- function(kind, agents, i, group_start, earlier, more,
             "neither gives")
   }
   ticks <- joined_and(sprintf("`%s`", name(earlier)), more)
-  fix <- if (file_level) {
+  fix <- sprintf(
+    paste0("end %s group before line %d with an empty `Disallow:` line, ",
+           "which blocks nothing%s"),
+    if (plural) "their" else "its", cur,
+    if (file_level && i - group_start == 1L) {
+      sprintf(", or delete line %d if it is there only to hold %s",
+              first_line, if (n_directives == 1L) {
+                sprintf("the `%s`", key)
+              } else {
+                "the lines after it"
+              })
+    } else {
+      ""
+    }
+  )
+  if (file_level) {
     moved <- if (n_directives == 1L) {
       sprintf("line %d", between)
     } else {
       paste("lines", joined_and(as.character(between), more_lines))
     }
-    paste0(
-      sprintf("move %s out from between the `User-agent` lines", moved),
-      if (i - group_start == 1L) {
-        sprintf(", or delete line %d if it is there only to hold it",
-                first_line)
-      } else {
-        ""
-      }
-    )
+    fix <- sprintf(paste0("%s; if %s meant to, move %s out from between the ",
+                          "`User-agent` lines, so Bing reads one group too"),
+                   fix, if (plural) "they were" else "it was", moved)
+  }
+  opener <- name(group_start)
+  opener <- if (nzchar(opener)) {
+    sprintf("`User-agent: %s` opened", opener)
   } else {
-    sprintf(paste0("end %s group before line %d with an empty `Disallow:` ",
-                   "line, which blocks nothing"),
-            if (plural) "their" else "its", cur)
+    "opened"
   }
   message <- sprintf(
     paste0("`User-agent: %s` (line %d) joins the group that ",
-           "`User-agent: %s` opened on line %d. For Google, a `User-agent` ",
+           "%s on line %d. For Google, a `User-agent` ",
            "line starts a new group only after an `Allow` or `Disallow` ",
            "line, and lines %d-%d have none; %s %s not end a group. So the ",
            "rules on %s apply to %s as well as to %s%s. %s these rules to ",
            "%s. If %s %s not meant to get these rules, %s."),
-    agent, cur, name(group_start), first_line, first_line, cur, named, verb,
+    agent, cur, opener, first_line, first_line, cur, named, verb,
     rule_text, gainers, crawlers(i), block_text, engines, gainers, ticks,
     if (plural) "were" else "was", fix
   )

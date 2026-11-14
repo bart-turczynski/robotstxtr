@@ -431,20 +431,24 @@ that group's rules reach the agents before it. Publishers read those lines as ne
 news-ai-access's stored files (NEWS-caacyart), 7 of the 12 sites where a strict reader and Google
 disagree have this shape, internetcom.jp's `User-agent: *` / `Sitemap: …` / blank /
 `User-agent: bingbot` / `Disallow: /news/` the clearest. Bing ends the run at any directive and
-joins across blank and comment lines (`design/engine-disagreements.md` class 1). Yandex's tester
-ends it at a blank, comment or `Crawl-delay` line (Y5, ROBO-bpywsjwv), unlike this package's Yandex
-backend until ROBO-akmpmvht lands; its reading at `Sitemap`, `Content-Signal` and other unknown
-fields is untested (ROBO-traxexwm), so no message names Yandex for them.
+joins across blank and comment lines (`design/engine-disagreements.md` class 1). Yandex Webmaster's
+robots.txt analysis ends it at a blank, comment or `Crawl-delay` line: question Y5
+(`design/engine-disagreements.md`) allowed `/y5/cd/x`, `/y5/comment/x` and `/y5/blank/x`, observed
+2026-11-13 and recorded in the ROBO-bpywsjwv tester comments. Class 1's "Yandex form refuted"
+verdict predates that result and describes this package's Yandex backend, which keeps the run
+until ROBO-akmpmvht and the re-vendor (ROBO-jtsmzesl) land. Yandex's reading at `Sitemap`,
+`Content-Signal` and other unknown fields is untested (ROBO-traxexwm), so no message names Yandex
+for them.
 
 | Code | Severity | When |
 |---|---|---|
-| `user_agent_joined_across_directive` | warning | A `User-agent` line of a group follows a directive (`Sitemap`, `Crawl-delay`, `Host`, `Clean-param`, `Content-Signal`, any unknown field) that sits after the group's previous `User-agent` line. The message names the line the group opened on, the directive lines (three at most), the group's rule lines (a range and count past five), the agents that gain them (five at most), a full block (`Disallow: /` with no non-empty `Allow`), where Bing ends the group, and where Yandex does when a blank, comment or `Crawl-delay` line lies between. The fix moves a file-level line (`Sitemap`, `Host`, `Clean-param`) out of the run; otherwise it ends the earlier group with an empty `Disallow:`. |
-| `user_agent_joined_across_blank` | info | Only blank or comment lines sit between the two `User-agent` lines. Google and Bing read one group; Yandex ends it at the first such line. The message names only the agents since the group's last directive break: Bing ended the group of any agent before it, and that break's warning names them. |
+| `user_agent_joined_across_directive` | warning | A `User-agent` line of a group follows a directive (`Sitemap`, `Crawl-delay`, `Host`, `Clean-param`, `Content-Signal`, any unknown field) that sits after the group's previous `User-agent` line. The message names the line the group opened on, the directive lines (three at most), the group's rule lines (a range and count past five), the agents that gain them (five at most), a full block (`Disallow: /` with no non-empty `Allow`), where Bing ends the group, and where Yandex does when a blank, comment or `Crawl-delay` line lies between. For agents not meant to get the rules, the fix ends their group with an empty `Disallow:` (or deletes a lone earlier `User-agent` line that only holds a file-level line); for agents meant to share them, it moves a file-level line (`Sitemap`, `Host`, `Clean-param`) out of the run, so Bing joins too. Moving a line out never helps the first case: it makes the `User-agent` lines adjacent, and every engine then joins them. |
+| `user_agent_joined_across_blank` | info | Only blank or comment lines sit between the two `User-agent` lines. Google and Bing read one group; Yandex ends it at the first such line. The message names only the agents since the group's last directive break: Bing ended the group of any agent before it, and that break's warning names them. Not reported when a directive follows later in the run, before the group's first rule: Bing ends the shared group there, and that line's warning names these agents. |
 
 Each code is anchored on the later `User-agent` line, one report per break. Consecutive
 `User-agent` lines, the deliberate way to share rules, stay silent, and so do a line naming no
-crawler, a repeat of an agent the group already names (`timeschronicle.ca`'s repeated
-`User-agent: *` / `Crawl-delay: 10`) and a group with no rule. A policy-token line is left to
+crawler, a line whose only earlier agents share its name (`timeschronicle.ca`'s repeated
+`User-agent: *` / `Crawl-delay: 10`) and a group with no rule or only empty ones. A policy-token line is left to
 `ai_training_token_stacked` (§5c), so one line gets one report, and a policy token is never named as
 an agent that gains rules. `wildcard_rules_not_inherited` is unchanged and still anchors on the
 group's first `User-agent` line, which on a joined group is the earlier agent's line (line 7 on

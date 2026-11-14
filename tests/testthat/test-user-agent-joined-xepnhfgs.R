@@ -43,8 +43,11 @@ test_that("internetcom.jp: a Sitemap between the lines warns on bingbot", {
     "apply to every crawler without a group of its own as well as to ",
     "bingbot. Bing ends the group at line 8, and Yandex by line 9, so ",
     "neither gives these rules to every crawler without a group of its own. ",
-    "If `*` was not meant to get these rules, move line 8 out from between ",
-    "the `User-agent` lines, or delete line 7 if it is there only to hold it."
+    "If `*` was not meant to get these rules, end its group before line 10 ",
+    "with an empty `Disallow:` line, which blocks nothing, or delete line 7 ",
+    "if it is there only to hold the `Sitemap`; if it was meant to, move ",
+    "line 8 out from between the `User-agent` lines, so Bing reads one ",
+    "group too."
   ))
   # One report per line: no blank-line info on bingbot as well.
   expect_false("user_agent_joined_across_blank" %in% d$code)
@@ -144,8 +147,8 @@ test_that("a blank-line stack draws the info, naming Yandex's split", {
     "`User-agent: Googlebot` (line 1): only blank or comment lines come ",
     "between them, and a `User-agent` line starts a new group only after an ",
     "`Allow` or `Disallow` line. Google and Bing read one group, so the rules ",
-    "on line 4 apply to both. Yandex ends the group at line 2 and gives ",
-    "Googlebot no rules. If both are meant to share these rules, remove the ",
+    "on line 4 apply to both. Yandex ends a group at every blank or comment ",
+    "line, as at line 2, and gives Googlebot no rules. If both are meant to share these rules, remove the ",
     "blank or comment lines; if not, give Googlebot its own rules before ",
     "line 3."
   ))
@@ -157,7 +160,7 @@ test_that("a comment line alone draws the info too", {
     "Disallow: /"
   ), "user_agent_joined_across_blank")
   expect_identical(r$line, 4L)
-  expect_match(r$message, "Yandex ends the group at line 3", fixed = TRUE)
+  expect_match(r$message, "comment line, as at line 3,", fixed = TRUE)
   expect_match(r$message, "including a full block (`Disallow: /`, line 5)",
                fixed = TRUE)
 })
@@ -212,8 +215,9 @@ test_that("the joined agent is not named among the agents it joins", {
   ), fixed = TRUE)
   # Two lines before the break: deleting one would not unjoin the other.
   expect_match(r$message, paste0(
-    "If `b` was not meant to get these rules, move line 3 out from between ",
-    "the `User-agent` lines."
+    "If `b` was not meant to get these rules, end its group before line 4 ",
+    "with an empty `Disallow:` line, which blocks nothing; if it was meant ",
+    "to, move line 3 out"
   ), fixed = TRUE)
 })
 
@@ -244,6 +248,49 @@ test_that("the info names only the agents since the last directive", {
     "`User-agent: c` (line 5) shares a group with `User-agent: b` (line 3):"
   ), fixed = TRUE)
   expect_match(j$message[[2L]], "gives b no rules", fixed = TRUE)
+})
+
+test_that("moving a Sitemap out is offered only to agents meant to share", {
+  # Moving it out of the run makes the User-agent lines adjacent, which
+  # every engine joins (branch review): it is the fix for sharing, never
+  # for keeping the rules away.
+  r <- uaj_rows(uaj_internetcom, "user_agent_joined_across_directive")
+  expect_no_match(r$message, "not meant to get these rules, move",
+                  fixed = TRUE)
+  # A group-level line such as Crawl-delay keeps its group, so moving it is
+  # not offered at all.
+  r <- uaj_rows(uaj_rro, "user_agent_joined_across_directive")
+  expect_no_match(r$message, "move line", fixed = TRUE)
+})
+
+test_that("a blank-line join before a later directive is left to its warning", {
+  # Bing ends `a` and `b`'s group at the Sitemap, so an info saying Google
+  # and Bing give them line 6 would be wrong; the warning on line 5 names
+  # them.
+  d <- robots_validate_text(uaj_lines(
+    "User-agent: a", "", "User-agent: b",
+    "Sitemap: https://example.com/s.xml", "User-agent: c", "Disallow: /"
+  ))$diagnostics
+  j <- d[startsWith(d$code, "user_agent_joined"), , drop = FALSE]
+  expect_identical(j$code, "user_agent_joined_across_directive")
+  expect_identical(j$line, 5L)
+  expect_match(j$message, "apply to a and b as well as to c", fixed = TRUE)
+})
+
+test_that("rules that restrict nothing are not reported as shared", {
+  d <- robots_validate_text(uaj_lines(
+    "User-agent: *", "Crawl-delay: 10", "User-agent: b", "Disallow:"
+  ))$diagnostics
+  expect_false(any(startsWith(d$code, "user_agent_joined")))
+})
+
+test_that("an opening line that names no crawler is not quoted", {
+  r <- uaj_rows(uaj_lines(
+    "User-agent: 123", "User-agent: a", "Crawl-delay: 1", "User-agent: b",
+    "Disallow: /"
+  ), "user_agent_joined_across_directive")
+  expect_match(r$message, "joins the group that opened on line 1.",
+               fixed = TRUE)
 })
 
 test_that("a long run keeps each message bounded", {
