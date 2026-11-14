@@ -362,8 +362,9 @@ and a group with no rule or only empty ones draw nothing, and the info is
 left out when a directive follows later in the run. For agents not meant
 to get the rules, the message suggests an empty \verb{Disallow:} ending their
 group; moving a Sitemap out of the run is offered only to agents meant to
-share them, since it makes the User-agent lines adjacent. Each message names at most five earlier
-agents and three directive lines, and counts the rest. On a document
+share them, since it makes the User-agent lines adjacent. Each message
+names at most five earlier agents and three directive lines, and counts
+the rest. On a document
 holding a NUL byte the check follows Google's reading, as the other group
 checks do.
 

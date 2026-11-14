@@ -353,8 +353,9 @@ validation_unsupported <- c(
 #' left out when a directive follows later in the run. For agents not meant
 #' to get the rules, the message suggests an empty `Disallow:` ending their
 #' group; moving a Sitemap out of the run is offered only to agents meant to
-#' share them, since it makes the User-agent lines adjacent. Each message names at most five earlier
-#' agents and three directive lines, and counts the rest. On a document
+#' share them, since it makes the User-agent lines adjacent. Each message
+#' names at most five earlier agents and three directive lines, and counts
+#' the rest. On a document
 #' holding a NUL byte the check follows Google's reading, as the other group
 #' checks do.
 #'
@@ -1663,8 +1664,8 @@ ai_training_preference_rows <- function(groups, exact, truncated,
 # Policy-token lines are left to ai_training_token_stacked (one line, one
 # report), and never count as earlier agents. A line naming no crawler, a
 # line whose only earlier agents share its name and a group with no rule (or
-# only empty ones) draw nothing. Linear in the lines: each message names at most five agents and
-# three directive lines, and counts the rest.
+# only empty ones) draw nothing. Linear in the lines: each message names at
+# most five agents and three directive lines, and counts the rest.
 joined_user_agent_diagnostics <- function(groups, parsed, cap = 5L) {
   agents <- groups$agents
   rules <- groups$rules
@@ -1863,7 +1864,7 @@ joined_and <- function(items, more) {
   if (k == 1L) {
     return(items)
   }
-  paste(paste(items[-k], collapse = ", "), "and", items[[k]])
+  paste(toString(items[-k]), "and", items[[k]])
 }
 
 # One report as list(line, severity, code, message). `n_directives` counts
@@ -1919,12 +1920,13 @@ joined_user_agent_row <- function(kind, agents, i, group_start, earlier, more,
     if (is.na(at)) break
   }
   rows <- lines$row_of[between]
-  key <- ifelse(parsed$type[rows] == "sitemap", "Sitemap",
-                ifelse(Encoding(parsed$action[rows]) == "bytes" |
-                         !grepl("^[ -~]+$", parsed$action[rows],
-                                useBytes = TRUE),
-                       "unknown field",
-                       ai_training_name(parsed$action[rows])))
+  # A key not in printable ASCII is not quoted; `raw_text` carries it.
+  key <- parsed$action[rows]
+  unprintable <- Encoding(key) == "bytes" |
+    !grepl("^[ -~]+$", key, useBytes = TRUE)
+  key[unprintable] <- "unknown field"
+  key[!unprintable] <- ai_training_name(key[!unprintable])
+  key[parsed$type[rows] == "sitemap"] <- "Sitemap"
   more_lines <- n_directives - length(between)
   named <- joined_and(
     sprintf("the `%s` on line %d", key, between), more_lines

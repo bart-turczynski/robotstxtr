@@ -148,9 +148,9 @@ test_that("a blank-line stack draws the info, naming Yandex's split", {
     "between them, and a `User-agent` line starts a new group only after an ",
     "`Allow` or `Disallow` line. Google and Bing read one group, so the rules ",
     "on line 4 apply to both. Yandex ends a group at every blank or comment ",
-    "line, as at line 2, and gives Googlebot no rules. If both are meant to share these rules, remove the ",
-    "blank or comment lines; if not, give Googlebot its own rules before ",
-    "line 3."
+    "line, as at line 2, and gives Googlebot no rules. If both are meant to ",
+    "share these rules, remove the blank or comment lines; if not, give ",
+    "Googlebot its own rules before line 3."
   ))
 })
 
