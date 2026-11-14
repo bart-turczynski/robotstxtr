@@ -380,11 +380,13 @@ checks do.
 
 For \code{user_agent_repeated_group} and \code{empty_disallow_with_full_block}, every
 engine merges the groups that name one crawler (\code{design/engine-profiles.md}
-section 5e): a repeat is reported once per later group and crawler, and a
-line a \verb{user_agent_joined_*} report already owns, or a policy-token line,
-draws nothing but still counts for later groups. The warning fires within
-one group too, where the engines split the same way. An every-path Allow
-beside \verb{Disallow: /} is no split (every engine allows) and draws neither.
+section 5e): a repeat is reported once per later group with a rule and
+crawler, and a line a \verb{user_agent_joined_*}, \code{user_agent_cut} or
+\code{wildcard_rules_not_inherited} report already owns, or a policy-token
+line, draws nothing but still counts for later groups. The warning fires
+within one group too, where the engines split the same way. An every-path
+Allow beside \verb{Disallow: /} is no split (every engine allows) and draws
+neither.
 
 For \code{disallow_tied_by_allow}, an Allow and a Disallow with the same
 pattern match the same paths with the same priority, and Allow wins the

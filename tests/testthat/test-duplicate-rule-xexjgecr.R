@@ -277,9 +277,7 @@ test_that("a NUL leaves the duplicate check on Google's reading", {
     # Line 5 starts with the NUL: an empty line, so no second rule.
     list(dr_nul("User-agent: bot\nDisallow: /x\n\nUser-agent: bot", "x\n",
                 "Disallow: /x\n"),
-         # Line 4 names `bot` again: a repeated group (ROBO-vnhirero).
-         c("nul_byte@4", "nul_byte@5", "user_agent_repeated_group@4",
-           "rules_after_nul_removal@NA")),
+         c("nul_byte@4", "nul_byte@5", "rules_after_nul_removal@NA")),
     list(dr_nul("# a", "\nUser-agent: *\nDisallow: /x\nDisallow: /x\n"),
          c("nul_byte@1", "duplicate_rule@4"))
   )

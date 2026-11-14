@@ -98,19 +98,19 @@ test_that("the warning's premise is the engines' reading", {
 
 test_that("timeschronicle.ca: each later group of a crawler is reported", {
   r <- rg_rows(rg_timeschronicle, "user_agent_repeated_group")
-  expect_identical(r$line, c(13L, 20L, 29L))
-  expect_match(r$message[[2L]], paste0(
-    "`User-agent: *` (line 20) names every crawler without a group of its ",
-    "own, as lines 1 and 13 in earlier groups already do."
+  # Line 20 is the third `*` group, but wildcard_rules_not_inherited owns
+  # it (one line, one report).
+  expect_identical(r$line, c(13L, 29L))
+  expect_match(r$message[[1L]], paste0(
+    "`User-agent: *` (line 13) names every crawler without a group of its ",
+    "own, as line 1 in an earlier group already does."
   ), fixed = TRUE)
-  expect_match(r$message[[2L]], "follow the rules of all these groups",
-               fixed = TRUE)
   # Letter case aside, `dotbot` is DotBot.
-  expect_match(r$message[[3L]], paste0(
+  expect_match(r$message[[2L]], paste0(
     "`User-agent: dotbot` (line 29) names DotBot, as line 27 in an earlier ",
     "group already does."
   ), fixed = TRUE)
-  expect_match(r$message[[3L]], "so DotBot follows the rules of both groups",
+  expect_match(r$message[[2L]], "so DotBot follows the rules of both groups",
                fixed = TRUE)
   # No empty Disallow here: no warning.
   expect_identical(
@@ -167,6 +167,8 @@ test_that("a long run of repeats keeps each message bounded", {
   expect_identical(nrow(r), 39L)
   expect_match(r$message[[39L]], "lines 1, 4, 7, 10, 13 and 34 more in",
                fixed = TRUE)
+  expect_match(r$message[[39L]], "follows the rules of all these groups",
+               fixed = TRUE)
 })
 
 test_that("policy-token lines are left to their own report", {
@@ -221,7 +223,7 @@ test_that("agents sharing the full-block line get one warning", {
   expect_identical(r$line, 9L)
   expect_match(r$message, paste0(
     "blocks every path for a and b, and the empty `Disallow:` on lines 2 ",
-    "and 5 reaches a and b through the group merge."
+    "and 5 each reach some of them through the group merge."
   ), fixed = TRUE)
   expect_match(r$message, "delete lines 2 and 5.", fixed = TRUE)
 })
@@ -251,4 +253,93 @@ test_that("an every-path Allow with a full block is no engine split", {
     expect_identical(rg_answer(body, "bing", "bingbot"), "allow")
     expect_identical(rg_answer(body, "yandex", "Yandex"), "allow")
   }
+})
+
+# Branch review of ROBO-vnhirero.
+
+test_that("a line another report owns draws no repeat", {
+  # bar's line 7 carries wildcard_rules_not_inherited; foo is repeated
+  # there, but one line gets one report.
+  d <- robots_validate_text(rg_lines(
+    "User-agent: *", "Disallow: /a", "", "User-agent: foo", "Disallow: /b",
+    "", "User-agent: foo", "User-agent: bar", "Disallow: /c"
+  ))$diagnostics
+  expect_identical(d$code[d$line == 7L], "wildcard_rules_not_inherited")
+  # A cut value is user_agent_cut's.
+  d <- robots_validate_text(rg_lines(
+    "User-agent: Googlebot", "Disallow: /a", "", "User-agent: Googlebot/2.1",
+    "Disallow: /b"
+  ))$diagnostics
+  expect_identical(d$code[d$line == 4L], "user_agent_cut")
+})
+
+test_that("a later group with no rule is not reported", {
+  expect_identical(nrow(rg_rows(rg_lines(
+    "User-agent: a", "Disallow: /", "", "User-agent: a"
+  ), "user_agent_repeated_group")), 0L)
+})
+
+test_that("the full-block message stays bounded", {
+  body <- rg_lines("User-agent: *", "Disallow:",
+                   sprintf("Disallow: /%s", strrep("*", 5000L)))
+  r <- rg_rows(body, "empty_disallow_with_full_block")
+  expect_identical(nrow(r), 1L)
+  expect_lt(nchar(r$message), 1000L)
+})
+
+test_that("mixed crawlers with their own empty lines are not conflated", {
+  r <- rg_rows(rg_lines(
+    "User-agent: *", "Disallow:", "", "User-agent: a", "Disallow:", "",
+    "User-agent: *", "User-agent: a", "Disallow: /"
+  ), "empty_disallow_with_full_block")
+  expect_identical(r$line, 9L)
+  expect_match(r$message, paste0(
+    "the empty `Disallow:` on lines 2 and 5 each reach some of them ",
+    "through the group merge."
+  ), fixed = TRUE)
+})
+
+test_that("deleting a line other crawlers share is not offered", {
+  # Line 7's group also names `a`, whose rules hold no empty Disallow.
+  r <- rg_rows(rg_lines(
+    "User-agent: *", "Disallow:", "", "User-agent: a",
+    "Sitemap: https://e.com/s", "User-agent: *", "Disallow: /"
+  ), "empty_disallow_with_full_block")
+  expect_identical(r$line, 7L)
+  expect_match(r$message, paste0(
+    "If these crawlers are meant to be let in, give them a group of their ",
+    "own without line 7, which other crawlers share; if they are meant to ",
+    "be kept out, delete line 2."
+  ), fixed = TRUE)
+})
+
+test_that("the same-group wording reads every line it names", {
+  r <- rg_rows(rg_lines(
+    "User-agent: a", "Disallow:", "Disallow: /", "", "User-agent: a",
+    "Disallow: /*"
+  ), "empty_disallow_with_full_block")
+  expect_match(r$message, "reaches a through the group merge", fixed = TRUE)
+  r <- rg_rows(rg_lines(
+    "User-agent: a", "Disallow:", "Disallow:", "Disallow: /"
+  ), "empty_disallow_with_full_block")
+  expect_match(r$message, "on lines 2-3 are in the same group", fixed = TRUE)
+})
+
+test_that("the full-block check stays linear in the groups", {
+  make <- function(n) {
+    names <- vapply(seq_len(n), function(i) {
+      paste0("bot", chartr("0123456789", "abcdefghij", i))
+    }, "")
+    rg_lines("User-agent: *", "Disallow:", "",
+             unlist(lapply(names, function(x) {
+               c(paste("User-agent:", x), "Disallow: /", "")
+             })))
+  }
+  time_of <- function(body) {
+    system.time(robots_validate_text(body))[["elapsed"]]
+  }
+  small <- time_of(make(1000L))
+  large <- time_of(make(8000L))
+  # Linear would be 8x; quadratic 64x. Room for a loaded runner.
+  expect_lt(large, max(30 * small, 5))
 })
