@@ -103,9 +103,9 @@ test_that("ROBO-plkpmoll: malformed and repeated headers", {
 
 test_that("ROBO-plkpmoll: unsupported, empty and repeated charsets", {
   unsupported <- c(
-    "text/plain; charset=", "text/plain; charset=latin1",
+    "text/plain; charset=\"\"", "text/plain; charset=latin1",
     "text/plain; charset=utf-16", "text/plain; charset=ISO-8859-1",
-    "text/plain; charset=utf-8; charset=utf-8"
+    "text/plain; charset=utf-8; charset=us-ascii"
   )
   for (type in unsupported) {
     v <- ct_validate(type)
@@ -119,7 +119,7 @@ test_that("ROBO-plkpmoll: unsupported, empty and repeated charsets", {
     "declares charset latin1", fixed = TRUE
   )
   expect_match(
-    ct_rows(ct_validate("text/plain; charset="))$message, "empty charset",
+    ct_rows(ct_validate("text/plain; charset=\"\""))$message, "empty charset",
     fixed = TRUE
   )
   expect_match(
@@ -219,10 +219,20 @@ test_that("ROBO-plkpmoll: the header rows come after the redirect rows", {
   )
 })
 
+test_that("ROBO-plkpmoll: an empty 2xx body is still checked", {
+  for (status in c(203L, 204L)) {
+    v <- ct_validate("text/html", body = raw(), status = status)
+    expect_identical(
+      ct_rows(v)$code, "content_type_not_text_plain",
+      info = as.character(status)
+    )
+  }
+})
+
 test_that("ROBO-plkpmoll: an unavailable document gets no header row", {
   for (status in c(404L, 503L)) {
     v <- ct_validate("text/html", body = ct_html, status = status)
-    expect_identical(nrow(ct_rows(v)), 0L, info = status)
+    expect_identical(nrow(ct_rows(v)), 0L, info = as.character(status))
   }
 })
 
@@ -244,4 +254,108 @@ test_that("ROBO-plkpmoll: fetch rows, decisions and text validation", {
   expect_false(any(startsWith(
     robots_validate_text(ct_html)$diagnostics$code, "content_type_"
   )))
+})
+
+ct_utf8_body <- c(charToRaw("User-agent: *\nDisallow: /caf"),
+                  as.raw(c(0xc3, 0xa9)), charToRaw("\n"))
+
+test_that("ROBO-plkpmoll: the IANA US-ASCII aliases read as us-ascii", {
+  aliases <- c(
+    "ASCII", "us", "ANSI_X3.4-1968", "iso-ir-6", "ANSI_X3.4-1986",
+    "\"ISO_646.irv:1991\"", "ISO646-US", "IBM367", "cp367", "csASCII"
+  )
+  for (alias in aliases) {
+    type <- paste0("text/plain; charset=", alias)
+    expect_identical(nrow(ct_rows(ct_validate(type))), 0L, info = alias)
+    expect_identical(
+      ct_rows(ct_validate(type, body = ct_utf8_body))$code,
+      "content_type_charset_conflict", info = alias
+    )
+  }
+})
+
+test_that("ROBO-plkpmoll: a nonstandard UTF-8 label is named as one", {
+  for (label in c("utf8", "UTF8", "unicode-1-1-utf-8")) {
+    d <- ct_rows(ct_validate(paste0("text/plain; charset=", label)))
+    expect_identical(d$code, "content_type_charset_unsupported", info = label)
+    expect_match(d$message, "nonstandard label", fixed = TRUE)
+    expect_match(d$message, "charset=utf-8", fixed = TRUE)
+    expect_no_match(d$message, "may not read as intended", fixed = TRUE)
+  }
+})
+
+test_that("ROBO-plkpmoll: an ASCII-compatible charset over an ASCII body", {
+  for (charset in c("iso-8859-1", "windows-1252")) {
+    d <- ct_rows(ct_validate(paste0("text/plain; charset=", charset)))
+    expect_identical(d$code, "content_type_charset_unsupported")
+    expect_match(d$message, "plain ASCII", fixed = TRUE)
+    expect_no_match(d$message, "may not read as intended", fixed = TRUE)
+  }
+  latin1 <- c(charToRaw("User-agent: *\nDisallow: /caf"), as.raw(0xe9),
+              charToRaw("\n"))
+  d <- ct_rows(ct_validate("text/plain; charset=iso-8859-1", body = latin1))
+  expect_identical(d$code, "content_type_charset_unsupported")
+  expect_no_match(d$message, "plain ASCII", fixed = TRUE)
+})
+
+test_that("ROBO-plkpmoll: one charset repeated is not ambiguous", {
+  v <- ct_validate("text/plain; charset=utf-8; charset=UTF-8")
+  expect_identical(nrow(ct_rows(v)), 0L)
+  d <- ct_rows(ct_validate("text/plain; charset=utf-8; charset=us-ascii"))
+  expect_identical(d$code, "content_type_charset_unsupported")
+  expect_match(d$message, "more than once", fixed = TRUE)
+})
+
+test_that("ROBO-plkpmoll: an empty parameter value is malformed", {
+  for (type in c("text/plain; charset=", "text/plain; format=")) {
+    expect_identical(
+      ct_rows(ct_validate(type))$code, "content_type_malformed", info = type
+    )
+  }
+})
+
+test_that("ROBO-plkpmoll: a control byte in a quoted string is malformed", {
+  for (byte in c(0x01, 0x0a, 0x1f, 0x7f)) {
+    type <- rawToChar(c(charToRaw("text/plain; charset=\"utf"), as.raw(byte),
+                        charToRaw("-8\"")))
+    expect_identical(
+      ct_rows(ct_validate(type))$code, "content_type_malformed",
+      info = sprintf("0x%02X", byte)
+    )
+  }
+  # Tab, space and a quoted-pair are allowed.
+  v <- ct_validate("text/plain; format=\"a\tb c\\\"d\"; charset=utf-8")
+  expect_identical(nrow(ct_rows(v)), 0L)
+})
+
+test_that("ROBO-plkpmoll: the same media type twice asks for one field", {
+  same <- list(
+    ct_validate("text/plain, text/plain"),
+    ct_validate("text/plain; charset=utf-8, TEXT/PLAIN; charset=utf-8"),
+    ct_validate(headers = stats::setNames(
+      list("text/plain", "text/plain"), rep("Content-Type", 2L)
+    ))
+  )
+  for (v in same) {
+    d <- ct_rows(v)
+    expect_identical(d$code, "content_type_malformed")
+    expect_match(d$message, "send one Content-Type field", fixed = TRUE)
+    expect_no_match(d$message, "Serve robots.txt as text/plain", fixed = TRUE)
+  }
+  d <- ct_rows(ct_validate("text/plain, text/html"))
+  expect_match(d$message, "Serve robots.txt as text/plain", fixed = TRUE)
+})
+
+test_that("ROBO-plkpmoll: a long quoted parameter parses in linear time", {
+  # A 64 KiB quoted value, then one of quoted-pairs. Copying the value byte
+  # by byte took over two seconds here; one pass takes a few hundredths.
+  value <- paste0("text/plain; x=\"", strrep("a", 65536L), "\"")
+  elapsed <- system.time(parsed <- content_type_parse(value))[["elapsed"]]
+  expect_identical(parsed$reason, NA_character_)
+  expect_identical(parsed$media_type, "text/plain")
+  expect_lt(elapsed, 1)
+  pairs <- paste0("text/plain; charset=\"", strrep("\\a", 32768L), "\"")
+  elapsed <- system.time(parsed <- content_type_parse(pairs))[["elapsed"]]
+  expect_identical(parsed$charsets, strrep("a", 32768L))
+  expect_lt(elapsed, 1)
 })

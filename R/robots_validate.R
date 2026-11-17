@@ -303,7 +303,8 @@ validation_unsupported <- c(
 #'     The fetched response's \code{Content-Type} is not one
 #'     \code{type/subtype} media type with \code{name=value} parameters (RFC
 #'     9110 section 8.3.1), or holds a comma outside a quoted string, as
-#'     repeated fields joined with \code{", "} do. \code{raw_text} holds the
+#'     repeated fields joined with \code{", "} do (the same media type sent
+#'     twice gets advice to send one field). \code{raw_text} holds the
 #'     header as received. A missing header gives no row. \cr
 #'   \code{content_type_not_text_plain} \tab warning \tab
 #'     The fetched response's media type is not \code{text/plain} (RFC 9309
@@ -311,12 +312,14 @@ validation_unsupported <- c(
 #'     validated; crawlers may still read it as a robots.txt. \cr
 #'   \code{content_type_charset_unsupported} \tab warning \tab
 #'     The \code{Content-Type} declares a \code{charset} other than
-#'     \code{utf-8} or \code{us-ascii}, an empty one, or more than one. The
-#'     body is read as UTF-8 regardless, without conversion. \cr
+#'     \code{utf-8} or \code{us-ascii} and its aliases (a nonstandard UTF-8
+#'     label such as \code{utf8} included), an empty one, or two different
+#'     ones. The body is read as UTF-8 regardless, without conversion. \cr
 #'   \code{content_type_charset_conflict} \tab warning \tab
-#'     The \code{Content-Type} declares \code{charset=us-ascii} over a body
-#'     holding a byte of 0x80 or above. Not reported for a UTF-16 or UTF-32
-#'     body, which \code{utf16_or_utf32_encoding} reports. \cr
+#'     The \code{Content-Type} declares \code{charset=us-ascii}, or one of its
+#'     registered aliases such as \code{ascii}, over a body holding a byte of
+#'     0x80 or above. Not reported for a UTF-16 or UTF-32 body, which
+#'     \code{utf16_or_utf32_encoding} reports. \cr
 #'   \code{acquisition_transport_failed} \tab error \tab
 #'     A timeout, TLS, network or malformed-response failure, with each
 #'     engine's reading in
@@ -574,9 +577,12 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' After those rows, a fetched body's `Content-Type` (the source row's
 #' `content_type`) is checked: `content_type_malformed`,
 #' `content_type_not_text_plain`, `content_type_charset_unsupported` and
-#' `content_type_charset_conflict` (`charset=us-ascii` over bytes of 0x80 or
-#' above), all warnings that change no parse or decision. A response with no
-#' `Content-Type` gets no row, and a document with no body is not checked.
+#' `content_type_charset_conflict` (`charset=us-ascii` or an alias of it over
+#' bytes of 0x80 or above, except a UTF-16 or UTF-32 body), all warnings that
+#' change no parse or decision. Every response whose body is validated is
+#' checked, an empty 2xx body (a 203 or 204, say) included; a response with
+#' no `Content-Type` gets no row, and an outcome left with no body (a 4xx,
+#' 5xx, or failed or refused fetch) is not checked.
 #'
 #' This function validates the acquired robots.txt document. It does not answer
 #' whether any target URL is allowed; use [allowed_by_robots_url()] for that
