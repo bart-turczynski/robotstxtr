@@ -43,6 +43,18 @@ findings). Diagnostic severities are \code{"info"}, \code{"warning"}, and \code{
 document statuses are \code{"valid"}, \code{"warning"}, \code{"error"}, and
 \code{"not_validated"}. An info never changes the status, so a document whose
 only finding is \code{no_rules} is \code{"valid"}.
+
+In \code{documents}, \code{encoding} says only whether the bytes are valid UTF-8
+(\code{"utf-8"} or \code{"invalid-utf-8"}); a NUL byte counts as valid, so UTF-16
+ASCII text can read \code{"utf-8"}. \code{encoding_signature} names the encoding the
+bytes point to: \code{"utf-8-bom"}, \code{"utf-16le"}, \code{"utf-16be"}, \code{"utf-32le"},
+\code{"utf-32be"}, or \code{NA}. \code{encoding_signature_basis} says how: \code{"bom"} for a
+byte-order mark, \code{"byte_pattern"} for the heuristic that reads the zero
+bytes of ASCII text in UTF-16 or UTF-32. The signature describes a raw or
+fetched body; character input, even marked \code{"bytes"}, is text the caller
+already decoded, so both are \code{NA} for it. \code{has_bom} can still flag a
+leading byte-order mark character in character input while
+\code{encoding_signature} stays \code{NA}.
 }
 \section{Diagnostic codes}{
 
@@ -216,6 +228,16 @@ User-agent. \cr
 \code{html_body} \tab warning \tab
 The body looks like an HTML page, not a robots.txt; its lines are still
 read and reported one by one. \cr
+\code{utf16_or_utf32_encoding} \tab warning \tab
+A raw or fetched body is UTF-16 or UTF-32, not UTF-8 (RFC 9309 section
+2.3): it starts with the byte-order mark of that encoding (a UTF-32
+mark is tested before the UTF-16 mark it starts with), or, with no
+mark, its first 4,096 bytes hold at least 8 code units, 90 percent or
+more of them one ASCII character each, and no byte but zero, printable
+ASCII, tab, carriage return or line feed. The message says which
+basis it is; the byte
+pattern is a heuristic and cannot know the intended encoding. Not
+reported for character input. \cr
 \code{no_rules} \tab info \tab
 The parser read no Allow or Disallow rule, so the document restricts
 nothing; when NUL bytes hide rules, \code{rules_after_nul_removal} is
