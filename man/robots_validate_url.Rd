@@ -134,6 +134,16 @@ host, Google is inferred to, and Bing
 does not document it; when the page reached is HTML, the message says
 the robots.txt is effectively missing. The fetch itself is unchanged.
 
+After those rows, a fetched body's \code{Content-Type} (the source row's
+\code{content_type}) is checked: \code{content_type_malformed},
+\code{content_type_not_text_plain}, \code{content_type_charset_unsupported} and
+\code{content_type_charset_conflict} (\code{charset=us-ascii} or an alias of it over
+bytes of 0x80 or above, except a UTF-16 or UTF-32 body), all warnings that
+change no parse or decision. Every response whose body is validated is
+checked, an empty 2xx body (a 203 or 204, say) included; a response with
+no \code{Content-Type} gets no row, and an outcome left with no body (a 4xx,
+5xx, or failed or refused fetch) is not checked.
+
 This function validates the acquired robots.txt document. It does not answer
 whether any target URL is allowed; use \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} for that
 separate question. It also does not infer webmaster intent or check whether

@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* Validator: `robots_validate_url()` warns on the Content-Type of a fetched robots.txt: `content_type_malformed`, `content_type_not_text_plain`, `content_type_charset_unsupported`, and `content_type_charset_conflict` for `us-ascii` over non-ASCII bytes; a missing header adds nothing (ROBO-plkpmoll).
+
 * Validator: raw and fetched bodies in UTF-16 or UTF-32, by byte-order mark or byte pattern, warn `utf16_or_utf32_encoding` and fill the new `encoding_signature` columns; `encoding` still means UTF-8 validity (RFC 9309 §2.3) (ROBO-cvpkzckn).
 
 * Validator: `robots_validate_text()` and `robots_validate_url()` warn `rule_control_character` when an Allow or Disallow pattern holds an ASCII control byte, which RFC 9309 excludes from paths (ROBO-rrzsktxc).

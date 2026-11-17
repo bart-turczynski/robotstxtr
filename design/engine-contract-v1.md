@@ -386,6 +386,9 @@ Decisions:
   read: servers mislabel both ways (a robots.txt served as `text/html`, an
   HTML page as `text/plain`), and two independent columns let a caller
   compare them instead of receiving robotstxtr's blend.
+  `robots_validate_url()` reads the final response's `Content-Type` for its
+  own diagnostics (ROBO-plkpmoll); the v1 columns, `content_type` and
+  `content_flag` are unchanged, so the engine schema revision does not move.
 - One character column with a closed vocabulary, not one logical per kind:
   the kinds are exclusive under the first-match order, a new kind is a new
   value rather than a new column, and a caller filters on `!is.na()`.

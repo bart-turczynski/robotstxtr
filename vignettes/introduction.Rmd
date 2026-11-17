@@ -231,6 +231,12 @@ status and what Google, Yandex and Bing may do with it, as
 `robots_engine_contract_v1()` records. A 2xx other than 200, such as 203 or 204,
 keeps its body, which is still validated, and gets `acquisition_http_other_2xx`,
 an info whose message names how Google, Yandex and Bing read that status.
+A fetched body's `Content-Type` is checked too, an empty 2xx body included: a
+malformed header, a media type other than `text/plain`, a `charset` other
+than `utf-8` or `us-ascii`, and `us-ascii` declared over bytes of 0x80 or
+above (unless the body is UTF-16 or UTF-32, which has its own warning) each
+get a warning, while a missing header gets none and the body is validated the
+same either way.
 
 The validation profile is explicitly `google-parser-compatible`: it reflects
 the package's pinned parser (including accepted typo and missing-colon forms)
