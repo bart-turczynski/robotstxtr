@@ -416,3 +416,48 @@ test_that("ROBO-qxcwxtbm: the edge-case fixtures keep their default rows", {
     ua_expect_adds_only(bytes, file)
   }
 })
+
+test_that("ROBO-qxcwxtbm: a character cut by the line buffer is dropped", {
+  # "Disallow: /" is 11 bytes and U+FFFD 3, so 16,647 filler bytes put the
+  # 3-byte CJK character at bytes 16,662 to 16,664, across the 16,663-byte
+  # buffer.
+  line <- paste0("Disallow: /", ua_chr(0xfffd), strrep("a", 16647L),
+                 ua_chr(0x65e5))
+  expect_identical(nchar(line, type = "bytes"), 16664L)
+  x <- robots_validate_text(ua_body(line), unicode_advisories = TRUE)
+  rows <- ua_rows(x)
+  expect_identical(rows$code, "rule_replacement_character")
+  expect_identical(rows$message, ua_replacement_message(2L))
+})
+
+test_that("ROBO-qxcwxtbm: only the rule value must be valid UTF-8", {
+  # Malformed bytes in the comment leave the value readable.
+  body <- c(charToRaw("User-agent: *\nDisallow: /a"),
+            charToRaw(ua_chr(0x200b)), charToRaw("b # "), as.raw(0xff),
+            charToRaw("\n"))
+  x <- robots_validate_text(body, unicode_advisories = TRUE)
+  expect_identical(
+    x$diagnostics$code, c("invalid_utf8_comment", "rule_invisible_character")
+  )
+  expect_identical(
+    x$diagnostics$message[[2L]],
+    ua_invisible_message("U+200B first at byte 3")
+  )
+})
+
+test_that("ROBO-qxcwxtbm: the mojibake heuristic flags some intended text", {
+  # U+00D7 U+00BD and U+00D7 U+00BC ("2x1/2", "3x1/4" written with the
+  # multiplication sign and vulgar fractions) are also the Latin-1 reading
+  # of two well-formed UTF-8 characters, so the documented heuristic
+  # reports them.
+  x <- robots_validate_text(
+    ua_body("Disallow: /2", ua_chr(0xd7, 0xbd), "-cup/3", ua_chr(0xd7, 0xbc)),
+    unicode_advisories = TRUE
+  )
+  expect_identical(x$diagnostics$code, "rule_possible_mojibake")
+  expect_identical(
+    x$diagnostics$message,
+    ua_mojibake_message(c("U+00D7 U+00BD at byte 3",
+                          "U+00D7 U+00BC at byte 13"))
+  )
+})
