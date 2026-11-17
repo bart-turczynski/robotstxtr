@@ -11,7 +11,8 @@ robots_validate_url(
   fetch_user_agent = NULL,
   ssrf_guard = TRUE,
   safety_level = "strict",
-  fetch_allow_ranges = character()
+  fetch_allow_ranges = character(),
+  unicode_advisories = FALSE
 )
 }
 \arguments{
@@ -62,6 +63,11 @@ no host bits set. The metadata host names are never reopened, and an
 entry naming exactly one cloud-metadata endpoint (such as
 \code{"169.254.169.254/32"}) is a call-level error, as is \code{NA}, an empty
 string or any other entry the guard cannot read.}
+
+\item{unicode_advisories}{A single \code{TRUE} or \code{FALSE}. \code{TRUE} adds the info
+codes \code{rule_replacement_character}, \code{rule_invisible_character} and
+\code{rule_possible_mojibake} (see \code{\link[=robots_validate_text]{robots_validate_text()}}). Defaults to
+\code{FALSE}, which leaves the result unchanged.}
 }
 \value{
 An S3 object of class \code{robots_validations}, containing \code{map} (one row
@@ -148,6 +154,10 @@ This function validates the acquired robots.txt document. It does not answer
 whether any target URL is allowed; use \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} for that
 separate question. It also does not infer webmaster intent or check whether
 declared remote sitemaps exist.
+
+With \code{unicode_advisories = TRUE}, each validated body is also read for
+the info codes \code{\link[=robots_validate_text]{robots_validate_text()}} describes; their rows come before
+the redirect and \code{Content-Type} rows.
 }
 \examples{
 # A refused origin is never fetched, so its document is not validated.
