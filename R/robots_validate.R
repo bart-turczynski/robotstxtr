@@ -123,6 +123,14 @@ validation_unsupported <- c(
 #'   \code{rule_inner_whitespace} \tab warning \tab
 #'     A pattern holds a space, tab, vertical tab or form feed; crawlers
 #'     request URLs with it percent-encoded, so the rule never matches. \cr
+#'   \code{rule_control_character} \tab warning \tab
+#'     A pattern holds an ASCII control byte, 0x01 to 0x08 or 0x0E to 0x1F.
+#'     RFC 9309 section 2.2 excludes it from a path pattern and RFC 3986 bars
+#'     it from a URL, so crawlers request it percent-encoded, and Google's
+#'     matcher, which compares the pattern as written, matches no URL they
+#'     send. NUL, tab, VT and FF have their own codes; DEL (0x7F) is allowed
+#'     and gets none. One per rule line; a byte the parser never reads, such
+#'     as one after a NUL or in a comment, is not reported. \cr
 #'   \code{rule_escaped_unreserved} \tab warning \tab
 #'     A pattern percent-escapes an unreserved character, such as \code{\%7E}
 #'     for \code{~}. Google matches only the escape, never the character,
@@ -2649,11 +2657,51 @@ rule_value_diagnostics <- function(value) {
       )
     )
   }
+  # ROBO-rrzsktxc: a control byte in the value is a hazard no other code owns.
+  # The parser has already cut the value at a NUL, at a `#` and at the line
+  # buffer, so only bytes the parser reads reach this check.
+  controls <- bytes[bytes %in% validation_control_bytes]
+  if (length(controls) > 0L) {
+    found[[length(found) + 1L]] <- list(
+      code = "rule_control_character",
+      message = rule_control_character_message(controls)
+    )
+  }
   escaped <- rule_escaped_unreserved_diagnostic(value)
   if (!is.null(escaped)) {
     found[[length(found) + 1L]] <- escaped
   }
   found
+}
+
+# ASCII control bytes a rule value may not hold (ROBO-rrzsktxc). RFC 9309
+# section 2.2 excludes 0x00-0x20 from a path pattern. NUL is read by nul_byte
+# and rule_cut_by_nul, tab, VT and FF by rule_inner_whitespace, and CR and LF
+# end a line; DEL (0x7F) is allowed by the RFC's %x24-7F range.
+validation_control_bytes <- as.raw(c(0x01:0x08, 0x0e:0x1f))
+
+# At most one finding per rule line, naming up to ten distinct control bytes
+# as \xNN in ascending order (ROBO-rrzsktxc). `controls` holds raw bytes.
+rule_control_character_message <- function(controls) {
+  bytes <- sort(unique(as.integer(controls)))
+  cap <- 10L
+  k <- length(bytes)
+  listed <- toString(sprintf("\\x%02X", bytes[seq_len(min(k, cap))]))
+  if (k > cap) {
+    listed <- sprintf("%s, and %d more", listed, k - cap)
+  }
+  lead <- if (k == 1L) {
+    "Pattern holds the control byte "
+  } else {
+    "Pattern holds control bytes "
+  }
+  paste0(
+    lead, listed, ". ",
+    "RFC 9309 section 2.2 excludes control bytes from a path pattern, and RFC ",
+    "3986 bars them from a URL, so crawlers request them percent-encoded; ",
+    "Google's matcher compares the pattern as written, so this rule matches ",
+    "no URL they send."
+  )
 }
 
 # RFC 3986 section 2.3 unreserved characters. RFC 9309 section 2.2.2 decodes

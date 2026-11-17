@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* Validator: `robots_validate_text()` and `robots_validate_url()` warn `rule_control_character` when an Allow or Disallow pattern holds an ASCII control byte, which RFC 9309 excludes from paths (ROBO-rrzsktxc).
+
 * Validator: `robots_validate_text()` notes a crawler named again in a later group (`user_agent_repeated_group`) and warns `empty_disallow_with_full_block`, which Google and Bing block and Yandex allows (ROBO-vnhirero).
 
 * Validator: `robots_validate_text()` warns `user_agent_joined_across_directive` when a Sitemap, Crawl-delay or other directive joins User-agent lines into one group, and notes blank-line joins as `user_agent_joined_across_blank` (ROBO-xepnhfgs).

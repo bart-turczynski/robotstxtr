@@ -212,9 +212,12 @@ test_that("rule values in the message show control bytes escaped", {
             charToRaw("[31mb\tc\nUser-agent: Bingbot\nDisallow: /x\n"))
   rows <- robots_validate_text(body)$diagnostics
   # The tab is inside the value, so rule_inner_whitespace (ROBO-dlgeqluf)
-  # flags the line too, ahead of the group check.
+  # flags the line too, ahead of the group check. The 0x01 and 0x1B bytes add
+  # rule_control_character (ROBO-rrzsktxc) on the same line.
   expect_identical(
-    rows$code, c("rule_inner_whitespace", "wildcard_rules_not_inherited")
+    rows$code,
+    c("rule_inner_whitespace", "rule_control_character",
+      "wildcard_rules_not_inherited")
   )
   expect_match(rows$message, "^[ -~]*$")
   wildcard <- rows[rows$code == "wildcard_rules_not_inherited", , drop = FALSE]

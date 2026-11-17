@@ -46,7 +46,7 @@ test_that("ROBO-rrzsktxc: a control byte in a rule value is one warning row", {
 test_that("ROBO-rrzsktxc: each byte is flagged at any position in a value", {
   bytes <- as.raw(c(0x01, 0x08, 0x0e, 0x1b, 0x1f))
   for (type in c("Allow", "Disallow")) {
-    directive <- tolower(type)
+    directive <- ascii_lower(type)
     for (byte in bytes) {
       label <- sprintf("%s byte %02X", type, as.integer(byte))
       shapes <- list(
