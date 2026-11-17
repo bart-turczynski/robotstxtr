@@ -1,8 +1,9 @@
 # robots.txt trivia
 
-Small things seen in real files that may interest people but that call for no change to the
-package. Each entry gives the file, the date it was fetched and the line, so it can be checked
-again later. Files change; an entry describes the file as it was on that date.
+Small things seen in real files that may interest people. Most call for no change to the
+package; where one led to an issue, the entry names it. Each entry gives the file and the date it
+was fetched, and the line where that helps, so it can be checked again later. Files change; an
+entry describes the file as it was on that date.
 
 Entries marked *verify* rest on a claim about a third party that still needs a dated source.
 
@@ -48,7 +49,9 @@ Entries marked *verify* rest on a claim about a third party that still needs a d
   unless Bingbot still reads MSNBot groups (*verify*).
 - **Alexa's crawler is still blocked four years after Alexa closed.** `User-agent: ia_archiver`
   appears in https://duckduckgo.com/robots.txt, https://www.ecosia.org/robots.txt and
-  https://claude.ai/robots.txt (all 2026-11-18). Amazon shut down Alexa.com in May 2022.
+  https://claude.ai/robots.txt (all 2026-11-18). Amazon shut down Alexa.com in May 2022. The
+  block may still be deliberate: the Internet Archive's Wayback Machine long honored
+  `ia_archiver` rules when deciding what to show (*verify* whether it still does).
 - **Yahoo blocks a search engine that shut down.** https://www.yahoo.com/robots.txt (2026-11-18)
   lists `Neevabot`; Neeva closed in 2023. The same group blocks the search engines Seznam,
   PetalBot (Huawei) and YouBot.
@@ -84,7 +87,8 @@ Entries marked *verify* rest on a claim about a third party that still needs a d
 
 - **Forbes sends gzip to clients that asked for none.** https://www.forbes.com/robots.txt
   (2026-11-18) answers with `Content-Encoding: gzip` even to `Accept-Encoding: identity`.
-  robotstxtr asks for gzip anyway, so its fetch is unaffected; a client that asks for plain text
+  robotstxtr's fetches go through ssrfr, which sends `Accept-Encoding: gzip, deflate` when libcurl
+  has zlib, so its fetch is unaffected; a client that asks for plain text
   and doesn't decode gets 8 KB of compressed bytes instead of a 33 KB robots.txt (ROBO-rozvglkd).
 - **Naver serves its robots.txt as a binary file.** https://www.naver.com/robots.txt
   (2026-11-18) comes as `application/octet-stream` and writes `Allow : /$` with a space before
@@ -95,7 +99,7 @@ Entries marked *verify* rest on a claim about a third party that still needs a d
 - **The AI labs mostly allow everything.** openai.com, anthropic.com, mistral.ai,
   huggingface.co, x.ai and cohere.com (2026-11-18) all have `User-agent: *` with `Allow: /` or
   next to nothing blocked. x.ai adds `Content-Signal: ai-train=yes, search=yes, ai-input=yes`.
-  Perplexity's file names only Googlebot.
+  https://www.perplexity.ai/robots.txt (same day) names only Googlebot.
 - **A "welcome, AI" group that also opens the admin area.** https://wordpress.org/robots.txt
   (2026-11-18) gives GPTBot, ClaudeBot and seven others `Allow: /` groups. A named group replaces
   `*`, so those crawlers also lose the `*` group's `Disallow: /wp-admin/`, `/search` and `/?s=`.
