@@ -132,6 +132,14 @@ A \code{$} before a pattern's end; it matches a literal \code{$}. \cr
 \code{rule_inner_whitespace} \tab warning \tab
 A pattern holds a space, tab, vertical tab or form feed; crawlers
 request URLs with it percent-encoded, so the rule never matches. \cr
+\code{rule_control_character} \tab warning \tab
+A pattern holds an ASCII control byte, 0x01 to 0x08 or 0x0E to 0x1F.
+RFC 9309 section 2.2 excludes it from a path pattern and RFC 3986 bars
+it from a URL, so crawlers request it percent-encoded, and Google's
+matcher, which compares the pattern as written, matches no URL they
+send. NUL, tab, VT and FF have their own codes; DEL (0x7F) is allowed
+and gets none. One per rule line; a byte the parser never reads, such
+as one after a NUL or in a comment, is not reported. \cr
 \code{rule_escaped_unreserved} \tab warning \tab
 A pattern percent-escapes an unreserved character, such as \code{\%7E}
 for \code{~}. Google matches only the escape, never the character,

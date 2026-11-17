@@ -125,6 +125,7 @@ Google's own C++ reads it, then handed to the same binding (ROBO-pvqrfvol).
 | Missing colon and typo spellings accepted | `test-robots_validate-htvtajbr.R` |
 | A named group drops the `*` rules (validator); a full block lists only the lost `*` Allows | ROBO-gfjotdrr: `test-wildcard-inheritance-gfjotdrr.R`; ROBO-bwpacxtq: `test-full-block-wildcard-bwpacxtq.R` |
 | Rule values: missing leading slash, inner `$`, sitemap URLs | ROBO-xblfzkid: `test-robots_validate-value-checks-xblfzkid.R` |
+| Rule values: ASCII control bytes 0x01-0x08 and 0x0E-0x1F (NUL, tab, VT and FF have other codes; DEL is not flagged) | ROBO-rrzsktxc: `test-control-bytes-rrzsktxc.R` |
 | No rules | ROBO-vxrzcqpe: `test-no-rules-vxrzcqpe.R` |
 | Status diagnostics on fetch | ROBO-ybzbxfml: `test-validate-status-ybzbxfml.R` |
 | Allow ties a Disallow | ROBO-fdhmlvwm: `test-allow-tie-disallow-fdhmlvwm.R` |
