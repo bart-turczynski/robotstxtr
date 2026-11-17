@@ -1,7 +1,7 @@
-# ROBO-plkpmoll: the validator reads a fetched response's Content-Type.
-# These pins record the behavior before the change: the header is kept on the
-# fetch row but never read by robots_validate_url(), so no header, however
-# wrong, adds a row.
+# ROBO-plkpmoll: the validator reads a fetched response's Content-Type and
+# reports a malformed header, a media type other than text/plain, an
+# unsupported charset, and charset=us-ascii over bytes of 0x80 or above. A
+# missing header adds no row, and the header changes no parse or decision.
 
 ct_rules <- "User-agent: *\nDisallow: /private\n"
 ct_html <- paste0(
@@ -26,7 +26,7 @@ ct_rows <- function(v) {
                 drop = FALSE]
 }
 
-test_that("ROBO-plkpmoll: a text/plain header with UTF-8 or US-ASCII adds nothing", {
+test_that("ROBO-plkpmoll: text/plain with UTF-8 or US-ASCII adds nothing", {
   accepted <- c(
     "text/plain", "TEXT/PLAIN", "text/plain;charset=UTF-8",
     "text/plain ; charset=\"utf-8\"",
@@ -50,9 +50,18 @@ test_that("ROBO-plkpmoll: a missing Content-Type adds no row", {
 test_that("ROBO-plkpmoll: rules served as another media type", {
   for (type in c("text/html", "application/octet-stream")) {
     v <- ct_validate(type)
-    expect_identical(nrow(ct_rows(v)), 0L, info = type)
+    d <- ct_rows(v)
+    expect_identical(d$code, "content_type_not_text_plain", info = type)
+    expect_identical(d$severity, "warning")
+    expect_identical(d$line, NA_integer_)
+    expect_identical(d$directive, NA_character_)
+    expect_identical(d$raw_text, type)
+    expect_match(d$message, type, fixed = TRUE)
+    expect_match(d$message, "may still read the body", fixed = TRUE)
     expect_false("html_body" %in% v$diagnostics$code)
-    expect_identical(v$documents$validation_status, "valid", info = type)
+    expect_identical(v$documents$validation_status, "warning", info = type)
+    expect_identical(v$documents$warning_count, 1L)
+    expect_identical(v$documents$diagnostic_count, nrow(v$diagnostics))
   }
 })
 
@@ -65,7 +74,9 @@ test_that("ROBO-plkpmoll: HTML under text/plain keeps html_body alone", {
 test_that("ROBO-plkpmoll: HTML under text/html", {
   v <- ct_validate("text/html", body = ct_html)
   expect_identical(sum(v$diagnostics$code == "html_body"), 1L)
-  expect_identical(nrow(ct_rows(v)), 0L)
+  n <- nrow(v$diagnostics)
+  expect_identical(v$diagnostics$code[[n]], "content_type_not_text_plain")
+  expect_identical(ct_rows(v)$code, "content_type_not_text_plain")
 })
 
 test_that("ROBO-plkpmoll: malformed and repeated headers", {
@@ -74,12 +85,20 @@ test_that("ROBO-plkpmoll: malformed and repeated headers", {
     "text/plain; charset=\"utf-8", "text/plain; charset = utf-8"
   )
   for (type in malformed) {
-    expect_identical(nrow(ct_rows(ct_validate(type))), 0L, info = type)
+    d <- ct_rows(ct_validate(type))
+    expect_identical(d$code, "content_type_malformed", info = type)
+    expect_identical(d$raw_text, type, info = type)
   }
-  two <- ct_validate(headers = list(
-    `Content-Type` = "text/plain", `Content-Type` = "text/html"
+  # Two fields of the same name, as a server may send them.
+  two <- ct_validate(headers = stats::setNames(
+    list("text/plain", "text/html"), rep("Content-Type", 2L)
   ))
-  expect_identical(nrow(ct_rows(two)), 0L)
+  d <- ct_rows(two)
+  expect_identical(d$code, "content_type_malformed")
+  expect_identical(d$raw_text, "text/plain, text/html")
+  expect_match(d$message, "several Content-Type fields", fixed = TRUE)
+  d <- ct_rows(ct_validate("text"))
+  expect_match(d$message, "type/subtype", fixed = TRUE)
 })
 
 test_that("ROBO-plkpmoll: unsupported, empty and repeated charsets", {
@@ -89,43 +108,75 @@ test_that("ROBO-plkpmoll: unsupported, empty and repeated charsets", {
     "text/plain; charset=utf-8; charset=utf-8"
   )
   for (type in unsupported) {
-    expect_identical(nrow(ct_rows(ct_validate(type))), 0L, info = type)
+    v <- ct_validate(type)
+    expect_identical(
+      ct_rows(v)$code, "content_type_charset_unsupported", info = type
+    )
+    expect_identical(v$documents$validation_status, "warning", info = type)
   }
+  expect_match(
+    ct_rows(ct_validate("text/plain; charset=Latin1"))$message,
+    "declares charset latin1", fixed = TRUE
+  )
+  expect_match(
+    ct_rows(ct_validate("text/plain; charset="))$message, "empty charset",
+    fixed = TRUE
+  )
+  expect_match(
+    ct_rows(ct_validate("text/plain; charset=a; charset=b"))$message,
+    "more than once", fixed = TRUE
+  )
 })
 
 test_that("ROBO-plkpmoll: another type with an unsupported charset", {
   v <- ct_validate("text/html; charset=latin1")
-  expect_identical(nrow(ct_rows(v)), 0L)
+  expect_identical(
+    ct_rows(v)$code,
+    c("content_type_not_text_plain", "content_type_charset_unsupported")
+  )
+  expect_identical(v$documents$warning_count, 2L)
 })
 
 test_that("ROBO-plkpmoll: a header with non-ASCII bytes does not crash", {
   bad <- rawToChar(as.raw(c(0x74, 0x65, 0x78, 0x74, 0x2f, 0xe9)))
-  expect_identical(nrow(ct_rows(ct_validate(bad))), 0L)
+  d <- ct_rows(ct_validate(bad))
+  expect_identical(d$code, "content_type_malformed")
+  expect_identical(d$raw_text, "text/\\xE9")
   quoted <- rawToChar(c(charToRaw("text/plain; charset=\""), as.raw(0xe9),
                         charToRaw("\"")))
-  expect_identical(nrow(ct_rows(ct_validate(quoted))), 0L)
+  d <- ct_rows(ct_validate(quoted))
+  expect_identical(d$code, "content_type_charset_unsupported")
+  expect_identical(d$raw_text, "text/plain; charset=\"\\xE9\"")
+  expect_match(d$message, "charset \\xE9", fixed = TRUE)
 })
 
 test_that("ROBO-plkpmoll: us-ascii over bytes of 0x80 and above", {
   utf8 <- c(charToRaw("User-agent: *\nDisallow: /caf"), as.raw(c(0xc3, 0xa9)),
             charToRaw("\n"))
   v <- ct_validate("text/plain; charset=us-ascii", body = utf8)
-  expect_identical(nrow(ct_rows(v)), 0L)
-  expect_identical(v$documents$validation_status, "valid")
+  d <- ct_rows(v)
+  expect_identical(d$code, "content_type_charset_conflict")
+  expect_identical(d$raw_text, "text/plain; charset=us-ascii")
+  expect_match(d$message, "0x80 or above", fixed = TRUE)
+  expect_identical(v$documents$validation_status, "warning")
   latin1 <- c(charToRaw("User-agent: *\nDisallow: /caf"), as.raw(0xe9),
               charToRaw("\n"))
-  v <- ct_validate("text/plain; charset=us-ascii", body = latin1)
-  expect_identical(nrow(ct_rows(v)), 0L)
+  v <- ct_validate("text/plain; charset=US-ASCII", body = latin1)
+  expect_identical(ct_rows(v)$code, "content_type_charset_conflict")
   expect_true("invalid_utf8" %in% v$diagnostics$code)
   bom8 <- c(as.raw(c(0xef, 0xbb, 0xbf)), charToRaw(ct_rules))
   v <- ct_validate("text/plain; charset=us-ascii", body = bom8)
-  expect_identical(nrow(ct_rows(v)), 0L)
+  expect_identical(ct_rows(v)$code, "content_type_charset_conflict")
+  # ASCII bytes cannot tell UTF-8 from another ASCII-compatible charset.
+  v <- ct_validate("text/plain; charset=iso-8859-1")
+  expect_identical(ct_rows(v)$code, "content_type_charset_unsupported")
 })
 
 test_that("ROBO-plkpmoll: a UTF-16 body under us-ascii", {
   wide <- c(as.raw(c(0xff, 0xfe)),
             as.vector(rbind(charToRaw(ct_rules), as.raw(0L))))
   v <- ct_validate("text/plain; charset=us-ascii", body = wide)
+  expect_identical(v$documents$encoding_signature, "utf-16le")
   expect_true("utf16_or_utf32_encoding" %in% v$diagnostics$code)
   expect_identical(nrow(ct_rows(v)), 0L)
   v <- ct_validate("text/plain; charset=utf-8", body = wide)
@@ -145,7 +196,7 @@ test_that("ROBO-plkpmoll: a body cut at max_bytes", {
   long <- paste0("User-agent: *\n", strrep("Disallow: /private\n", 20L))
   v <- ct_validate("text/html", body = long, max_bytes = 100L)
   expect_true("body_truncated" %in% v$diagnostics$code)
-  expect_identical(nrow(ct_rows(v)), 0L)
+  expect_identical(ct_rows(v)$code, "content_type_not_text_plain")
 })
 
 test_that("ROBO-plkpmoll: the header rows come after the redirect rows", {
@@ -162,7 +213,10 @@ test_that("ROBO-plkpmoll: the header rows come after the redirect rows", {
     }
   })
   v <- robots_validate_url("http://example.com/")
-  expect_identical(v$diagnostics$code, "redirect_cross_site")
+  expect_identical(
+    v$diagnostics$code,
+    c("redirect_cross_site", "content_type_not_text_plain")
+  )
 })
 
 test_that("ROBO-plkpmoll: an unavailable document gets no header row", {

@@ -308,6 +308,24 @@ applied to this host. \cr
 Under \code{safety_level = "crawler"}, the fetch followed an
 \code{https} to \code{http} redirect, so part of the redirect chain
 went over plain \code{http}; \code{message} names each such hop. \cr
+\code{content_type_malformed} \tab warning \tab
+The fetched response's \code{Content-Type} is not one
+\code{type/subtype} media type with \code{name=value} parameters (RFC
+9110 section 8.3.1), or holds a comma outside a quoted string, as
+repeated fields joined with \code{", "} do. \code{raw_text} holds the
+header as received. A missing header gives no row. \cr
+\code{content_type_not_text_plain} \tab warning \tab
+The fetched response's media type is not \code{text/plain} (RFC 9309
+section 2.3), compared ignoring ASCII case. The body is still read and
+validated; crawlers may still read it as a robots.txt. \cr
+\code{content_type_charset_unsupported} \tab warning \tab
+The \code{Content-Type} declares a \code{charset} other than
+\code{utf-8} or \code{us-ascii}, an empty one, or more than one. The
+body is read as UTF-8 regardless, without conversion. \cr
+\code{content_type_charset_conflict} \tab warning \tab
+The \code{Content-Type} declares \code{charset=us-ascii} over a body
+holding a byte of 0x80 or above. Not reported for a UTF-16 or UTF-32
+body, which \code{utf16_or_utf32_encoding} reports. \cr
 \code{acquisition_transport_failed} \tab error \tab
 A timeout, TLS, network or malformed-response failure, with each
 engine's reading in

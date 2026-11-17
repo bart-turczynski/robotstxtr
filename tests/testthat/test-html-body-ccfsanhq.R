@@ -179,7 +179,10 @@ test_that("ROBO-qquftxcx: a one-line HTML page cut at max_bytes is HTML", {
                   body = one_line_html)
   })
   x <- robots_validate_url("https://example.com/", max_bytes = 100L)
-  expect_identical(x$diagnostics$code, c("html_body", "body_truncated"))
+  expect_identical(
+    x$diagnostics$code,
+    c("html_body", "body_truncated", "content_type_not_text_plain")
+  )
   expect_one_html_body(x)
   expect_match(x$diagnostics$message[[1L]], "read as directives anyway")
   expect_identical(x$documents$line_count, 0L)

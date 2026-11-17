@@ -445,7 +445,7 @@ test_that("ROBO-mxermwed: the validator reports the cross-site redirect", {
     edge_format_codes(v$diagnostics),
     paste0(
       m$validator_codes[m$id == "redirect-cross-host-html"][[1L]],
-      ";redirect_cross_site@NA"
+      ";redirect_cross_site@NA;content_type_not_text_plain@NA"
     )
   )
   expect_true(
