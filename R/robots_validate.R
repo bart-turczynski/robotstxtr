@@ -153,6 +153,18 @@ validation_unsupported <- c(
 #'     written with it never matches the rule; Bing upper-cases it too, and
 #'     the package's Yandex matcher compares the pattern as written. One per
 #'     rule line. \cr
+#'   \code{rule_replacement_character} \tab info \tab
+#'     Only with \code{unicode_advisories = TRUE}: a pattern holds U+FFFD, the
+#'     replacement character a decoder writes for bytes it could not read.
+#'     One per rule line. \cr
+#'   \code{rule_invisible_character} \tab info \tab
+#'     Only with \code{unicode_advisories = TRUE}: a pattern holds an
+#'     invisible or formatting character, such as U+200B or U+2066. One per
+#'     rule line, naming up to ten. \cr
+#'   \code{rule_possible_mojibake} \tab info \tab
+#'     Only with \code{unicode_advisories = TRUE}: a pattern holds two or
+#'     more sequences that read like UTF-8 decoded as Latin-1 and encoded
+#'     again. One per rule line, naming up to ten. \cr
 #'   \code{empty_sitemap_value} \tab warning \tab
 #'     A Sitemap line with an empty value. \cr
 #'   \code{invalid_sitemap_url} \tab warning \tab
@@ -461,9 +473,45 @@ validation_unsupported <- c(
 #' sits in a comment. `user_agent_cut` runs too; its message already names
 #' Google's matcher.
 #'
+#' `unicode_advisories = TRUE` adds three info codes for text that may have
+#' been damaged on its way into the file. They are advisories, not validity
+#' findings: they change no status, no parse and no match, and each message
+#' says the character may be meant. Some damage is already visible without
+#' them: mixed UTF-8 and Latin-1 bytes are usually malformed UTF-8, which
+#' `invalid_utf8` reports. Text that is valid UTF-8 can neither prove nor
+#' disprove corruption, so the opt-in reads only a closed set of indicators
+#' in the raw value of an active Allow or Disallow line, as the parser reads
+#' it (cut at the first `#`, at a NUL and at the line buffer):
+#' `rule_replacement_character` for U+FFFD; `rule_invisible_character` for
+#' U+00AD, U+200B to U+200F, U+202A to U+202E, U+2060 to U+2064, U+2066 to
+#' U+2069, U+FEFF and the C1 controls U+0080 to U+009F; and
+#' `rule_possible_mojibake` for two or more sequences of a Latin-1 letter
+#' U+00C2 to U+00F4 followed by the U+0080 to U+00BF characters that, read
+#' back as bytes, make one well-formed UTF-8 character (U+00C3 U+00A9 for an
+#' e-acute). A single such sequence is too weak a sign and is not reported,
+#' nor is any other non-ASCII character: a path with an accented letter, a
+#' path in Japanese, or a Latin-1 string converted to UTF-8 on input stays
+#' silent, as do a typed escape such as `%E2%80%8B`, a comment, a
+#' User-agent or Sitemap value, and a line that is not valid UTF-8. Each
+#' message quotes code
+#' points as `U+XXXX` with byte offsets counted from 1 at the value's first
+#' byte after the blanks that follow the colon, listing at most ten, and a
+#' line gets at most one row per code. A U+200B or U+FEFF that leads the
+#' value is left to `rule_missing_leading_slash`, which names it. A document
+#' gets at most 100 such rows; the last one counts the rest. Only the
+#' Latin-1 mojibake pattern is read: a Windows-1252 decoding, NFC or NFD
+#' normalization and the intended original text are out of scope, and
+#' nothing is repaired. The result's `unicode_advisories` attribute records
+#' whether the check ran, so an empty set of rows can be told apart from a
+#' check that was off.
+#'
 #' @param robots_txt A single non-missing character string or a raw vector.
 #' @param source_id A single non-empty character string identifying the supplied
 #'   document. Defaults to `"supplied"`.
+#' @param unicode_advisories A single `TRUE` or `FALSE`. `TRUE` adds the info
+#'   codes `rule_replacement_character`, `rule_invisible_character` and
+#'   `rule_possible_mojibake` (see Details). Defaults to `FALSE`, which leaves
+#'   the result unchanged.
 #'
 #' @return An S3 object of class `robots_validations`, containing `map`,
 #'   `documents`, and `diagnostics` data frames.
@@ -593,7 +641,15 @@ robots_validate_text <- function(robots_txt, source_id = "supplied",
 #' separate question. It also does not infer webmaster intent or check whether
 #' declared remote sitemaps exist.
 #'
+#' With `unicode_advisories = TRUE`, each validated body is also read for
+#' the info codes [robots_validate_text()] describes; their rows come before
+#' the redirect and `Content-Type` rows.
+#'
 #' @inheritParams robots_fetch
+#' @param unicode_advisories A single `TRUE` or `FALSE`. `TRUE` adds the info
+#'   codes `rule_replacement_character`, `rule_invisible_character` and
+#'   `rule_possible_mojibake` (see [robots_validate_text()]). Defaults to
+#'   `FALSE`, which leaves the result unchanged.
 #'
 #' @return An S3 object of class `robots_validations`, containing `map` (one row
 #'   per input URL), `documents` (one row per distinct fetch source), and

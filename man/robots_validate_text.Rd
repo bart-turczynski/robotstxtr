@@ -4,13 +4,22 @@
 \alias{robots_validate_text}
 \title{Validate a supplied robots.txt document}
 \usage{
-robots_validate_text(robots_txt, source_id = "supplied")
+robots_validate_text(
+  robots_txt,
+  source_id = "supplied",
+  unicode_advisories = FALSE
+)
 }
 \arguments{
 \item{robots_txt}{A single non-missing character string or a raw vector.}
 
 \item{source_id}{A single non-empty character string identifying the supplied
 document. Defaults to \code{"supplied"}.}
+
+\item{unicode_advisories}{A single \code{TRUE} or \code{FALSE}. \code{TRUE} adds the info
+codes \code{rule_replacement_character}, \code{rule_invisible_character} and
+\code{rule_possible_mojibake} (see Details). Defaults to \code{FALSE}, which leaves
+the result unchanged.}
 }
 \value{
 An S3 object of class \code{robots_validations}, containing \code{map},
@@ -162,6 +171,18 @@ Google upper-cases the escape in a pattern but not in the URL, so a URL
 written with it never matches the rule; Bing upper-cases it too, and
 the package's Yandex matcher compares the pattern as written. One per
 rule line. \cr
+\code{rule_replacement_character} \tab info \tab
+Only with \code{unicode_advisories = TRUE}: a pattern holds U+FFFD, the
+replacement character a decoder writes for bytes it could not read.
+One per rule line. \cr
+\code{rule_invisible_character} \tab info \tab
+Only with \code{unicode_advisories = TRUE}: a pattern holds an
+invisible or formatting character, such as U+200B or U+2066. One per
+rule line, naming up to ten. \cr
+\code{rule_possible_mojibake} \tab info \tab
+Only with \code{unicode_advisories = TRUE}: a pattern holds two or
+more sequences that read like UTF-8 decoded as Latin-1 and encoded
+again. One per rule line, naming up to ten. \cr
 \code{empty_sitemap_value} \tab warning \tab
 A Sitemap line with an empty value. \cr
 \code{invalid_sitemap_url} \tab warning \tab
@@ -469,6 +490,38 @@ first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
 byte, so each such message says it is Google's reading, unless every NUL
 sits in a comment. \code{user_agent_cut} runs too; its message already names
 Google's matcher.
+
+\code{unicode_advisories = TRUE} adds three info codes for text that may have
+been damaged on its way into the file. They are advisories, not validity
+findings: they change no status, no parse and no match, and each message
+says the character may be meant. Some damage is already visible without
+them: mixed UTF-8 and Latin-1 bytes are usually malformed UTF-8, which
+\code{invalid_utf8} reports. Text that is valid UTF-8 can neither prove nor
+disprove corruption, so the opt-in reads only a closed set of indicators
+in the raw value of an active Allow or Disallow line, as the parser reads
+it (cut at the first \verb{#}, at a NUL and at the line buffer):
+\code{rule_replacement_character} for U+FFFD; \code{rule_invisible_character} for
+U+00AD, U+200B to U+200F, U+202A to U+202E, U+2060 to U+2064, U+2066 to
+U+2069, U+FEFF and the C1 controls U+0080 to U+009F; and
+\code{rule_possible_mojibake} for two or more sequences of a Latin-1 letter
+U+00C2 to U+00F4 followed by the U+0080 to U+00BF characters that, read
+back as bytes, make one well-formed UTF-8 character (U+00C3 U+00A9 for an
+e-acute). A single such sequence is too weak a sign and is not reported,
+nor is any other non-ASCII character: a path with an accented letter, a
+path in Japanese, or a Latin-1 string converted to UTF-8 on input stays
+silent, as do a typed escape such as \verb{\%E2\%80\%8B}, a comment, a
+User-agent or Sitemap value, and a line that is not valid UTF-8. Each
+message quotes code
+points as \code{U+XXXX} with byte offsets counted from 1 at the value's first
+byte after the blanks that follow the colon, listing at most ten, and a
+line gets at most one row per code. A U+200B or U+FEFF that leads the
+value is left to \code{rule_missing_leading_slash}, which names it. A document
+gets at most 100 such rows; the last one counts the rest. Only the
+Latin-1 mojibake pattern is read: a Windows-1252 decoding, NFC or NFD
+normalization and the intended original text are out of scope, and
+nothing is repaired. The result's \code{unicode_advisories} attribute records
+whether the check ran, so an empty set of rows can be told apart from a
+check that was off.
 }
 
 \examples{

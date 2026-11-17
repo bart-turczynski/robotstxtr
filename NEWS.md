@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* Validator: `unicode_advisories = TRUE` in `robots_validate_text()` and `robots_validate_url()` adds info rows for U+FFFD, invisible characters and possible mojibake in Allow and Disallow values; the default is unchanged (ROBO-qxcwxtbm).
+
 * Validator: `robots_validate_url()` warns on the Content-Type of a fetched robots.txt: `content_type_malformed`, `content_type_not_text_plain`, `content_type_charset_unsupported`, and `content_type_charset_conflict` for `us-ascii` over non-ASCII bytes; a missing header adds nothing (ROBO-plkpmoll).
 
 * Validator: raw and fetched bodies in UTF-16 or UTF-32, by byte-order mark or byte pattern, warn `utf16_or_utf32_encoding` and fill the new `encoding_signature` columns; `encoding` still means UTF-8 validity (RFC 9309 §2.3) (ROBO-cvpkzckn).
