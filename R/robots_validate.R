@@ -483,15 +483,18 @@ validation_unsupported <- c(
 #' @seealso [robots_validate_url()] to fetch and validate, [robots_fetch()] for
 #'   acquisition evidence, and [allowed_by_robots_text()] for URL decisions.
 #' @export
-robots_validate_text <- function(robots_txt, source_id = "supplied") {
+robots_validate_text <- function(robots_txt, source_id = "supplied",
+                                 unicode_advisories = FALSE) {
   validate_source_id(source_id)
+  validate_unicode_advisories(unicode_advisories)
   bytes <- validation_body_bytes(robots_txt)
   validated <- validate_document_bytes(
     bytes = bytes,
     source_id = source_id,
     source_type = "supplied",
     fetch_outcome = "supplied",
-    raw_input = is.raw(robots_txt)
+    raw_input = is.raw(robots_txt),
+    unicode_advisories = unicode_advisories
   )
   map <- validation_map_row(
     input_id = 1L,
@@ -505,7 +508,8 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
     error_message = NA_character_,
     validation_status = validated$document$validation_status
   )
-  new_robots_validations(map, validated$document, validated$diagnostics)
+  new_robots_validations(map, validated$document, validated$diagnostics,
+                         unicode_advisories = unicode_advisories)
 }
 
 #' Fetch and validate robots.txt documents for URLs
@@ -613,7 +617,9 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 robots_validate_url <- function(url, timeout = 10, max_bytes = 524288L,
                                 fetch_user_agent = NULL, ssrf_guard = TRUE,
                                 safety_level = "strict",
-                                fetch_allow_ranges = character()) {
+                                fetch_allow_ranges = character(),
+                                unicode_advisories = FALSE) {
+  validate_unicode_advisories(unicode_advisories)
   safety_level <- validate_safety_level(safety_level)
   fetched <- robots_fetch(
     url = url,
@@ -624,7 +630,8 @@ robots_validate_url <- function(url, timeout = 10, max_bytes = 524288L,
     safety_level = safety_level,
     fetch_allow_ranges = fetch_allow_ranges
   )
-  validate_fetched_documents(fetched, safety_level = safety_level)
+  validate_fetched_documents(fetched, safety_level = safety_level,
+                             unicode_advisories = unicode_advisories)
 }
 
 #' Print a robots.txt validation result
@@ -673,12 +680,14 @@ validation_body_bytes <- function(robots_txt) {
   text_body_bytes_v1(robots_txt)
 }
 
-new_robots_validations <- function(map, documents, diagnostics) {
+new_robots_validations <- function(map, documents, diagnostics,
+                                   unicode_advisories = FALSE) {
   structure(
     list(map = map, documents = documents, diagnostics = diagnostics),
     class = "robots_validations",
     package_version = as.character(getNamespaceVersion("robotstxtr")),
-    validation_profile = robots_validation_profile
+    validation_profile = robots_validation_profile,
+    unicode_advisories = unicode_advisories
   )
 }
 
@@ -749,7 +758,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
                                     fetch_outcome = "supplied",
                                     max_bytes = NA_integer_,
                                     body_truncated = FALSE,
-                                    raw_input = TRUE) {
+                                    raw_input = TRUE,
+                                    unicode_advisories = FALSE) {
   # A 2xx body cut at max_bytes (RFC 9309 section 2.5, ROBO-ldpahknv) is
   # validated up to its last complete line: the partial line after it is not
   # the site's. `byte_size` stays the stored size; the file's real end was
@@ -904,6 +914,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   group_has_rule <- FALSE
   nonempty_user_agents <- 0L
   unsupported <- logical(nrow(parsed))
+  advisory_count <- 0L
+  advisory_chunk <- 0L
   for (i in which(parsed$has_directive)) {
     line <- parsed$line[[i]]
     type <- parsed$type[[i]]
@@ -1047,6 +1059,32 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         )
       }
     }
+    # Opt-in info advisories on the raw value (ROBO-qxcwxtbm), capped per
+    # document; the last row kept is noted with the count left out.
+    if (unicode_advisories && type %in% c("allow", "disallow") &&
+          nzchar(value)) {
+      for (found in rule_unicode_advisories(
+        rule_raw_value(raw_lines[[line]], line == 1L,
+                       parsed$missing_colon[[i]])
+      )) {
+        advisory_count <- advisory_count + 1L
+        if (advisory_count <= validation_unicode_advisory_cap) {
+          add_diagnostic(line, "info", found$code, type, found$message)
+          advisory_chunk <- diag_env$n_chunks
+        }
+      }
+    }
+  }
+  if (advisory_count > validation_unicode_advisory_cap) {
+    key <- as.character(advisory_chunk)
+    chunk <- get(key, envir = diag_env)
+    chunk$message <- paste0(
+      chunk$message, " Unicode advisories stop at ",
+      validation_unicode_advisory_cap, " rows per document; ",
+      advisory_count - validation_unicode_advisory_cap,
+      " more were not reported."
+    )
+    assign(key, chunk, envir = diag_env)
   }
 
   # The group checks read the parser's groups. With a NUL in the file (already
@@ -2933,15 +2971,13 @@ rule_escaped_unreserved_diagnostic <- function(value) {
 # skipped before that count.
 validation_line_bytes <- 16663L
 
-# The lower-case percent-escapes of an Allow or Disallow line's value, as the
-# parser keeps it, read from the raw line bytes (ROBO-kormmfyg). The parser
-# upper-cases the escapes it keeps (MaybeEscapePattern, src/robots.cc), so the
-# canonical value cannot show the case. The line is cut at its first NUL, its
-# first `#` and at 16,663 bytes. The key ends at the first `:`, or, when the
-# colon is missing, at the first space or tab after the leading blanks. A `%`
-# followed by two hex digits is an escape; one with a digit in a-f is
-# lower-case. Returns the distinct escapes as written, or character(0).
-rule_lowercase_escapes <- function(line_bytes, first_line, missing_colon) {
+# The raw bytes of an Allow or Disallow line's value, as the parser reads
+# them, before the parser escapes non-ASCII bytes (MaybeEscapePattern,
+# src/robots.cc). The line is cut at its first NUL, its first `#` and at
+# 16,663 bytes. The key ends at the first `:`, or, when the colon is missing,
+# at the first space or tab after the leading blanks. The blanks after the
+# key are kept.
+rule_raw_value <- function(line_bytes, first_line, missing_colon) {
   bytes <- line_bytes
   if (first_line) {
     skip <- 0L
@@ -2968,7 +3004,17 @@ rule_lowercase_escapes <- function(line_bytes, first_line, missing_colon) {
   } else {
     stop_at <- which(bytes == as.raw(0x3a))
   }
-  value <- bytes[-seq_len(stop_at[[1L]])]
+  bytes[-seq_len(stop_at[[1L]])]
+}
+
+# The lower-case percent-escapes of an Allow or Disallow line's value, as the
+# parser keeps it, read from the raw line bytes (ROBO-kormmfyg). The parser
+# upper-cases the escapes it keeps (MaybeEscapePattern, src/robots.cc), so the
+# canonical value cannot show the case. A `%` followed by two hex digits is an
+# escape; one with a digit in a-f is lower-case. Returns the distinct escapes
+# as written, or character(0).
+rule_lowercase_escapes <- function(line_bytes, first_line, missing_colon) {
+  value <- rule_raw_value(line_bytes, first_line, missing_colon)
   pct <- which(value == as.raw(0x25))
   hex <- as.raw(c(0x30:0x39, 0x41:0x46, 0x61:0x66))
   pct <- pct[value[pct + 1L] %in% hex & value[pct + 2L] %in% hex]
@@ -3004,6 +3050,147 @@ rule_lowercase_escape_message <- function(escapes) {
     "escape in a pattern but not in the URL, so a URL written with a ",
     "lower-case escape does not match this rule; write them in upper case."
   )
+}
+
+# Opt-in Unicode advisories (ROBO-qxcwxtbm). The set is closed and defined
+# from Unicode properties, not from any engine's character list: U+FFFD; the
+# invisible or format characters below (soft hyphen, zero-width and
+# directional marks, bidi embeddings and isolates, word joiner and invisible
+# operators, a byte-order mark inside a value, and the C1 controls, which
+# rule_control_character, ASCII only, does not cover); and Latin-1 mojibake.
+validation_unicode_advisory_cap <- 100L
+validation_invisible_code_points <- c(
+  0x0080:0x009F, 0x00AD, 0x200B:0x200F, 0x202A:0x202E, 0x2060:0x2064,
+  0x2066:0x2069, 0xFEFF
+)
+
+# Info findings for one rule's raw value bytes, as a list of list(code,
+# message): at most one per family, in the order replacement, invisible,
+# mojibake. Only a value that is valid UTF-8 is read; invalid_utf8 owns the
+# rest. Offsets count bytes from 1 at the value's first byte after the
+# blanks that follow the colon. A U+200B or U+FEFF that leads the value is
+# left to rule_missing_leading_slash, whose message names it.
+rule_unicode_advisories <- function(value) {
+  start <- which(!value %in% as.raw(c(0x20, 0x09, 0x0b, 0x0c)))
+  if (length(start) == 0L || all(as.integer(value) < 0x80L)) {
+    return(list())
+  }
+  value <- value[start[[1L]]:length(value)]
+  text <- rawToChar(value)
+  if (!validUTF8(text)) {
+    return(list())
+  }
+  points <- utf8ToInt(text)
+  widths <- 1L + (points >= 0x80) + (points >= 0x800) + (points >= 0x10000)
+  offsets <- cumsum(c(1L, widths))[seq_along(points)]
+  found <- list()
+
+  replacement <- which(points == 0xFFFD)
+  if (length(replacement) > 0L) {
+    found[[length(found) + 1L]] <- list(
+      code = "rule_replacement_character",
+      message = paste0(
+        "Pattern holds the replacement character: U+FFFD first at byte ",
+        offsets[[replacement[[1L]]]], ". A decoder writes it for bytes it ",
+        "could not read, so an earlier conversion may have lost the original ",
+        "characters, or it may be meant. ", validation_unicode_advisory_tail
+      )
+    )
+  }
+
+  invisible <- points %in% validation_invisible_code_points
+  if (points[[1L]] %in% names_to_points(validation_invisible_prefixes)) {
+    invisible[[1L]] <- FALSE
+  }
+  if (any(invisible)) {
+    distinct <- sort(unique(points[invisible]))
+    first <- offsets[invisible][match(distinct, points[invisible])]
+    items <- sprintf("U+%04X first at byte %d", distinct, first)
+    lead <- if (length(items) == 1L) {
+      "Pattern holds an invisible or formatting character: "
+    } else {
+      "Pattern holds invisible or formatting characters: "
+    }
+    found[[length(found) + 1L]] <- list(
+      code = "rule_invisible_character",
+      message = paste0(
+        lead, unicode_advisory_list(items), ". They may be meant, but they ",
+        "are easy to paste unseen, and the matcher compares them byte for ",
+        "byte, so a URL without them may not match. ",
+        validation_unicode_advisory_tail
+      )
+    )
+  }
+
+  units <- mojibake_units(points)
+  if (length(units) >= 2L) {
+    items <- vapply(units, function(unit) {
+      sprintf("%s at byte %d", paste(sprintf("U+%04X", points[unit]),
+                                     collapse = " "),
+              offsets[[unit[[1L]]]])
+    }, character(1L))
+    found[[length(found) + 1L]] <- list(
+      code = "rule_possible_mojibake",
+      message = paste0(
+        "Pattern holds sequences that read like UTF-8 decoded as Latin-1 and ",
+        "encoded again (possible mojibake): ", unicode_advisory_list(items),
+        ". This is a heuristic: the text may be meant as written and its ",
+        "original cannot be known. ", validation_unicode_advisory_tail
+      )
+    )
+  }
+  found
+}
+
+validation_unicode_advisory_tail <- paste0(
+  "Valid UTF-8 can neither prove nor disprove corruption; this advisory ",
+  "changes no match."
+)
+
+# The code points of validation_invisible_prefixes' names ("U+200B").
+names_to_points <- function(prefixes) {
+  strtoi(substring(names(prefixes), 3L), 16L)
+}
+
+# Up to ten items, then ", and N more", as rule_control_character_message().
+unicode_advisory_list <- function(items) {
+  cap <- 10L
+  k <- length(items)
+  listed <- toString(items[seq_len(min(k, cap))])
+  if (k > cap) {
+    listed <- sprintf("%s, and %d more", listed, k - cap)
+  }
+  listed
+}
+
+# Latin-1 mojibake: a UTF-8 sequence whose bytes were each read as a Latin-1
+# character and encoded again. Each unit is a code point U+00C2 to U+00F4
+# (a lead byte) followed by the one to three code points U+0080 to U+00BF
+# (continuation bytes) it needs, whose bytes together are well-formed UTF-8;
+# U+00C3 U+00A9 is a mojibake e-acute. Units do not overlap. Returns a list
+# of index vectors into `points`.
+mojibake_units <- function(points) {
+  units <- list()
+  n <- length(points)
+  next_free <- 1L
+  for (i in which(points >= 0xC2 & points <= 0xF4)) {
+    if (i < next_free) {
+      next
+    }
+    lead <- points[[i]]
+    need <- if (lead <= 0xDF) 1L else if (lead <= 0xEF) 2L else 3L
+    if (i + need > n) {
+      next
+    }
+    unit <- i:(i + need)
+    tail <- points[unit[-1L]]
+    if (all(tail >= 0x80 & tail <= 0xBF) &&
+          validUTF8(rawToChar(as.raw(points[unit])))) {
+      units[[length(units) + 1L]] <- unit
+      next_free <- i + need + 1L
+    }
+  }
+  units
 }
 
 # A syntax-only check of a Sitemap value: an absolute http, https or ftp URL
@@ -3213,7 +3400,8 @@ render_validation_line <- function(bytes) {
   }, character(1L)), collapse = "")
 }
 
-validate_fetched_documents <- function(fetched, safety_level = "strict") {
+validate_fetched_documents <- function(fetched, safety_level = "strict",
+                                       unicode_advisories = FALSE) {
   documents <- list()
   diagnostics <- list()
   robots <- fetched$robots
@@ -3230,7 +3418,8 @@ validate_fetched_documents <- function(fetched, safety_level = "strict") {
         http_status = source$http_status,
         fetch_outcome = source$fetch_outcome,
         max_bytes = source$max_bytes,
-        body_truncated = isTRUE(robots$body_truncated[[i]])
+        body_truncated = isTRUE(robots$body_truncated[[i]]),
+        unicode_advisories = unicode_advisories
       )
       redirect <- redirect_host_diagnostic(source)
       if (!is.null(redirect)) {
@@ -3286,7 +3475,8 @@ validate_fetched_documents <- function(fetched, safety_level = "strict") {
   } else {
     do.call(rbind, diagnostics)
   }
-  new_robots_validations(map, document_frame, diagnostic_frame)
+  new_robots_validations(map, document_frame, diagnostic_frame,
+                         unicode_advisories = unicode_advisories)
 }
 
 unavailable_validation <- function(source, safety_level = "strict") {

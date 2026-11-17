@@ -39,13 +39,13 @@ ua_invisible_message <- function(items) {
   } else {
     "Pattern holds invisible or formatting characters: "
   }
-  paste0(lead, paste(items, collapse = ", "), ua_invisible_tail)
+  paste0(lead, toString(items), ua_invisible_tail)
 }
 
 ua_mojibake_message <- function(items) {
   paste0(
     "Pattern holds sequences that read like UTF-8 decoded as Latin-1 and ",
-    "encoded again (possible mojibake): ", paste(items, collapse = ", "),
+    "encoded again (possible mojibake): ", toString(items),
     ". This is a heuristic: the text may be meant as written and its ",
     "original cannot be known. ", ua_tail
   )
@@ -61,13 +61,18 @@ ua_rows <- function(x) {
 }
 
 # The opt-in run on the same input as the default run adds only advisory
-# rows: every other row, and the document row, are identical.
+# rows: every other row, and the document row but for diagnostic_count, are
+# identical.
 ua_expect_adds_only <- function(input, label) {
   off <- robots_validate_text(input)
   on <- robots_validate_text(input, unicode_advisories = TRUE)
-  kept <- on$diagnostics[!on$diagnostics$code %in% ua_codes, , drop = FALSE]
+  added <- on$diagnostics$code %in% ua_codes
+  kept <- on$diagnostics[!added, , drop = FALSE]
   rownames(kept) <- NULL
   expect_identical(kept, off$diagnostics, label = label)
+  expect_identical(on$documents$diagnostic_count,
+                   off$documents$diagnostic_count + sum(added), label = label)
+  on$documents$diagnostic_count <- off$documents$diagnostic_count
   expect_identical(on$documents, off$documents, label = label)
 }
 
