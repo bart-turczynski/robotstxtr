@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* Validator: raw and fetched bodies in UTF-16 or UTF-32, by byte-order mark or byte pattern, warn `utf16_or_utf32_encoding` and fill the new `encoding_signature` columns; `encoding` still means UTF-8 validity (RFC 9309 §2.3) (ROBO-cvpkzckn).
+
 * Validator: `robots_validate_text()` and `robots_validate_url()` warn `rule_control_character` when an Allow or Disallow pattern holds an ASCII control byte, which RFC 9309 excludes from paths (ROBO-rrzsktxc).
 
 * Validator: `robots_validate_text()` notes a crawler named again in a later group (`user_agent_repeated_group`) and warns `empty_disallow_with_full_block`, which Google and Bing block and Yandex allows (ROBO-vnhirero).

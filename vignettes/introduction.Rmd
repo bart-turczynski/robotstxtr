@@ -175,7 +175,9 @@ validation$documents
 validation$diagnostics
 ```
 
-The `documents` table contains byte size, line and directive counts, encoding,
+The `documents` table contains byte size, line and directive counts, encoding
+(UTF-8 byte validity), the encoding signature a byte-order mark or a UTF-16 or
+UTF-32 byte pattern points to (`encoding_signature`, `encoding_signature_basis`),
 BOM/NUL and final-newline evidence, and a validation status. The `diagnostics`
 table has stable line, severity, code, directive, raw-text, and message columns.
 Raw vectors are accepted so malformed UTF-8 and NUL bytes can be reported

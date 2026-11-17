@@ -36,6 +36,15 @@ validation_unsupported <- c(
 #' `"not_validated"`. An info never changes the status, so a document whose
 #' only finding is `no_rules` is `"valid"`.
 #'
+#' In `documents`, `encoding` says only whether the bytes are valid UTF-8
+#' (`"utf-8"` or `"invalid-utf-8"`); a NUL byte counts as valid, so UTF-16
+#' ASCII text can read `"utf-8"`. `encoding_signature` names the encoding the
+#' bytes point to: `"utf-8-bom"`, `"utf-16le"`, `"utf-16be"`, `"utf-32le"`,
+#' `"utf-32be"`, or `NA`. `encoding_signature_basis` says how: `"bom"` for a
+#' byte-order mark, `"byte_pattern"` for the heuristic that reads the zero
+#' bytes of ASCII text in UTF-16 or UTF-32. Both are `NA` for character
+#' input, whose original bytes R no longer holds.
+#'
 #' @section Diagnostic codes:
 #' Every `code` the validator emits, by the order a document is read. The
 #' checks describe the Google-compatible parser; the package's Bing and Yandex
@@ -207,6 +216,16 @@ validation_unsupported <- c(
 #'   \code{html_body} \tab warning \tab
 #'     The body looks like an HTML page, not a robots.txt; its lines are still
 #'     read and reported one by one. \cr
+#'   \code{utf16_or_utf32_encoding} \tab warning \tab
+#'     A raw or fetched body is UTF-16 or UTF-32, not UTF-8 (RFC 9309 section
+#'     2.3): it starts with the byte-order mark of that encoding (a UTF-32
+#'     mark is tested before the UTF-16 mark it starts with), or, with no
+#'     mark, its first 4,096 bytes hold at least 8 code units, 90 percent or
+#'     more of them one ASCII character each, and no byte but zero, printable
+#'     ASCII, tab, carriage return or line feed. The message says which
+#'     basis it is; the byte
+#'     pattern is a heuristic and cannot know the intended encoding. Not
+#'     reported for character input. \cr
 #'   \code{no_rules} \tab info \tab
 #'     The parser read no Allow or Disallow rule, so the document restricts
 #'     nothing; when NUL bytes hide rules, \code{rules_after_nul_removal} is
@@ -447,7 +466,8 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
     bytes = bytes,
     source_id = source_id,
     source_type = "supplied",
-    fetch_outcome = "supplied"
+    fetch_outcome = "supplied",
+    raw_input = is.raw(robots_txt)
   )
   map <- validation_map_row(
     input_id = 1L,
@@ -694,7 +714,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
                                     http_status = NA_integer_,
                                     fetch_outcome = "supplied",
                                     max_bytes = NA_integer_,
-                                    body_truncated = FALSE) {
+                                    body_truncated = FALSE,
+                                    raw_input = TRUE) {
   # A 2xx body cut at max_bytes (RFC 9309 section 2.5, ROBO-ldpahknv) is
   # validated up to its last complete line: the partial line after it is not
   # the site's. `byte_size` stays the stored size; the file's real end was
@@ -1148,6 +1169,30 @@ validate_document_bytes <- function(bytes, source_id, source_type,
              "were read as directives anyway.")
     )
   }
+  # A UTF-16 or UTF-32 body (ROBO-cvpkzckn) gets one document-level warning,
+  # from a byte-order mark or, without one, from the byte pattern of ASCII
+  # text in that encoding; the stored bytes are read, so a body cut mid
+  # code unit keeps its mark. `encoding` still says only whether the bytes
+  # are valid UTF-8. Character input was already turned into an R string, so
+  # its bytes say nothing about the original file and are not read.
+  wide <- if (raw_input) {
+    validation_encoding_signature(stored_bytes, cut = body_truncated)
+  }
+  if (!is.null(wide)) {
+    add_diagnostic(
+      NA_integer_, "warning", "utf16_or_utf32_encoding", NA_character_,
+      validation_encoding_signature_message(wide)
+    )
+  }
+  encoding_signature <- NA_character_
+  encoding_signature_basis <- NA_character_
+  if (!is.null(wide)) {
+    encoding_signature <- wide$signature
+    encoding_signature_basis <- wide$basis
+  } else if (raw_input && has_bom) {
+    encoding_signature <- "utf-8-bom"
+    encoding_signature_basis <- "bom"
+  }
   # The parser and Google's matcher both end a line at its first NUL
   # (ROBO-pvqrfvol), so rules that appear only once the NULs are removed, as
   # in UTF-16 text, are hidden from both; they are reported instead of
@@ -1285,6 +1330,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     sitemap_directives = as.integer(sum(parsed$type == "sitemap")),
     unsupported_directives = as.integer(sum(unsupported)),
     encoding = encoding,
+    encoding_signature = encoding_signature,
+    encoding_signature_basis = encoding_signature_basis,
     has_bom = has_bom,
     nul_byte_count = as.integer(sum(nul_counts)),
     final_newline = final_newline,
@@ -2556,6 +2603,97 @@ validation_invisible_prefixes <- c(
 
 validation_bom <- as.raw(c(0xef, 0xbb, 0xbf))
 
+# UTF-32 and UTF-16 byte-order marks (ROBO-cvpkzckn). The UTF-32 ones come
+# first: FF FE 00 00 also starts with the UTF-16LE mark, and the longer
+# signature wins. A body shorter than four bytes is never read as UTF-32.
+validation_wide_boms <- list(
+  "utf-32le" = as.raw(c(0xff, 0xfe, 0x00, 0x00)),
+  "utf-32be" = as.raw(c(0x00, 0x00, 0xfe, 0xff)),
+  "utf-16le" = as.raw(c(0xff, 0xfe)),
+  "utf-16be" = as.raw(c(0xfe, 0xff))
+)
+
+# The BOM-less heuristic: at least this many code units, and at least this
+# share of them shaped as one ASCII character (its byte non-zero, the other
+# bytes of the unit zero).
+validation_wide_min_units <- 8L
+validation_wide_min_share <- 0.9
+
+# Bytes a UTF-16 or UTF-32 ASCII text may hold outside its zero bytes:
+# printable ASCII, tab, LF and CR.
+validation_wide_text_bytes <- as.raw(c(0x09, 0x0a, 0x0d, 0x20:0x7e))
+
+# The UTF-16 or UTF-32 encoding a body's bytes point to, as
+# list(signature, basis), or NULL. A full byte-order mark is "bom"; without
+# one, "byte_pattern" is a heuristic over the first `content_check_bytes`
+# bytes, which only ASCII text in that encoding passes, so a NUL-cut rule,
+# control bytes or binary data is never named. `cut` says the window does not
+# end where the file does (a body cut at max_bytes, or one longer than the
+# window), so a partial code unit at its end is dropped instead of refusing
+# the body.
+validation_encoding_signature <- function(bytes, cut = FALSE) {
+  n <- length(bytes)
+  for (name in names(validation_wide_boms)) {
+    bom <- validation_wide_boms[[name]]
+    if (n >= length(bom) && identical(bytes[seq_along(bom)], bom)) {
+      return(list(signature = name, basis = "bom"))
+    }
+  }
+  window <- bytes[seq_len(min(n, content_check_bytes))]
+  cut <- cut || n > content_check_bytes
+  if (any(window == as.raw(0)) &&
+        all(window[window != as.raw(0)] %in% validation_wide_text_bytes)) {
+    for (shape in list(c("utf-32le", 4L, 1L), c("utf-32be", 4L, 4L),
+                       c("utf-16le", 2L, 1L), c("utf-16be", 2L, 2L))) {
+      width <- as.integer(shape[[2L]])
+      if (validation_wide_pattern(window, width, as.integer(shape[[3L]]),
+                                  cut)) {
+        return(list(signature = shape[[1L]], basis = "byte_pattern"))
+      }
+    }
+  }
+  NULL
+}
+
+# Whether `window`, read as code units of `width` bytes, is mostly units with
+# a non-zero byte at `at` and zero bytes elsewhere.
+validation_wide_pattern <- function(window, width, at, cut) {
+  n <- length(window)
+  if (cut) {
+    n <- n - n %% width
+  } else if (n %% width != 0L) {
+    return(FALSE)
+  }
+  units <- n %/% width
+  if (units < validation_wide_min_units) {
+    return(FALSE)
+  }
+  grid <- matrix(as.integer(window[seq_len(n)]), nrow = width)
+  shaped <- grid[at, ] != 0L & colSums(grid[-at, , drop = FALSE]) == 0L
+  mean(shaped) >= validation_wide_min_share
+}
+
+# The message of the utf16_or_utf32_encoding warning.
+validation_encoding_signature_message <- function(found) {
+  label <- c(
+    "utf-16le" = "UTF-16LE", "utf-16be" = "UTF-16BE",
+    "utf-32le" = "UTF-32LE", "utf-32be" = "UTF-32BE"
+  )[[found$signature]]
+  evidence <- if (identical(found$basis, "bom")) {
+    sprintf("The body starts with a %s byte-order mark", label)
+  } else {
+    sprintf(
+      paste0("The byte pattern suggests %s text (heuristic; the intended ",
+             "encoding cannot be known)"),
+      label
+    )
+  }
+  paste0(
+    evidence, "; robots.txt must be UTF-8, so re-save it as UTF-8 ",
+    "(RFC 9309 section 2.3)."
+  )
+}
+
 # Where a BOM starts a line's content, after the ASCII blanks the parser
 # strips (SP, HT, VT, FF), or 0 when none does. `skip_start` passes over the
 # byte-0 BOM the parser itself skips.
@@ -3548,6 +3686,8 @@ empty_validation_documents <- function() {
     sitemap_directives = integer(),
     unsupported_directives = integer(),
     encoding = character(),
+    encoding_signature = character(),
+    encoding_signature_basis = character(),
     has_bom = logical(),
     nul_byte_count = integer(),
     final_newline = logical(),

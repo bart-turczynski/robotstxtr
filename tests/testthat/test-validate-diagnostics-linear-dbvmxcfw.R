@@ -176,11 +176,19 @@ test_that("the frame of a NUL-bearing UTF-16 body is pinned", {
   expect_identical(
     linear_rows(d),
     c("nul_byte@1", "nul_byte@2", "nul_byte@3", "malformed_line@1",
-      "rules_after_nul_removal@NA")
+      "utf16_or_utf32_encoding@NA", "rules_after_nul_removal@NA")
   )
-  # The rules_after_nul_removal wording moved with ROBO-pvqrfvol.
+  # The rules_after_nul_removal wording moved with ROBO-pvqrfvol, and
+  # ROBO-cvpkzckn added the utf16_or_utf32_encoding row; without it, the
+  # frame is the one pinned before.
   expect_identical(
     seam_digest(d, linear_frame_extra(d)),
+    "1f6656374fa8267032d988e722fba5ff"
+  )
+  old <- d[d$code != "utf16_or_utf32_encoding", , drop = FALSE]
+  rownames(old) <- NULL
+  expect_identical(
+    seam_digest(old, linear_frame_extra(old)),
     "87e9c2a1fdbd59ad78f1279e885c5a60"
   )
 })
