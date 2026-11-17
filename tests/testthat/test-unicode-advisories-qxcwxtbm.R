@@ -14,11 +14,6 @@ ua_tail <- paste0(
   "Valid UTF-8 can neither prove nor disprove corruption; this advisory ",
   "changes no match."
 )
-ua_invisible_tail <- paste0(
-  ". They may be meant, but they are easy to paste unseen, and the matcher ",
-  "compares them byte for byte, so a URL without them may not match. ",
-  ua_tail
-)
 ua_codes <- c(
   "rule_replacement_character", "rule_invisible_character",
   "rule_possible_mojibake"
@@ -34,12 +29,21 @@ ua_replacement_message <- function(at) {
 }
 
 ua_invisible_message <- function(items) {
-  lead <- if (length(items) == 1L) {
-    "Pattern holds an invisible or formatting character: "
+  if (length(items) == 1L) {
+    paste0(
+      "Pattern holds an invisible or formatting character: ", items,
+      ". It may be meant, but it is easy to paste unseen, and the matcher ",
+      "compares it byte for byte, so a URL without it may not match. ",
+      ua_tail
+    )
   } else {
-    "Pattern holds invisible or formatting characters: "
+    paste0(
+      "Pattern holds invisible or formatting characters: ", toString(items),
+      ". They may be meant, but they are easy to paste unseen, and the ",
+      "matcher compares them byte for byte, so a URL without them may not ",
+      "match. ", ua_tail
+    )
   }
-  paste0(lead, toString(items), ua_invisible_tail)
 }
 
 ua_mojibake_message <- function(items) {

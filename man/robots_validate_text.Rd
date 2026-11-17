@@ -503,15 +503,21 @@ it (cut at the first \verb{#}, at a NUL and at the line buffer):
 \code{rule_replacement_character} for U+FFFD; \code{rule_invisible_character} for
 U+00AD, U+200B to U+200F, U+202A to U+202E, U+2060 to U+2064, U+2066 to
 U+2069, U+FEFF and the C1 controls U+0080 to U+009F; and
-\code{rule_possible_mojibake} for two or more sequences of a Latin-1 letter
-U+00C2 to U+00F4 followed by the U+0080 to U+00BF characters that, read
-back as bytes, make one well-formed UTF-8 character (U+00C3 U+00A9 for an
-e-acute). A single such sequence is too weak a sign and is not reported,
-nor is any other non-ASCII character: a path with an accented letter, a
-path in Japanese, or a Latin-1 string converted to UTF-8 on input stays
+\code{rule_possible_mojibake} for two or more sequences of a Latin-1
+character U+00C2 to U+00F4 followed by the U+0080 to U+00BF characters
+that, read back as bytes, make one well-formed UTF-8 character (U+00C3
+U+00A9 for an e-acute). The mojibake check is a heuristic and can flag
+intended text: \code{2} U+00D7 U+00BD (a multiplication sign and a vulgar
+half) twice in one value, or capitals such as U+00C9 each followed by a
+no-break space U+00A0, read the same way. A single such sequence is not
+reported as mojibake; one whose second character is U+0080 to U+009F is
+still a C1 control and gets \code{rule_invisible_character}. No other
+non-ASCII character is matched, so most paths with accented letters, a
+path in Japanese, or a Latin-1 string converted to UTF-8 on input stay
 silent, as do a typed escape such as \verb{\%E2\%80\%8B}, a comment, a
-User-agent or Sitemap value, and a line that is not valid UTF-8. Each
-message quotes code
+User-agent or Sitemap value, and a rule value that is not valid UTF-8
+(bytes after the cut, in a comment or past a NUL, do not count; a
+character the line buffer splits is dropped). Each message quotes code
 points as \code{U+XXXX} with byte offsets counted from 1 at the value's first
 byte after the blanks that follow the colon, listing at most ten, and a
 line gets at most one row per code. A U+200B or U+FEFF that leads the
@@ -519,9 +525,9 @@ value is left to \code{rule_missing_leading_slash}, which names it. A document
 gets at most 100 such rows; the last one counts the rest. Only the
 Latin-1 mojibake pattern is read: a Windows-1252 decoding, NFC or NFD
 normalization and the intended original text are out of scope, and
-nothing is repaired. The result's \code{unicode_advisories} attribute records
-whether the check ran, so an empty set of rows can be told apart from a
-check that was off.
+nothing is repaired. The result's \code{unicode_advisories} attribute holds
+the value of the argument, so an empty set of rows from a run with it
+on can be told apart from a run with it off.
 }
 
 \examples{

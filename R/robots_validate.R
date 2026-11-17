@@ -485,15 +485,21 @@ validation_unsupported <- c(
 #' `rule_replacement_character` for U+FFFD; `rule_invisible_character` for
 #' U+00AD, U+200B to U+200F, U+202A to U+202E, U+2060 to U+2064, U+2066 to
 #' U+2069, U+FEFF and the C1 controls U+0080 to U+009F; and
-#' `rule_possible_mojibake` for two or more sequences of a Latin-1 letter
-#' U+00C2 to U+00F4 followed by the U+0080 to U+00BF characters that, read
-#' back as bytes, make one well-formed UTF-8 character (U+00C3 U+00A9 for an
-#' e-acute). A single such sequence is too weak a sign and is not reported,
-#' nor is any other non-ASCII character: a path with an accented letter, a
-#' path in Japanese, or a Latin-1 string converted to UTF-8 on input stays
+#' `rule_possible_mojibake` for two or more sequences of a Latin-1
+#' character U+00C2 to U+00F4 followed by the U+0080 to U+00BF characters
+#' that, read back as bytes, make one well-formed UTF-8 character (U+00C3
+#' U+00A9 for an e-acute). The mojibake check is a heuristic and can flag
+#' intended text: `2` U+00D7 U+00BD (a multiplication sign and a vulgar
+#' half) twice in one value, or capitals such as U+00C9 each followed by a
+#' no-break space U+00A0, read the same way. A single such sequence is not
+#' reported as mojibake; one whose second character is U+0080 to U+009F is
+#' still a C1 control and gets `rule_invisible_character`. No other
+#' non-ASCII character is matched, so most paths with accented letters, a
+#' path in Japanese, or a Latin-1 string converted to UTF-8 on input stay
 #' silent, as do a typed escape such as `%E2%80%8B`, a comment, a
-#' User-agent or Sitemap value, and a line that is not valid UTF-8. Each
-#' message quotes code
+#' User-agent or Sitemap value, and a rule value that is not valid UTF-8
+#' (bytes after the cut, in a comment or past a NUL, do not count; a
+#' character the line buffer splits is dropped). Each message quotes code
 #' points as `U+XXXX` with byte offsets counted from 1 at the value's first
 #' byte after the blanks that follow the colon, listing at most ten, and a
 #' line gets at most one row per code. A U+200B or U+FEFF that leads the
@@ -501,9 +507,9 @@ validation_unsupported <- c(
 #' gets at most 100 such rows; the last one counts the rest. Only the
 #' Latin-1 mojibake pattern is read: a Windows-1252 decoding, NFC or NFD
 #' normalization and the intended original text are out of scope, and
-#' nothing is repaired. The result's `unicode_advisories` attribute records
-#' whether the check ran, so an empty set of rows can be told apart from a
-#' check that was off.
+#' nothing is repaired. The result's `unicode_advisories` attribute holds
+#' the value of the argument, so an empty set of rows from a run with it
+#' on can be told apart from a run with it off.
 #'
 #' @param robots_txt A single non-missing character string or a raw vector.
 #' @param source_id A single non-empty character string identifying the supplied
@@ -3047,10 +3053,12 @@ rule_raw_value <- function(line_bytes, first_line, missing_colon) {
   if (!is.na(nul)) {
     bytes <- bytes[seq_len(nul - 1L)]
   }
+  buffer_cut <- length(bytes) > validation_line_bytes
   bytes <- bytes[seq_len(min(length(bytes), validation_line_bytes))]
   hash <- match(as.raw(0x23), bytes)
   if (!is.na(hash)) {
     bytes <- bytes[seq_len(hash - 1L)]
+    buffer_cut <- FALSE
   }
   if (missing_colon) {
     blank <- as.raw(c(0x20, 0x09, 0x0a, 0x0b, 0x0c, 0x0d))
@@ -3060,7 +3068,28 @@ rule_raw_value <- function(line_bytes, first_line, missing_colon) {
   } else {
     stop_at <- which(bytes == as.raw(0x3a))
   }
-  bytes[-seq_len(stop_at[[1L]])]
+  value <- bytes[-seq_len(stop_at[[1L]])]
+  # Whether the value ends at the line buffer, which can split a character.
+  if (buffer_cut) {
+    attr(value, "buffer_cut") <- TRUE
+  }
+  value
+}
+
+# Drops a trailing UTF-8 sequence that is incomplete, and only that: the
+# lead byte and the continuation bytes after it when fewer than the lead
+# byte needs. `bytes` is non-empty.
+utf8_drop_cut_tail <- function(bytes) {
+  n <- length(bytes)
+  values <- as.integer(bytes)
+  k <- n
+  while (k > max(1L, n - 3L) && values[[k]] >= 0x80L && values[[k]] <= 0xBFL) {
+    k <- k - 1L
+  }
+  lead <- values[[k]]
+  need <- if (lead >= 0xF0L) 4L else if (lead >= 0xE0L) 3L else
+    if (lead >= 0xC0L) 2L else 1L
+  if (n - k + 1L < need) bytes[seq_len(k - 1L)] else bytes
 }
 
 # The lower-case percent-escapes of an Allow or Disallow line's value, as the
@@ -3123,15 +3152,24 @@ validation_invisible_code_points <- c(
 # Info findings for one rule's raw value bytes, as a list of list(code,
 # message): at most one per family, in the order replacement, invisible,
 # mojibake. Only a value that is valid UTF-8 is read; invalid_utf8 owns the
-# rest. Offsets count bytes from 1 at the value's first byte after the
-# blanks that follow the colon. A U+200B or U+FEFF that leads the value is
-# left to rule_missing_leading_slash, whose message names it.
+# rest. A character the line buffer splits is dropped first, so the cut
+# alone does not make the value invalid. Offsets count bytes from 1 at the
+# value's first byte after the blanks that follow the colon. A U+200B or
+# U+FEFF that leads the value is left to rule_missing_leading_slash, whose
+# message names it.
 rule_unicode_advisories <- function(value) {
+  buffer_cut <- isTRUE(attr(value, "buffer_cut"))
   start <- which(!value %in% as.raw(c(0x20, 0x09, 0x0b, 0x0c)))
   if (length(start) == 0L || all(as.integer(value) < 0x80L)) {
     return(list())
   }
   value <- value[start[[1L]]:length(value)]
+  if (buffer_cut) {
+    value <- utf8_drop_cut_tail(value)
+    if (length(value) == 0L) {
+      return(list())
+    }
+  }
   text <- rawToChar(value)
   if (!validUTF8(text)) {
     return(list())
@@ -3162,18 +3200,20 @@ rule_unicode_advisories <- function(value) {
     distinct <- sort(unique(points[invisible]))
     first <- offsets[invisible][match(distinct, points[invisible])]
     items <- sprintf("U+%04X first at byte %d", distinct, first)
-    lead <- if (length(items) == 1L) {
-      "Pattern holds an invisible or formatting character: "
+    words <- if (length(items) == 1L) {
+      c("Pattern holds an invisible or formatting character: ", "It may",
+        "it is", "it", "it")
     } else {
-      "Pattern holds invisible or formatting characters: "
+      c("Pattern holds invisible or formatting characters: ", "They may",
+        "they are", "them", "them")
     }
     found[[length(found) + 1L]] <- list(
       code = "rule_invisible_character",
       message = paste0(
-        lead, unicode_advisory_list(items), ". They may be meant, but they ",
-        "are easy to paste unseen, and the matcher compares them byte for ",
-        "byte, so a URL without them may not match. ",
-        validation_unicode_advisory_tail
+        words[[1L]], unicode_advisory_list(items), ". ", words[[2L]],
+        " be meant, but ", words[[3L]], " easy to paste unseen, and the ",
+        "matcher compares ", words[[4L]], " byte for byte, so a URL without ",
+        words[[5L]], " may not match. ", validation_unicode_advisory_tail
       )
     )
   }
@@ -3203,7 +3243,9 @@ validation_unicode_advisory_tail <- paste0(
   "changes no match."
 )
 
-# The code points of validation_invisible_prefixes' names ("U+200B").
+# The code points of validation_invisible_prefixes' names ("U+200B"). The
+# names are the only place that object holds them: its values are the
+# parser's %XX escapes of the UTF-8 bytes.
 names_to_points <- function(prefixes) {
   strtoi(substring(names(prefixes), 3L), 16L)
 }
