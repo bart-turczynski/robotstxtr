@@ -1,0 +1,97 @@
+<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" width="1.732in" height="2in" viewBox="0 0 1732 2000" role="img" aria-labelledby="robotstxtr-title" aria-describedby="robotstxtr-desc" xml:lang="en-US" lang="en-US">
+<title id="robotstxtr-title">robotstxtr</title>
+<desc id="robotstxtr-desc">Logo of the robotstxtr library for R, white text on a black background</desc>
+<metadata id="robotstxtr-metadata"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:cc="http://creativecommons.org/ns#">
+<cc:Work rdf:about="">
+<dc:title>robotstxtr</dc:title>
+<dc:description>robots.txt library for R</dc:description>
+<dc:description>Logo of the robotstxtr library for R, white text on a black background</dc:description>
+<dc:creator><cc:Agent><dc:title>Bart Turczynski</dc:title></cc:Agent></dc:creator>
+<dc:publisher><cc:Agent><dc:title>Bart Turczynski</dc:title></cc:Agent></dc:publisher>
+<dc:rights><cc:Agent><dc:title>&#169; 2026 Bart Turczynski. MIT License.</dc:title></cc:Agent></dc:rights>
+<dc:date>2026-10-04</dc:date>
+<dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+<dc:format>image/svg+xml</dc:format>
+<dc:language>en-US</dc:language>
+<dc:identifier>robotstxtr</dc:identifier>
+<dc:identifier>https://gitlab.com/bart-turczynski/robotstxtr/-/raw/main/man/figures/logo.svg</dc:identifier>
+<dc:source>https://gitlab.com/bart-turczynski/robotstxtr</dc:source>
+<dc:source>https://github.com/bart-turczynski/robotstxtr</dc:source>
+<dc:source>https://CRAN.R-project.org/package=robotstxtr</dc:source>
+<dc:relation>https://gitlab.com/bart-turczynski/robotstxtr</dc:relation>
+<dc:relation>https://github.com/bart-turczynski/robotstxtr</dc:relation>
+<dc:relation>https://CRAN.R-project.org/package=robotstxtr</dc:relation>
+<dc:relation>https://bart-turczynski.r-universe.dev/robotstxtr</dc:relation>
+<dc:relation>https://bart-turczynski.gitlab.io/robotstxtr/</dc:relation>
+<dc:relation>https://doi.org/10.5281/zenodo.23018995</dc:relation>
+<dc:subject><rdf:Bag><rdf:li>R</rdf:li><rdf:li>rstats</rdf:li><rdf:li>R package</rdf:li><rdf:li>robots-txt</rdf:li><rdf:li>robots-exclusion-protocol</rdf:li><rdf:li>web-crawler</rdf:li><rdf:li>crawl-policy</rdf:li><rdf:li>googlebot</rdf:li><rdf:li>bingbot</rdf:li><rdf:li>yandex</rdf:li><rdf:li>url-matching</rdf:li><rdf:li>robots-txt-validation</rdf:li></rdf:Bag></dc:subject>
+<dc:contributor>Name set in IBM Plex Mono (SIL Open Font License 1.1), converted to outlines.</dc:contributor>
+<dcterms:alternative>robotstxtr logo</dcterms:alternative>
+<dcterms:created>2026-10-04</dcterms:created>
+<dcterms:modified>2026-10-05</dcterms:modified>
+<dcterms:dateCopyrighted>2026</dcterms:dateCopyrighted>
+<dcterms:rightsHolder>Bart Turczynski</dcterms:rightsHolder>
+<dcterms:license rdf:resource="https://opensource.org/license/mit"/>
+<dcterms:accessRights>Public</dcterms:accessRights>
+<dcterms:audience>R users</dcterms:audience>
+<dcterms:isPartOf rdf:resource="https://gitlab.com/bart-turczynski/seor"/>
+<cc:license rdf:resource="https://opensource.org/license/mit"/>
+<cc:attributionName>Bart Turczynski</cc:attributionName>
+<cc:attributionURL rdf:resource="https://gitlab.com/bart-turczynski/robotstxtr"/>
+</cc:Work>
+</rdf:RDF>
+<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmlns:xmpRights="http://ns.adobe.com/xap/1.0/rights/" xmlns:xmpMM="http://ns.adobe.com/xap/1.0/mm/" xmlns:stRef="http://ns.adobe.com/xap/1.0/sType/ResourceRef#" xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/" xmlns:Iptc4xmpCore="http://iptc.org/std/Iptc4xmpCore/1.0/xmlns/" xmlns:plus="http://ns.useplus.org/ldf/xmp/1.0/" xmlns:cc="http://creativecommons.org/ns#">
+<dc:title><rdf:Alt><rdf:li xml:lang="x-default">robotstxtr</rdf:li></rdf:Alt></dc:title>
+<dc:description><rdf:Alt><rdf:li xml:lang="x-default">Logo of the robotstxtr library for R, white text on a black background</rdf:li></rdf:Alt></dc:description>
+<dc:creator><rdf:Seq><rdf:li>Bart Turczynski</rdf:li></rdf:Seq></dc:creator>
+<dc:publisher><rdf:Bag><rdf:li>Bart Turczynski</rdf:li></rdf:Bag></dc:publisher>
+<dc:contributor><rdf:Bag><rdf:li>Name set in IBM Plex Mono (SIL Open Font License 1.1), converted to outlines.</rdf:li></rdf:Bag></dc:contributor>
+<dc:rights><rdf:Alt><rdf:li xml:lang="x-default">&#169; 2026 Bart Turczynski. MIT License.</rdf:li></rdf:Alt></dc:rights>
+<dc:subject><rdf:Bag><rdf:li>R</rdf:li><rdf:li>rstats</rdf:li><rdf:li>R package</rdf:li><rdf:li>robots-txt</rdf:li><rdf:li>robots-exclusion-protocol</rdf:li><rdf:li>web-crawler</rdf:li><rdf:li>crawl-policy</rdf:li><rdf:li>googlebot</rdf:li><rdf:li>bingbot</rdf:li><rdf:li>yandex</rdf:li><rdf:li>url-matching</rdf:li><rdf:li>robots-txt-validation</rdf:li></rdf:Bag></dc:subject>
+<dc:source>https://gitlab.com/bart-turczynski/robotstxtr</dc:source>
+<dc:relation><rdf:Bag><rdf:li>https://gitlab.com/bart-turczynski/robotstxtr</rdf:li><rdf:li>https://github.com/bart-turczynski/robotstxtr</rdf:li><rdf:li>https://CRAN.R-project.org/package=robotstxtr</rdf:li><rdf:li>https://bart-turczynski.r-universe.dev/robotstxtr</rdf:li><rdf:li>https://bart-turczynski.gitlab.io/robotstxtr/</rdf:li><rdf:li>https://doi.org/10.5281/zenodo.23018995</rdf:li></rdf:Bag></dc:relation>
+<dc:identifier>robotstxtr</dc:identifier>
+<dc:format>image/svg+xml</dc:format>
+<dc:language><rdf:Bag><rdf:li>en-US</rdf:li></rdf:Bag></dc:language>
+<dc:type><rdf:Bag><rdf:li>Image</rdf:li><rdf:li>StillImage</rdf:li></rdf:Bag></dc:type>
+<dc:date><rdf:Seq><rdf:li>2026-10-04</rdf:li></rdf:Seq></dc:date>
+<xmp:CreateDate>2026-10-04</xmp:CreateDate>
+<xmp:ModifyDate>2026-10-05</xmp:ModifyDate>
+<xmp:MetadataDate>2026-10-05</xmp:MetadataDate>
+<xmp:CreatorTool>Claude Design</xmp:CreatorTool>
+<xmp:Label>seor fleet</xmp:Label>
+<xmp:Nickname>robotstxtr logo</xmp:Nickname>
+<xmp:Identifier><rdf:Bag><rdf:li>https://gitlab.com/bart-turczynski/robotstxtr/-/raw/main/man/figures/logo.svg</rdf:li><rdf:li>https://gitlab.com/bart-turczynski/robotstxtr</rdf:li><rdf:li>https://github.com/bart-turczynski/robotstxtr</rdf:li><rdf:li>https://CRAN.R-project.org/package=robotstxtr</rdf:li><rdf:li>https://bart-turczynski.r-universe.dev/robotstxtr</rdf:li><rdf:li>https://bart-turczynski.gitlab.io/robotstxtr/</rdf:li><rdf:li>https://doi.org/10.5281/zenodo.23018995</rdf:li></rdf:Bag></xmp:Identifier>
+<xmpRights:Marked>True</xmpRights:Marked>
+<xmpRights:WebStatement>https://opensource.org/license/mit</xmpRights:WebStatement>
+<xmpRights:UsageTerms><rdf:Alt><rdf:li xml:lang="x-default">Licensed under the MIT License: https://opensource.org/license/mit</rdf:li></rdf:Alt></xmpRights:UsageTerms>
+<xmpRights:Owner><rdf:Bag><rdf:li>Bart Turczynski</rdf:li></rdf:Bag></xmpRights:Owner>
+<xmpMM:DocumentID>uuid:db6d66f8-dd27-57be-8378-26e01cf5b5de</xmpMM:DocumentID>
+<xmpMM:OriginalDocumentID>uuid:db6d66f8-dd27-57be-8378-26e01cf5b5de</xmpMM:OriginalDocumentID>
+<xmpMM:InstanceID>uuid:f1762cc3-5119-513d-ad82-c179b16c7110</xmpMM:InstanceID>
+<photoshop:Headline>robotstxtr: robots.txt library for R</photoshop:Headline>
+<photoshop:Credit>Bart Turczynski</photoshop:Credit>
+<photoshop:Source>Bart Turczynski</photoshop:Source>
+<photoshop:AuthorsPosition>Maintainer</photoshop:AuthorsPosition>
+<photoshop:CaptionWriter>Bart Turczynski</photoshop:CaptionWriter>
+<photoshop:DateCreated>2026-10-04</photoshop:DateCreated>
+<Iptc4xmpCore:AltTextAccessibility><rdf:Alt><rdf:li xml:lang="x-default">Logo of the robotstxtr library for R, white text on a black background</rdf:li></rdf:Alt></Iptc4xmpCore:AltTextAccessibility>
+<Iptc4xmpCore:ExtDescrAccessibility><rdf:Alt><rdf:li xml:lang="x-default">A black hexagon with a thin white border. The package name, robotstxtr, is set across the center in white capital letters, with the R that marks it as an R package in a lighter weight than the rest.</rdf:li></rdf:Alt></Iptc4xmpCore:ExtDescrAccessibility>
+<Iptc4xmpCore:IntellectualGenre>logo</Iptc4xmpCore:IntellectualGenre>
+<Iptc4xmpCore:CreatorContactInfo rdf:parseType="Resource"><Iptc4xmpCore:CiEmailWork>bartek@turczynski.pl</Iptc4xmpCore:CiEmailWork><Iptc4xmpCore:CiUrlWork>https://gitlab.com/bart-turczynski/robotstxtr</Iptc4xmpCore:CiUrlWork></Iptc4xmpCore:CreatorContactInfo>
+<plus:Licensor><rdf:Seq><rdf:li rdf:parseType="Resource"><plus:LicensorName>Bart Turczynski</plus:LicensorName><plus:LicensorURL>https://gitlab.com/bart-turczynski/robotstxtr</plus:LicensorURL><plus:LicensorEmail>bartek@turczynski.pl</plus:LicensorEmail></rdf:li></rdf:Seq></plus:Licensor>
+<plus:CopyrightOwner><rdf:Seq><rdf:li rdf:parseType="Resource"><plus:CopyrightOwnerName>Bart Turczynski</plus:CopyrightOwnerName></rdf:li></rdf:Seq></plus:CopyrightOwner>
+<plus:ImageCreator><rdf:Seq><rdf:li rdf:parseType="Resource"><plus:ImageCreatorName>Bart Turczynski</plus:ImageCreatorName></rdf:li></rdf:Seq></plus:ImageCreator>
+<plus:ModelReleaseStatus>http://ns.useplus.org/ldf/vocab/MR-NAP</plus:ModelReleaseStatus>
+<plus:PropertyReleaseStatus>http://ns.useplus.org/ldf/vocab/PR-NAP</plus:PropertyReleaseStatus>
+<cc:license rdf:resource="https://opensource.org/license/mit"/>
+<cc:attributionName>Bart Turczynski</cc:attributionName>
+<cc:attributionURL rdf:resource="https://gitlab.com/bart-turczynski/robotstxtr"/>
+</rdf:Description></rdf:RDF></x:xmpmeta>
+</metadata>
+<path id="robotstxtr-border" fill="#F5F5F5" d="M866 0L1732 500L1732 1500L866 2000L0 1500L0 500Z"></path>
+<path id="robotstxtr-background" fill="#000000" d="M866 69.3L1672 534.6L1672 1465.4L866 1930.7L60 1465.4L60 534.6Z"></path>
+<path id="robotstxtr-name-bold" fill="#F5F5F5" d="M263.7 1075.4L231.7 1075.4L231.7 924.6L290.0 924.6Q301.1 924.6 309.7 928.0Q318.3 931.3 324.3 937.6Q330.2 943.9 333.2 952.7Q336.3 961.6 336.3 972.6Q336.3 988.6 329.3 1000.0Q322.4 1011.5 309.7 1015.1L339.3 1075.4L303.9 1075.4L278.6 1019.5L263.7 1019.5ZM282.3 994.4Q293.7 994.4 298.1 990.1Q302.6 985.8 302.6 975.8L302.6 969.3Q302.6 959.4 298.1 955.1Q293.7 950.8 282.3 950.8L263.7 950.8L263.7 994.4ZM409.7 1078.0Q379.5 1078.0 365.1 1057.5Q350.7 1037.0 350.7 1000.0Q350.7 963.1 365.1 942.6Q379.5 922.0 409.7 922.0Q439.9 922.0 454.3 942.6Q468.7 963.1 468.7 1000.0Q468.7 1037.0 454.3 1057.5Q439.9 1078.0 409.7 1078.0ZM409.7 1051.9Q423.5 1051.9 428.8 1041.6Q434.1 1031.3 434.1 1013.0L434.1 986.8Q434.1 968.7 428.8 958.4Q423.5 948.2 409.7 948.2Q395.9 948.2 390.6 958.4Q385.3 968.7 385.3 986.8L385.3 1013.2Q385.3 1031.3 390.6 1041.6Q395.9 1051.9 409.7 1051.9ZM491.1 924.6L544.1 924.6Q566.3 924.6 578.1 935.4Q589.8 946.2 589.8 964.8Q589.8 977.8 583.5 985.4Q577.1 993.1 565.2 996.6L565.2 997.9Q579.3 1001.3 586.9 1010.0Q594.6 1018.6 594.6 1033.9Q594.6 1052.9 582.6 1064.2Q570.6 1075.4 549.0 1075.4L491.1 1075.4ZM539.1 1052.7Q550.7 1052.7 556.1 1048.8Q561.5 1044.9 561.5 1034.6L561.5 1028.3Q561.5 1017.9 556.1 1014.1Q550.7 1010.2 539.1 1010.2L522.7 1010.2L522.7 1052.7ZM535.0 988.6Q546.4 988.6 551.6 984.8Q556.8 981.0 556.8 971.1L556.8 964.6Q556.8 954.7 551.6 951.0Q546.4 947.3 535.0 947.3L522.7 947.3L522.7 988.6ZM668.9 1078.0Q638.7 1078.0 624.3 1057.5Q609.9 1037.0 609.9 1000.0Q609.9 963.1 624.3 942.6Q638.7 922.0 668.9 922.0Q699.1 922.0 713.5 942.6Q727.9 963.1 727.9 1000.0Q727.9 1037.0 713.5 1057.5Q699.1 1078.0 668.9 1078.0ZM668.9 1051.9Q682.7 1051.9 688.0 1041.6Q693.3 1031.3 693.3 1013.0L693.3 986.8Q693.3 968.7 688.0 958.4Q682.7 948.2 668.9 948.2Q655.1 948.2 649.8 958.4Q644.5 968.7 644.5 986.8L644.5 1013.2Q644.5 1031.3 649.8 1041.6Q655.1 1051.9 668.9 1051.9ZM814.7 951.2L814.7 1075.4L782.3 1075.4L782.3 951.2L738.9 951.2L738.9 924.6L858.1 924.6L858.1 951.2ZM925.7 1078.0Q906.7 1078.0 892.7 1071.7Q878.6 1065.5 870.0 1054.7L888.8 1033.9Q897.0 1043.0 906.8 1047.3Q916.7 1051.6 926.8 1051.6Q938.5 1051.6 944.5 1046.5Q950.6 1041.3 950.6 1031.6Q950.6 1023.6 945.9 1019.5Q941.3 1015.4 930.3 1013.6L914.5 1011.0Q894.2 1007.6 885.1 996.0Q876.0 984.5 876.0 967.8Q876.0 946.0 890.3 934.0Q904.6 922.0 930.3 922.0Q947.8 922.0 960.7 927.4Q973.7 932.8 981.7 942.1L963.3 962.6Q957.3 956.0 949.1 952.2Q940.8 948.4 930.5 948.4Q908.7 948.4 908.7 966.3Q908.7 974.1 913.5 978.0Q918.4 981.9 929.4 983.8L945.2 986.6Q963.5 989.9 973.5 1000.4Q983.4 1011.0 983.4 1029.0Q983.4 1039.5 979.7 1048.5Q976.1 1057.5 968.7 1064.1Q961.4 1070.6 950.7 1074.3Q940.0 1078.0 925.7 1078.0ZM1073.9 951.2L1073.9 1075.4L1041.5 1075.4L1041.5 951.2L998.1 951.2L998.1 924.6L1117.3 924.6L1117.3 951.2ZM1250.2 1075.4L1213.2 1075.4L1197.7 1045.4L1187.1 1021.6L1185.1 1021.6L1174.3 1045.4L1158.4 1075.4L1124.4 1075.4L1166.8 997.4L1127.3 924.6L1164.2 924.6L1176.5 948.6L1187.5 972.8L1189.2 972.8L1200.5 948.6L1213.4 924.6L1247.3 924.6L1207.8 997.9ZM1333.1 951.2L1333.1 1075.4L1300.7 1075.4L1300.7 951.2L1257.3 951.2L1257.3 924.6L1376.5 924.6L1376.5 951.2Z"></path>
+<path id="robotstxtr-name-regular" fill="#F5F5F5" d="M1419.3 1075.4L1401.1 1075.4L1401.1 924.6L1456.0 924.6Q1477.0 924.6 1488.0 936.1Q1499.0 947.5 1499.0 968.0Q1499.0 986.4 1489.5 997.4Q1480.0 1008.4 1461.8 1010.2L1500.3 1075.4L1480.0 1075.4L1443.3 1011.0L1419.3 1011.0ZM1455.6 995.7Q1467.0 995.7 1473.4 990.0Q1479.8 984.2 1479.8 973.7L1479.8 962.4Q1479.8 951.8 1473.4 946.1Q1467.0 940.4 1455.6 940.4L1419.3 940.4L1419.3 995.7Z"></path>
+</svg>

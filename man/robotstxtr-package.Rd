@@ -6,6 +6,8 @@
 \alias{robotstxtr-package}
 \title{robotstxtr: Engine-Aware 'robots.txt' Policy with Google's Matcher Algorithm}
 \description{
+\if{html}{\figure{logo.svg}{options: style='float: right' alt='logo' width='120'}}
+
 Evaluates whether URLs may be crawled according to 'robots.txt' rules. A versioned engine-aware facade keeps neutral fetch evidence, per-engine status policy, robots product tokens, and matcher capabilities separate, returning explicit non-decisions when policy is undocumented or a matcher is unavailable. The available matcher is a bundled, upstream-test-validated snapshot of Google's open-source C++ 'robots.txt' matcher, preserving 'Googlebot' behavior. Fetches follow a deterministic, conservative policy, with fetch origins constructed by 'rurl' and every request made through the 'ssrfr' server-side request forgery guard. All network access in tests, examples, and vignettes is mocked, served locally, or refused before any request, so no internet connection is required to install, test, or check the package. This matcher derives from Google's 'robotstxt' project \url{https://github.com/google/robotstxt}, distributed under the Apache License 2.0; see the package NOTICE.
 }
 \examples{
