@@ -42,8 +42,11 @@ validation_unsupported <- c(
 #' bytes point to: `"utf-8-bom"`, `"utf-16le"`, `"utf-16be"`, `"utf-32le"`,
 #' `"utf-32be"`, or `NA`. `encoding_signature_basis` says how: `"bom"` for a
 #' byte-order mark, `"byte_pattern"` for the heuristic that reads the zero
-#' bytes of ASCII text in UTF-16 or UTF-32. Both are `NA` for character
-#' input, whose original bytes R no longer holds.
+#' bytes of ASCII text in UTF-16 or UTF-32. The signature describes a raw or
+#' fetched body; character input, even marked `"bytes"`, is text the caller
+#' already decoded, so both are `NA` for it. `has_bom` can still flag a
+#' leading byte-order mark character in character input while
+#' `encoding_signature` stays `NA`.
 #'
 #' @section Diagnostic codes:
 #' Every `code` the validator emits, by the order a document is read. The
@@ -1172,9 +1175,11 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # A UTF-16 or UTF-32 body (ROBO-cvpkzckn) gets one document-level warning,
   # from a byte-order mark or, without one, from the byte pattern of ASCII
   # text in that encoding; the stored bytes are read, so a body cut mid
-  # code unit keeps its mark. `encoding` still says only whether the bytes
-  # are valid UTF-8. Character input was already turned into an R string, so
-  # its bytes say nothing about the original file and are not read.
+  # code unit keeps its mark; the UTF-8 mark is read there too, so a cut
+  # before the first LF keeps it, while has_bom describes the validated
+  # lines. `encoding` still says only whether the bytes are valid UTF-8. The
+  # signature describes a raw or fetched body; character input is text the
+  # caller already decoded, so it is not identified.
   wide <- if (raw_input) {
     validation_encoding_signature(stored_bytes, cut = body_truncated)
   }
@@ -1189,7 +1194,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   if (!is.null(wide)) {
     encoding_signature <- wide$signature
     encoding_signature_basis <- wide$basis
-  } else if (raw_input && has_bom) {
+  } else if (raw_input && length(stored_bytes) >= 3L &&
+               identical(stored_bytes[1:3], validation_bom)) {
     encoding_signature <- "utf-8-bom"
     encoding_signature_basis <- "bom"
   }

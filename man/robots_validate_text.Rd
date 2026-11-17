@@ -50,8 +50,11 @@ ASCII text can read \code{"utf-8"}. \code{encoding_signature} names the encoding
 bytes point to: \code{"utf-8-bom"}, \code{"utf-16le"}, \code{"utf-16be"}, \code{"utf-32le"},
 \code{"utf-32be"}, or \code{NA}. \code{encoding_signature_basis} says how: \code{"bom"} for a
 byte-order mark, \code{"byte_pattern"} for the heuristic that reads the zero
-bytes of ASCII text in UTF-16 or UTF-32. Both are \code{NA} for character
-input, whose original bytes R no longer holds.
+bytes of ASCII text in UTF-16 or UTF-32. The signature describes a raw or
+fetched body; character input, even marked \code{"bytes"}, is text the caller
+already decoded, so both are \code{NA} for it. \code{has_bom} can still flag a
+leading byte-order mark character in character input while
+\code{encoding_signature} stays \code{NA}.
 }
 \section{Diagnostic codes}{
 

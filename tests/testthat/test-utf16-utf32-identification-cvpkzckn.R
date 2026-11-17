@@ -285,6 +285,13 @@ test_that("ROBO-cvpkzckn: a body cut mid code unit is still named", {
   expect_identical(validate(bare, TRUE)$encoding_signature_basis,
                    "byte_pattern")
   expect_identical(validate(bare, FALSE)$encoding_signature, NA_character_)
+  # A UTF-8 mark cut before any LF: no complete line is validated, so has_bom
+  # is FALSE, but the mark is read from the stored bytes as the others are.
+  utf8 <- validate(c(as.raw(c(0xef, 0xbb, 0xbf)), charToRaw("User-agent: *")),
+                   TRUE)
+  expect_false(utf8$has_bom)
+  expect_identical(utf8$encoding_signature, "utf-8-bom")
+  expect_identical(utf8$encoding_signature_basis, "bom")
 })
 
 test_that("ROBO-cvpkzckn: character input names no encoding", {
@@ -302,7 +309,7 @@ test_that("ROBO-cvpkzckn: character input names no encoding", {
     chr_x$diagnostics,
     ignore_attr = TRUE
   )
-  bom8 <- robots_validate_text(paste0("﻿", enc_text))
+  bom8 <- robots_validate_text(paste0("\ufeff", enc_text))
   expect_true(bom8$documents$has_bom)
   expect_identical(bom8$documents$encoding_signature, NA_character_)
   expect_identical(bom8$diagnostics$code, "byte_order_mark")
