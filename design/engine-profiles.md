@@ -500,6 +500,32 @@ line holding a NUL byte (ROBO-nrnucnru). `empty_disallow_with_full_block` and
 `user_agent_repeated_group` are unchanged. Pinned by
 `tests/testthat/test-allow-all-disallow-vyystald.R`.
 
+### 5g. A named group that drops `*` Disallows (ROBO-pbwijkdq; validator only)
+
+A named group replaces `User-agent: *` for the crawlers it names (RFC 9309 §2.2.1), so a group written
+as if it added to `*` (a few extra Disallows, a single Allow, `Allow: /`) loses every `*` Disallow.
+`wildcard_disallows_not_inherited` (warning) reports a lost `*` Disallow only where a witness path
+shows the loss: a path the pattern matches (each `*` as nothing or `x`, and unless it ends in `$`,
+with `x` or `/x` appended) that Google's matcher disallows under the `*` groups' rules and allows
+under the Disallows of the crawler's merged groups alone. A path only the crawler's own Allow reopens
+(`Disallow: /` with `Allow: /company`, where `*` disallows `/company/search/`) is ROBO-cufxicmz's
+case, so the two warnings never report the same path. `Disallow: /private$` therefore does not restate `/private`
+(`/private/x` is the witness), and a `*` Allow that reopens every such path leaves no warning. The
+`*` side reads each Disallow against the `*` Allows alone first, since more Disallows only lengthen
+the longest match, and against all `*` rules only for a path allowed there.
+
+An explicit grant, meaning `Allow: /` (or another every-path Allow) or an empty `Disallow:` with no
+other Disallow, gets the same row as info: such a grant is almost always deliberate (owner decision,
+2026-11-18), while a group of narrower Allows (`Allow: /public`) stays a warning.
+
+Not warned: a full block (it loses no Disallow), and `AdsBot-Google`, `AdsBot-Google-Mobile`,
+`Mediapartners-Google` and `APIs-Google`, which ignore `*` whether or not a group names them (§5a,
+special-case crawlers); their `wildcard_rules_not_inherited` row says the `*` rules never applied.
+The rules the warning reports leave the group's info row, and info rows with the same remaining rules
+merge into one, anchored on the earliest group and naming each group with its line (five, then a
+count). Warning rows never merge across groups. Pinned by
+`tests/testthat/test-wildcard-disallows-pbwijkdq.R`.
+
 ## 6. Matcher capability availability
 
 `robots_policy_ruleset` (§4) is pure data and always available. `matcher_backend` is separate:

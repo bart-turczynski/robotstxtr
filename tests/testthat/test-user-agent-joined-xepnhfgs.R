@@ -51,9 +51,10 @@ test_that("internetcom.jp: a Sitemap between the lines warns on bingbot", {
   ))
   # One report per line: no blank-line info on bingbot as well.
   expect_false("user_agent_joined_across_blank" %in% d$code)
-  # The inheritance info is unchanged (ROBO-gfjotdrr): it anchors on the
-  # joined group's first User-agent line, the `*` on line 7.
-  expect_identical(d$line[d$code == "wildcard_rules_not_inherited"], 7L)
+  # The inheritance report anchors on the joined group's first User-agent
+  # line, the `*` on line 7 (ROBO-gfjotdrr); the lost `*` Disallows make it
+  # the warning (ROBO-pbwijkdq).
+  expect_identical(d$line[d$code == "wildcard_disallows_not_inherited"], 7L)
 })
 
 test_that("www.rro.ch: a Crawl-delay before a full block names both engines", {

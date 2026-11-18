@@ -215,12 +215,25 @@ A Sitemap line with an empty value. \cr
 A Sitemap value that is not a valid absolute URL. \cr
 \code{unsupported_sitemap_scheme} \tab warning \tab
 A Sitemap scheme other than \code{http}, \code{https} or \code{ftp}. \cr
+\code{wildcard_disallows_not_inherited} \tab warning or info \tab
+A named User-agent group lacks \code{User-agent: *} Disallows that
+block a path its own rules allow, so its crawlers may crawl it: the
+group replaces \code{User-agent: *} for them instead of adding to it.
+Says so when the group holds no Disallow. Info, not a warning, for an
+explicit grant: \code{Allow: /} or an empty \code{Disallow:} and no
+other Disallow. Not for a full block, nor for
+\code{AdsBot-Google}, \code{AdsBot-Google-Mobile},
+\code{Mediapartners-Google} and \code{APIs-Google}, which ignore
+\code{User-agent: *} anyway. Anchored on the group's first User-agent
+line. Not reported for a body cut at \code{max_bytes}. \cr
 \code{wildcard_rules_not_inherited} \tab info \tab
 A named User-agent group lacks some \code{User-agent: *} rules, which
-its crawlers therefore do not obey. Where the merged named groups
-disallow \code{/} and hold no non-empty \code{Allow}, only the lost
-\code{User-agent: *} Allow rules are listed.
-Anchored on the group's first User-agent line. Not reported for a body
+its crawlers therefore do not obey; rules
+\code{wildcard_disallows_not_inherited} reports are left out. Where
+the merged named groups disallow \code{/} and hold no non-empty
+\code{Allow}, only the lost \code{User-agent: *} Allow rules are
+listed. Groups with the same remaining rules share one row, anchored
+on the earliest group's first User-agent line. Not reported for a body
 cut at \code{max_bytes}. \cr
 \code{ai_training_preference} \tab info \tab
 A User-agent line names the AI-training policy token
@@ -418,6 +431,19 @@ not one ending in \code{$}) and hold no non-empty \code{Allow} is in a full bloc
 the \code{*} Disallows it lacks add nothing, so only its lost \code{*} Allow rules are
 listed, as rules that may be meant as exceptions. An empty \verb{Allow:} does not
 cancel a full block.
+
+A lost \code{*} Disallow is a \code{wildcard_disallows_not_inherited} warning when a
+path it matches (the pattern with each \code{*} as nothing or \code{x}, and unless it
+ends in \code{$}, with \code{x} or \verb{/x} appended) is disallowed under the \code{*} groups
+and allowed by the Disallows of the crawler's merged groups alone, as
+Google's matcher reads both; a \code{*} Allow that reopens every such path
+leaves no warning, and a path only the crawler's own Allow reopens (an
+\verb{Allow: /company} under \verb{Disallow: /}) is left to the info row. A group
+of only Allows warns too. An explicit grant (\verb{Allow: /}, or an empty
+\verb{Disallow:}, with no other Disallow) lifts every \code{*} Disallow but is almost
+always deliberate, so it is reported as info. The crawlers that ignore
+\verb{User-agent: *} whether or not a group names them get no warning, and
+their info row says the \code{*} rules never applied to them.
 
 The \code{ai_training_} codes follow
 draft-kelley-aipref-training-preference-signal-00 (dated 2026-10-30), an

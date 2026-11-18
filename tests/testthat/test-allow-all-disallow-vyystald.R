@@ -38,7 +38,10 @@ test_that("the textbook allow-all file is valid, with one info row", {
 test_that("a named group's empty Disallow says it leaves `*`", {
   x <- av_text("User-agent: X", "Disallow:", "",
                "User-agent: *", "Disallow: /p")
-  expect_identical(av_codes(x), "allow_all_disallow@2")
+  # X lifts the `*` Disallow: an explicit grant, so an info row too
+  # (ROBO-pbwijkdq).
+  expect_identical(av_codes(x), c("allow_all_disallow@2",
+                                  "wildcard_disallows_not_inherited@1"))
   expect_identical(x$documents$validation_status, "valid")
   expect_identical(av_row(x, 2L)$message, av_named)
 })

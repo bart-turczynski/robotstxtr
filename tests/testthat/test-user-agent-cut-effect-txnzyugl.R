@@ -155,7 +155,7 @@ test_that("a crawler named correctly elsewhere follows that group", {
 test_that("the inheritance row names the agent as written", {
   x <- cx_text("User-agent: *", "Disallow: /account/", "",
                "User-agent: Spinn3r", "Disallow: /podcasts/")
-  m <- cx_rows(x, "wildcard_rules_not_inherited")$message
+  m <- cx_rows(x, "wildcard_disallows_not_inherited")$message
   expect_match(m, "^Spinn3r obeys only this group")
   expect_no_match(m, "Spinn ", fixed = TRUE)
 })
@@ -166,7 +166,7 @@ test_that("written values sharing a cut token are each named", {
                "User-agent: Peer42", "Disallow: /p")
   d <- cx_rows(x)
   expect_identical(d$line, c(4L, 7L))
-  m <- cx_rows(x, "wildcard_rules_not_inherited")$message
+  m <- cx_rows(x, "wildcard_disallows_not_inherited")$message
   expect_match(m, "^Peer39_Crawler and Peer42 obey only the groups that name")
 })
 
@@ -194,7 +194,7 @@ test_that("a value that is not valid UTF-8 stays ASCII-only", {
   x <- robots_validate_text(body)
   d <- cx_rows(x)
   expect_identical(d$message, cx_read_as("B", cx_star, cx_other))
-  m <- cx_rows(x, "wildcard_rules_not_inherited")$message
+  m <- cx_rows(x, "wildcard_disallows_not_inherited")$message
   expect_match(m, "^B\\\\xE4r obeys only this group")
   expect_true(all(validUTF8(x$diagnostics$message)))
 })
