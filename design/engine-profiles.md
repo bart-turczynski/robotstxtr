@@ -508,8 +508,8 @@ as if it added to `*` (a few extra Disallows, a single Allow, `Allow: /`) loses 
 shows the loss: a path the pattern matches (each `*` as nothing or `x`, and unless it ends in `$`,
 with `x` or `/x` appended) that Google's matcher disallows under the `*` groups' rules and allows
 under the Disallows of the crawler's merged groups alone. A path only the crawler's own Allow reopens
-(`Disallow: /` with `Allow: /company`, where `*` disallows `/company/search/`) is ROBO-cufxicmz's
-case, so the two warnings never report the same path. `Disallow: /private$` therefore does not restate `/private`
+(`Disallow: /` with `Allow: /company`, where `*` disallows `/company/search/`) is §5h's case,
+so the two warnings never report the same path. `Disallow: /private$` therefore does not restate `/private`
 (`/private/x` is the witness), and a `*` Allow that reopens every such path leaves no warning. The
 `*` side reads each Disallow against the `*` Allows alone first, since more Disallows only lengthen
 the longest match, and against all `*` rules only for a path allowed there.
@@ -525,6 +525,29 @@ The rules the warning reports leave the group's info row, and info rows with the
 merge into one, anchored on the earliest group and naming each group with its line (five, then a
 count). Warning rows never merge across groups. Pinned by
 `tests/testthat/test-wildcard-disallows-pbwijkdq.R`.
+
+### 5h. A named group's Allow that reopens a `*` Disallow (ROBO-cufxicmz; validator only)
+
+Under a full block, sites list Allow prefixes for the sections a named crawler may read. A `*`
+Disallow under one of those prefixes does not apply to the named crawler (RFC 9309 §2.2.1), so the
+Allow reopens it: bloomberg.com's AI-crawler groups hold `Disallow: /` with `Allow: /company`
+while `*` disallows `/company/search/`. `allow_reopens_wildcard_disallow` (warning) reports a `*`
+Disallow when a witness path exists that Google's matcher:
+
+- disallows under that `*` Disallow and the `*` Allows that could match the path (then every `*`
+  rule disallows it, as in §5g);
+- allows under the crawler's merged groups;
+- disallows under those groups' Disallows alone, so the opening comes from an Allow.
+
+The candidate paths are the witness paths (§5g) of the `*` Disallow, those of the crawler's Allows
+that start with the Disallow's literal part, and, for a Disallow with a `*`, the Disallow read under
+each Allow prefix that starts with its literal part (`Allow: /creativegroup/` with
+`Disallow: /*_print.html` gives `/creativegroup/_print.html`; the `x` and `/x` suffixes are not
+added there). Every read is the matcher's, so a reported path is exact; an overlap no candidate shows
+is skipped, never approximated. The row names each reopened path with its Allow and its `*`
+Disallow, ten at most, and those Disallows leave the group's `wildcard_rules_not_inherited` row. A
+`*` Disallow the crawler loses outright (§5g) is not reported again here. The ignore-`*` crawlers of
+§5g are exempt. Pinned by `tests/testthat/test-allow-reopens-cufxicmz.R`.
 
 ## 6. Matcher capability availability
 

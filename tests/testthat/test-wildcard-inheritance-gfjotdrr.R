@@ -327,10 +327,16 @@ test_that("a trailing * is ignored in the comparison and $ is not", {
     expect_identical(nrow(wi_rows(body)), 0L, label = body)
   }
   # Bingbot disallows `/` but keeps a non-empty Allow, so it is not a full
-  # block and `*$` is not moot: it must not be keyed as `/`.
-  rows <- wi_rows(wi_lines("User-agent: *", "Disallow: *$",
-                           "User-agent: Bingbot", "Disallow: /", "Allow: /y"))
-  expect_match(rows$message, "Disallow: *$ (line 2).", fixed = TRUE)
+  # block and `*$` is not moot: it must not be keyed as `/`. The Allow
+  # reopens `/y`, so the lost rule is reported by
+  # allow_reopens_wildcard_disallow (ROBO-cufxicmz), not this row.
+  x <- robots_validate_text(wi_lines("User-agent: *", "Disallow: *$",
+                                     "User-agent: Bingbot", "Disallow: /",
+                                     "Allow: /y"))
+  d <- x$diagnostics
+  expect_match(d$message[d$code == "allow_reopens_wildcard_disallow"],
+               "Disallow: *$ on line 2", fixed = TRUE)
+  expect_false("wildcard_rules_not_inherited" %in% d$code)
   # Bingbot disallows `/` in full, and that lost Disallow adds nothing
   # (ROBO-bwpacxtq).
   expect_identical(nrow(wi_rows(wi_lines(

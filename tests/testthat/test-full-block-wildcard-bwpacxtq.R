@@ -83,18 +83,24 @@ test_that("a full block with no lost * Allow gets no finding", {
 })
 
 test_that("a named Disallow: / plus a non-empty Allow is not a full block", {
-  # x's Disallow alone blocks `/b`, so the lost Disallow stays here; one an
-  # Allow reopens is ROBO-cufxicmz's, not wildcard_disallows_not_inherited.
+  # x's Disallow alone blocks `/b`, so the lost Disallow is never
+  # wildcard_disallows_not_inherited's. `Allow: /x` leaves `/b` blocked, so
+  # it stays here; `Allow: /` and `Allow: /*` reopen it, which is
+  # allow_reopens_wildcard_disallow's (ROBO-cufxicmz), and it leaves this row.
   for (allow in c("Allow: /x", "Allow: /", "Allow: /*")) {
     rows <- bp_rows(bp_lines(
       "User-agent: *", "Allow: /a", "Disallow: /b",
       "User-agent: x", "Disallow: /", allow
     ))
     expect_identical(nrow(rows), 1L, label = allow)
-    expect_identical(rows$message, paste0(
-      "x obeys only this group, so these `User-agent: *` rules do not apply ",
-      "to it: Allow: /a (line 2), Disallow: /b (line 3).", bp_tail
-    ), label = allow)
+    expected <- if (allow == "Allow: /x") {
+      paste0("x obeys only this group, so these `User-agent: *` rules do ",
+             "not apply to it: Allow: /a (line 2), Disallow: /b (line 3).")
+    } else {
+      paste0("x obeys only this group, so this `User-agent: *` rule does ",
+             "not apply to it: Allow: /a (line 2).")
+    }
+    expect_identical(rows$message, paste0(expected, bp_tail), label = allow)
   }
 })
 
