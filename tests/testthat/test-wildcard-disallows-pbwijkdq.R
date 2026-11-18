@@ -232,3 +232,29 @@ test_that("a merged info row still owns each group's line", {
   expect_identical(wd_codes(x), "wildcard_rules_not_inherited@5")
   expect_false("user_agent_repeated_group" %in% x$diagnostics$code)
 })
+
+test_that("a `*` Allow led by `*` still cancels the lost Disallow", {
+  # Second review of 205f60d: `*/p` (length 3) beats `/p` (length 2).
+  x <- wd_text("User-agent: *", "Allow: */p", "Disallow: /p", "",
+               "User-agent: foobot", "Allow: /")
+  expect_false("wildcard_disallows_not_inherited" %in% x$diagnostics$code)
+})
+
+test_that("an Allow whose last segment starts with index.htm opens its dir", {
+  # Google's matcher adds `<dir>/$` for such an Allow (src/robots.cc).
+  for (allow in c("/d/index.html", "/d/index.htmx", "/d/index.html.bak")) {
+    body <- paste0("User-agent: *\nDisallow: /d/$\nAllow: ", allow,
+                   "\n\nUser-agent: foobot\nAllow: /\n")
+    expect_identical(
+      robots_evaluate_text_v1(
+        robots_txt = body, url = "https://example.com/d/",
+        robots_product_token = "other", robots_policy_ruleset = "google",
+        matcher_backend = "google"
+      )$results$url_decision,
+      "allow", label = allow
+    )
+    x <- robots_validate_text(body)
+    expect_false("wildcard_disallows_not_inherited" %in% x$diagnostics$code,
+                 label = allow)
+  }
+})

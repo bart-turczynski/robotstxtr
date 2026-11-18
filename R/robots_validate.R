@@ -2763,15 +2763,20 @@ wildcard_lost_disallows <- function(losers, rules, global, groups) {
 wildcard_star_blocked <- function(values, rules, star) {
   paths <- lapply(values, wildcard_witness_paths)
   allows <- which(star & rules$type == "allow" & !rules$empty)
-  by_prefix <- split(allows, wildcard_allow_prefix(rules$value[allows]))
+  prefix <- wildcard_allow_prefix(rules$value[allows])
+  # An Allow led by `*` may match any path: it enters every body. (Its
+  # empty key could not be selected by name from a split list; second
+  # review of 205f60d.)
+  everywhere <- allows[!nzchar(prefix)]
+  by_prefix <- split(allows[nzchar(prefix)], prefix[nzchar(prefix)])
   near <- lapply(paths, function(p) {
     if (length(by_prefix) == 0L) {
-      return(integer())
+      return(everywhere)
     }
     starts <- substring(rep(p, nchar(p, "bytes") + 1L), 1L,
                         unlist(lapply(nchar(p, "bytes"), seq.int, from = 0L)))
-    sort(unlist(by_prefix[intersect(starts, names(by_prefix))],
-                use.names = FALSE))
+    sort(c(everywhere, unlist(by_prefix[intersect(starts, names(by_prefix))],
+                              use.names = FALSE)))
   })
   lines <- paste0(ifelse(rules$type == "allow", "Allow: ", "Disallow: "),
                   rules$value, "\n")
@@ -2786,14 +2791,16 @@ wildcard_star_blocked <- function(values, rules, star) {
 }
 
 # The part of each Allow pattern a path must start with: up to the first
-# `*`, with a final `$` dropped. Google's matcher also lets an Allow ending
-# in `/index.htm` or `/index.html` match its directory, so that file name is
-# dropped too. A pattern led by neither `/` nor `*` never matches and gets
-# a key no path starts with.
+# `*`, with a final `$` dropped. Google's matcher also lets an Allow whose
+# last segment starts with `index.htm` (`/d/index.html`, `/d/index.htmx`)
+# match its directory (src/robots.cc), so that segment is dropped first. A
+# pattern led by neither `/` nor `*` never matches and gets a key no path
+# starts with. Values are canonical (escapes upper-cased, non-ASCII
+# escaped), as the witness paths are, so a prefix compares byte for byte.
 wildcard_allow_prefix <- function(values) {
-  prefix <- sub("\\*.*$", "", values)
+  prefix <- sub("/index\\.htm[^/]*$", "/", values)
+  prefix <- sub("\\*.*$", "", prefix)
   prefix <- sub("\\$$", "", prefix)
-  prefix <- sub("/index\\.html?$", "/", prefix)
   led <- startsWith(values, "/") | startsWith(values, "*")
   prefix[!led] <- "\n"
   prefix
@@ -2942,8 +2949,8 @@ wildcard_group_line <- function(groups, group) {
   groups$groups$first_line[[match(group, groups$groups$group)]]
 }
 
-# The groups of a merged info row, in file order, as "A and B (line 5); C
-# (line 9)", five at most, then "and N more groups": semicolons part the
+# The groups of a merged info row, in file order, as "A and B (line 5); and
+# C (line 9)", five at most, then "and N more groups": semicolons part the
 # groups, since a group's own names are joined with "and".
 wildcard_group_labels <- function(members, first, groups, cap = 5L) {
   by_group <- split(seq_along(members), factor(first, sort(unique(first))))
