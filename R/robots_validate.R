@@ -197,12 +197,23 @@ validation_unsupported <- c(
 #'     A Sitemap value that is not a valid absolute URL. \cr
 #'   \code{unsupported_sitemap_scheme} \tab warning \tab
 #'     A Sitemap scheme other than \code{http}, \code{https} or \code{ftp}. \cr
+#'   \code{wildcard_disallows_not_inherited} \tab warning \tab
+#'     A named User-agent group lacks \code{User-agent: *} Disallows that
+#'     block a path its own rules allow, so its crawlers may crawl it: the
+#'     group replaces \code{User-agent: *} for them instead of adding to it.
+#'     Says so when the group holds no Disallow. Not for a full block, nor for
+#'     \code{AdsBot-Google}, \code{AdsBot-Google-Mobile},
+#'     \code{Mediapartners-Google} and \code{APIs-Google}, which ignore
+#'     \code{User-agent: *} anyway. Anchored on the group's first User-agent
+#'     line. Not reported for a body cut at \code{max_bytes}. \cr
 #'   \code{wildcard_rules_not_inherited} \tab info \tab
 #'     A named User-agent group lacks some \code{User-agent: *} rules, which
-#'     its crawlers therefore do not obey. Where the merged named groups
-#'     disallow \code{/} and hold no non-empty \code{Allow}, only the lost
-#'     \code{User-agent: *} Allow rules are listed.
-#'     Anchored on the group's first User-agent line. Not reported for a body
+#'     its crawlers therefore do not obey; rules
+#'     \code{wildcard_disallows_not_inherited} reports are left out. Where
+#'     the merged named groups disallow \code{/} and hold no non-empty
+#'     \code{Allow}, only the lost \code{User-agent: *} Allow rules are
+#'     listed. Groups with the same remaining rules share one row, anchored
+#'     on the earliest group's first User-agent line. Not reported for a body
 #'     cut at \code{max_bytes}. \cr
 #'   \code{ai_training_preference} \tab info \tab
 #'     A User-agent line names the AI-training policy token
@@ -400,6 +411,18 @@ validation_unsupported <- c(
 #' the `*` Disallows it lacks add nothing, so only its lost `*` Allow rules are
 #' listed, as rules that may be meant as exceptions. An empty `Allow:` does not
 #' cancel a full block.
+#'
+#' A lost `*` Disallow is a `wildcard_disallows_not_inherited` warning when a
+#' path it matches (the pattern with each `*` as nothing or `x`, and unless it
+#' ends in `$`, with `x` or `/x` appended) is disallowed under the `*` groups
+#' and allowed by the Disallows of the crawler's merged groups alone, as
+#' Google's matcher reads both; a `*` Allow that reopens every such path
+#' leaves no warning, and a path only the crawler's own Allow reopens (an
+#' `Allow: /company` under `Disallow: /`) is left to the info row. A group
+#' of only Allows, or only an empty `Disallow:`, warns too: `Allow: /` lifts
+#' every `*` Disallow. The crawlers that ignore `User-agent: *` whether or not
+#' a group names them get no warning, and their info row says the `*` rules
+#' never applied to them.
 #'
 #' The `ai_training_` codes follow
 #' draft-kelley-aipref-training-preference-signal-00 (dated 2026-10-30), an
@@ -1330,7 +1353,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   }
   for (found in inheritance) {
     add_diagnostic(
-      found$line, "info", "wildcard_rules_not_inherited", "user-agent",
+      found$line, found$severity, found$code, "user-agent",
       paste0(found$message, nul_reading)
     )
   }
@@ -2613,12 +2636,15 @@ joined_user_agent_row <- function(kind, agents, i, group_start, earlier, more,
 
 # A crawler obeys only the groups that name it (merged, as Google does) and
 # never the `*` group (ROBO-gfjotdrr). For each named agent, the `*` rules
-# missing from its effective rules, as a list of list(line, agents, missing,
-# message): `line` is the first User-agent line of the first group naming
-# the agents, `agents` their values as written, `missing` the lines of
-# every missing `*` rule (uncapped) and `message` the capped text. An agent
-# whose rules are all explicit allow-all (an empty Disallow, or a `*` Allow
-# matching every path) is exempt; an empty Allow is a no-op and is not
+# missing from its effective rules, as a list of list(line, code, severity,
+# agents, missing, message): `line` is the first User-agent line of the
+# first group naming the agents, `code` wildcard_disallows_not_inherited
+# (warning, lost `*` Disallows; ROBO-pbwijkdq) or
+# wildcard_rules_not_inherited (info, the rest), `agents` their values as
+# written, `missing` the lines of the rules the row reports (uncapped) and
+# `message` the capped text. An agent whose rules are all explicit allow-all
+# (an empty Disallow, or a `*` Allow matching every path) gets no info row,
+# only the warning; an empty Allow is a no-op and is not
 # counted, so an agent with no other rule is not exempt. A `*` Allow matching
 # every path is never a missing rule (ROBO-gkuuwbgc): the named group's own
 # rules are what the crawler follows. Rows come in anchor-line order: agents
@@ -2652,57 +2678,256 @@ wildcard_inheritance_diagnostics <- function(groups) {
 
   # Every value written for a crawler, as written (ROBO-txnzyugl).
   written <- written_agent_names(agents$key, agents$name, agents$cut)
-  losers <- list()
-  for (key in unique(agents$key)) {
+  # Crawlers that ignore `*` whether or not a group names them
+  # (ROBO-fbbmvbob): a named group loosens nothing for them.
+  table <- google_crawler_tokens_v1()
+  exempt_keys <- ascii_lower(
+    table$crawler_token[table$group_selection == "exact_only"]
+  )
+  losers <- lapply(unique(agents$key), function(key) {
     agent_groups <- unique(agents$group[agents$key == key])
     in_effect <- rules$group %in% agent_groups
     judged <- in_effect & !no_op
-    if (any(judged) && all(allow_all[judged])) {
-      next
-    }
     root_block <- in_effect & !is.na(rules$key) & rules$key == "disallow /"
-    full_block <- any(root_block) &&
-      !any(in_effect & rules$type == "allow" & !rules$empty)
-    missing <- which(!global$key %in% rules$key[in_effect])
-    if (full_block) {
-      missing <- missing[global$type[missing] == "allow"]
-    }
-    if (length(missing) == 0L) {
-      next
-    }
-    losers[[length(losers) + 1L]] <- list(
+    list(
       names = written[[key]],
+      groups = agent_groups,
       first_group = min(agent_groups),
       one_group = length(agent_groups) == 1L,
-      full_block = full_block,
-      missing = missing
+      open = any(judged) && all(allow_all[judged]),
+      allow_only = !any(in_effect & rules$type == "disallow" & !rules$empty),
+      full_block = any(root_block) &&
+        !any(in_effect & rules$type == "allow" & !rules$empty),
+      exempt = key %in% exempt_keys,
+      missing = which(!global$key %in% rules$key[in_effect])
+    )
+  })
+  lost <- wildcard_lost_disallows(losers, rules, global, groups)
+  rows <- c(
+    wildcard_disallow_rows(losers, lost, global, groups),
+    wildcard_inheritance_rows(losers, lost, global, groups)
+  )
+  code <- vapply(rows, `[[`, "", "code")
+  rows[order(vapply(rows, `[[`, 0L, "line"),
+             code != "wildcard_disallows_not_inherited")]
+}
+
+# The `*` Disallows each crawler of wildcard_inheritance_diagnostics() loses
+# (ROBO-pbwijkdq), as a list parallel to `losers` of indices into `global`.
+# A missing `*` Disallow is lost when a witness path (wildcard_witness_paths())
+# is disallowed under the `*` groups' rules and allowed by the Disallows of
+# the crawler's merged groups alone, both read by Google's matcher. A path
+# only an Allow of the crawler's reopens is ROBO-cufxicmz's
+# (allow_reopens_wildcard_disallow), not this loss. A crawler that ignores
+# `*`, or whose groups are a full block, loses none. Crawlers whose groups
+# hold the same Disallows share one check.
+wildcard_lost_disallows <- function(losers, rules, global, groups) {
+  out <- rep(list(integer()), length(losers))
+  is_disallow <- global$type == "disallow"
+  checked <- which(vapply(losers, function(x) {
+    !x$exempt && !x$full_block && any(is_disallow[x$missing])
+  }, TRUE))
+  if (length(checked) == 0L) {
+    return(out)
+  }
+  need <- sort(unique(unlist(lapply(losers[checked], `[[`, "missing"))))
+  need <- need[is_disallow[need]]
+  star <- rules$group %in% groups$groups$group[groups$groups$global]
+  blocked <- rep(list(character()), nrow(global))
+  blocked[need] <- wildcard_star_blocked(global$value[need], rules, star)
+  bodies <- vapply(losers[checked], function(x) {
+    wildcard_witness_body(rules, rules$group %in% x$groups &
+                            rules$type == "disallow")
+  }, "")
+  for (body in unique(bodies)) {
+    members <- checked[bodies == body]
+    miss <- unique(unlist(lapply(losers[members], `[[`, "missing")))
+    miss <- miss[lengths(blocked[miss]) > 0L]
+    open <- miss[wildcard_named_open(body, blocked[miss])]
+    for (m in members) {
+      out[[m]] <- losers[[m]]$missing[losers[[m]]$missing %in% open]
+    }
+  }
+  out
+}
+
+# For each `*` Disallow value, its witness paths that the `*` groups'
+# rules disallow. A path is first read against the `*` Allows and that
+# Disallow alone, one body per value: disallowed there, it is disallowed
+# under every `*` rule too, as more Disallows only lengthen the longest
+# match. A path allowed there is read again against all the `*` rules, so
+# the cost stays near the number of `*` Allows, not of all `*` rules.
+wildcard_star_blocked <- function(values, rules, star) {
+  paths <- lapply(values, wildcard_witness_paths)
+  allows <- star & rules$type == "allow"
+  base <- wildcard_witness_body(rules, allows)
+  bodies <- paste0(base, "Disallow: ", values, "\n")
+  ids <- rep(seq_along(values), lengths(paths))
+  flat <- unlist(paths, use.names = FALSE)
+  allowed <- wildcard_witness_eval(bodies, ids, flat)
+  if (any(allowed)) {
+    allowed[allowed] <- wildcard_witness_eval(
+      wildcard_witness_body(rules, star), rep(1L, sum(allowed)),
+      flat[allowed]
     )
   }
+  unname(split(flat[!allowed], factor(ids[!allowed], seq_along(values))))
+}
 
-  signature <- paste(
-    vapply(losers, `[[`, integer(1L), "first_group"),
-    vapply(losers, `[[`, logical(1L), "full_block"),
-    vapply(losers, function(x) paste(x$missing, collapse = ","), "")
-  )
-  sets <- split(seq_along(losers), factor(signature, unique(signature)))
-  lapply(unname(sets), function(i) {
+# Whether each element of `paths` (a list of character vectors) holds a path
+# Google's matcher allows under `body`: the first path of each is read
+# first, the others only for elements not yet shown.
+wildcard_named_open <- function(body, paths) {
+  open <- logical(length(paths))
+  if (length(paths) == 0L) {
+    return(open)
+  }
+  first <- vapply(paths, `[[`, "", 1L)
+  open <- wildcard_witness_eval(body, rep(1L, length(first)), first)
+  rest <- which(!open & lengths(paths) > 1L)
+  if (length(rest) > 0L) {
+    more <- lapply(paths[rest], `[`, -1L)
+    hit <- wildcard_witness_eval(body, rep(1L, sum(lengths(more))),
+                                 unlist(more, use.names = FALSE))
+    open[rest] <- vapply(split(hit, rep(seq_along(more), lengths(more))),
+                         any, TRUE)
+  }
+  open
+}
+
+# Paths a pattern matches, for a witness (ROBO-pbwijkdq): the pattern with
+# each `*` as nothing and as `x`, then, unless it ends in `$`, also with `x`
+# and `/x` appended, so a `$` or a longer rule in the named group that covers
+# the bare path still leaves one it does not.
+wildcard_witness_paths <- function(value) {
+  dollar <- endsWith(value, "$")
+  if (dollar) {
+    value <- substr(value, 1L, nchar(value, "bytes") - 1L)
+  }
+  bases <- unique(c(gsub("*", "", value, fixed = TRUE),
+                    gsub("*", "x", value, fixed = TRUE)))
+  led <- startsWith(bases, "/")
+  bases[!led] <- paste0("/", bases[!led])
+  if (!dollar) {
+    bases <- c(bases, paste0(bases, "x"), sprintf("%s/x", bases))
+  }
+  unique(bases)
+}
+
+# A robots.txt body of the Allow and Disallow rules in `keep`, in file order,
+# under one group naming the witness crawler.
+wildcard_witness_body <- function(rules, keep) {
+  rows <- which(keep)
+  paste0("User-agent: witness\n",
+         paste0(ifelse(rules$type[rows] == "allow", "Allow: ", "Disallow: "),
+                rules$value[rows], "\n", collapse = ""))
+}
+
+# Whether Google's matcher allows each path for the witness crawler, path
+# `i` read under `bodies[[ids[[i]]]]`; each body is parsed once.
+wildcard_witness_eval <- function(bodies, ids, paths) {
+  n <- length(paths)
+  if (n == 0L) {
+    return(logical())
+  }
+  robotstxtr_google_eval_batch_(
+    bodies = bodies,
+    per_row = list(ids = as.integer(ids), agents = rep("witness", n),
+                   urls = lapply(paste0("http://example.com", paths),
+                                 charToRaw),
+                   parents = rep("", n), ignore_global = rep(FALSE, n))
+  )$allowed
+}
+
+# One wildcard_disallows_not_inherited warning per group and set of lost
+# `*` Disallows (ROBO-pbwijkdq), as list(line, code, severity, message).
+# Warning rows never merge across groups.
+wildcard_disallow_rows <- function(losers, lost, global, groups) {
+  hit <- which(lengths(lost) > 0L)
+  signature <- vapply(hit, function(i) {
+    paste(losers[[i]]$first_group, losers[[i]]$allow_only,
+          paste(lost[[i]], collapse = ","))
+  }, "")
+  lapply(unname(split(hit, factor(signature, unique(signature)))), function(i) {
     members <- losers[i]
-    missing <- members[[1L]]$missing
     tokens <- ai_training_name(unlist(lapply(members, `[[`, "names"),
                                       use.names = FALSE))
     list(
-      line = groups$groups$first_line[[
-        match(members[[1L]]$first_group, groups$groups$group)
-      ]],
-      agents = tokens,
-      missing = global$line[missing],
-      message = wildcard_inheritance_message(
+      line = wildcard_group_line(groups, members[[1L]]$first_group),
+      code = "wildcard_disallows_not_inherited", severity = "warning",
+      agents = tokens, missing = global$line[lost[[i[[1L]]]]],
+      message = wildcard_disallows_message(
         tokens, all(vapply(members, `[[`, TRUE, "one_group")),
-        global[missing, , drop = FALSE],
-        full_block = members[[1L]]$full_block
+        global[lost[[i[[1L]]]], , drop = FALSE], members[[1L]]$allow_only
       )
     )
   })
+}
+
+# The wildcard_rules_not_inherited info rows (ROBO-gfjotdrr): each crawler's
+# missing `*` rules less those its warning reports, only its lost `*`
+# Allows for a full block, and none for an allow-all crawler. Crawlers with
+# the same remaining rules share one row, across groups too (ROBO-pbwijkdq),
+# anchored on the earliest group's first User-agent line.
+wildcard_inheritance_rows <- function(losers, lost, global, groups) {
+  remaining <- lapply(seq_along(losers), function(i) {
+    x <- losers[[i]]
+    if (x$open) {
+      return(integer())
+    }
+    keep <- setdiff(x$missing, lost[[i]])
+    if (x$full_block && !x$exempt) {
+      keep <- keep[global$type[keep] == "allow"]
+    }
+    keep
+  })
+  hit <- which(lengths(remaining) > 0L)
+  signature <- vapply(hit, function(i) {
+    paste(losers[[i]]$full_block, losers[[i]]$exempt,
+          paste(remaining[[i]], collapse = ","))
+  }, "")
+  lapply(unname(split(hit, factor(signature, unique(signature)))), function(i) {
+    members <- losers[i]
+    first <- vapply(members, `[[`, 0L, "first_group")
+    missing <- global[remaining[[i[[1L]]]], , drop = FALSE]
+    tokens <- ai_training_name(unlist(lapply(members, `[[`, "names"),
+                                      use.names = FALSE))
+    labels <- if (length(unique(first)) > 1L) {
+      wildcard_group_labels(members, first, groups)
+    }
+    list(
+      line = wildcard_group_line(groups, min(first)),
+      code = "wildcard_rules_not_inherited", severity = "info",
+      agents = tokens, missing = missing$line,
+      message = wildcard_inheritance_message(
+        tokens, all(vapply(members, `[[`, TRUE, "one_group")), missing,
+        full_block = members[[1L]]$full_block, exempt = members[[1L]]$exempt,
+        labels = labels
+      )
+    )
+  })
+}
+
+wildcard_group_line <- function(groups, group) {
+  groups$groups$first_line[[match(group, groups$groups$group)]]
+}
+
+# The groups of a merged info row, in file order, as "A and B (line 5)",
+# five at most, then "and N more groups".
+wildcard_group_labels <- function(members, first, groups, cap = 5L) {
+  by_group <- split(seq_along(members), factor(first, sort(unique(first))))
+  labels <- vapply(names(by_group), function(g) {
+    names <- ai_training_name(unlist(lapply(members[by_group[[g]]], `[[`,
+                                            "names"), use.names = FALSE))
+    sprintf("%s (line %d)", joined_and(names, 0L),
+            wildcard_group_line(groups, as.integer(g)))
+  }, "", USE.NAMES = FALSE)
+  shown <- labels[seq_len(min(cap, length(labels)))]
+  more <- length(labels) - length(shown)
+  if (more > 0L) {
+    return(paste0(toString(shown), " and ", more, " more groups"))
+  }
+  joined_and(shown, 0L)
 }
 
 # The distinct values written for each crawler id, as a list named by id:
@@ -2871,21 +3096,115 @@ duplicate_rule_diagnostics <- function(groups, skip = integer()) {
 }
 
 wildcard_inheritance_message <- function(tokens, one_group, missing,
-                                         full_block = FALSE, cap = 10L) {
-  several <- length(tokens) > 1L
-  named <- if (several) {
+                                         full_block = FALSE, cap = 10L,
+                                         exempt = FALSE, labels = NULL) {
+  several <- length(tokens) > 1L || !is.null(labels)
+  named <- if (!is.null(labels)) {
+    labels
+  } else if (several) {
     paste(toString(tokens[-length(tokens)]),
           "and", tokens[[length(tokens)]])
   } else {
     tokens
   }
-  where <- if (one_group) {
+  where <- if (one_group && is.null(labels)) {
     "this group"
   } else if (several) {
     "the groups that name them"
   } else {
     "the groups that name it"
   }
+  obey <- if (!is.null(labels)) {
+    "each obey"
+  } else if (several) {
+    "obey"
+  } else {
+    "obeys"
+  }
+  k <- nrow(missing)
+  listed <- wildcard_rule_list(missing, cap)
+  it <- if (several) "them" else "it"
+  if (exempt) {
+    return(sprintf(
+      paste0("%s %s `User-agent: *` whether or not a group names %s (%s), ",
+             "so %s never applied to %s: %s."),
+      named, if (several) "ignore" else "ignores", it,
+      if (several) "Google's special-case crawlers" else
+        "one of Google's special-case crawlers",
+      if (k == 1L) "this `User-agent: *` rule" else
+        "these `User-agent: *` rules", it, listed
+    ))
+  }
+  if (full_block) {
+    text <- sprintf(
+      paste0(
+        "%s %s only %s, which %s `/`, so %s `User-agent: *` Allow %s may be ",
+        "meant as %s and %s not apply to %s: %s. A stricter policy for a ",
+        "named crawler may be deliberate."
+      ),
+      named, obey, where,
+      if (one_group || !is.null(labels)) "disallow" else "together disallow",
+      if (k == 1L) "this" else "these", if (k == 1L) "rule" else "rules",
+      if (k == 1L) "an exception" else "exceptions",
+      if (k == 1L) "does" else "do", it, listed
+    )
+    if (one_group && is.null(labels)) {
+      text <- sub(" which disallow ", " which disallows ", text, fixed = TRUE)
+    }
+  } else {
+    text <- sprintf(
+      "%s %s only %s, so %s `User-agent: *` %s not apply to %s: %s.",
+      named, obey, where,
+      if (k == 1L) "this" else "these",
+      if (k == 1L) "rule does" else "rules do", it, listed
+    )
+  }
+  paste(text, paste0(
+    "A crawler obeys only the groups that name it and ignores ",
+    "`User-agent: *` once any group does; `User-agent: *` applies only to ",
+    "crawlers no group names."
+  ))
+}
+
+# The wildcard_disallows_not_inherited message (ROBO-pbwijkdq): the lost `*`
+# Disallows, whether the crawler's groups hold no Disallow at all, and what
+# a named group does, without calling the loss a mistake.
+wildcard_disallows_message <- function(tokens, one_group, lost, allow_only,
+                                       cap = 10L) {
+  several <- length(tokens) > 1L
+  named <- if (several) {
+    paste(toString(tokens[-length(tokens)]), "and", tokens[[length(tokens)]])
+  } else {
+    tokens
+  }
+  it <- if (several) "them" else "it"
+  k <- nrow(lost)
+  text <- sprintf(
+    "%s %s only %s, so %s `User-agent: *` %s not apply to %s: %s.",
+    named, if (several) "obey" else "obeys",
+    if (one_group) "this group" else
+      paste("the groups that name", it),
+    if (k == 1L) "this" else "these",
+    if (k == 1L) "Disallow does" else "Disallows do", it,
+    wildcard_rule_list(lost, cap)
+  )
+  if (allow_only) {
+    text <- paste(text, sprintf(
+      "%s no Disallow, so %s nothing for %s.",
+      if (one_group) "This group holds" else "These groups hold",
+      if (one_group) "it blocks" else "they block", it
+    ))
+  }
+  paste(text, paste0(
+    "A named group replaces `User-agent: *` for the crawlers it names ",
+    "instead of adding to it (RFC 9309 section 2.2.1). If the group was ",
+    "meant to add to `User-agent: *`, repeat these Disallows in it."
+  ))
+}
+
+# Rules as "Disallow: /a (line 2), Allow: /b (line 3)", `cap` at most, then
+# "and N more".
+wildcard_rule_list <- function(missing, cap = 10L) {
   k <- nrow(missing)
   shown <- seq_len(min(k, cap))
   items <- sprintf(
@@ -2900,33 +3219,7 @@ wildcard_inheritance_message <- function(tokens, one_group, missing,
   if (k > cap) {
     listed <- sprintf("%s, and %d more", listed, k - cap)
   }
-  if (full_block) {
-    text <- sprintf(
-      paste0(
-        "%s %s only %s, which %s `/`, so %s `User-agent: *` Allow %s may be ",
-        "meant as %s and %s not apply to %s: %s. A stricter policy for a ",
-        "named crawler may be deliberate."
-      ),
-      named, if (several) "obey" else "obeys", where,
-      if (one_group) "disallows" else "together disallow",
-      if (k == 1L) "this" else "these", if (k == 1L) "rule" else "rules",
-      if (k == 1L) "an exception" else "exceptions",
-      if (k == 1L) "does" else "do", if (several) "them" else "it", listed
-    )
-  } else {
-    text <- sprintf(
-      "%s %s only %s, so %s `User-agent: *` %s not apply to %s: %s.",
-      named, if (several) "obey" else "obeys", where,
-      if (k == 1L) "this" else "these",
-      if (k == 1L) "rule does" else "rules do",
-      if (several) "them" else "it", listed
-    )
-  }
-  paste(text, paste0(
-    "A crawler obeys only the groups that name it and ignores ",
-    "`User-agent: *` once any group does; `User-agent: *` applies only to ",
-    "crawlers no group names."
-  ))
+  listed
 }
 
 # The parser's value is canonical: non-ASCII bytes are already %XX escapes,

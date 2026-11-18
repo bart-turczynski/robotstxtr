@@ -156,10 +156,11 @@ test_that("the frame of a body on every emission path is pinned", {
       "ai_training_token_near_miss@31",
       "ai_training_preference@32",
       "ai_training_preference@39",
+      "wildcard_disallows_not_inherited@25",
       "wildcard_rules_not_inherited@25",
-      "wildcard_rules_not_inherited@31",
-      "wildcard_rules_not_inherited@34",
-      "wildcard_rules_not_inherited@38",
+      "wildcard_disallows_not_inherited@31",
+      "wildcard_disallows_not_inherited@34",
+      "wildcard_disallows_not_inherited@38",
       "disallow_tied_by_allow@29",
       "duplicate_rule@27",
       "duplicate_rule@28"
@@ -168,8 +169,10 @@ test_that("the frame of a body on every emission path is pinned", {
   expect_identical(
     # ROBO-txnzyugl: user_agent_cut@25 is info with the effect stated, and
     # wildcard_rules_not_inherited@25 names `Foo.Bot` as written.
+    # ROBO-pbwijkdq: the lost `*` Disallows are warnings at 25, 31, 34 and
+    # 38, and the four groups share one info row for the lost Allow.
     seam_digest(d, linear_frame_extra(d)),
-    "386773ecdbc9cc7cd706278b66e46f48"
+    "1bf1a4fc752d1a3d6785efdf2a48aabe"
   )
 })
 
@@ -311,5 +314,5 @@ test_that("the batches and document-level rows share that one build", {
   calls <- linear_count_builds()
   d <- robots_validate_text(linear_body_main())$diagnostics
   expect_identical(calls$n, 1L)
-  expect_identical(nrow(d), 43L)
+  expect_identical(nrow(d), 44L)
 })

@@ -266,13 +266,15 @@ test_that("a NUL in a User-agent leaves Google's group name", {
   plain <- robots_validate_text(
     "User-agent: *\nDisallow: /a\n\nUser-agent: botx\nAllow: /b\n"
   )
-  expect_identical(plain$diagnostics$code, "wildcard_rules_not_inherited")
+  # An allow-only group loses the * Disallow: a warning (ROBO-pbwijkdq).
+  expect_identical(plain$diagnostics$code, "wildcard_disallows_not_inherited")
   expect_no_match(plain$diagnostics$message, "Google's reading", fixed = TRUE)
   x <- robots_validate_text(at_nul(
     "User-agent: *\nDisallow: /a\n\nUser-agent: bot", "x\nAllow: /b\n"
   ))
   expect_identical(at_codes(x), c(
-    "nul_byte@4", "wildcard_rules_not_inherited@4", "rules_after_nul_removal@NA"
+    "nul_byte@4", "wildcard_disallows_not_inherited@4",
+    "rules_after_nul_removal@NA"
   ))
   inherited <- x$diagnostics$message[[2L]]
   expect_match(inherited, "^bot obeys only this group")

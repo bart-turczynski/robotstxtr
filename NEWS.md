@@ -1,5 +1,9 @@
 # robotstxtr (development version)
 
+* Validator: new warning `wildcard_disallows_not_inherited` when a named group drops `User-agent: *` Disallows that block a path the group allows (RFC 9309 §2.2.1) (ROBO-pbwijkdq).
+
+* Validator: `wildcard_rules_not_inherited` rows with the same lost rules merge into one row naming each group.
+
 * Validator: `user_agent_cut` states the effect of the cut and is info unless a Google crawler reads a cut token the value did not mean (`Googlebot Image`); other codes name agents as written (ROBO-txnzyugl).
 
 * Validator: a lower-case escape rule whose group already has the upper-case form (Shopify's `%2b` beside `%2B`) is the info `rule_lowercase_escape_twin`, not a `rule_lowercase_escape` warning (ROBO-nvzzjubl).

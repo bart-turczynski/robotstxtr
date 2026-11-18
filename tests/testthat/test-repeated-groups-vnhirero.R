@@ -258,13 +258,13 @@ test_that("an every-path Allow with a full block is no engine split", {
 # Branch review of ROBO-vnhirero.
 
 test_that("a line another report owns draws no repeat", {
-  # bar's line 7 carries wildcard_rules_not_inherited; foo is repeated
-  # there, but one line gets one report.
+  # bar's line 7 carries wildcard_disallows_not_inherited (ROBO-pbwijkdq);
+  # foo is repeated there, but one line gets one report.
   d <- robots_validate_text(rg_lines(
     "User-agent: *", "Disallow: /a", "", "User-agent: foo", "Disallow: /b",
     "", "User-agent: foo", "User-agent: bar", "Disallow: /c"
   ))$diagnostics
-  expect_identical(d$code[d$line == 7L], "wildcard_rules_not_inherited")
+  expect_identical(d$code[d$line == 7L], "wildcard_disallows_not_inherited")
   # A cut value is user_agent_cut's.
   d <- robots_validate_text(rg_lines(
     "User-agent: Googlebot", "Disallow: /a", "", "User-agent: Googlebot/2.1",

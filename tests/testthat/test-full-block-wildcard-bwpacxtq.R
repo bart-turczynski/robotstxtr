@@ -83,29 +83,41 @@ test_that("a full block with no lost * Allow gets no finding", {
 })
 
 test_that("a named Disallow: / plus a non-empty Allow is not a full block", {
-  for (allow in c("Allow: /x", "Allow: /", "Allow: /*")) {
+  # x's Disallow alone blocks `/b`, so the lost Disallow stays here; one an
+  # Allow reopens is ROBO-cufxicmz's, not wildcard_disallows_not_inherited.
+  lifted <- c("Allow: /x" = FALSE, "Allow: /" = FALSE, "Allow: /*" = FALSE)
+  for (allow in names(lifted)) {
     rows <- bp_rows(bp_lines(
       "User-agent: *", "Allow: /a", "Disallow: /b",
       "User-agent: x", "Disallow: /", allow
     ))
     expect_identical(nrow(rows), 1L, label = allow)
     expect_identical(rows$message, paste0(
-      "x obeys only this group, so these `User-agent: *` rules do not apply ",
-      "to it: Allow: /a (line 2), Disallow: /b (line 3).", bp_tail
+      "x obeys only this group, so ",
+      if (lifted[[allow]]) "this `User-agent: *` rule does not apply " else
+        "these `User-agent: *` rules do not apply ",
+      "to it: Allow: /a (line 2)",
+      if (lifted[[allow]]) "." else ", Disallow: /b (line 3).", bp_tail
     ), label = allow)
   }
 })
 
 test_that("a named Disallow that ends in $ is not a full block", {
-  for (value in c("/$", "/*$", "*$")) {
+  # `/*$` and `*$` match every path, so x still blocks `/b`; `/$` does not,
+  # and the lost Disallow is the warning's (ROBO-pbwijkdq).
+  lifted <- c("/$" = TRUE, "/*$" = FALSE, "*$" = FALSE)
+  for (value in names(lifted)) {
     rows <- bp_rows(bp_lines(
       "User-agent: *", "Allow: /a", "Disallow: /b",
       "User-agent: x", paste("Disallow:", value)
     ))
     expect_identical(nrow(rows), 1L, label = value)
     expect_identical(rows$message, paste0(
-      "x obeys only this group, so these `User-agent: *` rules do not apply ",
-      "to it: Allow: /a (line 2), Disallow: /b (line 3).", bp_tail
+      "x obeys only this group, so ",
+      if (lifted[[value]]) "this `User-agent: *` rule does not apply " else
+        "these `User-agent: *` rules do not apply ",
+      "to it: Allow: /a (line 2)",
+      if (lifted[[value]]) "." else ", Disallow: /b (line 3).", bp_tail
     ), label = value)
   }
 })
