@@ -172,7 +172,9 @@ test_that("agents tied by different Allows name the smallest line", {
 
 test_that("empty values and rules outside any group are skipped", {
   x <- robots_validate_text(at_lines("User-agent: *", "Allow:", "Disallow:"))
-  expect_identical(x$diagnostics$code, rep("empty_rule_value", 2L))
+  # An empty Disallow is the allow-all info code since ROBO-vyystald.
+  expect_identical(x$diagnostics$code,
+                   c("empty_rule_value", "allow_all_disallow"))
   x <- robots_validate_text(at_lines(
     "Allow: /", "Disallow: /", "User-agent: *", "Disallow: /x"
   ))

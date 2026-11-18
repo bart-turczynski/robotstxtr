@@ -231,8 +231,9 @@ test_that("the info sits beside disallow_tied_by_allow", {
 })
 
 test_that("empty values, never-matching patterns and stray rules are skipped", {
+  # An empty Disallow is the allow-all info code since ROBO-vyystald.
   x <- robots_validate_text(dr_lines("User-agent: *", "Disallow:", "Disallow:"))
-  expect_identical(x$diagnostics$code, rep("empty_rule_value", 2L))
+  expect_identical(x$diagnostics$code, rep("allow_all_disallow", 2L))
   x <- robots_validate_text(dr_lines("User-agent: *", "Allow:", "Allow:"))
   expect_identical(x$diagnostics$code, rep("empty_rule_value", 2L))
   x <- robots_validate_text(dr_lines(

@@ -40,11 +40,11 @@ test_that("a comment set apart, an empty value or a %23 stays silent", {
                  "Disallow: /a%23b", "Disallow: /a")) {
     expect_identical(nrow(cc_hits(line)), 0L, label = line)
   }
-  # An empty value is empty_rule_value only.
+  # An empty value is allow_all_disallow only (ROBO-vyystald).
   for (line in c("Disallow: #x", "Disallow:#x")) {
     x <- cc_validate(charToRaw(line))
     expect_identical(x$diagnostics$code[which(x$diagnostics$line == 2L)],
-                     "empty_rule_value", label = line)
+                     "allow_all_disallow", label = line)
   }
 })
 

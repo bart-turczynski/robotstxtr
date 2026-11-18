@@ -112,8 +112,15 @@ validation_unsupported <- c(
 #'   \code{rule_without_user_agent} \tab error \tab
 #'     An Allow or Disallow in no group a non-empty User-agent opened: before
 #'     any, or after an empty User-agent that follows a rule. \cr
+#'   \code{allow_all_disallow} \tab info \tab
+#'     An empty Disallow value, the allow-all idiom: the line adds no
+#'     restriction. In a group that names a crawler and not \code{*}, the
+#'     message adds that those crawlers follow this group, merged with any
+#'     other group naming them, and not the \code{User-agent: *} group
+#'     when the file has one. \cr
 #'   \code{empty_rule_value} \tab warning \tab
-#'     An empty Allow or Disallow value, which the matcher ignores. When a NUL
+#'     An empty Allow value, which the matcher ignores, or an empty Disallow
+#'     value outside any group or on a line holding a NUL byte. When a NUL
 #'     byte right after the colon hides the path, the message says that the
 #'     first NUL ends the line, so the directive imposes no restriction and
 #'     the text after the NUL is ignored. \cr
@@ -975,6 +982,19 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   group_open <- FALSE
   group_has_rule <- FALSE
   nonempty_user_agents <- 0L
+  # Computed once here: the empty-Disallow note (ROBO-vyystald) reads it in
+  # the loop below, and the group checks after it.
+  groups <- validation_groups(parsed)
+  # Groups not naming `*` whose User-agent lines name at least one crawler
+  # (a token Google reads), and whether the file has a `*` group.
+  named_groups <- setdiff(groups$agents$group[nzchar(groups$agents$key)],
+                          groups$groups$group[groups$groups$global])
+  has_global_group <- any(groups$groups$global)
+  # By line: TRUE for a rule line in such a group (a lookup, not a scan per
+  # line, so the loop stays linear).
+  rule_in_named_group <- logical(max(c(0L, parsed$line)))
+  rule_in_named_group[groups$rules$line] <- groups$rules$group %in%
+    named_groups
   unsupported <- logical(nrow(parsed))
   advisory_count <- 0L
   advisory_chunk <- 0L
@@ -1057,7 +1077,30 @@ validate_document_bytes <- function(bytes, source_id, source_type,
           "Allow or Disallow appears before a non-empty User-agent group."
         )
       }
-      if (!nzchar(value)) {
+      if (!nzchar(value) && identical(type, "disallow") && group_open &&
+            nul_counts[[line]] == 0L) {
+        # An empty Disallow is the allow-all idiom (robotstxt.org's original
+        # standard; RFC 9309 section 2.2 admits an empty pattern), so it is
+        # info, not a warning (ROBO-vyystald). It still ends the User-agent
+        # run, so a named group's crawlers leave `*` for it (section 2.2.1).
+        # A line holding a NUL, and one outside any group, keep
+        # empty_rule_value below.
+        add_diagnostic(
+          line, "info", "allow_all_disallow", type,
+          paste0(
+            "An empty Disallow value adds no restriction; the group's other ",
+            "rules still apply.",
+            if (rule_in_named_group[[line]]) {
+              paste0(" The crawlers this group names follow it, merged with ",
+                     "any other group naming them",
+                     if (has_global_group) {
+                       ", and not the `User-agent: *` group"
+                     },
+                     ".")
+            }
+          )
+        )
+      } else if (!nzchar(value)) {
         # A NUL right after the colon empties the value: the parser and
         # Google's matcher both end the line at its first NUL (ROBO-pvqrfvol),
         # so the path after it is never read. The message says so, quotes no
@@ -1166,7 +1209,6 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   } else {
     ""
   }
-  groups <- validation_groups(parsed)
   # Google's matcher reads a User-agent value only up to its first byte
   # outside [A-Za-z_-], so the group names another crawler than written,
   # or none (ROBO-zvhrayhx). The message names the token only (ASCII):

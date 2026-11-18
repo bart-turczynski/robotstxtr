@@ -65,9 +65,11 @@ test_that("rules without a User-agent still draw missing_user_agent", {
 })
 
 test_that("an empty or typo'd rule line still counts as a rule", {
+  # An empty Disallow is the allow-all info code since ROBO-vyystald, so
+  # the file is valid; it is still a rule, so no no_rules row.
   x <- robots_validate_text("User-agent: *\nDisallow:\n")
-  expect_identical(x$diagnostics$code, "empty_rule_value")
-  expect_identical(x$documents$validation_status, "warning")
+  expect_identical(x$diagnostics$code, "allow_all_disallow")
+  expect_identical(x$documents$validation_status, "valid")
 
   x <- robots_validate_text("User-agent: *\nDisalow: /x\n")
   expect_identical(x$documents$disallow_directives, 1L)

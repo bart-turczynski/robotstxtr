@@ -91,8 +91,9 @@ test_that("unescaped, reserved and non-escape values stay clean", {
     x <- eu_validate(line)
     expect_identical(nrow(x$diagnostics), 0L, label = line)
   }
+  # An empty Disallow is the allow-all info code since ROBO-vyystald.
   x <- eu_validate("Disallow:")
-  expect_identical(x$diagnostics$code, "empty_rule_value")
+  expect_identical(x$diagnostics$code, "allow_all_disallow")
   expect_identical(robots_validate_text("")$diagnostics$code, "no_rules")
 })
 

@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* Validator: an empty `Disallow:`, the allow-all idiom, is no longer a warning but the info code `allow_all_disallow` (RFC 9309 §2.2) (ROBO-vyystald).
+
 * Suggests `testthat (>= 3.3.0)`: the tests use `local_mocked_s3_method()` (ROBO-obxdzade).
 
 * Validator: `unicode_advisories = TRUE` in `robots_validate_text()` and `robots_validate_url()` adds info rows for U+FFFD, invisible characters and possible mojibake in Allow and Disallow values; the default is unchanged (ROBO-qxcwxtbm).

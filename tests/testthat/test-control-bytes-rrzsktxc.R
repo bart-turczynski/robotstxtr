@@ -219,6 +219,7 @@ test_that("ROBO-rrzsktxc: clean rules, CRLF ends and empty values get no row", {
     "User-agent: *\r\nDisallow: /a\r\nAllow: /b%01c\r\n"
   ))
   expect_identical(nrow(x$diagnostics), 0L)
+  # An empty Disallow is the allow-all info code since ROBO-vyystald.
   y <- robots_validate_text("User-agent: *\nDisallow:\n")
-  expect_identical(y$diagnostics$code, "empty_rule_value")
+  expect_identical(y$diagnostics$code, "allow_all_disallow")
 })
