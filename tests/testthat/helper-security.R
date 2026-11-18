@@ -273,8 +273,10 @@ oss_index_allowlist_violations <- function(rows) {
 # from the root and added LinkingTo below it.
 #
 # `description` is the package's DESCRIPTION as read.dcf() returns it. Its row
-# goes ahead of `db`'s, and package_dependencies() keeps the first of
-# duplicate rows, so the root's own dependencies are the DESCRIPTION's: an
+# goes ahead of `db`'s and only the first of duplicate rows is kept, so the
+# root's own dependencies are the DESCRIPTION's. The duplicates are dropped
+# here: current R's package_dependencies() keeps the first row itself, but
+# R 4.1.3's uses every duplicate (ROBO-obxdzade). An
 # installed robotstxtr can be an older build (one still importing httr2
 # reaches curl by the old path and never audits ssrfr).
 #
@@ -319,6 +321,7 @@ oss_index_audit_targets <- function(description, db) {
   given <- intersect(fields, colnames(description))
   root[1L, given] <- description[1L, given]
   db <- rbind(root, db[, fields, drop = FALSE])
+  db <- db[!duplicated(rownames(db)), , drop = FALSE]
 
   priority <- db[, "Priority"]
   base_pkgs <- rownames(db)[!is.na(priority) & priority == "base"]
