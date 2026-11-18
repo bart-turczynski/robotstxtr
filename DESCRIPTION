@@ -49,7 +49,7 @@ Suggests:
     oysteR,
     rmarkdown,
     rosv,
-    testthat (>= 3.0.0),
+    testthat (>= 3.3.0),
     webfakes
 Remotes:
     gitlab::bart-turczynski/ssrfr@357ea9894a223079da7ce4ccc9690a5d17ed22cf
