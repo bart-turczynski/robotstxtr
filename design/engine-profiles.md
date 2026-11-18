@@ -481,6 +481,25 @@ full-block or empty line's group also names crawlers outside the warning, deleti
 the message suggests a group of their own instead. Pinned by
 `tests/testthat/test-repeated-groups-vnhirero.R`.
 
+### 5f. The allow-all idiom (ROBO-vyystald; validator only)
+
+`User-agent: *` / `Disallow:` is the oldest way to grant full access: robotstxt.org's original
+standard gives it, and RFC 9309 section 2.2 admits an empty pattern. Platform defaults write it
+(Yoast's block; Blogger's and many publishers' `User-agent: Mediapartners-Google` / `Disallow:`),
+so a warning on it would land on every such site. An empty `Disallow` adds no restriction, but the
+line still ends the `User-agent` run, so a named group's crawlers follow that group (merged with
+any other group naming them) and not `*` (section 2.2.1).
+
+| Code | Severity | When |
+|---|---|---|
+| `allow_all_disallow` | info | A `Disallow` with an empty value (blank, or only a comment) inside a group. The message says the line adds no restriction; in a group naming a crawler other than `*`, a second sentence says those crawlers follow this group and not `User-agent: *`. |
+
+`empty_rule_value` stays a warning for an empty `Allow` (no idiom stands behind it, and it still
+ends the `User-agent` run), for an empty `Disallow` outside any group, and for a `Disallow` on a
+line holding a NUL byte (ROBO-nrnucnru). `empty_disallow_with_full_block` and
+`user_agent_repeated_group` are unchanged. Pinned by
+`tests/testthat/test-allow-all-disallow-vyystald.R`.
+
 ## 6. Matcher capability availability
 
 `robots_policy_ruleset` (§4) is pure data and always available. `matcher_backend` is separate:

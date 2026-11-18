@@ -112,8 +112,14 @@ validation_unsupported <- c(
 #'   \code{rule_without_user_agent} \tab error \tab
 #'     An Allow or Disallow in no group a non-empty User-agent opened: before
 #'     any, or after an empty User-agent that follows a rule. \cr
+#'   \code{allow_all_disallow} \tab info \tab
+#'     An empty Disallow value, the allow-all idiom: the line adds no
+#'     restriction. In a group naming a crawler other than \code{*}, the
+#'     message adds that those crawlers follow this group, merged with any
+#'     other group naming them, and not \code{User-agent: *}. \cr
 #'   \code{empty_rule_value} \tab warning \tab
-#'     An empty Allow or Disallow value, which the matcher ignores. When a NUL
+#'     An empty Allow value, which the matcher ignores, or an empty Disallow
+#'     value outside any group or on a line holding a NUL byte. When a NUL
 #'     byte right after the colon hides the path, the message says that the
 #'     first NUL ends the line, so the directive imposes no restriction and
 #'     the text after the NUL is ignored. \cr
@@ -974,6 +980,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
 
   group_open <- FALSE
   group_has_rule <- FALSE
+  # TRUE when the open group names a crawler other than `*` (ROBO-vyystald).
+  group_named <- FALSE
   nonempty_user_agents <- 0L
   unsupported <- logical(nrow(parsed))
   advisory_count <- 0L
@@ -1040,7 +1048,11 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         group_has_rule <- FALSE
       }
       if (nzchar(value)) {
+        if (!group_open) {
+          group_named <- FALSE
+        }
         group_open <- TRUE
+        group_named <- group_named || !identical(value, "*")
         nonempty_user_agents <- nonempty_user_agents + 1L
       } else {
         add_diagnostic(
@@ -1057,7 +1069,27 @@ validate_document_bytes <- function(bytes, source_id, source_type,
           "Allow or Disallow appears before a non-empty User-agent group."
         )
       }
-      if (!nzchar(value)) {
+      if (!nzchar(value) && identical(type, "disallow") && group_open &&
+            nul_counts[[line]] == 0L) {
+        # An empty Disallow is the allow-all idiom (robotstxt.org's original
+        # standard; RFC 9309 section 2.2 admits an empty pattern), so it is
+        # info, not a warning (ROBO-vyystald). It still ends the User-agent
+        # run, so a named group's crawlers leave `*` for it (section 2.2.1).
+        # A line holding a NUL, and one outside any group, keep
+        # empty_rule_value below.
+        add_diagnostic(
+          line, "info", "allow_all_disallow", type,
+          paste0(
+            "An empty Disallow value adds no restriction; the group's other ",
+            "rules still apply.",
+            if (group_named) {
+              paste0(" The crawlers this group names follow it, merged with ",
+                     "any other group naming them, and not the ",
+                     "`User-agent: *` group.")
+            }
+          )
+        )
+      } else if (!nzchar(value)) {
         # A NUL right after the colon empties the value: the parser and
         # Google's matcher both end the line at its first NUL (ROBO-pvqrfvol),
         # so the path after it is never read. The message says so, quotes no

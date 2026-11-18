@@ -95,8 +95,10 @@ test_that("a NUL that hides no path keeps today's message", {
   }
 })
 
-test_that("a plain empty Disallow keeps today's message", {
-  x <- robots_validate_text(charToRaw("User-agent: *\nDisallow:\n"))
+test_that("a plain empty Allow keeps today's message", {
+  # A plain empty Disallow is allow_all_disallow since ROBO-vyystald
+  # (test-allow-all-disallow-vyystald.R); an empty Allow keeps the warning.
+  x <- robots_validate_text(charToRaw("User-agent: *\nAllow:\n"))
   expect_identical(nr_codes(x), "empty_rule_value@2")
   expect_identical(nr_empty_row(x, 2L)$message, nr_plain_message)
 })

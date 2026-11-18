@@ -211,8 +211,9 @@ test_that("well-formed patterns stay clean of the value checks", {
   x <- vc_validate("Disallow: /")
   expect_identical(x$diagnostics$code, "disallow_tied_by_allow")
   expect_identical(x$diagnostics$line, 2L)
+  # An empty Disallow is the allow-all info code since ROBO-vyystald.
   x <- vc_validate("Disallow:")
-  expect_identical(x$diagnostics$code, "empty_rule_value")
+  expect_identical(x$diagnostics$code, "allow_all_disallow")
 })
 
 test_that("an invisible leading character is named in the message", {

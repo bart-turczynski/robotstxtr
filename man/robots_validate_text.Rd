@@ -130,8 +130,14 @@ matchers do not cut the value. \cr
 \code{rule_without_user_agent} \tab error \tab
 An Allow or Disallow in no group a non-empty User-agent opened: before
 any, or after an empty User-agent that follows a rule. \cr
+\code{allow_all_disallow} \tab info \tab
+An empty Disallow value, the allow-all idiom: the line adds no
+restriction. In a group naming a crawler other than \code{*}, the
+message adds that those crawlers follow this group, merged with any
+other group naming them, and not \code{User-agent: *}. \cr
 \code{empty_rule_value} \tab warning \tab
-An empty Allow or Disallow value, which the matcher ignores. When a NUL
+An empty Allow value, which the matcher ignores, or an empty Disallow
+value outside any group or on a line holding a NUL byte. When a NUL
 byte right after the colon hides the path, the message says that the
 first NUL ends the line, so the directive imposes no restriction and
 the text after the NUL is ignored. \cr
