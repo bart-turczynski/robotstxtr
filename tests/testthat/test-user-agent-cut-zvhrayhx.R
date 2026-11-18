@@ -1,9 +1,10 @@
 # ROBO-zvhrayhx: the matcher reads a User-agent value only up to its first
 # byte outside [A-Za-z_-] (src/robots.cc, RobotsMatcher::ExtractUserAgent),
 # so `Foo Bot` names Foo, `Bot2` names Bot and `*bot` names no crawler. The
-# validator warns `user_agent_cut` on every such value, `Googlebot/2.1`
-# included. A global line (`*` alone or followed by whitespace) is exempt:
-# its group still applies to every crawler.
+# validator reports `user_agent_cut` on every such value, `Googlebot/2.1`
+# included; ROBO-txnzyugl made it info unless a Google crawler reads the cut
+# and added the effect to the message. A global line (`*` alone or followed
+# by whitespace) is exempt: its group still applies to every crawler.
 
 uac_lines <- function(...) paste0(paste(c(...), collapse = "\n"), "\n")
 
@@ -16,22 +17,37 @@ uac_rows <- function(body) {
   d[d$code == "user_agent_cut", , drop = FALSE]
 }
 
-uac_read_as <- function(token) {
-  sprintf(paste0("User-agent value is read as '%s' by Google's matcher, ",
-                 "which stops at the first character outside letters, '_' ",
-                 "and '-'."), token)
+uac_no_star <- paste0("Unless another group names it, a crawler going by ",
+                      "the full value gets no rules from Google's matcher: ",
+                      "the file has no `User-agent: *` group.")
+
+uac_other <- paste0("Only Google's parser shortens the value, and Google's ",
+                    "crawlers do not go by it, so nothing changes for them; ",
+                    "how the named crawler's own parser reads it is ",
+                    "unknown.")
+
+uac_read_as <- function(token, tail = uac_other) {
+  paste(sprintf(paste0(
+    "User-agent value is read as '%s' by Google's matcher, which stops at ",
+    "the first character outside letters, '_' and '-'. There the full ",
+    "written value does not match this record, and a crawler whose token ",
+    "is '%s' matches it instead."
+  ), token, token), uac_no_star, tail)
 }
 
-uac_none <- paste0("User-agent value names no crawler: Google's matcher ",
-                   "reads a product token only from a leading run of ",
-                   "letters, '_' and '-'.")
+uac_none <- paste(
+  paste0("User-agent value names no crawler for Google's matcher, which ",
+         "reads a product token only from a leading run of letters, '_' ",
+         "and '-', so there this line matches no crawler."),
+  uac_no_star, uac_other
+)
 
-test_that("a value cut at a space is one warning naming the token read", {
+test_that("a value cut at a space is one info row naming the token read", {
   x <- robots_validate_text(uac_body("Foo Bot"))
-  expect_identical(x$documents$validation_status, "warning")
+  expect_identical(x$documents$validation_status, "valid")
   d <- x$diagnostics
   expect_identical(d$code, "user_agent_cut")
-  expect_identical(d$severity, "warning")
+  expect_identical(d$severity, "info")
   expect_identical(d$line, 1L)
   expect_identical(d$directive, "user-agent")
   expect_identical(d$raw_text, "User-agent: Foo Bot")
@@ -40,8 +56,13 @@ test_that("a value cut at a space is one warning naming the token read", {
 
 test_that("each cut names the token the matcher reads", {
   expect_identical(uac_rows(uac_body("Bot2"))$message, uac_read_as("Bot"))
-  expect_identical(uac_rows(uac_body("Googlebot/2.1"))$message,
-                   uac_read_as("Googlebot"))
+  expect_identical(
+    uac_rows(uac_body("Googlebot/2.1"))$message,
+    uac_read_as("Googlebot", paste0(
+      "'Googlebot' is the Google crawler token the value names, so nothing ",
+      "changes for that crawler."
+    ))
+  )
   expect_identical(uac_rows(uac_body("*bot"))$message, uac_none)
   expect_identical(uac_rows(uac_body("2bot"))$message, uac_none)
 })
@@ -56,7 +77,7 @@ test_that("a value the matcher reads whole, or as global, is not flagged", {
   expect_true("empty_user_agent" %in% x$diagnostics$code)
 })
 
-test_that("two cut lines in one group give a warning each, at its own line", {
+test_that("two cut lines in one group give a row each, at its own line", {
   d <- uac_rows(uac_lines("User-agent: Foo Bot", "User-agent: Bot2",
                           "User-agent: Baz", "Disallow: /x"))
   expect_identical(d$line, c(1L, 2L))

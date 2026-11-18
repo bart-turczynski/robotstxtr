@@ -284,12 +284,14 @@ test_that("rules that restrict nothing are not reported as shared", {
   expect_false(any(startsWith(d$code, "user_agent_joined")))
 })
 
-test_that("an opening line that names no crawler is not quoted", {
+test_that("an opening line that names no crawler is quoted as written", {
   r <- uaj_rows(uaj_lines(
     "User-agent: 123", "User-agent: a", "Crawl-delay: 1", "User-agent: b",
     "Disallow: /"
   ), "user_agent_joined_across_directive")
-  expect_match(r$message, "joins the group that opened on line 1.",
+  # ROBO-txnzyugl: agents are named as written, not as Google cuts them.
+  expect_match(r$message,
+               "joins the group that `User-agent: 123` opened on line 1.",
                fixed = TRUE)
 })
 

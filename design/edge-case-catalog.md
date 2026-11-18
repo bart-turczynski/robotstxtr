@@ -222,12 +222,12 @@ the matcher decision for the comparison work.
 | `grp-blank-line-between-agents` | as above | not documented | FooBot and BarBot `/x` disallow | `user_agent_joined_across_blank@3` (info; Yandex splits the group, Y5) | no |
 | `grp-same-agent-twice` — FooBot twice (second as `foobot`), BarBot between | combined (§2.2.1) | combined | `/x`, `/y` disallow, `/z` (BarBot's) allow | `user_agent_repeated_group@7` (info; ROBO-vnhirero) | no |
 | `grp-rule-before-user-agent` | a rule outside a group is not valid syntax | invalid lines ignored | `/x` allow, `/y` disallow | `rule_without_user_agent@1` | no |
-| `grp-token-version-in-file` — `User-agent: Googlebot/2.1` | `/` is not allowed in a token; unspecified | `googlebot/1.2` equals `googlebot` | `/x` as `Googlebot` disallow | `user_agent_cut@1` (warning; names `Googlebot`) | no |
+| `grp-token-version-in-file` — `User-agent: Googlebot/2.1` | `/` is not allowed in a token; unspecified | `googlebot/1.2` equals `googlebot` | `/x` as `Googlebot` disallow | `user_agent_cut@1` (info since ROBO-txnzyugl: a version suffix; names `Googlebot`) | no |
 | `grp-token-letter-case-in-file` — `User-agent: GOOGLEBOT`, token `googlebot` | case-insensitive | case-insensitive | disallow | none | no |
 | `grp-googlebot-image-fallback` — a `Googlebot` group and a `*` group, token `Googlebot-Image` | `*` applies (no group names the token) | the common-crawlers page lists `Googlebot` as Googlebot-Image's second token, so Google's crawler follows the `Googlebot` group (engine-profiles.md §5a) | `/x` allow, `/y` disallow (the `*` group): the legacy binding reads the one token only; the v1 `google` ruleset with the `google` backend gives `/x` disallow, `/y` allow (the `Googlebot` group) | `wildcard_rules_not_inherited@1` | yes; **known gap** on the legacy path; closed on v1 `google`/`google` by ROBO-fbbmvbob |
-| `grp-user-agent-with-space` — `User-agent: Foo Bot` | not a valid token; unspecified | not documented | as `Foo` disallow, as `FooBot` allow: the value is cut at the space | `user_agent_cut@1` (warning; names `Foo`) | yes; covered by `user_agent_cut` |
-| `grp-digit-in-token` — `User-agent: Bot2` | digits are not allowed in a token (§2.2.1); unspecified | not documented | as `Bot2` allow, as `Bot` disallow: the value is cut at the digit | `user_agent_cut@1` (warning; names `Bot`) | yes; covered by `user_agent_cut` |
-| `grp-star-prefixed-token` — `User-agent: *bot` | not a valid token; unspecified | not documented | allow: `*bot` is neither global nor a token | `user_agent_cut@1` (warning; names no crawler) | yes; covered by `user_agent_cut` |
+| `grp-user-agent-with-space` — `User-agent: Foo Bot` | not a valid token; unspecified | not documented | as `Foo` disallow, as `FooBot` allow: the value is cut at the space | `user_agent_cut@1` (info since ROBO-txnzyugl; names `Foo`) | yes; covered by `user_agent_cut` |
+| `grp-digit-in-token` — `User-agent: Bot2` | digits are not allowed in a token (§2.2.1); unspecified | not documented | as `Bot2` allow, as `Bot` disallow: the value is cut at the digit | `user_agent_cut@1` (info since ROBO-txnzyugl; names `Bot`) | yes; covered by `user_agent_cut` |
+| `grp-star-prefixed-token` — `User-agent: *bot` | not a valid token; unspecified | not documented | allow: `*bot` is neither global nor a token | `user_agent_cut@1` (info since ROBO-txnzyugl; names no crawler) | yes; covered by `user_agent_cut` |
 | `grp-sitemap-mid-group` — Sitemap between two rules | MUST NOT terminate a group (§2.2.4) | "Rules other than allow, disallow, and user-agent are ignored by the robots.txt parser" ("Order of precedence for user agents"; its example has a sitemap line inside a group of two user-agent lines); a sitemap line between rules is not shown | `/x`, `/y` disallow | none | no |
 | `grp-unknown-between-agents` — `Crawl-delay` between two User-agent lines | other records; unspecified for the first agent | unsupported fields ignored | FooBot and BarBot `/x` disallow: the unknown line does not split them | `unsupported_directive@2`, `user_agent_joined_across_directive@3` (warning; Bing and Yandex end the group at line 2) | no |
 
@@ -286,8 +286,10 @@ block red. An item marked fixed names the diagnostic that now covers it.
    went unflagged; `rule_cut_by_comment` now reports it.
 7. ROBO-zvhrayhx — `grp-user-agent-with-space`, `grp-digit-in-token`,
    `grp-star-prefixed-token`: a User-agent value the matcher cuts or never
-   matches is not flagged. Fixed: `user_agent_cut` (warning) names the token
-   the matcher reads, or says the value names no crawler.
+   matches is not flagged. Fixed: `user_agent_cut` names the token
+   the matcher reads, or says the value names no crawler. Since ROBO-txnzyugl
+   it states the effect and is a warning only when a Google crawler reads
+   the cut (`Googlebot Image`), info otherwise.
 8. ROBO-ccfsanhq — `content-spam-html`: no validator diagnostic names an HTML body.
    Fixed by ROBO-ccfsanhq: the `html_body` warning.
 9. ROBO-fbbmvbob — `grp-googlebot-image-fallback`: the legacy binding

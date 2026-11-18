@@ -166,8 +166,10 @@ test_that("the frame of a body on every emission path is pinned", {
     )
   )
   expect_identical(
+    # ROBO-txnzyugl: user_agent_cut@25 is info with the effect stated, and
+    # wildcard_rules_not_inherited@25 names `Foo.Bot` as written.
     seam_digest(d, linear_frame_extra(d)),
-    "40b363f5ac46c8fd5b7ac1964ebbcf46"
+    "386773ecdbc9cc7cd706278b66e46f48"
   )
 })
 
