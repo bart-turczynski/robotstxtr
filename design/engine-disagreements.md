@@ -342,7 +342,11 @@ Verdict: UNEVIDENCED for Yandex: the accepted corpus has no escape-case case.
 Bing is tester-observed (`body-sr2-bingbot-hexcase-*`). The Google side is the
 upstream matcher's behavior (`MaybeEscapePattern`), not a matcher bug; the
 validator did not warn about such a rule, and `rule_lowercase_escape` now does
-(ROBO-kormmfyg; `design/edge-case-catalog.md`, `esc-lower-hex-rule`).
+(ROBO-kormmfyg; `design/edge-case-catalog.md`, `esc-lower-hex-rule`). When the
+same group already has the rule with the escape in upper case, as Shopify's
+default writes `%2b` beside `%2B`, the line is that rule on Google and Bing and
+gets the info `rule_lowercase_escape_twin`, naming the upper-case line, instead
+(ROBO-nvzzjubl; `tests/testthat/test-lowercase-escape-twin-nvzzjubl.R`).
 
 ### 12. An empty `User-agent` value (yandex)
 

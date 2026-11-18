@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* Validator: a lower-case escape rule whose group already has the upper-case form (Shopify's `%2b` beside `%2B`) is the info `rule_lowercase_escape_twin`, not a `rule_lowercase_escape` warning (ROBO-nvzzjubl).
+
 * Validator: an empty `Disallow:`, the allow-all idiom, is no longer a warning but the info code `allow_all_disallow` (RFC 9309 §2.2) (ROBO-vyystald).
 
 * Suggests `testthat (>= 3.3.0)`: the tests use `local_mocked_s3_method()` (ROBO-obxdzade).
