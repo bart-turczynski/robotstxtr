@@ -48,8 +48,12 @@ variables:
 #   needs rlang >= 1.1.7 and vctrs >= 0.7.0, newer than the snapshot's, so
 #   those two come from CRAN in the same call. All declare R >= 4.1 or lower.
 #   So does testthat, from CRAN in that call: DESCRIPTION wants >= 3.3.0
-#   (local_mocked_s3_method()), newer than the snapshot's; every package in
-#   its hard closure on CRAN also declares R >= 4.1 or lower (ROBO-obxdzade).
+#   (local_mocked_s3_method()), newer than the snapshot's. install.packages()
+#   adds the dependencies it lacks from CRAN (brio, waldo, pkgload and a few
+#   more, all R >= 4.1 or lower) and keeps the snapshot's copies of the rest
+#   (cli, withr, processx …), which meet testthat 3.3.2's floors; a later
+#   testthat that raises one fails the requireNamespace() check below, not
+#   silently (ROBO-obxdzade).
 # - curl and webfakes come from CRAN without dependencies, as in ssrfr's own
 #   x-floor: ssrfr needs curl >= 7.0.0 (the snapshot has 6.4.0), and every R
 #   curl since 7.0.0 wants libcurl >= 7.73 while focal has 7.68.0, so the
@@ -75,7 +79,8 @@ variables:
 # worthless. A cold docker run of this job's script in rocker/r-ver:4.1.3
 # (arm64) passed on 2026-11-05 with rurl 3.1.0, ssrfr at ddb3389 (1.0.0) and
 # curl on its static libcurl 8.14.1: 4 NOTEs, no WARNING (ROBO-jbralthm).
-# The current pin has no recorded floor pass yet (ROBO-vnrtqxed).
+# A cold docker run of this script at 6df69f0 passed on 2026-11-18 with
+# testthat 3.3.2 and curl on libcurl 8.14.1: 4 NOTEs, no WARNING (ROBO-obxdzade).
 x-floor:
   extends: .t2-job
   image: rocker/r-ver:4.1.3

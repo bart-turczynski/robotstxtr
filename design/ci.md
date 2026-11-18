@@ -247,7 +247,8 @@ would inherit it.
   packages from the former 2025-07-15 snapshot (httr2 1.2.0, curl 6.4.0,
   which builds against libcurl 7.68), then punycoder, pslr, raddr and rurl
   from current CRAN, as the former job took punycoder, pslr and rurl, with
-  rlang and vctrs, which raddr needs newer than the snapshot's. It runs
+  rlang and vctrs, which raddr needs newer than the snapshot's, and testthat,
+  which the tests need at >= 3.3.0 (ROBO-obxdzade). It runs
   `--as-cran` with `_R_CHECK_CRAN_INCOMING_=false` and the template's
   guard (a `Status:` line in `00check.log`, exit status 0, no ERROR or
   WARNING). A cold run of its script in `rocker/r-ver:4.1.3` (arm64)

@@ -321,7 +321,7 @@ oss_index_audit_targets <- function(description, db) {
   given <- intersect(fields, colnames(description))
   root[1L, given] <- description[1L, given]
   db <- rbind(root, db[, fields, drop = FALSE])
-  db <- db[!duplicated(rownames(db)), , drop = FALSE]
+  db <- db[!duplicated(db[, "Package"]), , drop = FALSE]
 
   priority <- db[, "Priority"]
   base_pkgs <- rownames(db)[!is.na(priority) & priority == "base"]
