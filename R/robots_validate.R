@@ -162,13 +162,14 @@ validation_unsupported <- c(
 #'     rule line. A line whose group already has the rule in upper case gets
 #'     \code{rule_lowercase_escape_twin} instead. \cr
 #'   \code{rule_lowercase_escape_twin} \tab info \tab
-#'     A pattern with a lower-case percent-escape whose group already has the
+#'     A pattern with a lower-case percent-escape whose own group has the
 #'     same rule with the escape in upper case, as Shopify's default writes
 #'     \code{\%2b} beside \code{\%2B}. Google and Bing upper-case the escape,
 #'     so the line repeats that rule and a URL written with the lower-case
 #'     escape matches neither; the package's Yandex matcher compares the
-#'     pattern as written. The message names the twin's line; neither line
-#'     of the pair gets a \code{duplicate_rule} row. \cr
+#'     pattern as written. The message names the twin's line, and the line
+#'     gets no \code{duplicate_rule} row. Not reported for a line holding a
+#'     NUL byte. \cr
 #'   \code{rule_replacement_character} \tab info \tab
 #'     Only with \code{unicode_advisories = TRUE}: a pattern holds U+FFFD, the
 #'     replacement character a decoder writes for bytes it could not read.
@@ -480,10 +481,12 @@ validation_unsupported <- c(
 #' `max_bytes` is checked too. A group's only Allow or Disallow line is not
 #' reported when a User-agent line follows it: that line keeps the next
 #' User-agent line from joining its group. The canonical value has its
-#' escapes in upper case, so a line that differs from an earlier one only by
-#' a lower-case escape is the same rule; it is reported as
-#' `rule_lowercase_escape_twin` instead, which names the upper-case line in
-#' the same group; neither line of the pair gets a `duplicate_rule` row.
+#' escapes in upper case, so a line that differs only by a lower-case escape
+#' from a line in the same group that writes the escape in upper case is the
+#' same rule. It is reported as `rule_lowercase_escape_twin` instead, and it
+#' neither gets a `duplicate_rule` row nor counts as the earlier rule of
+#' one. In other groups, such a line keeps `rule_lowercase_escape` and may
+#' get `duplicate_rule`.
 #'
 #' On a document holding a NUL byte, `wildcard_rules_not_inherited`,
 #' `disallow_tied_by_allow`, `duplicate_rule` and the AI-training codes
@@ -1020,7 +1023,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       raw_lines[[line]], line == 1L, parsed$missing_colon[[i]]
     ))
   }
-  escape_twin <- rule_lowercase_escape_twins(groups$rules, rule_escapes)
+  escape_twin <- rule_lowercase_escape_twins(groups$rules, rule_escapes,
+                                              raw_lines, nul_counts)
   unsupported <- logical(nrow(parsed))
   advisory_count <- 0L
   advisory_chunk <- 0L
@@ -1339,13 +1343,11 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # no effect (ROBO-xexjgecr). Lines past a cut cannot give it one, so a
   # cut body is checked too.
   # Its rows go in as one frame: a file can repeat thousands of rules.
-  # A lower-case-escape twin's row reports the pair (ROBO-nvzzjubl), so
-  # neither line gets one here: not the twin, and not the upper-case line
-  # it names, which an earlier twin would otherwise mark as having no
-  # effect although it is the line written right.
-  found <- duplicate_rule_diagnostics(groups)
-  found <- found[is.na(escape_twin[found$line]) &
-                   !found$line %in% escape_twin, , drop = FALSE]
+  # A lower-case-escape twin's own row reports it (ROBO-nvzzjubl), so it
+  # is left out here, as a duplicate and as the earlier line one names.
+  found <- duplicate_rule_diagnostics(
+    groups, skip = which(!is.na(escape_twin))
+  )
   if (nrow(found) > 0L) {
     add_chunk(
       found$line, "info", "duplicate_rule", found$type,
@@ -2709,10 +2711,12 @@ validation_token_expander <- function(groups) {
 # the same type and byte-identical canonical value (no `*` or `$` stripping:
 # `rules$key` is not used, so `/x` and `/x*` differ). Empty values, patterns
 # not led by `/` or `*`, groups naming no token, and a group's only rule
-# line when a User-agent line follows it are skipped. Returns a data frame
-# of `line`, `type` and `message`, in line order; the message names the
-# smallest line among each token's first identical rule.
-duplicate_rule_diagnostics <- function(groups) {
+# line when a User-agent line follows it are skipped, and so are the lines
+# in `skip` (lower-case-escape twins, ROBO-nvzzjubl), which neither get a row
+# nor count as the earlier rule. Returns a data frame of `line`, `type` and
+# `message`, in line order; the message names the smallest line among each
+# token's first identical rule.
+duplicate_rule_diagnostics <- function(groups, skip = integer()) {
   expand <- validation_token_expander(groups)
   rules <- groups$rules
   # Any rule line, empty or not, ends its group. A group's only rule line
@@ -2722,7 +2726,8 @@ duplicate_rule_diagnostics <- function(groups) {
                          nrow(groups$groups))
   rules$sole <- rule_lines[match(rules$group, groups$groups$group)] == 1L &
     rules$line < max(groups$agents$line, -Inf)
-  rules <- rules[substr(rules$value, 1L, 1L) %in% c("/", "*"), , drop = FALSE]
+  rules <- rules[substr(rules$value, 1L, 1L) %in% c("/", "*") &
+                   !rules$line %in% skip, , drop = FALSE]
   by_rule <- expand(rules$group)
   owner <- by_rule$owner
   key <- paste(by_rule$class, rules$type[owner], rules$value[owner],
@@ -3221,16 +3226,34 @@ rule_lowercase_escape_message <- function(escapes) {
 # line of the same group with the same type and canonical value (the parser
 # upper-cases escapes) and no lower-case escape of its own, or NA
 # (ROBO-nvzzjubl). Only the same group: another group may name other
-# crawlers. An integer vector as long as `escapes`.
-rule_lowercase_escape_twins <- function(rules, escapes) {
+# crawlers. Both lines must be patterns led by `/` or `*` and hold no NUL
+# (Bing reads a NUL as a byte, so a cut value is no twin there), and the
+# twin must spell each escape in upper case, not as a raw byte (`/é` is not
+# the twin of `/%C3%a9`). `raw_lines` and `nul_counts` are by line. An
+# integer vector as long as `escapes`.
+rule_lowercase_escape_twins <- function(rules, escapes, raw_lines,
+                                        nul_counts) {
   twin <- rep(NA_integer_, length(escapes))
+  usable <- substr(rules$value, 1L, 1L) %in% c("/", "*") &
+    nul_counts[rules$line] == 0L
+  rules <- rules[usable, , drop = FALSE]
   if (nrow(rules) == 0L) {
     return(twin)
   }
   lower <- lengths(escapes[rules$line]) > 0L
   key <- paste(rules$group, rules$type, rules$value, sep = "\n")
-  upper_key <- key[!lower]
-  twin[rules$line[lower]] <- rules$line[!lower][match(key[lower], upper_key)]
+  found <- rules$line[!lower][match(key[lower], key[!lower])]
+  lines <- rules$line[lower]
+  spelled <- vapply(seq_along(lines), function(k) {
+    if (is.na(found[[k]])) {
+      return(FALSE)
+    }
+    upper <- chartr("abcdef", "ABCDEF", escapes[[lines[[k]]]])
+    all(vapply(upper, function(e) {
+      length(grepRaw(e, raw_lines[[found[[k]]]], fixed = TRUE)) > 0L
+    }, logical(1L)))
+  }, logical(1L))
+  twin[lines[spelled]] <- found[spelled]
   twin
 }
 

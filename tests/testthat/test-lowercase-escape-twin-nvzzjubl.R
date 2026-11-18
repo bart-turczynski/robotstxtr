@@ -161,3 +161,46 @@ test_that("the Shopify shape draws no lower-case warning", {
   )
   expect_identical(x$documents$validation_status, "valid")
 })
+
+test_that("a twin is neither a duplicate nor the rule a duplicate repeats", {
+  # Review of c05347a, major: a merged group's real duplicate still counts.
+  x <- tw_text("User-agent: a", "Disallow: /%2B", "",
+               "User-agent: a", "Disallow: /%2b", "Disallow: /%2B")
+  expect_identical(
+    tw_codes(x),
+    c("rule_lowercase_escape_twin@5", "user_agent_repeated_group@4",
+      "duplicate_rule@6")
+  )
+  d <- x$diagnostics
+  expect_identical(d$message[d$code == "duplicate_rule"],
+                   "Rule has no effect: line 2 already has the same Disallow.")
+  # The duplicate names the upper-case line it repeats, not the twin.
+  y <- tw_text("User-agent: *", "Disallow: /%2b", "Disallow: /%2B",
+               "Disallow: /%2B")
+  expect_identical(tw_codes(y),
+                   c("rule_lowercase_escape_twin@2", "duplicate_rule@4"))
+  expect_identical(y$diagnostics$message[[2L]],
+                   "Rule has no effect: line 3 already has the same Disallow.")
+})
+
+test_that("a raw byte is not an upper-case escape", {
+  # `/é` canonicalizes to `/%C3%A9` but spells no escape.
+  x <- tw_text("User-agent: *", "Disallow: /é", "Disallow: /%C3%a9")
+  expect_true("rule_lowercase_escape@3" %in% tw_codes(x))
+  expect_false("rule_lowercase_escape_twin" %in% x$diagnostics$code)
+})
+
+test_that("a line holding a NUL is no twin", {
+  # Google cuts at the NUL; Bing reads it as a byte, so the rules differ.
+  bytes <- c(charToRaw("User-agent: *\nDisallow: /%2B\nDisallow: /%2b"),
+             as.raw(0), charToRaw("x\n"))
+  x <- robots_validate_text(bytes)
+  expect_true("rule_lowercase_escape@3" %in% tw_codes(x))
+  expect_false("rule_lowercase_escape_twin" %in% x$diagnostics$code)
+})
+
+test_that("a pattern that never matches is no twin", {
+  x <- tw_text("User-agent: *", "Disallow: x%2B", "Disallow: x%2b")
+  expect_true("rule_lowercase_escape@3" %in% tw_codes(x))
+  expect_false("rule_lowercase_escape_twin" %in% x$diagnostics$code)
+})
