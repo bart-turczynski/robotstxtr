@@ -43,9 +43,28 @@ test_that("a named group's empty Disallow says it leaves `*`", {
   expect_identical(av_row(x, 2L)$message, av_named)
 })
 
-test_that("a group naming `*` and a crawler is a named group", {
+av_named_alone <- paste0(av_plain, " The crawlers this group names follow ",
+                         "it, merged with any other group naming them.")
+
+test_that("only a group that names a crawler and not `*` gets the note", {
+  # Stacked with `*`, the group is the `*` group itself (review, minor).
   x <- av_text("User-agent: *", "User-agent: X", "Disallow:")
-  expect_identical(av_row(x, 3L)$message, av_named)
+  expect_identical(av_row(x, 3L)$message, av_plain)
+  # `*` then whitespace is the global group, as Google reads it.
+  x <- av_text("User-agent: * foo", "Disallow:")
+  expect_identical(av_row(x, 2L)$message, av_plain)
+  # A value Google reads as no crawler names none (user_agent_cut says so).
+  for (agent in c("*bot", "/")) {
+    x <- av_text(paste0("User-agent: ", agent), "Disallow:", "",
+                 "User-agent: *", "Disallow: /p")
+    expect_identical(av_row(x, 2L)$message, av_plain, label = agent)
+  }
+})
+
+test_that("with no `*` group the note names none", {
+  x <- av_text("User-agent: GPTBot", "Disallow:")
+  expect_identical(av_row(x, 2L)$message, av_named_alone)
+  expect_identical(x$documents$validation_status, "valid")
 })
 
 test_that("the next group starts unnamed again", {

@@ -492,7 +492,7 @@ any other group naming them) and not `*` (section 2.2.1).
 
 | Code | Severity | When |
 |---|---|---|
-| `allow_all_disallow` | info | A `Disallow` with an empty value (blank, or only a comment) inside a group. The message says the line adds no restriction; in a group naming a crawler other than `*`, a second sentence says those crawlers follow this group and not `User-agent: *`. |
+| `allow_all_disallow` | info | A `Disallow` with an empty value (blank, or only a comment) inside a group. The message says the line adds no restriction; in a group that names a crawler (a token Google reads) and not `*`, a second sentence says those crawlers follow this group, and not the `User-agent: *` group when the file has one. |
 
 `empty_rule_value` stays a warning for an empty `Allow` (no idiom stands behind it, and it still
 ends the `User-agent` run), for an empty `Disallow` outside any group, and for a `Disallow` on a

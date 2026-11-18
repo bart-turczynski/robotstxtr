@@ -114,9 +114,10 @@ validation_unsupported <- c(
 #'     any, or after an empty User-agent that follows a rule. \cr
 #'   \code{allow_all_disallow} \tab info \tab
 #'     An empty Disallow value, the allow-all idiom: the line adds no
-#'     restriction. In a group naming a crawler other than \code{*}, the
+#'     restriction. In a group that names a crawler and not \code{*}, the
 #'     message adds that those crawlers follow this group, merged with any
-#'     other group naming them, and not \code{User-agent: *}. \cr
+#'     other group naming them, and not the \code{User-agent: *} group
+#'     when the file has one. \cr
 #'   \code{empty_rule_value} \tab warning \tab
 #'     An empty Allow value, which the matcher ignores, or an empty Disallow
 #'     value outside any group or on a line holding a NUL byte. When a NUL
@@ -980,9 +981,20 @@ validate_document_bytes <- function(bytes, source_id, source_type,
 
   group_open <- FALSE
   group_has_rule <- FALSE
-  # TRUE when the open group names a crawler other than `*` (ROBO-vyystald).
-  group_named <- FALSE
   nonempty_user_agents <- 0L
+  # Computed once here: the empty-Disallow note (ROBO-vyystald) reads it in
+  # the loop below, and the group checks after it.
+  groups <- validation_groups(parsed)
+  # Groups not naming `*` whose User-agent lines name at least one crawler
+  # (a token Google reads), and whether the file has a `*` group.
+  named_groups <- setdiff(groups$agents$group[nzchar(groups$agents$key)],
+                          groups$groups$group[groups$groups$global])
+  has_global_group <- any(groups$groups$global)
+  # By line: TRUE for a rule line in such a group (a lookup, not a scan per
+  # line, so the loop stays linear).
+  rule_in_named_group <- logical(max(c(0L, parsed$line)))
+  rule_in_named_group[groups$rules$line] <- groups$rules$group %in%
+    named_groups
   unsupported <- logical(nrow(parsed))
   advisory_count <- 0L
   advisory_chunk <- 0L
@@ -1048,11 +1060,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         group_has_rule <- FALSE
       }
       if (nzchar(value)) {
-        if (!group_open) {
-          group_named <- FALSE
-        }
         group_open <- TRUE
-        group_named <- group_named || !identical(value, "*")
         nonempty_user_agents <- nonempty_user_agents + 1L
       } else {
         add_diagnostic(
@@ -1082,10 +1090,13 @@ validate_document_bytes <- function(bytes, source_id, source_type,
           paste0(
             "An empty Disallow value adds no restriction; the group's other ",
             "rules still apply.",
-            if (group_named) {
+            if (rule_in_named_group[[line]]) {
               paste0(" The crawlers this group names follow it, merged with ",
-                     "any other group naming them, and not the ",
-                     "`User-agent: *` group.")
+                     "any other group naming them",
+                     if (has_global_group) {
+                       ", and not the `User-agent: *` group"
+                     },
+                     ".")
             }
           )
         )
@@ -1198,7 +1209,6 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   } else {
     ""
   }
-  groups <- validation_groups(parsed)
   # Google's matcher reads a User-agent value only up to its first byte
   # outside [A-Za-z_-], so the group names another crawler than written,
   # or none (ROBO-zvhrayhx). The message names the token only (ASCII):
