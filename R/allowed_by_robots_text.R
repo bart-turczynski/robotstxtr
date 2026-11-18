@@ -31,9 +31,10 @@
 #' unlike the `google` ruleset of [robots_evaluate_text_v1()]
 #' (`design/engine-profiles.md` section 5a). [robots_validate_text()]
 #' reports a named group that lacks `User-agent: *` rules
-#' (`wildcard_rules_not_inherited`, or the warning
+#' (`wildcard_rules_not_inherited`, or the warnings
 #' `wildcard_disallows_not_inherited` for lost Disallows that block a path
-#' the group's own Disallows leave open). Neither code is reported for the
+#' the group's own Disallows leave open and `allow_reopens_wildcard_disallow`
+#' for one the group's Allow reopens). None is reported for the
 #' AI-training policy token `__usage_ai-training`, which `*` never covers
 #' (an Internet-Draft, draft-kelley-aipref-training-preference-signal-00).
 #'

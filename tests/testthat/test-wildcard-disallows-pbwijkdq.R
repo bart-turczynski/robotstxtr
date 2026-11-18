@@ -233,8 +233,9 @@ test_that("a path only the group's own Allow reopens is not this warning", {
   x <- wd_text("User-agent: *", "Disallow: /company/search/", "",
                "User-agent: GPTBot", "Disallow: /", "Allow: /company")
   expect_false("wildcard_disallows_not_inherited" %in% x$diagnostics$code)
-  expect_match(wd_rows(x, "wildcard_rules_not_inherited")$message,
-               "Disallow: /company/search/ (line 2)", fixed = TRUE)
+  expect_match(wd_rows(x, "allow_reopens_wildcard_disallow")$message,
+               "Disallow: /company/search/ on line 2", fixed = TRUE)
+  expect_identical(nrow(wd_rows(x, "wildcard_rules_not_inherited")), 0L)
 })
 
 test_that("a merged info row still owns each group's line", {
