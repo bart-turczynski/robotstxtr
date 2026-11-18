@@ -175,7 +175,8 @@ test_that("global and named lines follow the Google matcher", {
     "User-agent: googlebot", "Disallow: /y"
   ))
   expect_identical(rows$line, 5L)
-  expect_match(rows$message, "^Googlebot obeys only the groups that name it")
+  # Named as written, by the value the token spells whole (ROBO-txnzyugl).
+  expect_match(rows$message, "^googlebot obeys only the groups that name it")
   expect_match(rows$message, "this `User-agent: *` rule does not ",
                fixed = TRUE)
 })
@@ -243,14 +244,15 @@ test_that("case folds under ascii_lower and a non-ASCII token is skipped", {
   expect_no_warning(x <- robots_validate_text(body))
   rows <- x$diagnostics[x$diagnostics$code == "wildcard_rules_not_inherited",
                         , drop = FALSE]
-  expect_match(rows$message, "^Bot obeys only this group")
+  # Named as written, ASCII-safe (ROBO-txnzyugl).
+  expect_match(rows$message, "^Bot\\\\xFF obeys only this group")
 })
 
 test_that("a latin1 agent name is cut where the matcher cuts it", {
   body <- "User-agent: *\nDisallow: /a\nUser-agent: Bingb\xf6t\nDisallow: /x\n"
   Encoding(body) <- "latin1"
   rows <- wi_rows(body)
-  expect_match(rows$message, "^Bingb obeys only this group")
+  expect_match(rows$message, "^Bingb\\\\xC3\\\\xB6t obeys only this group")
   x <- allowed_by_robots_text(body, "https://x.com/a", "Bingb")
   expect_true(x$results$allowed)
 })
