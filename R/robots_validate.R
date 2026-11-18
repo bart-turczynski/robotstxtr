@@ -2788,9 +2788,10 @@ wildcard_lost_disallows <- function(losers, rules, global, groups) {
 }
 
 # For each `*` Disallow value, its witness paths (or the given `paths`, a
-# parallel list) that value disallows under the `*` groups: read against that Disallow and the `*` Allows that
-# could match the path. Disallowed there, the path stays disallowed under
-# every `*` rule, as more Disallows only lengthen the longest match; allowed
+# parallel list) that value disallows under the `*` groups: read against
+# that Disallow and the `*` Allows that could match the path. Disallowed
+# there, the path stays disallowed under every `*` rule, as more Disallows
+# only lengthen the longest match; allowed
 # there, a `*` Allow beats this Disallow, and a block by another `*`
 # Disallow is that rule's, not this one's (review of 2a1a5a4). An Allow
 # can match a path only if its pattern up to the first `*` (or `$`) starts
@@ -2928,7 +2929,9 @@ wildcard_witness_decide <- function(bodies, ids, paths) {
 # path (wildcard_reopen_paths()) shows is skipped, never guessed. A `*`
 # Disallow the crawler loses (wildcard_lost_disallows()) is that warning's,
 # not this one's. Crawlers that ignore `*` reopen nothing. Crawlers whose
-# groups hold the same rules share one check.
+# groups hold the same rules share one check, and each cites its own Allow
+# line (review of bc71586). A `*`-side read does not depend on the crawler,
+# so it is made once per `*` Disallow and path, across checks.
 wildcard_reopened_disallows <- function(losers, lost, rules, global, groups) {
   out <- rep(list(wildcard_reopen_none()), length(losers))
   star_disallows <- which(global$type == "disallow")
@@ -2944,13 +2947,22 @@ wildcard_reopened_disallows <- function(losers, lost, rules, global, groups) {
   bodies <- vapply(losers[checked], function(x) {
     wildcard_witness_body(rules, rules$group %in% x$groups)
   }, "")
+  cache <- new.env(parent = emptyenv())
+  cache$done <- rep(list(character()), nrow(global))
+  cache$hit <- rep(list(character()), nrow(global))
   for (body in unique(bodies)) {
     members <- checked[bodies == body]
     in_effect <- rules$group %in% losers[[members[[1L]]]]$groups
     found <- wildcard_reopen_witnesses(rules, in_effect, star, global,
-                                       star_disallows)
+                                       star_disallows, cache)
     for (m in members) {
-      out[[m]] <- found[!found$global %in% lost[[m]], , drop = FALSE]
+      # The same body lists the same rules in the same order, so the
+      # Allow's position among the crawler's own rules gives its line.
+      own <- which(rules$group %in% losers[[m]]$groups)[found$allow_at]
+      out[[m]] <- data.frame(
+        found[c("global", "path", "star_line", "star_value")],
+        allow_line = rules$line[own], allow_value = rules$value[own]
+      )[!found$global %in% lost[[m]], , drop = FALSE]
     }
   }
   out
@@ -2958,8 +2970,7 @@ wildcard_reopened_disallows <- function(losers, lost, rules, global, groups) {
 
 wildcard_reopen_none <- function() {
   data.frame(global = integer(), path = character(), star_line = integer(),
-             star_value = character(), allow_line = integer(),
-             allow_value = character())
+             star_value = character(), allow_at = integer())
 }
 
 # Candidate paths for each `*` Disallow in `disallows`, as a list: the
@@ -2996,11 +3007,12 @@ wildcard_reopen_paths <- function(allows, disallows) {
 # The witnesses for wildcard_reopened_disallows() of the crawler whose rules
 # are `in_effect`, one per `*` Disallow (`star_disallows`, indices into
 # `global`): a path without an empty segment (`//`) if there is one, then
-# the shortest, then the first in byte order. The named reads come first,
+# the shortest, then the first in byte order. `allow_at` is the deciding
+# Allow's position among the crawler's rules. The named reads come first,
 # on each candidate path once; only the paths the crawler's Allows reopen
-# reach the `*` side.
+# reach the `*` side, read through `cache` (wildcard_reopen_star()).
 wildcard_reopen_witnesses <- function(rules, in_effect, star, global,
-                                      star_disallows) {
+                                      star_disallows, cache) {
   full <- which(in_effect)
   read <- function(rows, at) {
     wildcard_witness_decide(
@@ -3017,11 +3029,11 @@ wildcard_reopen_witnesses <- function(rules, in_effect, star, global,
   # Line 0: no rule matched. Such a path is allowed by the Disallows alone
   # too, so it drops out below; NA keeps the vectors aligned until then.
   at <- named$line[named$allowed]
-  allow_rows <- full[ifelse(at > 1L, at - 1L, NA)]
+  allow_at <- ifelse(at > 1L, at - 1L, NA)
   paths <- paths[named$allowed]
   reopened <- !read(which(in_effect & rules$type == "disallow"),
                     paths)$allowed
-  allow_rows <- allow_rows[reopened]
+  allow_at <- allow_at[reopened]
   paths <- paths[reopened]
   # One membership test over every (Disallow, path) pair, not one per
   # Disallow against every reopened path.
@@ -3034,8 +3046,8 @@ wildcard_reopen_witnesses <- function(rules, in_effect, star, global,
   if (length(some) == 0L) {
     return(wildcard_reopen_none())
   }
-  blocked <- wildcard_star_blocked(global$value[star_disallows[some]], rules,
-                                   star, candidates[some])
+  blocked <- wildcard_reopen_star(star_disallows[some], candidates[some],
+                                  rules, star, global, cache)
   hit <- lengths(blocked) > 0L
   if (!any(hit)) {
     return(wildcard_reopen_none())
@@ -3045,13 +3057,26 @@ wildcard_reopen_witnesses <- function(rules, in_effect, star, global,
             method = "radix")][[1L]]
   }, "")
   g <- star_disallows[some][hit]
-  allow_rows <- allow_rows[match(witness, paths)]
   found <- data.frame(
     global = g, path = witness, star_line = global$line[g],
-    star_value = global$value[g], allow_line = rules$line[allow_rows],
-    allow_value = rules$value[allow_rows]
+    star_value = global$value[g], allow_at = allow_at[match(witness, paths)]
   )
   found[order(found$star_line), , drop = FALSE]
+}
+
+# wildcard_star_blocked() for `*` Disallows `g` (indices into `global`) and
+# their candidate `paths`, reading only the (Disallow, path) pairs `cache`
+# has not seen; `cache$hit` keeps the blocked paths per Disallow.
+wildcard_reopen_star <- function(g, paths, rules, star, global, cache) {
+  fresh <- Map(setdiff, paths, cache$done[g])
+  todo <- which(lengths(fresh) > 0L)
+  if (length(todo) > 0L) {
+    found <- wildcard_star_blocked(global$value[g[todo]], rules, star,
+                                   fresh[todo])
+    cache$done[g[todo]] <- Map(c, cache$done[g[todo]], fresh[todo])
+    cache$hit[g[todo]] <- Map(c, cache$hit[g[todo]], found)
+  }
+  Map(intersect, paths, cache$hit[g])
 }
 
 # One wildcard_disallows_not_inherited row per group and set of lost `*`
@@ -3086,11 +3111,16 @@ wildcard_disallow_rows <- function(losers, lost, global, groups) {
 # One allow_reopens_wildcard_disallow warning per group and set of
 # reopened `*` Disallows (ROBO-cufxicmz), as list(line, code, severity,
 # agents, missing, owned, message), anchored on the group's first
-# User-agent line. Crawlers stacked on one group share its row.
+# User-agent line. Crawlers stacked on one group share its row when their
+# paths, cited lines and group count are the same.
 wildcard_reopen_rows <- function(losers, reopened, groups) {
   hit <- which(vapply(reopened, nrow, 0L) > 0L)
   signature <- vapply(hit, function(i) {
-    paste(losers[[i]]$first_group, paste(reopened[[i]]$global, collapse = ","),
+    # Crawlers merge only when every cited line and the wording agree
+    # (review of bc71586).
+    paste(losers[[i]]$first_group, losers[[i]]$one_group,
+          paste(reopened[[i]]$global, collapse = ","),
+          paste(reopened[[i]]$allow_line, collapse = ","),
           paste(reopened[[i]]$path, collapse = "\n"))
   }, "")
   lapply(unname(split(hit, factor(signature, unique(signature)))), function(i) {

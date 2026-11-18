@@ -249,3 +249,32 @@ test_that("the list stops at ten paths", {
   expect_match(msg, "on line 11), and 2 more. A named group", fixed = TRUE)
   expect_no_match(msg, "/s/11", fixed = TRUE)
 })
+
+test_that("crawlers with the same rules each cite their own Allow line", {
+  # Review of bc71586: groups with identical rules share one check, and
+  # ClaudeBot's row cited GPTBot's Allow on line 6.
+  x <- ar_text("User-agent: *", "Disallow: /company/search/", "",
+               "User-agent: GPTBot", "Disallow: /", "Allow: /company", "",
+               "User-agent: ClaudeBot", "Disallow: /", "Allow: /company")
+  d <- ar_rows(x)
+  expect_identical(d$line, c(4L, 8L))
+  expect_match(d$message[[1L]], "Allow: /company on line 6;", fixed = TRUE)
+  expect_match(d$message[[2L]], "Allow: /company on line 10;", fixed = TRUE)
+})
+
+test_that("stacked crawlers reopened by different Allows get their own rows", {
+  # Review of bc71586: A's later group reopens the path through line 10,
+  # B only through line 7; one shared row cited line 10 for both.
+  x <- ar_text("User-agent: *", "Disallow: /company/search/", "",
+               "User-agent: A", "User-agent: B", "Disallow: /",
+               "Allow: /company", "", "User-agent: A",
+               "Allow: /company/search/")
+  d <- ar_rows(x)
+  expect_identical(d$line, c(4L, 4L))
+  expect_match(d$message, paste0("^(A obeys only the groups that name it|",
+                                 "B obeys only this group), "))
+  a <- d$message[startsWith(d$message, "A ")]
+  b <- d$message[startsWith(d$message, "B ")]
+  expect_match(a, "Allow: /company/search/ on line 10;", fixed = TRUE)
+  expect_match(b, "Allow: /company on line 7;", fixed = TRUE)
+})
