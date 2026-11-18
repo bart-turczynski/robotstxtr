@@ -177,7 +177,16 @@ A pattern holds a lower-case percent-escape, such as \code{\%3c}.
 Google upper-cases the escape in a pattern but not in the URL, so a URL
 written with it never matches the rule; Bing upper-cases it too, and
 the package's Yandex matcher compares the pattern as written. One per
-rule line. \cr
+rule line. A line whose group already has the rule in upper case gets
+\code{rule_lowercase_escape_twin} instead. \cr
+\code{rule_lowercase_escape_twin} \tab info \tab
+A pattern with a lower-case percent-escape whose group already has the
+same rule with the escape in upper case, as Shopify's default writes
+\code{\%2b} beside \code{\%2B}. Google and Bing upper-case the escape,
+so the line repeats that rule and a URL written with the lower-case
+escape matches neither; the package's Yandex matcher compares the
+pattern as written. The message names the twin's line; neither line
+of the pair gets a \code{duplicate_rule} row. \cr
 \code{rule_replacement_character} \tab info \tab
 Only with \code{unicode_advisories = TRUE}: a pattern holds U+FFFD, the
 replacement character a decoder writes for bytes it could not read.
@@ -488,7 +497,11 @@ every crawler its group names already has it from an earlier line. Empty
 values and patterns that never match are skipped, and a body cut at
 \code{max_bytes} is checked too. A group's only Allow or Disallow line is not
 reported when a User-agent line follows it: that line keeps the next
-User-agent line from joining its group.
+User-agent line from joining its group. The canonical value has its
+escapes in upper case, so a line that differs from an earlier one only by
+a lower-case escape is the same rule; it is reported as
+\code{rule_lowercase_escape_twin} instead, which names the upper-case line in
+the same group; neither line of the pair gets a \code{duplicate_rule} row.
 
 On a document holding a NUL byte, \code{wildcard_rules_not_inherited},
 \code{disallow_tied_by_allow}, \code{duplicate_rule} and the AI-training codes

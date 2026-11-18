@@ -60,7 +60,13 @@ test_that("a duplicate Allow names its own directive", {
 })
 
 test_that("values compare in the parser's canonical form", {
-  d <- dr_rows(dr_lines("User-agent: *", "Disallow: /%aa", "Disallow: /%AA"))
+  # A pair that differs only by a lower-case escape is reported once, as
+  # rule_lowercase_escape_twin on the lower-case line (ROBO-nvzzjubl).
+  x <- robots_validate_text(dr_lines("User-agent: *", "Disallow: /%aa",
+                                     "Disallow: /%AA"))
+  expect_identical(x$diagnostics$code, "rule_lowercase_escape_twin")
+  expect_identical(x$diagnostics$line, 2L)
+  d <- dr_rows(dr_lines("User-agent: *", "Disallow: /%AA", "Disallow: /%AA"))
   expect_identical(d$line, 3L)
   d <- dr_rows(dr_lines(
     "User-agent: *", "Disallow: /é", "Disallow: /%C3%A9"
