@@ -197,11 +197,13 @@ validation_unsupported <- c(
 #'     A Sitemap value that is not a valid absolute URL. \cr
 #'   \code{unsupported_sitemap_scheme} \tab warning \tab
 #'     A Sitemap scheme other than \code{http}, \code{https} or \code{ftp}. \cr
-#'   \code{wildcard_disallows_not_inherited} \tab warning \tab
+#'   \code{wildcard_disallows_not_inherited} \tab warning or info \tab
 #'     A named User-agent group lacks \code{User-agent: *} Disallows that
 #'     block a path its own rules allow, so its crawlers may crawl it: the
 #'     group replaces \code{User-agent: *} for them instead of adding to it.
-#'     Says so when the group holds no Disallow. Not for a full block, nor for
+#'     Says so when the group holds no Disallow. Info, not a warning, for an
+#'     explicit grant: \code{Allow: /} or an empty \code{Disallow:} and no
+#'     other Disallow. Not for a full block, nor for
 #'     \code{AdsBot-Google}, \code{AdsBot-Google-Mobile},
 #'     \code{Mediapartners-Google} and \code{APIs-Google}, which ignore
 #'     \code{User-agent: *} anyway. Anchored on the group's first User-agent
@@ -419,10 +421,11 @@ validation_unsupported <- c(
 #' Google's matcher reads both; a `*` Allow that reopens every such path
 #' leaves no warning, and a path only the crawler's own Allow reopens (an
 #' `Allow: /company` under `Disallow: /`) is left to the info row. A group
-#' of only Allows, or only an empty `Disallow:`, warns too: `Allow: /` lifts
-#' every `*` Disallow. The crawlers that ignore `User-agent: *` whether or not
-#' a group names them get no warning, and their info row says the `*` rules
-#' never applied to them.
+#' of only Allows warns too. An explicit grant (`Allow: /`, or an empty
+#' `Disallow:`, with no other Disallow) lifts every `*` Disallow but is almost
+#' always deliberate, so it is reported as info. The crawlers that ignore
+#' `User-agent: *` whether or not a group names them get no warning, and
+#' their info row says the `*` rules never applied to them.
 #'
 #' The `ai_training_` codes follow
 #' draft-kelley-aipref-training-preference-signal-00 (dated 2026-10-30), an
@@ -2696,6 +2699,11 @@ wildcard_inheritance_diagnostics <- function(groups) {
       one_group = length(agent_groups) == 1L,
       open = any(judged) && all(allow_all[judged]),
       allow_only = !any(in_effect & rules$type == "disallow" & !rules$empty),
+      # An explicit grant: `Allow: /` (any every-path Allow) or an empty
+      # `Disallow:`, and no other Disallow (owner decision, 2026-11-18).
+      grant = !any(in_effect & rules$type == "disallow" & !rules$empty) &&
+        any(in_effect & (every_path | (rules$type == "disallow" &
+                                          rules$empty))),
       full_block = any(root_block) &&
         !any(in_effect & rules$type == "allow" & !rules$empty),
       exempt = key %in% exempt_keys,
@@ -2871,13 +2879,15 @@ wildcard_witness_eval <- function(bodies, ids, paths) {
   )$allowed
 }
 
-# One wildcard_disallows_not_inherited warning per group and set of lost
-# `*` Disallows (ROBO-pbwijkdq), as list(line, code, severity, message).
-# Warning rows never merge across groups.
+# One wildcard_disallows_not_inherited row per group and set of lost `*`
+# Disallows (ROBO-pbwijkdq), as list(line, code, severity, message). It is a
+# warning, or info for an explicit grant (`Allow: /` or an empty
+# `Disallow:` and no other Disallow), which is almost always deliberate
+# (owner decision, 2026-11-18). These rows never merge across groups.
 wildcard_disallow_rows <- function(losers, lost, global, groups) {
   hit <- which(lengths(lost) > 0L)
   signature <- vapply(hit, function(i) {
-    paste(losers[[i]]$first_group, losers[[i]]$allow_only,
+    paste(losers[[i]]$first_group, losers[[i]]$allow_only, losers[[i]]$grant,
           paste(lost[[i]], collapse = ","))
   }, "")
   lapply(unname(split(hit, factor(signature, unique(signature)))), function(i) {
@@ -2886,7 +2896,8 @@ wildcard_disallow_rows <- function(losers, lost, global, groups) {
                                       use.names = FALSE))
     list(
       line = wildcard_group_line(groups, members[[1L]]$first_group),
-      code = "wildcard_disallows_not_inherited", severity = "warning",
+      code = "wildcard_disallows_not_inherited",
+      severity = if (members[[1L]]$grant) "info" else "warning",
       agents = tokens, missing = global$line[lost[[i[[1L]]]]],
       owned = wildcard_group_line(groups, members[[1L]]$first_group),
       message = wildcard_disallows_message(

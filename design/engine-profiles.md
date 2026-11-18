@@ -514,6 +514,10 @@ case, so the two warnings never report the same path. `Disallow: /private$` ther
 `*` side reads each Disallow against the `*` Allows alone first, since more Disallows only lengthen
 the longest match, and against all `*` rules only for a path allowed there.
 
+An explicit grant, meaning `Allow: /` (or another every-path Allow) or an empty `Disallow:` with no
+other Disallow, gets the same row as info: such a grant is almost always deliberate (owner decision,
+2026-11-18), while a group of narrower Allows (`Allow: /public`) stays a warning.
+
 Not warned: a full block (it loses no Disallow), and `AdsBot-Google`, `AdsBot-Google-Mobile`,
 `Mediapartners-Google` and `APIs-Google`, which ignore `*` whether or not a group names them (§5a,
 special-case crawlers); their `wildcard_rules_not_inherited` row says the `*` rules never applied.

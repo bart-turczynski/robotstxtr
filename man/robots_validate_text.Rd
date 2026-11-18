@@ -215,11 +215,13 @@ A Sitemap line with an empty value. \cr
 A Sitemap value that is not a valid absolute URL. \cr
 \code{unsupported_sitemap_scheme} \tab warning \tab
 A Sitemap scheme other than \code{http}, \code{https} or \code{ftp}. \cr
-\code{wildcard_disallows_not_inherited} \tab warning \tab
+\code{wildcard_disallows_not_inherited} \tab warning or info \tab
 A named User-agent group lacks \code{User-agent: *} Disallows that
 block a path its own rules allow, so its crawlers may crawl it: the
 group replaces \code{User-agent: *} for them instead of adding to it.
-Says so when the group holds no Disallow. Not for a full block, nor for
+Says so when the group holds no Disallow. Info, not a warning, for an
+explicit grant: \code{Allow: /} or an empty \code{Disallow:} and no
+other Disallow. Not for a full block, nor for
 \code{AdsBot-Google}, \code{AdsBot-Google-Mobile},
 \code{Mediapartners-Google} and \code{APIs-Google}, which ignore
 \code{User-agent: *} anyway. Anchored on the group's first User-agent
@@ -437,10 +439,11 @@ and allowed by the Disallows of the crawler's merged groups alone, as
 Google's matcher reads both; a \code{*} Allow that reopens every such path
 leaves no warning, and a path only the crawler's own Allow reopens (an
 \verb{Allow: /company} under \verb{Disallow: /}) is left to the info row. A group
-of only Allows, or only an empty \verb{Disallow:}, warns too: \verb{Allow: /} lifts
-every \code{*} Disallow. The crawlers that ignore \verb{User-agent: *} whether or not
-a group names them get no warning, and their info row says the \code{*} rules
-never applied to them.
+of only Allows warns too. An explicit grant (\verb{Allow: /}, or an empty
+\verb{Disallow:}, with no other Disallow) lifts every \code{*} Disallow but is almost
+always deliberate, so it is reported as info. The crawlers that ignore
+\verb{User-agent: *} whether or not a group names them get no warning, and
+their info row says the \code{*} rules never applied to them.
 
 The \code{ai_training_} codes follow
 draft-kelley-aipref-training-preference-signal-00 (dated 2026-10-30), an

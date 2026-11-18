@@ -197,8 +197,8 @@ Allow or Disallow value: advisories only, since valid UTF-8 can neither prove
 nor disprove corruption and the character may be meant. A named User-agent
 group replaces `User-agent: *` for its crawler instead of adding to it. A
 warning, `wildcard_disallows_not_inherited`, names the `*` Disallows such a
-group drops where they block a path the group's own Disallows leave open (an
-`Allow: /` group, say). An info, `wildcard_rules_not_inherited`, notes the
+group drops where they block a path the group's own Disallows leave open; an
+explicit `Allow: /` or empty-`Disallow:` grant gets it as info. An info, `wildcard_rules_not_inherited`, notes the
 other `*` rules it lacks, one row for groups that lack the same rules. Where
 the merged named groups disallow `/` and hold no non-empty `Allow`, only the
 lost `*` Allow rules are listed, as possible exceptions. The AI-training policy token `__usage_ai-training`, from the Internet-Draft

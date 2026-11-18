@@ -60,20 +60,34 @@ test_that("an allow-only group says it blocks nothing", {
   ))
 })
 
-test_that("an `Allow: /` group and an empty Disallow group warn", {
-  # The shape of wordpress.org/robots.txt (fetched 2026-11-18).
+test_that("an explicit grant is reported as info", {
+  # The shape of wordpress.org/robots.txt (fetched 2026-11-18). `Allow: /`
+  # or an empty `Disallow:`, with no other Disallow, is almost always meant:
+  # info, not a warning (owner decision, 2026-11-18).
   x <- wd_text("User-agent: *", "Disallow: /wp-admin/", "Disallow: /search",
                "", "User-agent: GPTBot", "User-agent: ClaudeBot", "Allow: /")
   expect_identical(wd_codes(x), "wildcard_disallows_not_inherited@5")
+  expect_identical(wd_rows(x)$severity, "info")
+  expect_identical(x$documents$validation_status, "valid")
   expect_match(wd_rows(x)$message,
                "^GPTBot and ClaudeBot obey only this group, so these ")
   expect_match(wd_rows(x)$message,
                "This group holds no Disallow, so it blocks nothing for them.",
                fixed = TRUE)
-  y <- wd_text("User-agent: *", "Disallow: /p", "", "User-agent: X",
-               "Disallow:")
-  expect_identical(wd_codes(y), "wildcard_disallows_not_inherited@4")
-  expect_true("allow_all_disallow" %in% y$diagnostics$code)
+  for (rules in list("Disallow:", c("Allow: /", "Allow: /x"), "Allow: /*",
+                     c("Disallow:", "Allow: /p"))) {
+    y <- do.call(wd_text, as.list(c("User-agent: *", "Disallow: /p", "",
+                                    "User-agent: X", rules)))
+    expect_identical(wd_rows(y)$severity, "info", label = toString(rules))
+  }
+  # A narrower Allow is no explicit grant: still a warning.
+  z <- wd_text("User-agent: *", "Disallow: /p", "", "User-agent: X",
+               "Allow: /public")
+  expect_identical(wd_rows(z)$severity, "warning")
+  # A grant beside a real Disallow is no grant either.
+  w <- wd_text("User-agent: *", "Disallow: /p", "", "User-agent: X",
+               "Allow: /", "Disallow: /q")
+  expect_identical(wd_rows(w)$severity, "warning")
 })
 
 test_that("a group that restates every `*` Disallow does not warn", {

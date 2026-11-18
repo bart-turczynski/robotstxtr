@@ -1,6 +1,6 @@
 # robotstxtr (development version)
 
-* Validator: new warning `wildcard_disallows_not_inherited` when a named group drops `User-agent: *` Disallows that block a path the group allows (RFC 9309 §2.2.1) (ROBO-pbwijkdq).
+* Validator: new `wildcard_disallows_not_inherited` (warning; info for `Allow: /` grants) when a named group drops `User-agent: *` Disallows that block a path the group allows (RFC 9309 §2.2.1) (ROBO-pbwijkdq).
 
 * Validator: `wildcard_rules_not_inherited` rows with the same lost rules merge into one row naming each group.
 
