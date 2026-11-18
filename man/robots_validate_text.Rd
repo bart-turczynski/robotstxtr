@@ -464,7 +464,7 @@ disallowed by it under the \code{*} groups, allowed under the crawler's merged
 groups, and disallowed by those groups' Disallows alone, so an Allow of
 the crawler's reopens it. The candidate paths are the witness paths of
 the \code{*} Disallow, those of the crawler's Allows, and the \code{*} Disallow read
-under each Allow's literal prefix (\verb{/creativegroup/_print.html} for
+under the literal prefix of each Allow (\verb{/creativegroup/_print.html} for
 \verb{Allow: /creativegroup/} and \verb{Disallow: /*_print.html}). Google's matcher
 decides every read, so a reported path is exact; an overlap no candidate
 shows is skipped. A \code{*} Disallow the crawler loses outright is

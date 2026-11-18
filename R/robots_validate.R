@@ -446,7 +446,7 @@ validation_unsupported <- c(
 #' groups, and disallowed by those groups' Disallows alone, so an Allow of
 #' the crawler's reopens it. The candidate paths are the witness paths of
 #' the `*` Disallow, those of the crawler's Allows, and the `*` Disallow read
-#' under each Allow's literal prefix (`/creativegroup/_print.html` for
+#' under the literal prefix of each Allow (`/creativegroup/_print.html` for
 #' `Allow: /creativegroup/` and `Disallow: /*_print.html`). Google's matcher
 #' decides every read, so a reported path is exact; an overlap no candidate
 #' shows is skipped. A `*` Disallow the crawler loses outright is
