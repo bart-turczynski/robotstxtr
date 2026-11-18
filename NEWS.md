@@ -1,6 +1,6 @@
 # robotstxtr (development version)
 
-* Validator: new `allow_reopens_wildcard_disallow` warning when a named group's Allow reopens a path `User-agent: *` disallows (RFC 9309 §2.2.1) (ROBO-cufxicmz).
+* Validator: new `allow_reopens_wildcard_disallow` (warning; info for `Allow: /` grants) when a named group's Allow reopens a path `User-agent: *` disallows (RFC 9309 §2.2.1) (ROBO-cufxicmz).
 
 * Validator: new `wildcard_disallows_not_inherited` (warning; info for `Allow: /` grants) when a named group drops `User-agent: *` Disallows that block a path the group allows (RFC 9309 §2.2.1) (ROBO-pbwijkdq).
 

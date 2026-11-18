@@ -208,13 +208,15 @@ validation_unsupported <- c(
 #'     \code{Mediapartners-Google} and \code{APIs-Google}, which ignore
 #'     \code{User-agent: *} anyway. Anchored on the group's first User-agent
 #'     line. Not reported for a body cut at \code{max_bytes}. \cr
-#'   \code{allow_reopens_wildcard_disallow} \tab warning \tab
+#'   \code{allow_reopens_wildcard_disallow} \tab warning or info \tab
 #'     An Allow in a named User-agent group reopens a path that
 #'     \code{User-agent: *} disallows and the group's own Disallows block
 #'     (\code{Disallow: /} with \code{Allow: /company}, where
 #'     \code{User-agent: *} disallows \code{/company/search/}). Names each
 #'     path with the Allow and the \code{User-agent: *} Disallow, ten at
-#'     most. Not for \code{AdsBot-Google}, \code{AdsBot-Google-Mobile},
+#'     most. Info, not a warning, when only an every-path Allow such as
+#'     \code{Allow: /} reopens them (an explicit grant). Not for
+#'     \code{AdsBot-Google}, \code{AdsBot-Google-Mobile},
 #'     \code{Mediapartners-Google} and \code{APIs-Google}. Anchored on the
 #'     group's first User-agent line. Not reported for a body cut at
 #'     \code{max_bytes}. \cr
@@ -448,7 +450,9 @@ validation_unsupported <- c(
 #' `Allow: /creativegroup/` and `Disallow: /*_print.html`). Google's matcher
 #' decides every read, so a reported path is exact; an overlap no candidate
 #' shows is skipped. A `*` Disallow the crawler loses outright is
-#' `wildcard_disallows_not_inherited`'s, not this code's.
+#' `wildcard_disallows_not_inherited`'s, not this code's. When every path is
+#' reopened by an every-path Allow (`Disallow: /` with `Allow: /`), the group
+#' grants everything on purpose, so the row is info.
 #'
 #' The `ai_training_` codes follow
 #' draft-kelley-aipref-training-preference-signal-00 (dated 2026-10-30), an
@@ -2692,8 +2696,7 @@ wildcard_inheritance_diagnostics <- function(groups) {
   # allow-all test uses the same vector (ROBO-gkuuwbgc). It is tested on the
   # value, not the key: the key drops a trailing `*` run, which would also
   # take `/*$*`, where a `$` before the end is literal. `/$` is not one.
-  every_path <- rules$type == "allow" &
-    grepl("^(/\\**|/?\\*+\\$?)$", rules$value)
+  every_path <- rules$type == "allow" & wildcard_every_path(rules$value)
   global <- rules[!rules$empty & !every_path &
                     rules$group %in% groups$groups$group[groups$groups$global],
                   , drop = FALSE]
@@ -3108,7 +3111,15 @@ wildcard_disallow_rows <- function(losers, lost, global, groups) {
   })
 }
 
-# One allow_reopens_wildcard_disallow warning per group and set of
+# An Allow or Disallow value that matches every path: `/`, `/*`, `*`, `/*$`,
+# `*$` and the like (`/$` is not one). Tested on the value, not the key: the
+# key drops a trailing `*` run, which would also take `/*$*`.
+wildcard_every_path <- function(values) {
+  grepl("^(/\\**|/?\\*+\\$?)$", values)
+}
+
+# One allow_reopens_wildcard_disallow row (a warning, or info when only
+# every-path Allows reopen) per group and set of
 # reopened `*` Disallows (ROBO-cufxicmz), as list(line, code, severity,
 # agents, missing, owned, message), anchored on the group's first
 # User-agent line. Crawlers stacked on one group share its row when their
@@ -3131,7 +3142,12 @@ wildcard_reopen_rows <- function(losers, reopened, groups) {
     found <- reopened[[i[[1L]]]]
     list(
       line = line, code = "allow_reopens_wildcard_disallow",
-      severity = "warning", agents = tokens, missing = found$star_line,
+      # Info when only a blanket Allow (`Allow: /`) reopens the paths: an
+      # explicit grant, as for wildcard_disallows_not_inherited (owner
+      # decision, 2026-11-18).
+      severity = if (all(wildcard_every_path(found$allow_value))) "info" else
+        "warning",
+      agents = tokens, missing = found$star_line,
       owned = line,
       message = wildcard_reopen_message(
         tokens, all(vapply(members, `[[`, TRUE, "one_group")), found

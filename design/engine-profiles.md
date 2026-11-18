@@ -547,7 +547,9 @@ added there). Every read is the matcher's, so a reported path is exact; an overl
 is skipped, never approximated. The row names each reopened path with its Allow and its `*`
 Disallow, ten at most, and those Disallows leave the group's `wildcard_rules_not_inherited` row. A
 `*` Disallow the crawler loses outright (§5g) is not reported again here. The ignore-`*` crawlers of
-§5g are exempt. Pinned by `tests/testthat/test-allow-reopens-cufxicmz.R`.
+§5g are exempt. A row whose every path is reopened by an every-path Allow (`Disallow: /` with
+`Allow: /`, which allows everything since Allow wins the tie) is an explicit grant and is info, as in
+§5g (owner decision, 2026-11-18); a narrower Allow keeps it a warning. Pinned by `tests/testthat/test-allow-reopens-cufxicmz.R`.
 
 ## 6. Matcher capability availability
 

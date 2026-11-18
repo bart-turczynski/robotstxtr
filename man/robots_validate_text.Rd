@@ -226,13 +226,15 @@ other Disallow. Not for a full block, nor for
 \code{Mediapartners-Google} and \code{APIs-Google}, which ignore
 \code{User-agent: *} anyway. Anchored on the group's first User-agent
 line. Not reported for a body cut at \code{max_bytes}. \cr
-\code{allow_reopens_wildcard_disallow} \tab warning \tab
+\code{allow_reopens_wildcard_disallow} \tab warning or info \tab
 An Allow in a named User-agent group reopens a path that
 \code{User-agent: *} disallows and the group's own Disallows block
 (\code{Disallow: /} with \code{Allow: /company}, where
 \code{User-agent: *} disallows \code{/company/search/}). Names each
 path with the Allow and the \code{User-agent: *} Disallow, ten at
-most. Not for \code{AdsBot-Google}, \code{AdsBot-Google-Mobile},
+most. Info, not a warning, when only an every-path Allow such as
+\code{Allow: /} reopens them (an explicit grant). Not for
+\code{AdsBot-Google}, \code{AdsBot-Google-Mobile},
 \code{Mediapartners-Google} and \code{APIs-Google}. Anchored on the
 group's first User-agent line. Not reported for a body cut at
 \code{max_bytes}. \cr
@@ -466,7 +468,9 @@ under each Allow's literal prefix (\verb{/creativegroup/_print.html} for
 \verb{Allow: /creativegroup/} and \verb{Disallow: /*_print.html}). Google's matcher
 decides every read, so a reported path is exact; an overlap no candidate
 shows is skipped. A \code{*} Disallow the crawler loses outright is
-\code{wildcard_disallows_not_inherited}'s, not this code's.
+\code{wildcard_disallows_not_inherited}'s, not this code's. When every path is
+reopened by an every-path Allow (\verb{Disallow: /} with \verb{Allow: /}), the group
+grants everything on purpose, so the row is info.
 
 The \code{ai_training_} codes follow
 draft-kelley-aipref-training-preference-signal-00 (dated 2026-10-30), an

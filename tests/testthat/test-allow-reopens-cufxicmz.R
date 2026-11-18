@@ -278,3 +278,20 @@ test_that("stacked crawlers reopened by different Allows get their own rows", {
   expect_match(a, "Allow: /company/search/ on line 10;", fixed = TRUE)
   expect_match(b, "Allow: /company on line 7;", fixed = TRUE)
 })
+
+test_that("a blanket Allow beside Disallow: / is an info grant", {
+  # `Disallow: /` with `Allow: /` allows every path (Allow wins the tie):
+  # an explicit grant, info as for wildcard_disallows_not_inherited (owner
+  # decision, 2026-11-18).
+  for (allow in c("Allow: /", "Allow: /*")) {
+    x <- ar_text("User-agent: *", "Disallow: /company/search/", "",
+                 "User-agent: GPTBot", "Disallow: /", allow)
+    expect_identical(ar_rows(x)$severity, "info", label = allow)
+  }
+  # A narrower Allow that decides a path keeps the warning.
+  x <- ar_text("User-agent: *", "Disallow: /company/search/", "",
+               "User-agent: GPTBot", "Disallow: /", "Allow: /",
+               "Allow: /company")
+  expect_identical(ar_rows(x)$severity, "warning")
+  expect_match(ar_rows(x)$message, "Allow: /company on line 7", fixed = TRUE)
+})
