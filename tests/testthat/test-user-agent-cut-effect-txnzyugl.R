@@ -198,3 +198,34 @@ test_that("a value that is not valid UTF-8 stays ASCII-only", {
   expect_match(m, "^B\\\\xE4r obeys only this group")
   expect_true(all(validUTF8(x$diagnostics$message)))
 })
+
+test_that("a suffix that plainly means the token is info", {
+  # Review of 20707cd: these meant the Google token, so no crawler moves.
+  for (value in c("Googlebot *", "Googlebot/",
+                  "AdsBot-Google (+http://www.google.com/adsbot.html)")) {
+    x <- cx_text(paste0("User-agent: ", value), "Disallow: /x")
+    expect_identical(cx_rows(x)$severity, "info", label = value)
+  }
+  for (value in c("Googlebot2", "Googlebot, Bingbot")) {
+    x <- cx_text(paste0("User-agent: ", value), "Disallow: /x")
+    expect_identical(cx_rows(x)$severity, "warning", label = value)
+  }
+})
+
+test_that("a cut line in a `*` group still gets that group", {
+  body <- "User-agent: *\nUser-agent: Spinn3r\nDisallow: /a\n"
+  expect_identical(cx_decide(body, "/a", "Spinn3r"), "disallow")
+  m <- cx_rows(robots_validate_text(body))$message
+  expect_match(m, paste0("a crawler going by the full value still gets this ",
+                         "group from Google's matcher, since the group also ",
+                         "names `User-agent: *`."), fixed = TRUE)
+})
+
+test_that("a repeated group names the crawler by its uncut value", {
+  # Review of 20707cd: the earlier line's cut value is not the crawler.
+  x <- cx_text("User-agent: Googlebot/2.1", "Disallow: /", "",
+               "User-agent: googlebot", "Disallow: /a")
+  m <- cx_rows(x, "user_agent_repeated_group")$message
+  expect_match(m, "^`User-agent: googlebot` \\(line 4\\) names googlebot,")
+  expect_no_match(m, "Googlebot/2.1", fixed = TRUE)
+})

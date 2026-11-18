@@ -131,8 +131,9 @@ crawler going by it gets another group naming it, else
 \code{User-agent: *}, else no rules. A warning only when the token
 read is a documented Google crawler token the value did not mean
 (\code{Googlebot Image}, read as \code{Googlebot}); a version suffix
-(\code{Googlebot/2.1}), a trailing \code{*} and any other token are
-info, as Google's crawlers do not go by them. The Bing and Yandex
+(\code{Googlebot/2.1}) or a trailing \code{*} is info, as the token
+read is the crawler the value names, and any other token is info, as
+Google's crawlers do not go by it. The Bing and Yandex
 matchers do not cut the value, and every other code names the agent
 as written. \cr
 \code{rule_without_user_agent} \tab error \tab

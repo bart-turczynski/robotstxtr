@@ -113,8 +113,9 @@ validation_unsupported <- c(
 #'     \code{User-agent: *}, else no rules. A warning only when the token
 #'     read is a documented Google crawler token the value did not mean
 #'     (\code{Googlebot Image}, read as \code{Googlebot}); a version suffix
-#'     (\code{Googlebot/2.1}), a trailing \code{*} and any other token are
-#'     info, as Google's crawlers do not go by them. The Bing and Yandex
+#'     (\code{Googlebot/2.1}) or a trailing \code{*} is info, as the token
+#'     read is the crawler the value names, and any other token is info, as
+#'     Google's crawlers do not go by it. The Bing and Yandex
 #'     matchers do not cut the value, and every other code names the agent
 #'     as written. \cr
 #'   \code{rule_without_user_agent} \tab error \tab
@@ -1257,7 +1258,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # or none (ROBO-zvhrayhx); the row states the effect and is a warning
   # only when a Google crawler reads the cut (ROBO-txnzyugl).
   agents <- groups$agents
-  found <- user_agent_cut_rows(agents, has_global_group)
+  found <- user_agent_cut_rows(agents, has_global_group,
+                               groups$groups$group[groups$groups$global])
   if (nrow(found) > 0L) {
     add_chunk(
       found$line, found$severity, found$code, found$directive,
@@ -1684,14 +1686,15 @@ validation_google_tokens <- function() {
 # ai_training_rows(). The message names the token Google's matcher reads
 # (ASCII; `raw_text` carries the value) and states the effect: the written
 # value no longer matches its record there, so a crawler going by it gets
-# another group naming it, else `*`, else no rules (`has_global` says which).
+# another group naming it, else `*`, else no rules (`has_global` says which;
+# in a group in `global_groups` it still gets that group).
 # Only Google's parser cuts, and a Google crawler goes only by its own
 # tokens, so the row is a warning only when the token read is a documented
 # Google token and the rest of the value is neither a version suffix (`/2.1`,
 # ` 1.0`) nor a run of `*`: `Googlebot Image` is read as `Googlebot`, and
 # Googlebot follows the group. Every other cut is info (ROBO-txnzyugl, owner
 # decision 2026-11-18).
-user_agent_cut_rows <- function(agents, has_global) {
+user_agent_cut_rows <- function(agents, has_global, global_groups) {
   agents <- agents[agents$cut, , drop = FALSE]
   if (nrow(agents) == 0L) {
     return(ai_training_rows())
@@ -1700,8 +1703,12 @@ user_agent_cut_rows <- function(agents, has_global) {
   rest <- substring(agents$name, nchar(token, "bytes") + 1L)
   google <- nzchar(token) &
     agents$key %in% ascii_lower(validation_google_tokens())
-  meant <- grepl("^\\*+$", rest) |
-    grepl("^([ /]|\\\\t)+[vV]?[0-9]+(\\.[0-9]+)*($|[^A-Za-z0-9])", rest)
+  # Meant: a run of `*` (`Mediapartners-Google*`, `Googlebot *`), or after a
+  # space or `/`, a version (`/2.1`, ` 1.0`), a comment (` (+http://...)`)
+  # or nothing (`Googlebot/`).
+  meant <- grepl("^([ /]|\\\\t)*\\*+$", rest) |
+    grepl("^([ /]|\\\\t)+([vV]?[0-9]+(\\.[0-9]+)*($|[^A-Za-z0-9])|\\(|$)",
+          rest)
   read_as <- ifelse(
     nzchar(token),
     sprintf(paste0(
@@ -1722,6 +1729,13 @@ user_agent_cut_rows <- function(agents, has_global) {
            "value gets no rules from Google's matcher: the file has no ",
            "`User-agent: *` group.")
   }
+  # In a group that is itself `*`, such a crawler still gets this group.
+  fallback <- rep(fallback, nrow(agents))
+  fallback[agents$group %in% global_groups] <- paste0(
+    "Unless another group names it, a crawler going by the full value ",
+    "still gets this group from Google's matcher, since the group also ",
+    "names `User-agent: *`."
+  )
   warn <- google & !meant
   effect <- rep(paste0("Only Google's parser shortens the value, and ",
                        "Google's crawlers do not go by it, so nothing ",
@@ -2259,6 +2273,9 @@ repeated_group_diagnostics <- function(groups, skip = integer(), cap = 5L) {
   group <- agents$group[keep]
   token <- agents$name[keep]
   global <- agents$global[keep]
+  # The crawler a row names is its written value the token spells whole,
+  # when one exists (ROBO-txnzyugl).
+  written <- written_agent_names(id, token, agents$cut[keep])
   first <- !duplicated(paste(id, group, sep = "\n"))
   id <- id[first]
   line <- line[first]
@@ -2282,7 +2299,7 @@ repeated_group_diagnostics <- function(groups, skip = integer(), cap = 5L) {
     named <- if (global[[i]]) {
       "every crawler without a group of its own"
     } else {
-      ai_training_name(token[[earlier[[1L]]]])
+      ai_training_name(written[[id[[i]]]][[1L]])
     }
     follows <- if (global[[i]]) {
       "those crawlers follow"
@@ -2598,7 +2615,7 @@ joined_user_agent_row <- function(kind, agents, i, group_start, earlier, more,
 # never the `*` group (ROBO-gfjotdrr). For each named agent, the `*` rules
 # missing from its effective rules, as a list of list(line, agents, missing,
 # message): `line` is the first User-agent line of the first group naming
-# the agents, `agents` their tokens as first spelled, `missing` the lines of
+# the agents, `agents` their values as written, `missing` the lines of
 # every missing `*` rule (uncapped) and `message` the capped text. An agent
 # whose rules are all explicit allow-all (an empty Disallow, or a `*` Allow
 # matching every path) is exempt; an empty Allow is a no-op and is not

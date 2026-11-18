@@ -1,6 +1,6 @@
 # robotstxtr (development version)
 
-* Validator: `user_agent_cut` states the effect of the cut and is info unless a Google crawler reads the cut token (`Googlebot Image`); other codes name agents as written (ROBO-txnzyugl).
+* Validator: `user_agent_cut` states the effect of the cut and is info unless a Google crawler reads a cut token the value did not mean (`Googlebot Image`); other codes name agents as written (ROBO-txnzyugl).
 
 * Validator: a lower-case escape rule whose group already has the upper-case form (Shopify's `%2b` beside `%2B`) is the info `rule_lowercase_escape_twin`, not a `rule_lowercase_escape` warning (ROBO-nvzzjubl).
 

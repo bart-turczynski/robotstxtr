@@ -289,7 +289,7 @@ block red. An item marked fixed names the diagnostic that now covers it.
    matches is not flagged. Fixed: `user_agent_cut` names the token
    the matcher reads, or says the value names no crawler. Since ROBO-txnzyugl
    it states the effect and is a warning only when a Google crawler reads
-   the cut (`Googlebot Image`), info otherwise.
+   a cut token the value did not mean (`Googlebot Image`), info otherwise.
 8. ROBO-ccfsanhq — `content-spam-html`: no validator diagnostic names an HTML body.
    Fixed by ROBO-ccfsanhq: the `html_body` warning.
 9. ROBO-fbbmvbob — `grp-googlebot-image-fallback`: the legacy binding
