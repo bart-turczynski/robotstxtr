@@ -24,10 +24,12 @@ wd_rows <- function(x, code = "wildcard_disallows_not_inherited") {
   d[d$code == code, , drop = FALSE]
 }
 
-wd_tail <- paste0("A named group replaces `User-agent: *` for the crawlers ",
-                  "it names instead of adding to it (RFC 9309 section ",
-                  "2.2.1). If the group was meant to add to `User-agent: *`, ",
-                  "repeat these Disallows in it.")
+wd_tail <- function(k = 2L) {
+  paste0("A named group replaces `User-agent: *` for the crawlers it names ",
+         "instead of adding to it (RFC 9309 section 2.2.1). If the group ",
+         "was meant to add to `User-agent: *`, repeat ",
+         if (k == 1L) "this Disallow" else "these Disallows", " in it.")
+}
 
 test_that("an additive group warns, naming each lost Disallow", {
   x <- wd_text("User-agent: *", "Disallow: /account/", "Disallow: /search",
@@ -41,7 +43,7 @@ test_that("an additive group warns, naming each lost Disallow", {
     paste0("Googlebot-News obeys only this group, so these `User-agent: *` ",
            "Disallows do not apply to it: Disallow: /account/ (line 2), ",
            "Disallow: /search (line 3)."),
-    wd_tail
+    wd_tail()
   ))
   expect_identical(x$documents$validation_status, "warning")
 })
@@ -54,7 +56,7 @@ test_that("an allow-only group says it blocks nothing", {
     paste0("Twitterbot obeys only this group, so this `User-agent: *` ",
            "Disallow does not apply to it: Disallow: /account/ (line 2)."),
     "This group holds no Disallow, so it blocks nothing for it.",
-    wd_tail
+    wd_tail(1L)
   ))
 })
 
@@ -110,8 +112,8 @@ test_that("full blocks with the same loss merge into one info row", {
                                   "Allow: /p/ok", blocks)))
   expect_identical(wd_codes(x), "wildcard_rules_not_inherited@5")
   expect_identical(wd_rows(x, "wildcard_rules_not_inherited")$message, paste0(
-    "CCBot (line 5), GPTBot (line 8), Bytespider (line 11), Amazonbot ",
-    "(line 14), cohere-ai (line 17) and 2 more groups each obey only the ",
+    "CCBot (line 5); GPTBot (line 8); Bytespider (line 11); Amazonbot ",
+    "(line 14); cohere-ai (line 17); and 2 more groups each obey only the ",
     "groups that name them, which disallow `/`, so this `User-agent: *` ",
     "Allow rule may be meant as an exception and does not apply to them: ",
     "Allow: ",
@@ -165,7 +167,7 @@ test_that("crawlers that ignore `*` get no warning", {
   # The same remaining rules: one row naming both groups.
   expect_identical(wd_codes(x), "wildcard_rules_not_inherited@4")
   expect_match(wd_rows(x, "wildcard_rules_not_inherited")$message, paste0(
-    "^AdsBot-Google \\(line 4\\) and Mediapartners-Google \\(line 7\\) ",
+    "^AdsBot-Google \\(line 4\\); and Mediapartners-Google \\(line 7\\) ",
     "ignore `User-agent: \\*` whether or not a group names them"
   ))
   x <- wd_text("User-agent: *", "Disallow: /p", "",
@@ -219,4 +221,14 @@ test_that("a path only the group's own Allow reopens is not this warning", {
   expect_false("wildcard_disallows_not_inherited" %in% x$diagnostics$code)
   expect_match(wd_rows(x, "wildcard_rules_not_inherited")$message,
                "Disallow: /company/search/ (line 2)", fixed = TRUE)
+})
+
+test_that("a merged info row still owns each group's line", {
+  # Review of 2a1a5a4: merging must not hand a later group's first line to
+  # user_agent_repeated_group, which skips lines another report owns.
+  x <- wd_text("User-agent: *", "Allow: /p/ok", "Disallow: /p", "",
+               "User-agent: A", "Disallow: /", "",
+               "User-agent: A", "User-agent: B", "Disallow: /")
+  expect_identical(wd_codes(x), "wildcard_rules_not_inherited@5")
+  expect_false("user_agent_repeated_group" %in% x$diagnostics$code)
 })

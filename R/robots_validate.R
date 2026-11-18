@@ -1327,7 +1327,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   found <- repeated_group_diagnostics(
     groups,
     skip = c(joined_lines, agents$line[agents$cut],
-             vapply(inheritance, `[[`, 0L, "line"))
+             unlist(lapply(inheritance, `[[`, "owned")))
   )
   if (nrow(found) > 0L) {
     add_chunk(
@@ -2751,27 +2751,52 @@ wildcard_lost_disallows <- function(losers, rules, global, groups) {
   out
 }
 
-# For each `*` Disallow value, its witness paths that the `*` groups'
-# rules disallow. A path is first read against the `*` Allows and that
-# Disallow alone, one body per value: disallowed there, it is disallowed
-# under every `*` rule too, as more Disallows only lengthen the longest
-# match. A path allowed there is read again against all the `*` rules, so
-# the cost stays near the number of `*` Allows, not of all `*` rules.
+# For each `*` Disallow value, its witness paths that value disallows
+# under the `*` groups: read against that Disallow and the `*` Allows that
+# could match the path. Disallowed there, the path stays disallowed under
+# every `*` rule, as more Disallows only lengthen the longest match; allowed
+# there, a `*` Allow beats this Disallow, and a block by another `*`
+# Disallow is that rule's, not this one's (review of 2a1a5a4). An Allow
+# can match a path only if its pattern up to the first `*` (or `$`) starts
+# the path, so only those Allows enter each body: one body per value, as
+# small as the Allows that bear on it, decided by Google's matcher.
 wildcard_star_blocked <- function(values, rules, star) {
   paths <- lapply(values, wildcard_witness_paths)
-  allows <- star & rules$type == "allow"
-  base <- wildcard_witness_body(rules, allows)
-  bodies <- paste0(base, "Disallow: ", values, "\n")
+  allows <- which(star & rules$type == "allow" & !rules$empty)
+  by_prefix <- split(allows, wildcard_allow_prefix(rules$value[allows]))
+  near <- lapply(paths, function(p) {
+    if (length(by_prefix) == 0L) {
+      return(integer())
+    }
+    starts <- substring(rep(p, nchar(p, "bytes") + 1L), 1L,
+                        unlist(lapply(nchar(p, "bytes"), seq.int, from = 0L)))
+    sort(unlist(by_prefix[intersect(starts, names(by_prefix))],
+                use.names = FALSE))
+  })
+  lines <- paste0(ifelse(rules$type == "allow", "Allow: ", "Disallow: "),
+                  rules$value, "\n")
+  bodies <- paste0("User-agent: witness\n",
+                   vapply(near, function(i) paste(lines[i], collapse = ""),
+                          ""),
+                   "Disallow: ", values, "\n")
   ids <- rep(seq_along(values), lengths(paths))
   flat <- unlist(paths, use.names = FALSE)
   allowed <- wildcard_witness_eval(bodies, ids, flat)
-  if (any(allowed)) {
-    allowed[allowed] <- wildcard_witness_eval(
-      wildcard_witness_body(rules, star), rep(1L, sum(allowed)),
-      flat[allowed]
-    )
-  }
   unname(split(flat[!allowed], factor(ids[!allowed], seq_along(values))))
+}
+
+# The part of each Allow pattern a path must start with: up to the first
+# `*`, with a final `$` dropped. Google's matcher also lets an Allow ending
+# in `/index.htm` or `/index.html` match its directory, so that file name is
+# dropped too. A pattern led by neither `/` nor `*` never matches and gets
+# a key no path starts with.
+wildcard_allow_prefix <- function(values) {
+  prefix <- sub("\\*.*$", "", values)
+  prefix <- sub("\\$$", "", prefix)
+  prefix <- sub("/index\\.html?$", "/", prefix)
+  led <- startsWith(values, "/") | startsWith(values, "*")
+  prefix[!led] <- "\n"
+  prefix
 }
 
 # Whether each element of `paths` (a list of character vectors) holds a path
@@ -2856,6 +2881,7 @@ wildcard_disallow_rows <- function(losers, lost, global, groups) {
       line = wildcard_group_line(groups, members[[1L]]$first_group),
       code = "wildcard_disallows_not_inherited", severity = "warning",
       agents = tokens, missing = global$line[lost[[i[[1L]]]]],
+      owned = wildcard_group_line(groups, members[[1L]]$first_group),
       message = wildcard_disallows_message(
         tokens, all(vapply(members, `[[`, TRUE, "one_group")),
         global[lost[[i[[1L]]]], , drop = FALSE], members[[1L]]$allow_only
@@ -2899,6 +2925,10 @@ wildcard_inheritance_rows <- function(losers, lost, global, groups) {
       line = wildcard_group_line(groups, min(first)),
       code = "wildcard_rules_not_inherited", severity = "info",
       agents = tokens, missing = missing$line,
+      # Every merged group's first line stays this report's (one line, one
+      # report), not only the anchor's.
+      owned = vapply(sort(unique(first)), wildcard_group_line, 0L,
+                     groups = groups),
       message = wildcard_inheritance_message(
         tokens, all(vapply(members, `[[`, TRUE, "one_group")), missing,
         full_block = members[[1L]]$full_block, exempt = members[[1L]]$exempt,
@@ -2912,8 +2942,9 @@ wildcard_group_line <- function(groups, group) {
   groups$groups$first_line[[match(group, groups$groups$group)]]
 }
 
-# The groups of a merged info row, in file order, as "A and B (line 5)",
-# five at most, then "and N more groups".
+# The groups of a merged info row, in file order, as "A and B (line 5); C
+# (line 9)", five at most, then "and N more groups": semicolons part the
+# groups, since a group's own names are joined with "and".
 wildcard_group_labels <- function(members, first, groups, cap = 5L) {
   by_group <- split(seq_along(members), factor(first, sort(unique(first))))
   labels <- vapply(names(by_group), function(g) {
@@ -2925,9 +2956,12 @@ wildcard_group_labels <- function(members, first, groups, cap = 5L) {
   shown <- labels[seq_len(min(cap, length(labels)))]
   more <- length(labels) - length(shown)
   if (more > 0L) {
-    return(paste0(toString(shown), " and ", more, " more groups"))
+    shown <- c(shown, sprintf("and %d more %s", more,
+                              if (more == 1L) "group" else "groups"))
+  } else {
+    shown[[length(shown)]] <- paste("and", shown[[length(shown)]])
   }
-  joined_and(shown, 0L)
+  paste(shown, collapse = "; ")
 }
 
 # The distinct values written for each crawler id, as a list named by id:
@@ -3098,42 +3132,11 @@ duplicate_rule_diagnostics <- function(groups, skip = integer()) {
 wildcard_inheritance_message <- function(tokens, one_group, missing,
                                          full_block = FALSE, cap = 10L,
                                          exempt = FALSE, labels = NULL) {
-  several <- length(tokens) > 1L || !is.null(labels)
-  named <- if (!is.null(labels)) {
-    labels
-  } else if (several) {
-    paste(toString(tokens[-length(tokens)]),
-          "and", tokens[[length(tokens)]])
-  } else {
-    tokens
-  }
-  where <- if (one_group && is.null(labels)) {
-    "this group"
-  } else if (several) {
-    "the groups that name them"
-  } else {
-    "the groups that name it"
-  }
-  obey <- if (!is.null(labels)) {
-    "each obey"
-  } else if (several) {
-    "obey"
-  } else {
-    "obeys"
-  }
+  who <- wildcard_inheritance_who(tokens, one_group, labels)
   k <- nrow(missing)
   listed <- wildcard_rule_list(missing, cap)
-  it <- if (several) "them" else "it"
   if (exempt) {
-    return(sprintf(
-      paste0("%s %s `User-agent: *` whether or not a group names %s (%s), ",
-             "so %s never applied to %s: %s."),
-      named, if (several) "ignore" else "ignores", it,
-      if (several) "Google's special-case crawlers" else
-        "one of Google's special-case crawlers",
-      if (k == 1L) "this `User-agent: *` rule" else
-        "these `User-agent: *` rules", it, listed
-    ))
+    return(wildcard_exempt_message(who, k, listed))
   }
   if (full_block) {
     text <- sprintf(
@@ -3142,21 +3145,17 @@ wildcard_inheritance_message <- function(tokens, one_group, missing,
         "meant as %s and %s not apply to %s: %s. A stricter policy for a ",
         "named crawler may be deliberate."
       ),
-      named, obey, where,
-      if (one_group || !is.null(labels)) "disallow" else "together disallow",
+      who$named, who$obey, who$where, who$disallow,
       if (k == 1L) "this" else "these", if (k == 1L) "rule" else "rules",
       if (k == 1L) "an exception" else "exceptions",
-      if (k == 1L) "does" else "do", it, listed
+      if (k == 1L) "does" else "do", who$it, listed
     )
-    if (one_group && is.null(labels)) {
-      text <- sub(" which disallow ", " which disallows ", text, fixed = TRUE)
-    }
   } else {
     text <- sprintf(
       "%s %s only %s, so %s `User-agent: *` %s not apply to %s: %s.",
-      named, obey, where,
+      who$named, who$obey, who$where,
       if (k == 1L) "this" else "these",
-      if (k == 1L) "rule does" else "rules do", it, listed
+      if (k == 1L) "rule does" else "rules do", who$it, listed
     )
   }
   paste(text, paste0(
@@ -3164,6 +3163,39 @@ wildcard_inheritance_message <- function(tokens, one_group, missing,
     "`User-agent: *` once any group does; `User-agent: *` applies only to ",
     "crawlers no group names."
   ))
+}
+
+# The words an inheritance info row names its crawlers with: `named` (the
+# agents, or the merged groups' labels), `several`, `where`, `obey`, `it`
+# and `disallow` (the full-block verb).
+wildcard_inheritance_who <- function(tokens, one_group, labels) {
+  merged <- !is.null(labels)
+  several <- length(tokens) > 1L || merged
+  single <- one_group && !merged
+  list(
+    named = if (merged) labels else joined_and(tokens, 0L),
+    several = several,
+    where = if (single) "this group" else
+      paste("the groups that name", if (several) "them" else "it"),
+    obey = if (merged) "each obey" else if (several) "obey" else "obeys",
+    it = if (several) "them" else "it",
+    disallow = if (single) "disallows" else if (merged) "disallow" else
+      "together disallow"
+  )
+}
+
+# The info row of the crawlers that ignore `*` whether or not a group names
+# them (ROBO-pbwijkdq): the `*` rules never applied to them.
+wildcard_exempt_message <- function(who, k, listed) {
+  sprintf(
+    paste0("%s %s `User-agent: *` whether or not a group names %s (%s), ",
+           "so %s never applied to %s: %s."),
+    who$named, if (who$several) "ignore" else "ignores", who$it,
+    if (who$several) "Google's special-case crawlers" else
+      "one of Google's special-case crawlers",
+    if (k == 1L) "this `User-agent: *` rule" else
+      "these `User-agent: *` rules", who$it, listed
+  )
 }
 
 # The wildcard_disallows_not_inherited message (ROBO-pbwijkdq): the lost `*`
@@ -3195,11 +3227,13 @@ wildcard_disallows_message <- function(tokens, one_group, lost, allow_only,
       if (one_group) "it blocks" else "they block", it
     ))
   }
-  paste(text, paste0(
+  paste(text, sprintf(paste0(
     "A named group replaces `User-agent: *` for the crawlers it names ",
-    "instead of adding to it (RFC 9309 section 2.2.1). If the group was ",
-    "meant to add to `User-agent: *`, repeat these Disallows in it."
-  ))
+    "instead of adding to it (RFC 9309 section 2.2.1). If %s meant to add ",
+    "to `User-agent: *`, repeat %s in %s."
+  ), if (one_group) "the group was" else "the groups were",
+  if (k == 1L) "this Disallow" else "these Disallows",
+  if (one_group) "it" else "them"))
 }
 
 # Rules as "Disallow: /a (line 2), Allow: /b (line 3)", `cap` at most, then

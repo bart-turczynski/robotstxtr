@@ -33,11 +33,16 @@ wi_rows <- function(body, code = c("wildcard_rules_not_inherited",
 # Its wildcard_disallows_not_inherited rows (ROBO-pbwijkdq).
 wi_warn <- function(body) wi_rows(body, "wildcard_disallows_not_inherited")
 
-wi_warn_tail <- paste0(
-  " A named group replaces `User-agent: *` for the crawlers it names ",
-  "instead of adding to it (RFC 9309 section 2.2.1). If the group was ",
-  "meant to add to `User-agent: *`, repeat these Disallows in it."
-)
+wi_warn_tail <- function(k = 2L, one = TRUE) {
+  paste0(
+    " A named group replaces `User-agent: *` for the crawlers it names ",
+    "instead of adding to it (RFC 9309 section 2.2.1). If ",
+    if (one) "the group was" else "the groups were",
+    " meant to add to `User-agent: *`, repeat ",
+    if (k == 1L) "this Disallow" else "these Disallows", " in ",
+    if (one) "it." else "them."
+  )
+}
 
 wi_lines <- function(...) paste0(paste(c(...), collapse = "\n"), "\n")
 
@@ -73,7 +78,7 @@ test_that("a named group dropping the * Disallows gets one warning", {
     "do not apply to it: Disallow: /wp-admin/* (line 2), ",
     "Disallow: /tickets/satisfaction/* (line 3), ",
     "Disallow: /conversations/satisfaction/* (line 4), ",
-    "Disallow: /a/* (line 5), Disallow: /b/* (line 6).", wi_warn_tail
+    "Disallow: /a/* (line 5), Disallow: /b/* (line 6).", wi_warn_tail()
   ))
   expect_false(any(grepl("probably|mistake|intend", x$diagnostics$message)))
 })
@@ -84,7 +89,7 @@ test_that("a rule-free named group lists every * rule", {
   expect_identical(rows$message, paste0(
     "Bingbot obeys only this group, so this `User-agent: *` Disallow ",
     "does not apply to it: Disallow: /x (line 2). This group holds no ",
-    "Disallow, so it blocks nothing for it.", wi_warn_tail
+    "Disallow, so it blocks nothing for it.", wi_warn_tail(1L)
   ))
   # Directly before `User-agent: *` it is a mixed group, not a rule-free one.
   expect_identical(
@@ -150,7 +155,7 @@ test_that("groups naming the same agent merge", {
   expect_identical(partial$message, paste0(
     "Bingbot obeys only the groups that name it, so this ",
     "`User-agent: *` Disallow does not apply to it: Disallow: /c (line 4).",
-    wi_warn_tail
+    wi_warn_tail(1L, one = FALSE)
   ))
 })
 
@@ -218,7 +223,7 @@ test_that("agents named together in several groups are named as them", {
   expect_identical(rows$message, paste0(
     "Bingbot and msnbot obey only the groups that name them, so this ",
     "`User-agent: *` Disallow does not apply to them: Disallow: /b ",
-    "(line 3).", wi_warn_tail
+    "(line 3).", wi_warn_tail(1L, one = FALSE)
   ))
 })
 
@@ -360,7 +365,7 @@ test_that("at most ten rules are listed", {
     "Bingbot obeys only this group, so these `User-agent: *` Disallows ",
     "do not apply to it: ",
     toString(sprintf("Disallow: /r%02d (line %d)", 1:10, 2:11)),
-    ", and 2 more.", wi_warn_tail
+    ", and 2 more.", wi_warn_tail()
   ))
 })
 
@@ -493,7 +498,7 @@ test_that("a real * rule beside a blanket * Allow is still listed", {
   expect_identical(rows$line, 4L)
   expect_identical(rows$message, paste0(
     "ExampleBot obeys only this group, so this `User-agent: *` Disallow ",
-    "does not apply to it: Disallow: /tmp/ (line 3).", wi_warn_tail
+    "does not apply to it: Disallow: /tmp/ (line 3).", wi_warn_tail(1L)
   ))
   found <- wi_found(
     "User-agent: *", "Allow: /", "Disallow: /tmp/",

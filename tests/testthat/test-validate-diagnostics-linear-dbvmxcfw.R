@@ -172,7 +172,7 @@ test_that("the frame of a body on every emission path is pinned", {
     # ROBO-pbwijkdq: the lost `*` Disallows are warnings at 25, 31, 34 and
     # 38, and the four groups share one info row for the lost Allow.
     seam_digest(d, linear_frame_extra(d)),
-    "1bf1a4fc752d1a3d6785efdf2a48aabe"
+    "cbe39d47996685e43092c40053b28f37"
   )
 })
 

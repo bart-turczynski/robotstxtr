@@ -65,7 +65,10 @@ given and alone: no parent-token fallback (\code{Googlebot-Image} never reads a
 unlike the \code{google} ruleset of \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}
 (\code{design/engine-profiles.md} section 5a). \code{\link[=robots_validate_text]{robots_validate_text()}}
 reports a named group that lacks \verb{User-agent: *} rules as
-\code{wildcard_rules_not_inherited}, except for the AI-training policy token
+\code{wildcard_rules_not_inherited} (info), or as
+\code{wildcard_disallows_not_inherited} (warning) for lost Disallows that block
+a path the group's own Disallows leave open, except for the AI-training
+policy token
 \verb{__usage_ai-training}, which \code{*} never covers (an Internet-Draft,
 draft-kelley-aipref-training-preference-signal-00).
 
