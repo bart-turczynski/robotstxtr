@@ -45,10 +45,9 @@ oss_index_allowlist <- list(
     review = as.Date("2026-12-01"),
     reason = paste(
       "libcurl facts: seor design/oss-index-advisories.md#cve-2026-18924.",
-      "robotstxtr reaches curl only through ssrfr's transport; like any R",
-      "caller that route cannot set CURLMOPT_PUSHFUNCTION, so server push",
-      "stays off. Re-check the record's two curl calls before renewing this",
-      "row."
+      "robotstxtr fetches only through ssrfr's transport; like any R caller",
+      "that route cannot set CURLMOPT_PUSHFUNCTION, so server push stays",
+      "off. Re-check the record's two curl calls before renewing this row."
     )
   ),
   list(
@@ -58,7 +57,9 @@ oss_index_allowlist <- list(
     review = as.Date("2026-12-01"),
     reason = paste(
       "libcurl facts: seor design/oss-index-advisories.md#cve-2026-3783.",
-      "robotstxtr sends no Authorization header at all: acquire_robots()",
+      "ssrfr's transport sets followlocation = 0L, so libcurl follows no",
+      "redirect itself, and robotstxtr sends no Authorization header at",
+      "all: acquire_robots()",
       "prepares every chain with an empty request plan, R/ exposes no",
       "credential argument, and ssrfr's transport sets netrc = 0L, so the",
       ".netrc precondition is off even under options(netrc =)",
@@ -92,12 +93,13 @@ oss_index_allowlist <- list(
     review = as.Date("2026-12-01"),
     reason = paste(
       "libcurl facts: seor design/oss-index-advisories.md#cve-2026-86414.",
-      "A proxy can come from the environment, but robotstxtr holds no origin",
-      "credentials to leak: robots_origin() drops the caller's URL userinfo,",
-      "R/ sets no auth option, and ssrfr's transport sets netrc = 0L and",
-      "uses no proxy whatever the environment says. A redirect Location",
-      "carrying userinfo is refused as \"userinfo\". Re-check with the two",
-      "greps in the CVE-2026-3783 row before renewing this row."
+      "robotstxtr uses no proxy and holds no origin credentials to leak:",
+      "ssrfr's transport sets proxy = \"\" and noproxy = \"*\" whatever the",
+      "environment says, and netrc = 0L; robots_origin() drops the caller's",
+      "URL userinfo; R/ sets no auth option. A redirect Location carrying",
+      "userinfo is refused as \"userinfo\". Re-check with the two greps in",
+      "the CVE-2026-3783 row and ssrfr's R/transport.R options before",
+      "renewing this row."
     )
   ),
   list(
@@ -108,8 +110,9 @@ oss_index_allowlist <- list(
     reason = paste(
       "libcurl facts: seor design/oss-index-advisories.md#cve-2026-87865.",
       "robotstxtr makes no SFTP or SCP request and sets no SSH option.",
-      "Re-check with the scheme greps in the CVE-2026-86410 row before",
-      "renewing this row."
+      "Re-check with `grep -rni 'ssh' R/` (no hits) and the scheme greps",
+      "(https?://, allow_schemes, ssrf_prepare_hop) in the CVE-2026-86410",
+      "row before renewing this row."
     )
   ),
   list(
@@ -120,8 +123,10 @@ oss_index_allowlist <- list(
     reason = paste(
       "libcurl facts: seor design/oss-index-advisories.md#cve-2026-87864.",
       "robotstxtr makes no IMAP request, uploads nothing and never sets",
-      "crlf. Re-check with `grep -rniE 'crlf *=|imap' R/` (no hits) and the",
-      "scheme greps in the CVE-2026-86410 row before renewing this row."
+      "crlf. Re-check with `grep -rniE 'crlf *=|imap' R/` and `grep -rniE",
+      "'upload|readfunction|postfield' R/` (no hits each) and the scheme",
+      "greps (https?://, allow_schemes, ssrf_prepare_hop) in the",
+      "CVE-2026-86410 row before renewing this row."
     )
   )
 )
