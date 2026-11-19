@@ -8,13 +8,12 @@
 # dependency here, reached through ssrfr (which is why the audit's input is
 # resolved from the installed library: see oss_index_audit_targets()). The
 # six advisories below name libcurl version ranges that include CRAN's
-# current `curl` 8.1.0: OSS Index matches the R package's version against
-# libcurl's, and the earliest fixed libcurl in each range is 8.14.x or later,
-# so no R package version clears them and no local change makes the audit
-# clean. What actually runs is the
-# libcurl the package links: the Windows and macOS CRAN binaries bundle one
-# with CVE backports (curl 8.1.0's NEWS), on Linux it is the system's. So a
-# row here is OSS Index's attribution, and each reason argues reachability.
+# current `curl` 8.1.0, so no available version clears them and no local
+# change makes the audit clean. Each row's reason cites its CVE's section in
+# seor's design/oss-index-advisories.md, which holds the libcurl facts shared
+# across the fleet (weakness, affected range, prerequisites, why R's curl can
+# or cannot reach it), and argues only robotstxtr's own route to curl
+# (SEOR-syhraigk).
 # Suppressing the whole gate to get past them would retire it for every OTHER
 # dependency too, so each advisory is allow-listed BY PACKAGE AND ID with the
 # reason it is permitted (ROBO-oykjiyjj, deciding SEOR-feqgnbwt route (a)).
@@ -45,15 +44,11 @@ oss_index_allowlist <- list(
     version_seen = "8.1.0",
     review = as.Date("2026-12-01"),
     reason = paste(
-      "CWE-416 use-after-free on HTTP/2 server push over a shared",
-      "connection handle (CVSS 9.1, published 2026-09-06). Names a libcurl",
-      "range covering CRAN's current curl 8.1.0, so no available version",
-      "clears it. The vulnerable path is also unreachable from R:",
-      "curl::curl_options() exposes no option matching `push`, and",
-      "curl::multi_set() takes only total_con, host_con, max_streams,",
-      "multiplex and pool -- CURLMOPT_PUSHFUNCTION is not settable, so",
-      "server push cannot be enabled. Re-check with those two calls before",
-      "renewing this row."
+      "libcurl facts: seor design/oss-index-advisories.md#cve-2026-18924.",
+      "robotstxtr reaches curl only through ssrfr's transport; like any R",
+      "caller that route cannot set CURLMOPT_PUSHFUNCTION, so server push",
+      "stays off. Re-check the record's two curl calls before renewing this",
+      "row."
     )
   ),
   list(
@@ -62,22 +57,15 @@ oss_index_allowlist <- list(
     version_seen = "8.1.0",
     review = as.Date("2026-12-01"),
     reason = paste(
-      "CWE-522: an OAuth2 bearer token is leaked to a redirect target when",
-      ".netrc carries a machine/default entry (CVSS 6.9). Names a libcurl",
-      "range covering CRAN's current curl 8.1.0, so no available version",
-      "clears it. Not reachable through robotstxtr, which sends no",
-      "Authorization header at all: acquire_robots() prepares every chain",
-      "with an empty request plan, R/ exposes no credential argument, and",
-      "ssrfr's transport sets netrc = 0L, so the .netrc precondition is off",
-      "even under options(netrc =) (ROBO-jbralthm). Re-check with",
-      "`grep -rn",
+      "libcurl facts: seor design/oss-index-advisories.md#cve-2026-3783.",
+      "robotstxtr sends no Authorization header at all: acquire_robots()",
+      "prepares every chain with an empty request plan, R/ exposes no",
+      "credential argument, and ssrfr's transport sets netrc = 0L, so the",
+      ".netrc precondition is off even under options(netrc =)",
+      "(ROBO-jbralthm). Re-check with `grep -rn",
       "'req_auth\\|httpauth\\|userpwd\\|username\\|password\\|req_headers'",
-      "R/`",
-      "(no hits) and `grep -n 'request = list()' R/acquire.R` (one hit)",
-      "before renewing this row. Allow-listed",
-      "because it is unfixable, and recorded as unreachable because that is",
-      "what the grep shows -- sitemapr, which does set bearer tokens, is",
-      "reachable and says so in its own row."
+      "R/` (no hits) and `grep -n 'request = list()' R/acquire.R` (one hit)",
+      "before renewing this row."
     )
   ),
   list(
@@ -86,18 +74,15 @@ oss_index_allowlist <- list(
     version_seen = "8.1.0",
     review = as.Date("2026-12-01"),
     reason = paste(
-      "CWE-297: a redirect to SFTP or SCP skips SSH host verification",
-      "(CVSS 5.1, published 2026-10-14). OSS Index attributes it to a",
-      "libcurl range covering CRAN's current curl 8.1.0, so no available",
-      "version clears it, but curl.se places the flaw in the curl",
-      "command-line tool, and R links only libcurl. robotstxtr also requests",
-      "http/https only. Re-check the three places that hold that before",
-      "renewing this row: `grep -n 'https?://' R/robots_origin.R` (the",
-      "scheme guard), `grep -n 'allow_schemes' R/acquire.R` (no hits: the",
-      "policy keeps ssrfr's http/https default, which refuses any other",
-      "redirect target as \"scheme\") and",
-      "`grep -n 'ssrf_prepare_hop' R/acquire.R` (one hit: every hop,",
-      "redirects included, is checked by ssrfr)."
+      "libcurl facts: seor design/oss-index-advisories.md#cve-2026-86410.",
+      "robotstxtr never runs the curl tool and requests http/https only.",
+      "Re-check before renewing this row: `grep -rn",
+      "'system2\\|system(\\|processx' R/` (no hits), `grep -n 'https?://'",
+      "R/robots_origin.R` (the scheme guard), `grep -n 'allow_schemes'",
+      "R/acquire.R` (no hits: the policy keeps ssrfr's http/https default,",
+      "which refuses any other redirect target as \"scheme\") and `grep -n",
+      "'ssrf_prepare_hop' R/acquire.R` (one hit: every hop, redirects",
+      "included, is checked by ssrfr)."
     )
   ),
   list(
@@ -106,16 +91,13 @@ oss_index_allowlist <- list(
     version_seen = "8.1.0",
     review = as.Date("2026-12-01"),
     reason = paste(
-      "CWE-201: an HTTP proxy answering CONNECT with 401 instead of 407",
-      "gets the origin's Basic password or Negotiate ticket (CVSS 6.5,",
-      "published 2026-10-14). Names a libcurl range covering CRAN's current",
-      "curl 8.1.0, so no available version clears it. A proxy can come from",
-      "the environment, but robotstxtr holds no origin credentials to leak:",
-      "robots_origin() drops the caller's URL userinfo, R/ sets no auth",
-      "option, and ssrfr's transport sets netrc = 0L and uses no proxy",
-      "whatever the environment says. A redirect Location carrying userinfo",
-      "is refused as \"userinfo\". Re-check with the two greps in the",
-      "CVE-2026-3783 row before renewing this row."
+      "libcurl facts: seor design/oss-index-advisories.md#cve-2026-86414.",
+      "A proxy can come from the environment, but robotstxtr holds no origin",
+      "credentials to leak: robots_origin() drops the caller's URL userinfo,",
+      "R/ sets no auth option, and ssrfr's transport sets netrc = 0L and",
+      "uses no proxy whatever the environment says. A redirect Location",
+      "carrying userinfo is refused as \"userinfo\". Re-check with the two",
+      "greps in the CVE-2026-3783 row before renewing this row."
     )
   ),
   list(
@@ -124,12 +106,10 @@ oss_index_allowlist <- list(
     version_seen = "8.1.0",
     review = as.Date("2026-12-01"),
     reason = paste(
-      "CWE-295: with libssh2 and a hashed known_hosts file, a host key",
-      "mismatch reaches CURLOPT_SSH_KEYFUNCTION as a missing key (CVSS 6.9,",
-      "published 2026-10-14). Names a libcurl range covering CRAN's current",
-      "curl 8.1.0, so no available version clears it. Not reachable through",
-      "robotstxtr, which makes no SFTP or SCP request. Re-check with the",
-      "three greps in the CVE-2026-86410 row before renewing this row."
+      "libcurl facts: seor design/oss-index-advisories.md#cve-2026-87865.",
+      "robotstxtr makes no SFTP or SCP request and sets no SSH option.",
+      "Re-check with the scheme greps in the CVE-2026-86410 row before",
+      "renewing this row."
     )
   ),
   list(
@@ -138,14 +118,10 @@ oss_index_allowlist <- list(
     version_seen = "8.1.0",
     review = as.Date("2026-12-01"),
     reason = paste(
-      "CWE-130: an authenticated IMAP APPEND with CURLOPT_CRLF on",
-      "advertises the raw byte count but sends the CRLF-expanded data, so",
-      "the excess runs as extra IMAP commands (severity Low, published",
-      "2026-10-14). Names a libcurl range covering CRAN's current curl",
-      "8.1.0, so no available version clears it. Not reachable through",
-      "robotstxtr, which makes no IMAP request and never sets crlf.",
-      "Re-check with `grep -rni 'crlf\\|imap' R/` (no hits) and the three",
-      "greps in the CVE-2026-86410 row before renewing this row."
+      "libcurl facts: seor design/oss-index-advisories.md#cve-2026-87864.",
+      "robotstxtr makes no IMAP request, uploads nothing and never sets",
+      "crlf. Re-check with `grep -rniE 'crlf *=|imap' R/` (no hits) and the",
+      "scheme greps in the CVE-2026-86410 row before renewing this row."
     )
   )
 )
