@@ -123,6 +123,9 @@ test_that("between stacked User-agent lines it scopes the joined group", {
   d <- rsl_diag(body)
   expect_identical(d$code, c("rsl_license_directive",
                              "user_agent_joined_across_directive"))
+  # The License line joins the stacked lines, as any unknown field does.
+  expect_identical(d$line, 2:3)
+  expect_identical(d$severity, c("info", "warning"))
   expect_match(d$message[[1L]], "the group on line 1 (a-bot and b-bot)",
                fixed = TRUE)
 })
@@ -145,11 +148,44 @@ test_that("global and group-local lines: local replaces, global falls back", {
   expect_identical(d$message[[1L]], paste(
     rsl_valid_lead, rsl_common,
     paste0(rsl_global, ", except one that selects a group with its own ",
-           "License line (the group on line 4 and 7).")
+           "License line (the groups on lines 4 and 7).")
   ))
   expect_match(d$message[[2L]], rsl_has_global, fixed = TRUE)
   expect_no_match(d$message[[2L]], "find no License", fixed = TRUE)
   expect_match(d$message[[3L]], "the group on line 7 (b-bot)", fixed = TRUE)
+  # One group of its own: singular.
+  one <- rsl_rows(rsl_lines(
+    "License: https://example.com/all.xml", "User-agent: a-bot",
+    "License: https://example.com/a.xml"
+  ))
+  expect_match(one$message[[1L]], "License line (the group on line 2).",
+               fixed = TRUE)
+})
+
+test_that("empty User-agent lines are left out of the agent list", {
+  d <- rsl_rows(rsl_lines("User-agent: a-bot", "User-agent:", "Disallow: /",
+                          "License: https://example.com/l.xml"))
+  expect_match(d$message, "the group on line 1 (a-bot).", fixed = TRUE)
+})
+
+test_that("a group of only empty User-agent lines reaches no crawler", {
+  d <- rsl_rows(rsl_lines("User-agent:", "License: https://example.com/l.xml",
+                          "Disallow: /"))
+  expect_identical(d$severity, "info")
+  expect_identical(d$message, paste(
+    rsl_valid_lead, rsl_common,
+    paste0("It sits in the group on line 1, whose User-agent lines are all ",
+           "empty, so no crawler selects that group and the line reaches ",
+           "none.")
+  ))
+})
+
+test_that("a long agent name is shortened as other codes shorten it", {
+  name <- paste0("bot-", strrep("a", 70L))
+  d <- rsl_rows(rsl_lines(paste("User-agent:", name), "Disallow: /",
+                          "License: https://example.com/l.xml"))
+  expect_match(d$message, sprintf("the group on line 1 (%s...).",
+                                  substr(name, 1L, 60L)), fixed = TRUE)
 })
 
 test_that("several values and mixed valid and invalid lines", {
@@ -165,7 +201,8 @@ test_that("several values and mixed valid and invalid lines", {
 test_that("a synthetic trailing-License shape scopes to the final group", {
   # Shape only (corpus privacy, ROBO-qbxsydcf): a `*` group, then stacked
   # AI crawlers blocked with Disallow: /, a blank line and a trailing
-  # License line, as RSL's example 2 places a group's License after its rules.
+  # License line. RSL's example 2 places a group's License after its rules;
+  # the blank line before it ends no group under RFC 9309.
   body <- rsl_lines(
     "# Licensing terms for model training: see below.",
     "User-agent: *", "Disallow: /search", "",
@@ -289,12 +326,57 @@ test_that("a License line on line 1 after a byte-order mark is recognized", {
                    c("byte_order_mark", "rsl_license_directive"))
   expect_match(d$message[d$code == "rsl_license_directive"], rsl_global,
                fixed = TRUE)
+  # The BOM is no byte of the value: the line is info.
+  expect_identical(d$severity[d$code == "rsl_license_directive"], "info")
 })
 
-test_that("X-RSL draws no License code", {
-  d <- rsl_diag(rsl_lines("User-agent: *", "Disallow: /private",
-                          "X-RSL: https://example.com/l.xml"))
-  expect_false("rsl_license_directive" %in% d$code)
+test_that("a partial byte-order mark on line 1 is skipped as the parser does", {
+  for (prefix in list(as.raw(0xef), as.raw(c(0xef, 0xbb)))) {
+    body <- c(prefix, charToRaw(
+      "License: https://example.com/l.xml\nUser-agent: *\n"
+    ))
+    d <- rsl_rows(body)
+    expect_identical(d$line, 1L, info = length(prefix))
+    expect_identical(d$severity, "info", info = length(prefix))
+  }
+})
+
+test_that("bytes after a NUL are not read for the non-ASCII check", {
+  body <- c(charToRaw("User-agent: *\nLicense: https://example.com/l"),
+            as.raw(c(0x00, 0xc3, 0xa9)), charToRaw("\n"))
+  d <- rsl_diag(body)
+  expect_true("nul_byte" %in% d$code)
+  expect_identical(d$severity[d$code == "rsl_license_directive"], "info")
+})
+
+test_that("bytes past the parser's line buffer are not read", {
+  # The parser keeps the first validation_line_bytes bytes of a line, so a
+  # non-ASCII byte after them is in no value it reads.
+  head <- "License: https://example.com/"
+  fill <- strrep("a", validation_line_bytes - nchar(head))
+  body <- c(charToRaw(paste0("User-agent: *\n", head, fill)),
+            as.raw(c(0xc3, 0xa9)), charToRaw("\n"))
+  d <- rsl_diag(body)
+  expect_true("line_too_long" %in% d$code)
+  expect_identical(d$severity[d$code == "rsl_license_directive"], "info")
+  # One byte shorter, the non-ASCII byte is inside the buffer.
+  body <- c(charToRaw(paste0("User-agent: *\n", head, substring(fill, 2L))),
+            as.raw(c(0xc3, 0xa9)), charToRaw("\n"))
+  expect_identical(rsl_rows(body)$severity, "warning")
+})
+
+test_that("a line-1 byte-order mark, whole or partial, is not in the buffer", {
+  # The parser skips the mark before it counts the line buffer, so a
+  # non-ASCII byte right at its end is still read after a mark on line 1.
+  head <- "License: https://example.com/"
+  fill <- strrep("a", validation_line_bytes - nchar(head) - 1L)
+  for (prefix in list(validation_bom, as.raw(c(0xef, 0xbb)))) {
+    body <- c(prefix, charToRaw(paste0(head, fill)), as.raw(c(0xc3, 0xa9)),
+              charToRaw("\nUser-agent: *\n"))
+    d <- rsl_rows(body)
+    expect_identical(d$line, 1L, info = length(prefix))
+    expect_identical(d$severity, "warning", info = length(prefix))
+  }
 })
 
 test_that("a key that only contains license is not matched", {
@@ -316,7 +398,7 @@ test_that("the License line does not change the google decision", {
   expect_identical(a$decision_source, b$decision_source)
 })
 
-test_that("X-RSL is an unknown directive", {
+test_that("X-RSL is an unknown directive and draws no License code", {
   x <- robots_validate_text(rsl_lines(
     "User-agent: *", "Disallow: /private", "X-RSL: https://example.com/l.xml"
   ))
@@ -333,16 +415,6 @@ test_that("Content-Signal and an unknown key keep their codes", {
   ))
   expect_identical(d$code, c("content_signal_directive", "unknown_directive"))
   expect_identical(d$directive, c("content-signal", "foo"))
-})
-
-test_that("a License line between User-agent lines joins them, as any field", {
-  d <- rsl_diag(rsl_lines(
-    "User-agent: a-bot", "License: https://example.com/l.xml",
-    "User-agent: b-bot", "Disallow: /"
-  ))
-  joined <- d[d$code == "user_agent_joined_across_directive", , drop = FALSE]
-  expect_identical(joined$line, 3L)
-  expect_identical(joined$severity, "warning")
 })
 
 test_that("a License line in a training-preference group still warns", {

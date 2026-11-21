@@ -115,8 +115,9 @@ unsupported directive. The message says the line changes no crawl
 access, that no crawler operator is documented as reading it, and its
 scope: before the first User-agent line it is global, otherwise it
 applies only to the crawlers that select the group it sits in (blank
-lines end no group), and a group's own License lines replace the
-global ones. A warning only when the value is not an absolute URI
+lines end no group), a group's own License lines replace the global
+ones, and a group of only empty User-agent lines reaches no crawler.
+A warning only when the value is not an absolute URI
 (RFC 3986 section 4.3); the value is read up to the line's first
 \code{#}, so it holds no fragment. \code{X-RSL} and other keys stay
 \code{unknown_directive}. \cr

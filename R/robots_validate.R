@@ -106,8 +106,9 @@ validation_unsupported <- c(
 #'     access, that no crawler operator is documented as reading it, and its
 #'     scope: before the first User-agent line it is global, otherwise it
 #'     applies only to the crawlers that select the group it sits in (blank
-#'     lines end no group), and a group's own License lines replace the
-#'     global ones. A warning only when the value is not an absolute URI
+#'     lines end no group), a group's own License lines replace the global
+#'     ones, and a group of only empty User-agent lines reaches no crawler.
+#'     A warning only when the value is not an absolute URI
 #'     (RFC 3986 section 4.3); the value is read up to the line's first
 #'     \code{#}, so it holds no fragment. \code{X-RSL} and other keys stay
 #'     \code{unknown_directive}. \cr
@@ -1150,13 +1151,21 @@ validate_document_bytes <- function(bytes, source_id, source_type,
                                               raw_lines, nul_counts)
   # RSL License lines (ROBO-ahqpndzq): their scope needs every License line
   # and the groups, so the rows are built once here and looked up by line.
-  is_license <- parsed$has_directive & parsed$type == "unknown" &
-    vapply(seq_len(nrow(parsed)), function(i) {
+  # A known key's action is its type, never "license".
+  is_license <- which(parsed$has_directive & vapply(
+    seq_len(nrow(parsed)), function(i) {
       identical(validation_ascii_action(parsed$action[[i]], "unknown"),
                 "license")
-    }, logical(1L))
-  rsl <- rsl_license_rows(parsed$line[is_license], parsed$value[is_license],
-                          raw_lines[parsed$line[is_license]], groups)
+    }, logical(1L)
+  ))
+  rsl <- rsl_license_rows(
+    parsed$line[is_license], parsed$value[is_license],
+    lapply(is_license, function(i) {
+      line <- parsed$line[[i]]
+      rule_raw_value(raw_lines[[line]], line == 1L, parsed$missing_colon[[i]])
+    }),
+    groups
+  )
   unsupported <- logical(nrow(parsed))
   advisory_count <- 0L
   advisory_chunk <- 0L
@@ -1719,18 +1728,11 @@ directive_value_diagnostics <- function(type, value) {
 # reserved characters and `%HH` escapes, so no whitespace, no non-ASCII byte
 # and no malformed `%`. The parser cuts the line at its first `#`, so the
 # value never holds a fragment. The parser %-escapes a non-ASCII byte in the
-# value it hands R, so `line_bytes` (the raw line) is read for one: before
-# the line's first `#` or NUL, past a line-1 byte-order mark, any byte over
-# 0x7F of a License line is in its value, as the key is ASCII.
-rsl_license_uri <- function(value, line_bytes) {
-  ascii <- vapply(line_bytes, function(bytes) {
-    if (length(bytes) >= 3L &&
-          identical(bytes[1:3], as.raw(c(0xef, 0xbb, 0xbf)))) {
-      bytes <- bytes[-(1:3)]
-    }
-    cut <- match(as.raw(c(0x23, 0x00)), bytes)
-    end <- min(c(cut[!is.na(cut)] - 1L, length(bytes)))
-    !any(as.integer(bytes[seq_len(end)]) > 0x7fL)
+# value it hands R, so `raw_values` (each value's bytes as the parser read
+# them, from rule_raw_value()) is read for one.
+rsl_license_uri <- function(value, raw_values) {
+  ascii <- vapply(raw_values, function(bytes) {
+    !any(as.integer(bytes) > 0x7fL)
   }, logical(1L))
   ascii & grepl(paste0("^[A-Za-z][A-Za-z0-9+.-]*:",
                        "([A-Za-z0-9._~:/?#@!$&'()*+,;=\\[\\]-]|",
@@ -1746,11 +1748,20 @@ rsl_license_uri <- function(value, line_bytes) {
 # opened before it (`groups` from validation_groups()). A client whose group
 # has its own License lines ignores the global ones. Info when the value is
 # an absolute URI, warning otherwise; the placement is never an error.
-rsl_license_rows <- function(lines, values, line_bytes, groups) {
-  group_at <- findInterval(lines, groups$groups$first_line, left.open = TRUE)
+# A License line is never a group's first line, so findInterval() needs no
+# tie rule. The agent names are rendered once per group, so the cost stays
+# linear in the file (ROBO-dbvmxcfw).
+rsl_license_rows <- function(lines, values, raw_values, groups) {
+  group_at <- findInterval(lines, groups$groups$first_line)
   global <- group_at == 0L
   local_groups <- sort(unique(group_at[!global]))
-  valid <- rsl_license_uri(values, line_bytes)
+  valid <- rsl_license_uri(values, raw_values)
+  agents <- groups$agents
+  shown <- agents$global | nzchar(agents$name)
+  rendered <- ifelse(agents$global, "*", ai_training_name(agents$name))
+  names <- lapply(split(rendered[shown], factor(
+    agents$group[shown], levels = groups$groups$group
+  )), unique)
   lead <- ifelse(
     valid,
     paste0("License is the RSL 1.0 section 4.4 directive that points to ",
@@ -1761,7 +1772,8 @@ rsl_license_rows <- function(lines, values, line_bytes, groups) {
   )
   lead[!nzchar(values)] <- paste0("License value is empty; RSL 1.0 section ",
                                   "4.4 requires an absolute URI.")
-  scope <- vapply(group_at, rsl_license_scope, "", groups = groups,
+  scope <- vapply(group_at, rsl_license_scope, "",
+                  first = groups$groups$first_line, names = names,
                   has_global = any(global), local_groups = local_groups)
   list(line = lines, severity = ifelse(valid, "info", "warning"),
        message = paste(lead, paste0(
@@ -1771,28 +1783,33 @@ rsl_license_rows <- function(lines, values, line_bytes, groups) {
 }
 
 # The scope sentence of a License line in group row `at` of `groups$groups`
-# (0 for a line before the first User-agent line).
-rsl_license_scope <- function(at, groups, has_global, local_groups) {
-  first <- groups$groups$first_line
+# (0 for a line before the first User-agent line). `first` is each group's
+# first line and `names` each group's rendered agents (`*` for a global
+# line; empty User-agent lines left out).
+rsl_license_scope <- function(at, first, names, has_global, local_groups) {
   if (at == 0L) {
+    k <- length(local_groups)
     return(paste0(
       "Before the first User-agent line, it applies to every crawler under ",
       "RSL",
-      if (length(local_groups) > 0L) {
+      if (k > 0L) {
         paste0(", except one that selects a group with its own License ",
-               "line (the group on line ",
-               joined_and(utils::head(first[local_groups], 5L),
-                          length(local_groups) - 5L), ")")
+               "line (the ", if (k == 1L) "group on line " else
+                 "groups on lines ",
+               joined_and(utils::head(first[local_groups], 5L), k - 5L), ")")
       },
       "."
     ))
   }
-  agents <- groups$agents[groups$agents$group == groups$groups$group[[at]] &
-                            (groups$agents$global |
-                               nzchar(groups$agents$name)), , drop = FALSE]
-  names <- unique(ifelse(agents$global, "*", ai_training_name(agents$name)))
-  listed <- if (length(names) == 0L) "no crawler named" else
-    joined_and(utils::head(names, 5L), length(names) - 5L)
+  group_names <- names[[at]]
+  if (length(group_names) == 0L) {
+    # Only empty User-agent lines: no crawler can select the group.
+    return(sprintf(paste0(
+      "It sits in the group on line %d, whose User-agent lines are all ",
+      "empty, so no crawler selects that group and the line reaches none."
+    ), first[[at]]))
+  }
+  listed <- joined_and(utils::head(group_names, 5L), length(group_names) - 5L)
   paste0(
     sprintf(paste0("Under RSL it applies only to the crawlers that select ",
                    "the group on line %d (%s)."), first[[at]], listed),
@@ -4035,7 +4052,8 @@ validation_line_bytes <- 16663L
 # src/robots.cc). The line is cut at its first NUL, its first `#` and at
 # 16,663 bytes. The key ends at the first `:`, or, when the colon is missing,
 # at the first space or tab after the leading blanks. The blanks after the
-# key are kept.
+# key are kept. Nothing here is specific to a rule, so it also gives the
+# raw value of a License line (rsl_license_uri()).
 rule_raw_value <- function(line_bytes, first_line, missing_colon) {
   bytes <- line_bytes
   if (first_line) {
