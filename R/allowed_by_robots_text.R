@@ -236,6 +236,8 @@ allowed_by_robots_text <- function(robots_txt, url, user_agent,
     retry_after_seconds = NA_real_,
     content_type = NA_character_,
     content_flag = NA_character_,
+    # No response, so no cache fields (ROBO-zleohwyz).
+    cache_header_na_frame(1L),
     # The caller supplied the whole text (ROBO-ldpahknv).
     body_truncated = FALSE,
     # No fetch, so no redirect and no refusal (ROBO-bsloeclp), as in the v1

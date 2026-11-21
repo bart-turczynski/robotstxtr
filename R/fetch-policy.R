@@ -378,13 +378,17 @@ make_source_result <- function(outcome, http_status, effective_url,
                                retry_after = NA_character_,
                                retry_after_seconds = NA_real_,
                                content_type = NA_character_,
-                               content_flag = NA_character_) {
+                               content_flag = NA_character_,
+                               cache_headers = NULL) {
+  if (is.null(cache_headers)) {
+    cache_headers <- cache_header_na(1L)
+  }
   meta <- fetch_error_meta(outcome)
   stored_bytes <- if (is.null(body)) 0L else length(body)
   if (is.null(observed_bytes)) {
     observed_bytes <- if (is.null(body)) NA_integer_ else stored_bytes
   }
-  list(
+  c(list(
     fetch_outcome = outcome,
     http_status = if (is.null(http_status)) {
       NA_integer_
@@ -424,7 +428,44 @@ make_source_result <- function(outcome, http_status, effective_url,
     retry_after_seconds = as.double(retry_after_seconds),
     content_type = content_type,
     content_flag = content_flag
-  )
+  ), as.list(cache_headers))
+}
+
+# --- Cache headers on legacy robots rows (ROBO-zleohwyz) ---------------------
+
+# The final response's cache fields each robots row keeps, raw: column name =
+# lowercase field name, in column order. One table, so acquire_final_result()
+# and every robots frame builder (robots_fetch(), allowed_by_robots_text(),
+# as_legacy_robots_decisions_v1()) read the same fields in the same order.
+cache_header_fields <- c(
+  cache_control = "cache-control",
+  age = "age",
+  date = "date",
+  expires = "expires",
+  etag = "etag",
+  last_modified = "last-modified",
+  vary = "vary"
+)
+
+# `n` NA values per cache column, as a named list (no final response).
+cache_header_na <- function(n) {
+  cols <- rep(list(rep(NA_character_, n)), length(cache_header_fields))
+  names(cols) <- names(cache_header_fields)
+  cols
+}
+
+# The cache columns of a robots frame, one row per source result.
+cache_header_frame <- function(results) {
+  cols <- lapply(names(cache_header_fields), function(col) {
+    vapply(results, function(r) r[[col]], character(1L))
+  })
+  names(cols) <- names(cache_header_fields)
+  as.data.frame(cols, stringsAsFactors = FALSE)
+}
+
+# `n` rows of NA cache columns, for a frame with no fetched response.
+cache_header_na_frame <- function(n) {
+  as.data.frame(cache_header_na(n), stringsAsFactors = FALSE)
 }
 
 # --- A cut body's complete lines (ROBO-ldpahknv) -----------------------------

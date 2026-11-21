@@ -18,7 +18,8 @@ ra_robots_columns <- c(
   "source_id", "source_type", "robots_url", "effective_url", "http_status",
   "fetch_outcome", "redirect_count", "body_size", "timeout", "max_bytes",
   "error_stage", "error_class", "error_message", "retry_after",
-  "retry_after_seconds", "content_type", "content_flag", "body_truncated",
+  "retry_after_seconds", "content_type", "content_flag", "cache_control",
+  "age", "date", "expires", "etag", "last_modified", "vary", "body_truncated",
   "terminal_redirect_reason", "safety_block_reason", "redirect_hops", "body"
 )
 

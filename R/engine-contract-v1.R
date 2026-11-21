@@ -2302,6 +2302,8 @@ as_legacy_robots_decisions_v1 <- function(x) {
     retry_after_seconds = rep(NA_real_, nrow(evidence)),
     content_type = rep(NA_character_, nrow(evidence)),
     content_flag = rep(NA_character_, nrow(evidence)),
+    # Nor the cache fields (ROBO-zleohwyz): not available.
+    cache_header_na_frame(nrow(evidence)),
     # A cut 2xx body (ROBO-ldpahknv); FALSE where the evidence has no value.
     body_truncated = !is.na(evidence$body_truncated) &
       evidence$body_truncated,
