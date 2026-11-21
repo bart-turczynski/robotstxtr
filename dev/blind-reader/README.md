@@ -109,15 +109,48 @@ with a `robots.rds`, as `dev/corpus/README.md` describes).
    control, U+2028 or U+2029) as `\xHH`; encoding questions are answered
    from the bytes, by `pool.rds` and the validator, not by the reader.
 
-4. Read. For each prompt, spawn one subagent on model `haiku` whose whole
-   input is that file's text, and save its reply, unedited, as
-   `<store>/answers/stage1/<id>.txt`. The reader must have no tools, so it
-   cannot run robotstxtr or fetch anything and stays blind: spawn it from an
-   agent definition that grants no tools. Where that is not possible, the
-   prompt already forbids tool use; check each transcript for tool calls
-   and record which reads had any. Record the model alias and, where the
-   transcript shows it, the resolved model id, in
-   `<store>/answers/stage1/run-meta.txt`. No API calls and no keys.
+4. Read. Answers go in one directory per stage, `<store>/answers/<stage>/`
+   (`stage1`, then `stage2`). For each rendered prompt, spawn one reader on
+   model `haiku` and give it only this one-line instruction, where `<prompt>`
+   is the absolute path of `<store>/prompts/<stage>/<id>.txt`:
+
+   ```text
+   Read all of <prompt> with the Read tool, paging with offset and limit while it says more lines remain, then answer the prompt it holds. The numbers in the Read tool's left margin are not the robots.txt line numbers: cite the number before "| " on each file line. Use no other tool and read no other file.
+   ```
+
+   Save its reply, unedited, as `<store>/answers/<stage>/<id>.txt`. Spawn
+   it from an agent definition that grants the Read tool and nothing else,
+   where that is possible.
+
+   Before spawning, check each prompt's longest line and its line count.
+   The Read tool truncates a line longer than 2,000 characters, so the
+   reader would not see the whole file: a sample with such a line is
+   recorded as not read; it is not spawned, and its answer is not guessed.
+   The Read tool returns at most 2,000 lines per call by default, so a
+   prompt (the prompt text, about 215 lines, plus the file) longer than
+   that needs more than one Read call; record its line count, which the
+   validity check below needs. This prints each prompt's path, longest line
+   in bytes (never less than its length in characters, so a line it puts
+   under 2,000 is safe) and line count:
+
+   ```sh
+   awk 'FNR==1&&NR>1{print f, m, n} FNR==1{f=FILENAME;m=0} {if(length($0)>m)m=length($0);n=FNR} END{print f, m, n}' <store>/prompts/<stage>/*.txt
+   ```
+
+   `<store>/answers/<stage>/run-meta.txt` records the model alias and,
+   where the transcript shows it, the resolved model id; then, per id, the
+   prompt's line count and the tool calls the transcript shows, or `not
+   read` and why. A read is valid only when every tool call the transcript
+   shows is a Read of that id's own prompt path, and together those calls
+   cover every line of the prompt. A reply from a read that is not valid is
+   not saved as an answer, so `score.R` reports that id as `missing`. No
+   API calls and no keys.
+
+   Holding a Read tool weakens blindness slightly: the reader could read
+   something besides its prompt. That is accepted because the alternative,
+   retyping the prompt into the spawn call, cannot be checked byte for byte
+   and fails on very long lines; the check that every call is a Read of the
+   reader's own prompt catches a reader that reads anything else.
 
 5. Score:
 
@@ -155,3 +188,29 @@ with a `robots.rds`, as `dev/corpus/README.md` describes).
 The RFC 9309 passages in `prompt.md` are quoted word for word from the RFC;
 only the sentence on the case of record names is not RFC 9309 text, and the
 prompt says so.
+
+## Changes after stage 1
+
+- The surprise question drew remarks on group selection working as RFC
+  9309 describes (a crawler falling back to the `*` group, or its own group
+  overriding `*`) on nearly every file, which buries real surprises. The
+  prompt now asks only for something a validator should warn about that the
+  issue lines do not cover, names group selection, the `*` fallback and
+  longest-match precedence as not surprises, and asks for `surprise: none`
+  then.
+- A few answers broke the format: a surprise line over the word limit and a
+  decision line citing three sections. The prompt now states the 15-word
+  limit next to the format block and says plainly that the decision cites at
+  most two sections. The answer format and what `score.R` checks are
+  unchanged.
+- The stage-1 prompts reached the readers by being retyped into each spawn
+  call, which cannot be checked byte for byte and fails on very long lines.
+  Each reader now reads its own rendered prompt file with the Read tool
+  (step 4), paging when the prompt runs past the tool's per-call line
+  limit, and cites the prompt's own line numbers, not the tool's margin
+  numbers. A read is valid only when every tool call is a Read of that
+  prompt and together they cover it, and a prompt with a line the Read tool
+  would truncate is recorded as not read. Since
+  the reader now holds a tool, the prompt's opening says to use no tool
+  from there on instead of saying it has none.
+- Answers are kept per stage, under `answers/<stage>/`.
