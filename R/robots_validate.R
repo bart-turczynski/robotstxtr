@@ -113,7 +113,10 @@ validation_unsupported <- c(
 #'     \code{#}, so it holds no fragment. \code{X-RSL} and other keys stay
 #'     \code{unknown_directive}. \cr
 #'   \code{unknown_directive} \tab warning \tab
-#'     A directive this profile does not recognize. \cr
+#'     A directive this profile does not recognize. A key that is valid
+#'     UTF-8 and holds a look-alike character, as \code{user_agent_cut}
+#'     lists them, names it and gives the ASCII spelling
+#'     (\code{Disallow} for a key written with a Cyrillic a). \cr
 #'   \code{empty_user_agent} \tab error \tab
 #'     A User-agent line with an empty value. \cr
 #'   \code{user_agent_cut} \tab warning or info \tab
@@ -123,13 +126,26 @@ validation_unsupported <- c(
 #'     read, or says it names no crawler (\code{*bot}), and states the
 #'     effect: there the written value does not match its own record, so a
 #'     crawler going by it gets another group naming it, else
-#'     \code{User-agent: *}, else no rules. A warning only when the token
-#'     read is a documented Google crawler token the value did not mean
-#'     (\code{Googlebot Image}, read as \code{Googlebot}); a version suffix
-#'     (\code{Googlebot/2.1}) or a trailing \code{*} is info, as the token
-#'     read is the crawler the value names, and any other token is info, as
-#'     Google's crawlers do not go by it. The Bing and Yandex
-#'     matchers do not cut the value. Every other code names the agent as
+#'     \code{User-agent: *}, else no rules. A warning in two cases: the
+#'     value holds a look-alike character (below), whatever the token, as
+#'     no byte compare matches it; or the token read is a documented Google
+#'     crawler token the value did not mean (\code{Googlebot Image}, read
+#'     as \code{Googlebot}). Otherwise info: a version suffix
+#'     (\code{Googlebot/2.1}) or a trailing \code{*}, as the token read is
+#'     the crawler the value names, and any other token, as Google's
+#'     crawlers do not go by it. The Bing and Yandex
+#'     matchers do not cut the value. A value that is valid UTF-8 and holds
+#'     a look-alike character, from a closed list of common ones (Unicode
+#'     hyphens and dashes such as U+2011, U+2212 and U+FF0D, U+FF3F
+#'     FULLWIDTH LOW LINE, and some Cyrillic and Greek letters that look
+#'     like one ASCII letter, such as U+0430 and U+03BF)
+#'     adds a sentence naming each by code point and name with its byte
+#'     offset, at most ten, and giving the ASCII spelling, which no byte
+#'     compare matches; U+00AD SOFT HYPHEN is named as invisible and dropped
+#'     from the spelling. The sentence names the package's Bing or Yandex
+#'     matcher only when the spelling is a crawler that backend evaluates
+#'     (\code{bingbot} written with a Cyrillic o). Latin letters with
+#'     diacritics are not look-alikes. Every other code names the agent as
 #'     written, and a code that names a cut value adds a sentence pointing
 #'     to this row; \code{duplicate_rule} names the token read. \cr
 #'   \code{rule_without_user_agent} \tab error \tab
@@ -667,7 +683,9 @@ validation_unsupported <- c(
 #' non-ASCII character is matched, so most paths with accented letters, a
 #' path in Japanese, or a Latin-1 string converted to UTF-8 on input stay
 #' silent, as do a typed escape such as `%E2%80%8B`, a comment, a
-#' User-agent or Sitemap value, and a rule value that is not valid UTF-8
+#' User-agent value (a cut one names its look-alike characters on its
+#' `user_agent_cut` row instead), a Sitemap value, and a rule value that is
+#' not valid UTF-8
 #' (bytes after the cut, in a comment or past a NUL, do not count; a
 #' character the line buffer splits is dropped). Each message quotes code
 #' points as `U+XXXX` with byte offsets counted from 1 at the value's first
@@ -1205,7 +1223,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   nonempty_user_agents <- 0L
   # Computed once here: the empty-Disallow note (ROBO-vyystald) reads it in
   # the loop below, and the group checks after it.
-  groups <- validation_groups(parsed)
+  groups <- validation_groups(parsed, raw_lines)
   # Groups not naming `*` whose User-agent lines name at least one crawler
   # (a token Google reads), and whether the file has a `*` group.
   named_groups <- setdiff(groups$agents$group[nzchar(groups$agents$key)],
@@ -1303,9 +1321,13 @@ validate_document_bytes <- function(bytes, source_id, source_type,
                  "another crawler may use it.")
         )
       } else {
+        # A key holding a look-alike (`Dis<U+0430>llow`) names it and the
+        # ASCII spelling (ROBO-wtixhwlo).
+        key_note <- lookalike_note(parsed$action[[i]], "key")
         add_diagnostic(
           line, "warning", "unknown_directive", action,
-          "Directive is not recognized by this validation profile."
+          paste0("Directive is not recognized by this validation profile.",
+                 if (!is.null(key_note)) paste0(" ", key_note$sentence, "."))
         )
       }
     }
@@ -1933,15 +1955,20 @@ rsl_license_scope <- function(at, first, names, has_global, local_groups) {
 #   the cut token is Google's reading only, ROBO-txnzyugl) and `uncut` (the
 #   merge key of a matcher that compares the whole value: `key`, except on
 #   a cut line, where it is the full value folded to ASCII lower case,
-#   written as `#` and hex bytes; ROBO-qwfoyouo).
+#   written as `#` and hex bytes; ROBO-qwfoyouo) and `value` (the value as
+#   the parser kept it, its bytes unchanged, less a character the line
+#   buffer split when the value reaches the buffer, which needs `raw_lines`,
+#   the document's lines by number; read for look-alike characters,
+#   ROBO-wtixhwlo).
 # - `rules`: one row per Allow or Disallow inside a group (rules before the
 #   first User-agent are dropped): `group`, `line`, `type` ("allow" or
 #   "disallow"), `value` (canonical, as parsed), `empty` and `key` (type and
 #   value with a trailing `*` run removed, `/` for a value of only `*` or
 #   `/` then only `*`, NA when `empty`).
-validation_groups <- function(parsed) {
+validation_groups <- function(parsed, raw_lines = NULL) {
   kept <- parsed[parsed$type %in% c("user-agent", "allow", "disallow"),
-                 c("line", "type", "value"), drop = FALSE]
+                 intersect(c("line", "type", "value", "line_too_long",
+                             "missing_colon"), names(parsed)), drop = FALSE]
   is_agent <- kept$type == "user-agent"
   opens <- is_agent & c(TRUE, !is_agent[-length(is_agent)])
   kept$group <- cumsum(opens)
@@ -1974,6 +2001,7 @@ validation_groups <- function(parsed) {
   )
   agents$uncut <- validation_uncut_keys(agent_bytes, agents$key,
                                         agents$cut)
+  agents$value <- lookalike_agent_values(agent_rows, agent_bytes, raw_lines)
 
   group_ids <- unique(agents$group)
   groups <- data.frame(
@@ -2041,7 +2069,8 @@ validation_google_tokens <- function() {
 # tokens, so the row is a warning only when the token read is a documented
 # Google token and the rest of the value is neither a version suffix (`/2.1`,
 # ` 1.0`) nor a run of `*`: `Googlebot Image` is read as `Googlebot`, and
-# Googlebot follows the group. Every other cut is info (ROBO-txnzyugl, owner
+# Googlebot follows the group. A value holding a look-alike character is a
+# warning too (ROBO-wtixhwlo). Every other cut is info (ROBO-txnzyugl, owner
 # decision 2026-11-18).
 user_agent_cut_rows <- function(agents, has_global, global_groups) {
   agents <- agents[agents$cut, , drop = FALSE]
@@ -2096,9 +2125,15 @@ user_agent_cut_rows <- function(agents, has_global, global_groups) {
   effect[warn] <- sprintf(paste0("'%s' is a Google crawler token, so that ",
                                  "Google crawler follows this group."),
                           token[warn])
+  message <- paste(read_as, fallback, effect)
+  lookalike <- user_agent_lookalike_notes(agents$value)
+  message[nzchar(lookalike)] <- paste(message[nzchar(lookalike)],
+                                      lookalike[nzchar(lookalike)])
+  # A value holding a look-alike is matched by no byte compare, so its row
+  # is a warning whatever the token (ROBO-wtixhwlo, maintainer decision).
+  warn <- warn | nzchar(lookalike)
   ai_training_rows(agents$line, ifelse(warn, "warning", "info"),
-                   "user_agent_cut", "user-agent",
-                   paste(read_as, fallback, effect))
+                   "user_agent_cut", "user-agent", message)
 }
 
 # One key per grouped Allow or Disallow of a parsed document (ROBO-ctdkqawi):
@@ -4767,6 +4802,216 @@ mojibake_units <- function(points) {
     }
   }
   units
+}
+
+# Look-alike characters (ROBO-wtixhwlo): a closed, hand-written table of
+# code points that look like an ASCII `-`, `_` or letter, with the Unicode
+# name and the ASCII each resembles. The hyphens and dashes are the
+# characters a paste turns `-` into; the letters are a closed subset of
+# common Cyrillic and Greek look-alikes, each one that Unicode's
+# confusables.txt (UTS #39) maps to one ASCII letter. It is not the whole
+# of that file, and the list grows only by hand. U+00AD SOFT HYPHEN is
+# invisible (as validation_invisible_code_points has it), so it resembles
+# nothing and is dropped from the spelling.
+# Latin letters with diacritics are not look-alikes.
+validation_lookalike_code_points <- data.frame(
+  point = c(
+    0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015, 0x2212, 0xFE58,
+    0xFE63, 0xFF0D, 0xFF3F, 0x00AD,
+    0x0430, 0x0435, 0x043E, 0x0440, 0x0441, 0x0443, 0x0445, 0x0456,
+    0x0458, 0x0455, 0x0501,
+    0x0410, 0x0412, 0x0415, 0x041A, 0x041C, 0x041D, 0x041E, 0x0420,
+    0x0421, 0x0422, 0x0425, 0x0406, 0x0408, 0x0405,
+    0x0391, 0x0392, 0x0395, 0x0396, 0x0397, 0x0399, 0x039A, 0x039C,
+    0x039D, 0x039F, 0x03A1, 0x03A4, 0x03A5, 0x03A7, 0x03BF
+  ),
+  name = c(
+    "HYPHEN", "NON-BREAKING HYPHEN", "FIGURE DASH", "EN DASH", "EM DASH",
+    "HORIZONTAL BAR", "MINUS SIGN", "SMALL EM DASH", "SMALL HYPHEN-MINUS",
+    "FULLWIDTH HYPHEN-MINUS", "FULLWIDTH LOW LINE", "SOFT HYPHEN",
+    paste("CYRILLIC SMALL LETTER", c(
+      "A", "IE", "O", "ER", "ES", "U", "HA", "BYELORUSSIAN-UKRAINIAN I",
+      "JE", "DZE", "KOMI DE"
+    )),
+    paste("CYRILLIC CAPITAL LETTER", c(
+      "A", "VE", "IE", "KA", "EM", "EN", "O", "ER", "ES", "TE", "HA",
+      "BYELORUSSIAN-UKRAINIAN I", "JE", "DZE"
+    )),
+    paste("GREEK CAPITAL LETTER", c(
+      "ALPHA", "BETA", "EPSILON", "ZETA", "ETA", "IOTA", "KAPPA", "MU",
+      "NU", "OMICRON", "RHO", "TAU", "UPSILON", "CHI"
+    )),
+    "GREEK SMALL LETTER OMICRON"
+  ),
+  ascii = c(
+    rep("-", 10L), "_", "",
+    "a", "e", "o", "p", "c", "y", "x", "i", "j", "s", "d",
+    "A", "B", "E", "K", "M", "H", "O", "P", "C", "T", "X", "I", "J", "S",
+    "A", "B", "E", "Z", "H", "I", "K", "M", "N", "O", "P", "T", "Y", "X",
+    "o"
+  ),
+  stringsAsFactors = FALSE
+)
+
+# The User-agent values of `agent_rows` (from validation_groups()) as the
+# parser kept them, for lookalike_note(). Where the value itself reaches
+# the 16,663-byte line buffer (rule_raw_value() says so: not when a `#`,
+# a NUL or trailing blanks end it first), the buffer can split its last
+# character, and that tail is dropped so the cut alone does not make the
+# value invalid UTF-8. Without `raw_lines` nothing is dropped.
+lookalike_agent_values <- function(agent_rows, agent_bytes, raw_lines) {
+  values <- as.character(agent_rows$value)
+  long <- agent_rows$line_too_long
+  if (is.null(raw_lines) || is.null(long)) {
+    return(values)
+  }
+  for (k in which(lengths(agent_bytes) > 0L & !is.na(long) & long)) {
+    line <- agent_rows$line[[k]]
+    raw <- rule_raw_value(raw_lines[[line]], line == 1L,
+                          agent_rows$missing_colon[[k]])
+    # Trailing blanks the parser trims sit before the buffer's end too. A
+    # buffer cut leaves the value its non-empty parser bytes, so `raw` has
+    # a last byte.
+    reaches <- isTRUE(attr(raw, "buffer_cut")) &&
+      !raw[[length(raw)]] %in% as.raw(c(0x20, 0x09, 0x0a:0x0d))
+    if (reaches && lookalike_split_completes(agent_bytes[[k]],
+                                             raw_lines[[line]], line == 1L)) {
+      values[[k]] <- rawToChar(utf8_drop_cut_tail(agent_bytes[[k]]))
+    }
+  }
+  values
+}
+
+# Whether the incomplete UTF-8 tail of a value that reaches the line buffer
+# (`bytes`) is a character the buffer split: the line's bytes just past the
+# buffer (`line_bytes`, after the byte-order mark Parse() skips on line 1)
+# complete it as valid UTF-8. A lone lead byte followed by ASCII is invalid
+# as written and keeps today's handling.
+lookalike_split_completes <- function(bytes, line_bytes, first_line) {
+  kept <- length(utf8_drop_cut_tail(bytes))
+  dropped <- length(bytes) - kept
+  if (dropped == 0L) {
+    return(FALSE)
+  }
+  tail <- bytes[(kept + 1L):length(bytes)]
+  lead <- as.integer(tail[[1L]])
+  need <- if (lead >= 0xF0L) 4L else if (lead >= 0xE0L) 3L else 2L
+  skip <- 0L
+  if (first_line) {
+    while (skip < min(3L, length(line_bytes)) &&
+             line_bytes[[skip + 1L]] == validation_bom[[skip + 1L]]) {
+      skip <- skip + 1L
+    }
+  }
+  at <- skip + validation_line_bytes + seq_len(need - dropped)
+  if (max(at) > length(line_bytes)) {
+    return(FALSE)
+  }
+  after <- line_bytes[at]
+  all(after != as.raw(0x00)) && validUTF8(rawToChar(c(tail, after)))
+}
+
+# The look-alike sentence for one value or key (`text`, as the parser kept
+# it; `noun` names it in the message), or NULL when it holds no look-alike.
+# Only text that is valid UTF-8 is read; a bytes-marked string keeps today's
+# text. Each distinct look-alike is named by code point and Unicode name
+# with its first byte offset, counted from 1 at the first byte, at most ten
+# (unicode_advisory_list()); the message stays ASCII. Returns
+# list(sentence, spelled): `spelled` is the text with each look-alike
+# replaced by its ASCII (an invisible one dropped), for the caller to
+# compare; the sentence quotes it rendered as render_validation_line()
+# does. One pass over the text's bytes and code points.
+lookalike_note <- function(text, noun) {
+  bytes <- charToRaw(text)
+  # A speed path only: ASCII text holds no look-alike, and most values are
+  # ASCII.
+  if (length(bytes) == 0L || all(as.integer(bytes) < 0x80L)) {
+    return(NULL)
+  }
+  # utf8ToInt() reads the bytes as written (rawToChar() drops any mark) and
+  # gives a single NA for text that is not valid UTF-8, which matches no
+  # table row, so such text, a bytes-marked key among it, returns NULL
+  # below.
+  points <- utf8ToInt(rawToChar(bytes))
+  table <- validation_lookalike_code_points
+  at <- match(points, table$point)
+  hit <- which(!is.na(at))
+  if (length(hit) == 0L) {
+    return(NULL)
+  }
+  widths <- 1L + (points >= 0x80) + (points >= 0x800) + (points >= 0x10000)
+  offsets <- cumsum(c(1L, widths))[seq_along(points)]
+  first <- hit[!duplicated(points[hit])]
+  row <- at[first]
+  ascii <- table$ascii[row]
+  invisible <- !nzchar(ascii)
+  spelled_points <- as.list(points)
+  spelled_points[hit] <- lapply(table$ascii[at[hit]], utf8ToInt)
+  spelled <- intToUtf8(unlist(spelled_points, use.names = FALSE))
+  shown <- render_validation_line(charToRaw(spelled))
+  named <- sprintf("U+%04X %s at byte %d", points[first], table$name[row],
+                   offsets[first])
+  one <- length(first) == 1L
+  # How the spelling was made. The table holds one invisible character, so
+  # only a single look-alike can be all invisible ("without it"). Other
+  # non-ASCII characters are kept as written, and the words say whether a
+  # look-alike was replaced, dropped, or both.
+  spelling <- if (all(invisible)) {
+    "without it"
+  } else if (all(charToRaw(spelled) < as.raw(0x80))) {
+    "written in ASCII"
+  } else if (one) {
+    "with ASCII in its place"
+  } else if (any(invisible)) {
+    "with ASCII for the look-alikes and the invisible one dropped"
+  } else {
+    "with ASCII in their place"
+  }
+  held <- if (one) {
+    paste0(named, ", which ", if (invisible) "is invisible" else
+      sprintf("looks like '%s'", ascii))
+  } else {
+    paste0("characters that look like ASCII",
+           if (any(invisible)) " or are invisible", ": ",
+           unicode_advisory_list(paste0(named, ifelse(
+             invisible, " (invisible)", sprintf(" (looks like '%s')", ascii)
+           ))))
+  }
+  list(sentence = sprintf("The %s holds %s; %s the %s is '%s'", noun, held,
+                          spelling, noun, shown),
+       spelled = spelled)
+}
+
+# By cut row, the look-alike sentences of its written value (`values`, as
+# the parser kept them), or "" (ROBO-wtixhwlo). The ASCII spelling is
+# what a matcher that compares bytes would need, so the sentence says none
+# matches. Bing or Yandex is named only when the spelling, folded to ASCII
+# lower case, is one of the crawlers its backend evaluates
+# (duplicate_rule_cut_engines()), read once per call.
+user_agent_lookalike_notes <- function(values) {
+  notes <- lapply(values, lookalike_note, noun = "value")
+  found <- !vapply(notes, is.null, logical(1L))
+  out <- character(length(values))
+  if (!any(found)) {
+    return(out)
+  }
+  engines <- duplicate_rule_cut_engines()
+  out[found] <- vapply(notes[found], function(note) {
+    folded <- ascii_lower(note$spelled)
+    named <- names(engines)[vapply(engines, function(accepted) {
+      folded %in% accepted
+    }, logical(1L))]
+    paste0(
+      note$sentence, ", which no byte compare matches to this value.",
+      if (length(named) > 0L) {
+        sprintf(paste0(" The package's %s matcher compares the whole value ",
+                       "as written, so there '%s' does not match this line ",
+                       "either."), named[[1L]],
+                render_validation_line(charToRaw(note$spelled)))
+      }
+    )
+  }, "")
+  out
 }
 
 # A syntax-only check of a Sitemap value: an absolute http, https or ftp URL
