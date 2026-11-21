@@ -116,7 +116,7 @@ seam_text_case <- function(bytes, paths, tokens) {
   Encoding(txt) <- "bytes"
   robots_evaluate_text_v1(
     txt, seam_url("https://example.com", rows), rows$token, rows$ruleset,
-    rows$backend
+    rows$backend, url_normalization = "none"
   )$results
 }
 
@@ -126,7 +126,8 @@ seam_url_case <- function(bytes, paths, tokens, status = 200L,
   local_fake_ssrfr(function(req) fake_response(status, body = bytes))
   robots_evaluate_url_v1(
     seam_url("http://example.test", rows), rows$token, rows$ruleset,
-    rows$backend, max_bytes = max_bytes, fetch_user_agent = "seam-pin/1.0"
+    rows$backend, max_bytes = max_bytes, fetch_user_agent = "seam-pin/1.0",
+    url_normalization = "none"
   )$results
 }
 
@@ -200,11 +201,23 @@ seam_cases <- function() {
   c(cases, synthesized)
 }
 
+# The results columns schema 2026-11-21.1 added (ROBO-bnvdmdjr). The pinned
+# digests predate them, so the digest leaves them out. The cases above pass
+# `url_normalization = "none"`, so the matcher reads each URL as given, as
+# it did when the digests were taken, and every other column and row must
+# still match them byte for byte. The results frame carries no schema
+# revision, so there is none to hold.
+seam_new_columns <- c("matcher_url", "url_preprocessing_note")
+
 seam_pin_compute <- function() {
   cases <- seam_cases()
+  digest_case <- function(f) {
+    frame <- f()
+    seam_digest(frame[setdiff(names(frame), seam_new_columns)])
+  }
   data.frame(
     case = names(cases),
-    md5 = vapply(cases, function(f) seam_digest(f()), character(1L)),
+    md5 = vapply(cases, digest_case, character(1L)),
     stringsAsFactors = FALSE,
     row.names = NULL
   )
