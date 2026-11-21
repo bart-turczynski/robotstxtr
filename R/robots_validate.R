@@ -181,6 +181,14 @@ validation_unsupported <- c(
 #'   \code{rule_inner_whitespace} \tab warning \tab
 #'     A pattern holds a space, tab, vertical tab or form feed; crawlers
 #'     request URLs with it percent-encoded, so the rule never matches. \cr
+#'   \code{rule_dot_segment} \tab warning \tab
+#'     A pattern holds a \code{.} or \code{..} path segment, after a
+#'     \code{/} and before a \code{/}, a \code{?} or a final \code{$}. Some
+#'     URL parsers remove dot segments before requesting (RFC 3986 section
+#'     5.2.4), so the rule may never match; the v1 evaluators' default
+#'     \code{url_normalization = "rfc3986"} removes the segment from the URL
+#'     too (ADR 0002). Not checked past a \code{?} or a \code{*}; an escaped
+#'     \code{\%2E} is not a dot here. One per rule line. \cr
 #'   \code{rule_control_character} \tab warning \tab
 #'     A pattern holds an ASCII control byte, 0x01 to 0x08 or 0x0E to 0x1F.
 #'     RFC 9309 section 2.2 excludes it from a path pattern and RFC 3986 bars
@@ -4395,6 +4403,10 @@ rule_value_diagnostics <- function(value) {
   if (!is.null(escaped)) {
     found[[length(found) + 1L]] <- escaped
   }
+  dot_segment <- rule_dot_segment_diagnostic(value)
+  if (!is.null(dot_segment)) {
+    found[[length(found) + 1L]] <- dot_segment
+  }
   found
 }
 
@@ -4475,6 +4487,30 @@ rule_escaped_unreserved_diagnostic <- function(value) {
     )
   }
   list(code = "rule_escaped_unreserved", message = message)
+}
+
+# ROBO-rnjfbhvn: a literal `.` or `..` path segment, which RFC 3986 section
+# 5.2.4 and WHATWG URL parsing remove before a request. The scan reads the
+# canonical value up to its first `?` and stops at its first `*`, which can
+# reach into the query, so a value led by `*` is skipped. A hit is `.` or
+# `..` after a `/`, followed by `/`, by `?` or by a `$` that is the value's
+# last byte; an unbounded end (`/a/.` matches `/a/.well-known`) and an escaped
+# `%2E` are not hits. One grepl with a single quantifier keeps the cost
+# linear (ROBO-dbvmxcfw). Returns a finding or NULL.
+rule_dot_segment_diagnostic <- function(value) {
+  # A value not led by `/` is rule_missing_leading_slash's: it never matches.
+  if (!startsWith(value, "/") ||
+        !grepl("^[^?*]*/[.][.]?(/|[?]|[$]$)", value, useBytes = TRUE)) {
+    return(NULL)
+  }
+  list(
+    code = "rule_dot_segment",
+    message = paste0(
+      "Pattern holds a '.' or '..' path segment. Some URL parsers remove ",
+      "dot segments before requesting (RFC 3986 section 5.2.4), so this ",
+      "rule may never match."
+    )
+  )
 }
 
 # The parser keeps 16,663 bytes of a line: its read buffer holds kMaxLineLen - 1

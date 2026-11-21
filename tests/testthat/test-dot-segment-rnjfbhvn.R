@@ -36,18 +36,35 @@ ds_misses <- list(
   "a/../b" = "rule_missing_leading_slash"
 )
 
-test_that("ROBO-rnjfbhvn: a bounded dot segment gets no row today", {
+ds_message <- paste0(
+  "Pattern holds a '.' or '..' path segment. Some URL parsers remove dot ",
+  "segments before requesting (RFC 3986 section 5.2.4), so this rule may ",
+  "never match."
+)
+
+test_that("ROBO-rnjfbhvn: a dot segment in a rule value is one warning row", {
+  x <- robots_validate_text("User-agent: *\nDisallow: /a/./b\n")
+  expect_identical(x$diagnostics$code, "rule_dot_segment")
+  expect_identical(x$diagnostics$line, 2L)
+  expect_identical(x$diagnostics$severity, "warning")
+  expect_identical(x$diagnostics$directive, "disallow")
+  expect_identical(x$diagnostics$raw_text, "Disallow: /a/./b")
+  expect_identical(x$diagnostics$message, ds_message)
+  expect_identical(x$documents$validation_status, "warning")
+})
+
+test_that("ROBO-rnjfbhvn: a bounded dot segment is flagged", {
   for (type in c("Allow", "Disallow")) {
     for (value in ds_hits) {
       expect_identical(
-        ds_codes(type, value), character(0),
+        ds_codes(type, value), "rule_dot_segment",
         label = paste(type, value)
       )
     }
   }
 })
 
-test_that("ROBO-rnjfbhvn: unbounded, encoded or starred dots keep their codes", {
+test_that("ROBO-rnjfbhvn: other dots keep their codes", {
   for (type in c("Allow", "Disallow")) {
     for (value in names(ds_misses)) {
       expect_identical(
@@ -58,8 +75,8 @@ test_that("ROBO-rnjfbhvn: unbounded, encoded or starred dots keep their codes", 
   }
 })
 
-test_that("ROBO-rnjfbhvn: several dot segments on one line", {
-  expect_identical(ds_codes("Disallow", "/a/./b/../c"), character(0))
+test_that("ROBO-rnjfbhvn: several dot segments on one line are one row", {
+  expect_identical(ds_codes("Disallow", "/a/./b/../c"), "rule_dot_segment")
 })
 
 test_that("ROBO-rnjfbhvn: a NUL or a `#` cuts the value before the check", {
@@ -86,13 +103,46 @@ ds_cut <- function(tail_bytes) {
 
 test_that("ROBO-rnjfbhvn: the line buffer bounds the check", {
   expect_identical(ds_cut(2L), "line_too_long")
-  expect_identical(ds_cut(3L), "line_too_long")
+  expect_identical(ds_cut(3L), c("line_too_long", "rule_dot_segment"))
 })
 
 test_that("ROBO-rnjfbhvn: a byte the parser escapes leaves the check intact", {
   body <- c(charToRaw("User-agent: *\nDisallow: /a/./b"), as.raw(0xe9),
             charToRaw("\n"))
-  expect_identical(robots_validate_text(body)$diagnostics$code, "invalid_utf8")
+  expect_identical(
+    robots_validate_text(body)$diagnostics$code,
+    c("invalid_utf8", "rule_dot_segment")
+  )
+})
+
+# Best of five runs, so a loaded machine cannot fail the ratio
+# (test-cut-note-zqyqbudf.R).
+ds_time <- function(body) {
+  min(vapply(1:5, function(i) {
+    system.time(robots_validate_text(body))[["elapsed"]]
+  }, 0))
+}
+
+ds_rules <- function(n) {
+  paste0(
+    "User-agent: *\n",
+    paste0("Disallow: /p", seq_len(n), "/./b\n", collapse = "")
+  )
+}
+
+test_that("ROBO-rnjfbhvn: the check stays linear (ROBO-dbvmxcfw)", {
+  skip_on_cran()
+  small <- ds_time(ds_rules(1000L))
+  large <- ds_time(ds_rules(4000L))
+  expect_lt(large, 8 * max(small, 0.05))
+
+  # About 16,000 bytes of `/..a`, a near miss at every `/`, so the scan
+  # reads the whole value; against a same-length value with no dot.
+  dots <- ds_time(paste0("User-agent: *\nDisallow: ", strrep("/..a", 4000L),
+                         "\n"))
+  plain <- ds_time(paste0("User-agent: *\nDisallow: ", strrep("/aaa", 4000L),
+                          "\n"))
+  expect_lt(dots, 8 * max(plain, 0.05))
 })
 
 # The message's claim and the code table's ADR 0002 clause, on google, bing
@@ -103,7 +153,7 @@ test_that("ROBO-rnjfbhvn: a byte the parser escapes leaves the check intact", {
 ds_engines <- list(google = "Googlebot", bing = "bingbot", yandex = "Yandex")
 ds_urls <- c("https://example.com/a/./b", "https://example.com/a/b")
 
-test_that("ROBO-rnjfbhvn: a dot-segment rule matches only an unnormalized URL", {
+test_that("ROBO-rnjfbhvn: a dot-segment rule matches only a raw URL", {
   for (backend in names(ds_engines)) {
     none <- robots_evaluate_text_v1(
       "User-agent: *\nDisallow: /a/./b\n", ds_urls, ds_engines[[backend]],
