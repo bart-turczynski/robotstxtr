@@ -665,7 +665,7 @@ variants_repeats <- function(repeats, n) {
   if (is.null(repeats)) {
     return(rep(1L, n))
   }
-  if (!is.numeric(repeats) || anyNA(repeats) || any(!is.finite(repeats)) ||
+  if (!is.numeric(repeats) || anyNA(repeats) || !all(is.finite(repeats)) ||
         any(repeats < 1) || any(repeats != trunc(repeats)) ||
         any(repeats > .Machine$integer.max)) {
     invalid_variants(

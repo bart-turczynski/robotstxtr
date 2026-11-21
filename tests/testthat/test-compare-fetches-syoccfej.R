@@ -126,8 +126,8 @@ test_that("the published fetch_outcome set is pinned", {
 # disallow decision and reads no rule, so there is nothing for the google,
 # bing and yandex profiles of robots_evaluate_text_v1() to differ on.
 
-# A clock that ticks one second per call from a fixed epoch, reset per call
-# of the returned installer, so two runs see the same times.
+# A clock that ticks one second per read from a fixed start. Each call
+# installs a fresh clock, so two runs see the same times.
 local_ticking_now <- function(env = parent.frame()) {
   clock <- new.env(parent = emptyenv())
   clock$t <- 1800000000

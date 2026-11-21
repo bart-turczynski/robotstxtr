@@ -39,11 +39,11 @@
 #' repeat. It is checked before each request, never after, so the call makes
 #' at most `max_requests` requests. Observations run in round-robin passes:
 #' every variant once, in row order, then a second pass over the variants with
-#' `repeats` of at least 2, and so on. A budget that runs out therefore leaves
-#' every variant observed once before any repeat. An observation whose chain
-#' is cut by the budget part way, after a redirect, has `observation_status =
-#' "budget_exhausted"` and keeps the hops it made; one the budget leaves
-#' unstarted has `"not_requested"`. A refusal by the guard, before any
+#' `repeats` of at least 2, and so on. So the budget goes to every variant
+#' once before it goes to any repeat. An observation whose chain the budget
+#' cuts part way, after a redirect, has `observation_status =
+#' "budget_exhausted"` and keeps the hops it made; one never started for lack
+#' of budget has `"not_requested"`. A refusal by the guard, before any
 #' request, spends nothing; a redirect to a refused target spends the request
 #' that returned the redirect.
 #'
@@ -66,8 +66,9 @@
 #'
 #' `observation_status` keeps a transient failure apart from a content
 #' difference: `"response"` (the server answered, whatever its status,
-#' redirect errors and a body over `max_bytes` included), `"acquisition_failure"`
-#' (a timeout, TLS or network failure, which may not recur), `"refused"` (the
+#' redirect errors and a body over `max_bytes` included),
+#' `"acquisition_failure"` (a timeout, TLS or network failure, which may not
+#' recur), `"refused"` (the
 #' guard refused the origin or a redirect target), `"budget_exhausted"`,
 #' `"not_requested"` or `"input_invalid"`. Two observations of one variant
 #' that differ only because one timed out differ in status, not in body.
@@ -249,15 +250,15 @@ compare_outcomes <- function(observed) {
 }
 
 compare_result_columns <- function(observed) {
-  chr <- function(f) compare_field(observed, f, NA_character_)
+  text_of <- function(f) compare_field(observed, f, NA_character_)
   list(
     http_status = compare_field(observed, "http_status", NA_integer_),
-    effective_url = chr("effective_url"),
+    effective_url = text_of("effective_url"),
     redirect_count = compare_field(observed, "redirect_count", NA_integer_),
-    terminal_redirect_reason = chr("terminal_redirect_reason"),
-    safety_block_reason = chr("safety_block_reason"),
-    transport_error_kind = chr("transport_error_kind"),
-    error_message = chr("error_message")
+    terminal_redirect_reason = text_of("terminal_redirect_reason"),
+    safety_block_reason = text_of("safety_block_reason"),
+    transport_error_kind = text_of("transport_error_kind"),
+    error_message = text_of("error_message")
   )
 }
 
@@ -389,14 +390,14 @@ print.robots_fetch_comparison <- function(x, ...) {
   }
   counts <- table(factor(obs$observation_status,
                          levels = unique(obs$observation_status)))
-  cat("Status:", paste(names(counts), counts, collapse = ", "), "\n")
+  cat(sprintf("Status: %s\n", paste(names(counts), counts, collapse = ", ")))
   differ <- x$comparison[x$comparison$n_distinct > 1L, , drop = FALSE]
   if (nrow(differ) == 0L) {
     cat("Differs: nothing among the completed observations\n")
   } else {
-    cat("Differs:", paste0(
+    cat(sprintf("Differs: %s\n", paste0(
       differ$field, " (", differ$n_distinct, ")", collapse = ", "
-    ), "\n")
+    )))
   }
   show_n <- min(n, 10L)
   print(obs[seq_len(show_n), c(

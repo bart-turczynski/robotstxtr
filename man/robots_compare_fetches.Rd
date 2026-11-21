@@ -130,10 +130,10 @@ observation's first request, every redirect hop it follows, and every
 repeat. It is checked before each request, never after, so the call makes
 at most \code{max_requests} requests. Observations run in round-robin passes:
 every variant once, in row order, then a second pass over the variants with
-\code{repeats} of at least 2, and so on. A budget that runs out therefore leaves
-every variant observed once before any repeat. An observation whose chain
-is cut by the budget part way, after a redirect, has \code{observation_status = "budget_exhausted"} and keeps the hops it made; one the budget leaves
-unstarted has \code{"not_requested"}. A refusal by the guard, before any
+\code{repeats} of at least 2, and so on. So the budget goes to every variant
+once before it goes to any repeat. An observation whose chain the budget
+cuts part way, after a redirect, has \code{observation_status = "budget_exhausted"} and keeps the hops it made; one never started for lack
+of budget has \code{"not_requested"}. A refusal by the guard, before any
 request, spends nothing; a redirect to a refused target spends the request
 that returned the redirect.
 }
@@ -158,8 +158,9 @@ cache columns are kept on \code{observations} but not compared: \code{date} and
 
 \code{observation_status} keeps a transient failure apart from a content
 difference: \code{"response"} (the server answered, whatever its status,
-redirect errors and a body over \code{max_bytes} included), \code{"acquisition_failure"}
-(a timeout, TLS or network failure, which may not recur), \code{"refused"} (the
+redirect errors and a body over \code{max_bytes} included),
+\code{"acquisition_failure"} (a timeout, TLS or network failure, which may not
+recur), \code{"refused"} (the
 guard refused the origin or a redirect target), \code{"budget_exhausted"},
 \code{"not_requested"} or \code{"input_invalid"}. Two observations of one variant
 that differ only because one timed out differ in status, not in body.
