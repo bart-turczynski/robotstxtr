@@ -290,6 +290,19 @@ test_that("ROBO-mgtngbpm: a comment lead is read from the sniffer window only", 
   expect_false("xml_body" %in% x$diagnostics$code)
 })
 
+test_that("ROBO-mgtngbpm: a comment lead is found as the sniffer finds it", {
+  # The sniffer's `^\s*<` takes its whitespace from the session's locale
+  # tables, and the comment lead reads the same way, so the two agree in any
+  # locale. In en_US.UTF-8 a leading 0xA0 (no-break space) is whitespace.
+  nbsp <- c(as.raw(0xa0),
+            charToRaw("<!-- c -->\nUser-agent: *\nDisallow: /\n"))
+  sniffed <- grepl("^\\s*<", rawToChar(nbsp), perl = TRUE, useBytes = TRUE)
+  expect_identical(robots_content_flag(nbsp),
+                   if (sniffed) "xml" else NA_character_)
+  expect_identical(body_opens_with_comment(nbsp), sniffed)
+  expect_false("xml_body" %in% robots_validate_text(nbsp)$diagnostics$code)
+})
+
 test_that("ROBO-mgtngbpm: body_kind_advisory() prefers html, xml, json", {
   expect_identical(body_kind_advisory("json", "html"), "html")
   expect_identical(body_kind_advisory("html", "xml"), "html")

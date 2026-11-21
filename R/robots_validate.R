@@ -901,17 +901,18 @@ body_kind_messages <- c(
                 "anyway.")
 )
 
-# A body that opens with a markup comment is a robots.txt with a comment first
-# (ROBO-isbpzgqn), so the sniffer's "xml" read for it draws no xml_body
-# (ROBO-mgtngbpm). The check reads the same bytes the read came from, after an
-# optional UTF-8 BOM and leading ASCII whitespace.
+# A body that opens with a markup comment is treated as a robots.txt that starts
+# with a comment (ROBO-isbpzgqn), so the sniffer's "xml" read for it draws no
+# xml_body (ROBO-mgtngbpm). The check reads the bytes the read came from, after
+# an optional UTF-8 BOM, with the sniffer's own `^\s*<` whitespace and flags
+# (R/content-check.R), so the two agree in every locale.
 body_opens_with_comment <- function(body) {
   window <- body[seq_len(min(length(body), content_check_bytes))]
   if (length(window) >= 3L &&
         identical(window[1:3], as.raw(c(0xef, 0xbb, 0xbf)))) {
     window <- window[-(1:3)]
   }
-  grepl("^[ \t\r\n\f\v]*<!--", rawToChar(window), perl = TRUE, useBytes = TRUE)
+  grepl("^\\s*<!--", rawToChar(window), perl = TRUE, useBytes = TRUE)
 }
 
 # One read of a body as an advisory kind: the content flag, except that an
