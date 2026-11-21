@@ -674,16 +674,22 @@ several candidate licenses.
 The message names RSL 1.0 section 4.4, says the line changes no crawl access, says no crawler
 operator is documented as reading it, and states its scope; it never calls the placement an error.
 Scope follows RFC 9309 groups, which blank and unknown lines do not end, so a `License` line belongs
-to the last group whose first `User-agent` line precedes it, a trailing line after a blank line
-included (RSL's second example), and is global only before the first `User-agent` line. A
+to the last group whose first `User-agent` line precedes it, and is global only before the first
+`User-agent` line. A trailing line after a blank line is read as the last group's too; that reading
+rests on RFC 9309 grouping, not on an RSL example: RSL 1.0 §4.4.4 example 2 places each `License`
+right after its group's `Allow`, with the blank line after it. A
 group-scoped row names the group's first line and its agents (five, then a count); with no global
 `License` it adds that crawlers outside the group find no `License` in the file unless their own group
 has one, and that a line before the first `User-agent` line applies to every crawler. With a global
-line it says the group's line replaces it. A global row names the groups that have their own lines.
+line it says the group's line replaces it. A group whose only `User-agent` lines are empty can be
+selected by no crawler, so its row says the line reaches none. A global row names the groups that
+have their own lines.
 
 Reading the value: the parser cuts a line at its first `#`, so the value checked never holds a
 fragment, and at its first NUL, so only the prefix Google reads is checked. The parser also
-%-escapes a non-ASCII byte in the value it returns, so the check reads the raw line for one. A
+%-escapes a non-ASCII byte in the value it returns, so the check reads the value's raw bytes for
+one, as the parser read them: after a line-1 byte-order mark or a leading part of one, up to the
+first NUL and `#`, and within the 16,663-byte line buffer (`rule_raw_value()`). A
 `License https://example.com/l.xml` line with no colon after the key is not a License line: the parser's separator
 is the first colon, the scheme's, and the key becomes `License https` (`unknown_directive`). A
 `License` line between stacked `User-agent` lines keeps `user_agent_joined_across_directive` (§5d),
