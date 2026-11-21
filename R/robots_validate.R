@@ -2726,12 +2726,11 @@ empty_disallow_full_block_diagnostics <- function(groups, cap = 5L) {
     stringsAsFactors = FALSE
   )
   # Every value written for a crawler, as written (ROBO-txnzyugl), and the
-  # line of each cut one, NA for an uncut one (ROBO-zqyqbudf).
+  # cut lines behind them (ROBO-zqyqbudf; none for `*`, which is not cut).
   kept_name <- agents$name[keep]
-  kept_line <- ifelse(agents$cut, agents$line, NA_integer_)[keep]
-  named <- written_agent_rows(pair$id, kept_name, agents$cut[keep])
-  written <- lapply(named, function(i) kept_name[i])
-  cut_lines <- lapply(named, function(i) kept_line[i])
+  kept_line <- agents$line[keep]
+  written <- written_agent_names(pair$id, kept_name, agents$cut[keep])
+  cut_rows <- written_cut_rows(pair$id, agents$cut[keep])
   pair <- pair[!duplicated(paste(pair$id, pair$group, sep = "\n")), ,
                drop = FALSE]
   if (nrow(pair) == 0L) {
@@ -2766,10 +2765,8 @@ empty_disallow_full_block_diagnostics <- function(groups, cap = 5L) {
     names <- unlist(lapply(ids, function(id) {
       if (id == "*") "*" else ai_training_name(written[[id]])
     }), use.names = FALSE)
-    note <- cut_agent_note(
-      unlist(written[ids[ids != "*"]], use.names = FALSE),
-      unlist(cut_lines[ids[ids != "*"]], use.names = FALSE)
-    )
+    cut_at <- unlist(cut_rows[ids], use.names = FALSE)
+    note <- cut_agent_note(kept_name[cut_at], kept_line[cut_at])
     global_only <- identical(names, "*")
     several <- global_only || length(names) > 1L
     crawlers <- if (global_only) {
@@ -3043,13 +3040,11 @@ wildcard_inheritance_diagnostics <- function(groups) {
     (!rules$empty & every_path)
 
   # Every value written for a crawler, as written (ROBO-txnzyugl), and the
-  # line of each cut one, NA for an uncut one (ROBO-zqyqbudf). Both are in
-  # the order of `keys`, so a crawler reads its own by position.
+  # cut lines behind them (ROBO-zqyqbudf). Both are in the order of `keys`,
+  # so a crawler reads its own by position.
   keys <- unique(agents$key)
-  named <- written_agent_rows(agents$key, agents$name, agents$cut)
-  written <- lapply(named, function(i) agents$name[i])
-  cut_line <- ifelse(agents$cut, agents$line, NA_integer_)
-  cut_lines <- lapply(named, function(i) cut_line[i])
+  written <- written_agent_names(agents$key, agents$name, agents$cut)
+  cut_rows <- written_cut_rows(agents$key, agents$cut)
   # Crawlers that ignore `*` whether or not a group names them
   # (ROBO-fbbmvbob): a named group loosens nothing for them.
   table <- google_crawler_tokens_v1()
@@ -3064,7 +3059,8 @@ wildcard_inheritance_diagnostics <- function(groups) {
     root_block <- in_effect & !is.na(rules$key) & rules$key == "disallow /"
     list(
       names = written[[k]],
-      cut_lines = cut_lines[[k]],
+      cut_names = agents$name[cut_rows[[k]]],
+      cut_lines = agents$line[cut_rows[[k]]],
       groups = agent_groups,
       first_group = min(agent_groups),
       one_group = length(agent_groups) == 1L,
@@ -3583,20 +3579,24 @@ wildcard_group_labels <- function(members, first, groups, cap = 5L) {
 # are left out. Values differing only in ASCII case count once, the first
 # written.
 written_agent_names <- function(id, name, cut) {
-  lapply(written_agent_rows(id, name, cut), function(i) name[i])
-}
-
-# The rows written_agent_names() names, as a list of indexes in the same
-# order: so a caller can read each named value's line and `cut` flag too
-# (ROBO-zqyqbudf).
-written_agent_rows <- function(id, name, cut) {
   rows <- split(seq_along(id), factor(id, unique(id)))
   lapply(rows, function(i) {
     if (!all(cut[i])) {
       i <- i[!cut[i]]
     }
-    i[!duplicated(ascii_lower(name[i]))]
+    x <- name[i]
+    x[!duplicated(ascii_lower(x))]
   })
+}
+
+# The cut lines behind the values written_agent_names() names, as a list of
+# row indexes in the same order (ROBO-zqyqbudf): every row of an id whose
+# values are all cut, and none of an id with an uncut value, which is the
+# name shown. A value written on several lines, in any case, keeps each
+# line: each has its own user_agent_cut row.
+written_cut_rows <- function(id, cut) {
+  rows <- split(seq_along(id), factor(id, unique(id)))
+  lapply(rows, function(i) if (all(cut[i])) i else integer())
 }
 
 # The sentence a row that names agents adds for those whose value Google's
@@ -3626,11 +3626,11 @@ cut_agent_note <- function(names, lines, cap = 5L) {
 }
 
 # cut_agent_note() for the crawlers of a wildcard row, as
-# wildcard_inheritance_diagnostics() gives them: each member's `names` and
-# their `cut_lines`.
+# wildcard_inheritance_diagnostics() gives them: each member's `cut_names`
+# and their `cut_lines`.
 wildcard_cut_note <- function(members) {
   cut_agent_note(
-    unlist(lapply(members, `[[`, "names"), use.names = FALSE),
+    unlist(lapply(members, `[[`, "cut_names"), use.names = FALSE),
     unlist(lapply(members, `[[`, "cut_lines"), use.names = FALSE)
   )
 }

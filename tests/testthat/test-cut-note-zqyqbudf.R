@@ -362,6 +362,49 @@ test_that("a cut policy token is not named as an agent", {
   expect_no_match(d$message, "product token from", fixed = TRUE)
 })
 
+test_that("a cut value written in two cases names each line", {
+  # The row names `Foo Bar` once; each line has its own user_agent_cut row.
+  body <- cn_lines("User-agent: *", "Disallow: /a", "",
+                   "User-agent: Foo Bar", "Disallow: /b", "", "",
+                   "User-agent: foo bar", "Disallow: /c")
+  d <- cn_rows(body, "wildcard_disallows_not_inherited")
+  expect_identical(d$line, 4L)
+  expect_match(d$message, "^Foo Bar obeys only the groups that name it,")
+  expect_true(endsWith(d$message, cn_note(c("`Foo Bar` (line 4)",
+                                            "`foo bar` (line 8)"))))
+  empty <- cn_rows(cn_lines("User-agent: Foo Bar", "Disallow:", "",
+                            "User-agent: foo bar", "Disallow: /"),
+                   "empty_disallow_with_full_block")
+  expect_true(endsWith(empty$message, cn_note(c("`Foo Bar` (line 1)",
+                                                "`foo bar` (line 4)"))))
+})
+
+test_that("a merged row names its cut values in line order", {
+  # The crawlers come in key order (`peer` at lines 4 and 10, then `zork` at
+  # line 7); the sentence lists the lines in file order.
+  body <- cn_lines("User-agent: *", "Allow: /x", "",
+                   "User-agent: Peer1", "Disallow: /b", "",
+                   "User-agent: Zork.Bot", "Disallow: /c", "",
+                   "User-agent: Peer2", "Disallow: /d")
+  d <- cn_rows(body, "wildcard_rules_not_inherited")
+  expect_length(d$message, 1L)
+  expect_true(endsWith(d$message, cn_note(c(
+    "`Peer1` (line 4)", "`Zork.Bot` (line 7)", "`Peer2` (line 10)"
+  ))))
+})
+
+test_that("a cut policy token stacked beside the token is not named", {
+  # `__usage_foo/1` is another policy token, no crawler, so the stacked row
+  # on line 3 names it without the sentence.
+  d <- cn_rows(cn_lines("User-agent: __usage_foo/1", "Crawl-delay: 1",
+                        "User-agent: __usage_ai-training", "Disallow: /"),
+               "ai_training_token_stacked")
+  row <- d[d$line == 3L, , drop = FALSE]
+  expect_match(row$message, "`User-agent: __usage_foo/1` (line 1)",
+               fixed = TRUE)
+  expect_no_match(row$message, "product token from", fixed = TRUE)
+})
+
 test_that("a cut value on the joining line is named", {
   # The row is anchored on `Foo Bar` (line 3), the agent that joins.
   for (between in c("Crawl-delay: 1", "")) {
