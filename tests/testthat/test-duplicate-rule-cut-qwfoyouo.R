@@ -136,7 +136,41 @@ test_that("only the values of a token the cut merges are named", {
     "", "User-agent: Foo b", "User-agent: Bar b", "Disallow: /a"
   ))
   expect_identical(d$message, dc_cut(3L, paste(
-    "'Foo a', 'Bar a', 'Foo b' and 'Bar b' as the tokens 'Foo' and 'Bar'"
+    "'Foo a', 'Bar a', 'Foo b' and 'Bar b' as the tokens 'Foo' and 'Bar',"
+  )))
+  # A line reading no token (`1bot`, `2bot`) names none.
+  d <- dc_rows(dc_lines(
+    "User-agent: Foo a", "User-agent: 2bot", "Disallow: /a", "Disallow: /z",
+    "", "User-agent: Foo b", "User-agent: 1bot", "Disallow: /a"
+  ))
+  expect_identical(d$line, 8L)
+  expect_identical(d$message,
+                   dc_cut(3L, "'Foo a' and 'Foo b' as one token, 'Foo',"))
+})
+
+test_that("every token named shows one of the repeat group's values", {
+  d <- dc_rows(dc_lines(
+    sprintf("User-agent: Foo %d\nDisallow: /a\nDisallow: /q\n", 1:5),
+    "User-agent: Bar a", "Disallow: /a", "Disallow: /q", "",
+    "User-agent: Foo z", "User-agent: Bar b", "Disallow: /a"
+  ))
+  last <- d[d$line == 27L, , drop = FALSE]
+  expect_identical(last$message, dc_cut(2L, paste(
+    "'Foo 1', 'Foo 2', 'Foo 3', 'Foo z', 'Bar b' and 3 more as the tokens",
+    "'Foo' and 'Bar',"
+  )))
+})
+
+test_that("at most five tokens are named, then a count", {
+  tokens <- c("Ta", "Tb", "Tc", "Td", "Te", "Tf")
+  d <- dc_rows(dc_lines(
+    paste("User-agent:", tokens, "x"), "Disallow: /a", "Disallow: /z", "",
+    paste("User-agent:", tokens, "y"), "Disallow: /a"
+  ))
+  expect_identical(d$line, 16L)
+  expect_identical(d$message, dc_cut(7L, paste(
+    "'Ta y', 'Tb y', 'Tc y', 'Td y', 'Te y' and 7 more as the tokens 'Ta',",
+    "'Tb', 'Tc', 'Td', 'Te' and 1 more,"
   )))
 })
 
@@ -280,7 +314,7 @@ test_that("Bing or Yandex is named only for a crawler its backend evaluates", {
   ))
   expect_identical(d$message, dc_cut(3L, paste(
     "'bingbot', 'Yandex', 'bingbot/2.0' and 'Yandex 2.0' as the tokens",
-    "'bingbot' and 'Yandex'"
+    "'bingbot' and 'Yandex',"
   ), apart = "both"))
   # A crawler neither backend evaluates gets the engine-neutral sentence.
   for (backend in c("bing", "yandex")) {

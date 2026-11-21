@@ -609,9 +609,10 @@ validation_unsupported <- c(
 #' repeat that exists only through such a cut (no earlier line with the rule
 #' sits in a group that shares a whole User-agent value, folded to ASCII
 #' lower case, with the repeat's group) does not say the rule has no effect:
-#' its message says the repeat is Google's only, names the token read and
-#' the values written for it up to the repeat's group (five at most, always
-#' one of that group's, then a count), says a matcher comparing the whole
+#' its message says the repeat is Google's only, names the tokens read (five
+#' at most, then a count) and the values written for them up to the
+#' repeat's group (five at most, one of that group's for each token named,
+#' then a count), says a matcher comparing the whole
 #' value keeps the groups apart, and points to the `user_agent_cut` rows.
 #' It names the package's Bing matcher only when the token is a crawler the
 #' Bing backend evaluates (`bingbot`, `adidxbot`), and its Yandex matcher
@@ -3820,9 +3821,11 @@ duplicate_rule_cut_names <- function(agents, wanted, cap = 5L) {
 }
 
 duplicate_rule_cut_group_names <- function(look, own, cap) {
-  # A token's last line in the group holds its count up to the group.
+  # A token's last line in the group holds its count up to the group. Every
+  # token the group names has more than one: Google's repeat needs an
+  # earlier group naming it, and one with the same whole value would make
+  # the repeat a plain one (duplicate_rule_cut_only()).
   last <- own[!duplicated(look$key[own], fromLast = TRUE)]
-  last <- last[look$seen[last] > 1L]
   heads <- look$heads[look$key[last]]
   firsts <- vapply(heads, `[[`, 0L, 1L)
   order_by <- order(firsts)
@@ -3850,7 +3853,7 @@ duplicate_rule_cut_group_names <- function(look, own, cap) {
       if (length(tokens) == 1L) {
         sprintf("one token, %s,", quote(tokens))
       } else {
-        sprintf("the tokens %s", joined_and(
+        sprintf("the tokens %s,", joined_and(
           quote(utils::head(tokens, cap)), length(tokens) - cap
         ))
       }
