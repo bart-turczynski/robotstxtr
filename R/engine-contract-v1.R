@@ -10,6 +10,13 @@ engine_contract_id_v1 <- function() {
   "robotstxtr.engine-aware/v1"
 }
 
+# 2026-11-21.1: both facades take `url_normalization` ("rfc3986", the
+# default, or "none"), and `results` gains `matcher_url`, the URL the
+# matcher read, and `url_preprocessing_note`, the rule that changed it or
+# why the input is not a valid RFC 3986 URI (ADR 0002, ROBO-bnvdmdjr). No
+# policy revision moved. Both facades share the results schema, so both
+# moved.
+#
 # 2026-11-12.1: `results` gains `group_token`, whose group decided a Google
 # row, and the google `matcher_capability` publishes `crawler_tokens`, the
 # crawler tokens the google ruleset follows with the google backend (a
@@ -34,7 +41,7 @@ engine_contract_id_v1 <- function() {
 # (ROBO-jbralthm; design/engine-profiles.md section 2). Both facades share the
 # evidence schema, so both revisions moved.
 engine_schema_revision_v1 <- function() {
-  "2026-11-12.1"
+  "2026-11-21.1"
 }
 
 # The engine-aware/v2 facade identity (BI-V2-SCHEMA, spec SS15). Introduced by
@@ -49,7 +56,7 @@ engine_contract_id_v2 <- function() {
 }
 
 engine_schema_revision_v2 <- function() {
-  "2026-11-12.1"
+  "2026-11-21.1"
 }
 
 engine_rulesets_v1 <- function() {
@@ -1704,9 +1711,12 @@ new_engine_decisions_v1 <- function(results, evidence) {
 evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
                              source_id, evidence, url_valid, token_valid,
                              fetch_ua, timeout, max_bytes, ssrf_guard,
-                             safety_level,
+                             safety_level, url_normalization = "none",
                              matcher_registry = engine_matcher_registry_v1()) {
   n <- length(url)
+  # The URL each backend reads (ROBO-bnvdmdjr, ADR 0002); `url` stays the
+  # input. Internal callers that pass no mode read the URL as given.
+  preprocessed <- preprocess_matcher_url_v1(url, url_normalization)
   policy_revisions <- engine_policy_revisions_v1()
   matcher_registry <- validate_matcher_registry_v1(matcher_registry)
   matcher_revisions <- matcher_registry_field_v1(
@@ -1825,7 +1835,8 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
     decided <- dispatch_matcher_v1(
       matcher_registry, backend,
       bodies = readable_bodies[matcher_sources[picked]],
-      urls = url[rows], product_tokens = product_token[rows],
+      urls = preprocessed$matcher_url[rows],
+      product_tokens = product_token[rows],
       crawler_profiles = crawler_profiles[picked, , drop = FALSE]
     )
     # Adapters that do not report a group leave `group_token` NA.
@@ -1896,6 +1907,10 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
     # the crawler's parent token, "*", or NA (no adapter set it, or a
     # `*`-ignoring crawler with no group of its own).
     group_token = group_token,
+    # The URL the matcher read and why it differs from `url`, if it does
+    # (ROBO-bnvdmdjr, ADR 0002): `url` as given under "none".
+    matcher_url = preprocessed$matcher_url,
+    url_preprocessing_note = preprocessed$note,
     stringsAsFactors = FALSE
   )
   # Public list column, unchanged since schema 2026-07-18.2: exactly one
@@ -1982,6 +1997,30 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' the complete lines of its `max_bytes` cut, 512,000 bytes by default
 #' (`design/engine-profiles.md` section 7).
 #'
+#' Since schema revision `2026-11-21.1`, `url_normalization` decides which
+#' URL the matcher reads (`design/adr/0002-evaluator-url-preprocessing.md`).
+#' Under `"rfc3986"`, the default, the URL is split the RFC 3986 way and
+#' rebuilt as scheme, `//`, host and port, the path with its dot segments
+#' removed (section 5.2.4), and the query: userinfo is left out, so Google no
+#' longer reads `https://u;v@host/x` from its `;`, and the fragment is
+#' dropped. Only the literal segments `.` and `..` are removed; no byte is
+#' percent-encoded, decoded or case-folded, so `/%2e%2e/` is kept. A URL that
+#' is not a valid RFC 3986 URI (a raw space, a byte outside ASCII, a
+#' backslash, another character RFC 3986 excludes, or a `%` without two hex
+#' digits) is still evaluated. A URL with no authority, such as `"/a/../b"`,
+#' keeps the bytes before its first `/` and has its dot segments removed from
+#' there on, unless that would start the path with `//` and so read as a
+#' host (`"/a/..//h/x"`): then it is evaluated as given. Under `"none"` the
+#' matcher reads the URL as given, as before. The `url` column always holds
+#' the input and `matcher_url` the URL the matcher read.
+#' `url_preprocessing_note` is `NA` under `"none"`, and under `"rfc3986"`
+#' when the input is a valid RFC 3986 URI with an authority and the
+#' preprocessing changed nothing. Otherwise it says why the input is not a
+#' valid URI, that it has no authority, and which rule changed it (or why
+#' its dot segments were left in place), joined by `"; "`.
+#' [allowed_by_robots_text()] and [allowed_by_robots_url()] read the URL as
+#' given.
+#'
 #' @param robots_txt A single, non-missing character value containing the
 #'   robots.txt body. A body marked UTF-8 is used as written. An unmarked body
 #'   (as `rawToChar()` gives) is taken as UTF-8 bytes as written when the
@@ -2008,6 +2047,11 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' @param matcher_backend An explicit matcher backend, length one or
 #'   `length(url)`: `"google"`, `"yandex"`, `"rfc9309"`, or `"bing"`.
 #' @param source_id A non-empty identifier for the supplied body.
+#' @param url_normalization How the URL is read before matching, one of:
+#'   `"rfc3986"` (the default) removes dot segments from the path (RFC 3986
+#'   section 5.2.4), leaves userinfo out and drops the fragment, and never
+#'   encodes, decodes or case-folds a byte, so `%2e` is kept; `"none"` hands
+#'   the URL to the matcher as given. See Details.
 #'
 #' @return A `robots_engine_decisions_v1` object with `results`, neutral
 #'   `evidence`, and `contract` components.
@@ -2027,9 +2071,11 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' @export
 robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
                                     robots_policy_ruleset, matcher_backend,
-                                    source_id = "supplied") {
+                                    source_id = "supplied",
+                                    url_normalization = "rfc3986") {
   validate_robots_txt(robots_txt)
   validate_source_id(source_id)
+  url_normalization <- validate_url_normalization_v1(url_normalization)
   validate_url_type(url)
   n <- length(url)
   token <- expand_product_token_v1(robots_product_token, n)
@@ -2046,7 +2092,8 @@ robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
   mapped_source <- ifelse(url_valid & token_valid, source_id, NA_character_)
   results <- evaluate_rows_v1(
     url, token, ruleset, backend, mapped_source, evidence, url_valid,
-    token_valid, NA_character_, NA_real_, NA_integer_, NA, NA_character_
+    token_valid, NA_character_, NA_real_, NA_integer_, NA, NA_character_,
+    url_normalization = url_normalization
   )
   new_engine_decisions_v1(results, evidence)
 }
@@ -2085,6 +2132,10 @@ robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
 #' `google` backend, and only when it stored at least 512,000 bytes; a
 #' smaller google cut is `incomplete_evidence`, and other rulesets read a cut
 #' as `design/engine-profiles.md` section 7 sets out.
+#'
+#' `url_normalization` decides the URL the matcher reads, as in
+#' [robots_evaluate_text_v1()]; the `/robots.txt` to fetch is built from the
+#' input URL, so the mode never changes what is fetched.
 #'
 #' @inheritParams robots_evaluate_text_v1
 #' @inheritParams robots_fetch
@@ -2125,7 +2176,8 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
                                    fetch_user_agent = NULL,
                                    ssrf_guard = TRUE,
                                    safety_level = "strict",
-                                   fetch_allow_ranges = character()) {
+                                   fetch_allow_ranges = character(),
+                                   url_normalization = "rfc3986") {
   validate_url_type(url)
   timeout <- validate_timeout(timeout)
   max_bytes <- validate_max_bytes(max_bytes)
@@ -2136,6 +2188,7 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
     fetch_allow_ranges, ssrf_guard
   )
   warn_ssrf_guard_deprecated(ssrf_guard, safety_level)
+  url_normalization <- validate_url_normalization_v1(url_normalization)
   n <- length(url)
   token <- expand_product_token_v1(robots_product_token, n)
   ruleset <- expand_engine_argument_v1(
@@ -2161,7 +2214,7 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
   results <- evaluate_rows_v1(
     url, token, ruleset, backend, fetched$source_id, fetched$evidence,
     url_valid, token_valid, fetch_ua, timeout, max_bytes, ssrf_guard,
-    safety_level
+    safety_level, url_normalization = url_normalization
   )
   new_engine_decisions_v1(results, fetched$evidence)
 }
@@ -2194,6 +2247,12 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
 #' here and the `*` group there, and `AdsBot-Google` on a body with only a
 #' `*` group is allowed here and obeys `*` there. The `group_token` column is
 #' not carried over.
+#'
+#' Its decisions are the v1 result's, so they follow the `url_normalization`
+#' the result was built with: under the default `"rfc3986"`,
+#' `https://example.com/a/../b` is decided as `https://example.com/b`, where
+#' [allowed_by_robots_text()] reads it as given. The `matcher_url` and
+#' `url_preprocessing_note` columns are not carried over.
 #'
 #' @param x A `robots_engine_decisions_v1` object using the Google policy and
 #'   Google matcher backend for every row.

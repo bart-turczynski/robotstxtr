@@ -4,6 +4,8 @@
 
 * Validator: a `License:` line gets `rsl_license_directive` (info; warning unless an absolute URI) stating its scope, and counts in `unsupported_directives`, no longer `unknown_directives` (RSL 1.0 §4.4) (ROBO-ahqpndzq).
 
+* `robots_evaluate_text_v1()` and `robots_evaluate_url_v1()` now remove dot segments (RFC 3986 §5.2.4) and userinfo before matching, adding `matcher_url` and `url_preprocessing_note`; `url_normalization = "none"` keeps the old reading (ROBO-bnvdmdjr).
+
 * Fetch: `robots` rows keep the final response's raw `Cache-Control`, `Age`, `Date`, `Expires`, `ETag`, `Last-Modified` and `Vary` as character columns; `NA` absent, `""` empty (ROBO-zleohwyz).
 
 * Validator: `robots_validate_text()` and `robots_validate_url()` warn `xml_body` or `json_body` when a body starts with markup or looks like JSON, its lines still read as directives (ROBO-mgtngbpm).

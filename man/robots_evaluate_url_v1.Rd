@@ -14,7 +14,8 @@ robots_evaluate_url_v1(
   fetch_user_agent = NULL,
   ssrf_guard = TRUE,
   safety_level = "strict",
-  fetch_allow_ranges = character()
+  fetch_allow_ranges = character(),
+  url_normalization = "rfc3986"
 )
 }
 \arguments{
@@ -85,6 +86,12 @@ no host bits set. The metadata host names are never reopened, and an
 entry naming exactly one cloud-metadata endpoint (such as
 \code{"169.254.169.254/32"}) is a call-level error, as is \code{NA}, an empty
 string or any other entry the guard cannot read.}
+
+\item{url_normalization}{How the URL is read before matching, one of:
+\code{"rfc3986"} (the default) removes dot segments from the path (RFC 3986
+section 5.2.4), leaves userinfo out and drops the fragment, and never
+encodes, decodes or case-folds a byte, so \verb{\%2e} is kept; \code{"none"} hands
+the URL to the matcher as given. See Details.}
 }
 \value{
 A \code{robots_engine_decisions_v1} object with \code{results}, neutral
@@ -122,6 +129,10 @@ dropped. A cut body is matched only under the \code{google} ruleset with the
 \code{google} backend, and only when it stored at least 512,000 bytes; a
 smaller google cut is \code{incomplete_evidence}, and other rulesets read a cut
 as \code{design/engine-profiles.md} section 7 sets out.
+
+\code{url_normalization} decides the URL the matcher reads, as in
+\code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}; the \verb{/robots.txt} to fetch is built from the
+input URL, so the mode never changes what is fetched.
 }
 \examples{
 # A refused origin is decided before any request, so this runs offline. The

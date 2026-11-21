@@ -58,6 +58,30 @@ x$results[c(
 )]
 ```
 
+## The URL the matcher reads
+
+By default (`url_normalization = "rfc3986"`) the facade removes dot segments
+from the URL path before matching (RFC 3986 section 5.2.4), as curl, wget and
+browsers do before they send a request. It leaves userinfo out and drops the
+fragment, and it never re-encodes or decodes a byte, so `%2e%2e` is kept.
+`matcher_url` shows the URL the matcher read and `url_preprocessing_note`
+says what changed; `url_normalization = "none"` reads the URL as given, as
+the legacy functions do (`design/adr/0002-evaluator-url-preprocessing.md`).
+
+```{r}
+y <- robots_evaluate_text_v1(
+  robots,
+  c(
+    "https://example.com/private/public/../report",
+    "https://example.com/private/public/%2e%2e/report"
+  ),
+  robots_product_token = "Googlebot",
+  robots_policy_ruleset = "google",
+  matcher_backend = "google"
+)
+y$results[c("matcher_url", "url_decision", "url_preprocessing_note")]
+```
+
 ## Explicit non-decisions
 
 An unavailable matcher returns `capability_unavailable` rather than silently
