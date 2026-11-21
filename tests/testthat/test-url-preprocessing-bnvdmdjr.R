@@ -832,6 +832,27 @@ test_that("whatwg never makes an authority a scheme-less input lacks", {
   }
 })
 
+test_that("the // guard fires only when serialization creates the //", {
+  # The input path already starts with //: serialized as usual, with the
+  # fragment dropped as rfc3986 drops it.
+  urls <- c("example.com//x/%2e%2e/y", "h.com//a b", "a//b c#f")
+  r <- pp_whatwg(urls)
+  expect_identical(
+    r$matcher_url, c("example.com//y", "h.com//a%20b", "a//b%20c")
+  )
+  expect_identical(
+    r$url_preprocessing_note,
+    c(
+      rep(paste0(pp_noauth, "; ", pp_ww_changed), 2L),
+      paste0(pp_noauth, "; ", pp_ww_changed, "; fragment dropped")
+    )
+  )
+  # It does not: the guard keeps the input.
+  g <- pp_whatwg("/a/..//h/x")
+  expect_identical(g$matcher_url, "/a/..//h/x")
+  expect_identical(g$url_preprocessing_note, pp_ww_guard)
+})
+
 test_that("whatwg splits a scheme-less URL exactly as rfc3986 does", {
   body <- "User-agent: *\nDisallow: /x\nDisallow: /*..\n"
   # An authority with no scheme: host h, path /x, as rfc3986 reads it.
@@ -879,7 +900,7 @@ test_that("a latin1 scheme-less URL reads as its UTF-8 twin", {
   expect_identical(r$preprocessing_disagreement, c(FALSE, FALSE))
 })
 
-test_that("the attribution decodes the input's encoded dots, not the target's", {
+test_that("the attribution decodes the input's encoded dots", {
   # rfc3986 removes "%2e/.." or "%2e%2e/.." as ordinary segments first, so
   # decoding its target would miss the dots a browser reads.
   urls <- c(

@@ -221,16 +221,19 @@ whatwg_matcher_urls_v1 <- function(url) {
 
 # One URL with no scheme under "whatwg": the lead "rfc3986" keeps, then the
 # serialized path and query; the fragment is dropped as "rfc3986" drops it.
-# A serialized path starting with "//" after a lead with no authority would
-# read as one, so the input is evaluated as given, as "rfc3986" guards its
-# own removal.
+# A serialized path that starts with "//" where the input path did not, after
+# a lead with no authority, would read as an authority the input lacks, so
+# the input is evaluated as given, as "rfc3986" guards its own removal. A
+# path that already started with "//" is serialized as usual.
 whatwg_schemeless_matcher_url_v1 <- function(url, serialized, rel) {
   parts <- url_split_rfc3986_v1(charToRaw(serialized))
   target <- rel$target
   no_authority <- if (identical(target$no_authority, "slash")) {
     "no authority: path read from the first /"
   }
-  if (!target$has_authority && path_starts_with_slashes_v1(parts$path)) {
+  created <- path_starts_with_slashes_v1(parts$path) &&
+    !path_starts_with_slashes_v1(target$path)
+  if (!target$has_authority && created) {
     return(list(url = url, note = paste(c(
       no_authority,
       "WHATWG serialization left in place: it would start the path with //"
