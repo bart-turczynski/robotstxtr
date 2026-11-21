@@ -21,7 +21,8 @@
 #
 # Whatever the mode, every row also carries `preprocessing_disagreement`:
 # whether the rfc3986 and whatwg targets decide differently, or whatwg
-# cannot parse the URL (url_disagreement_v1()).
+# cannot parse the URL (url_disagreement_v1()); NA under "rfc3986" and
+# "none" for a URL over url_disagreement_max_bytes_v1().
 
 # The `url_normalization` value set, default first. Adding a mode is one
 # entry here and one branch in preprocess_matcher_url_v1().
@@ -44,13 +45,31 @@ validate_url_normalization_v1 <- function(url_normalization) {
   unname(url_normalization)
 }
 
+# The longest input URL, in bytes, whose whatwg form the disagreement flag
+# computes under "rfc3986" and "none". rurl's WHATWG serializer grows faster
+# than linearly on a long path with many dot segments (about 53 seconds for
+# 20,000 "/seg/.." pairs), and those modes did not ask for it. A longer URL
+# is not compared: its flag is NA. "whatwg" itself serializes any length.
+url_disagreement_max_bytes_v1 <- function() {
+  8192L
+}
+
+url_disagreement_not_compared_v1 <- function() {
+  sprintf(
+    "not compared: URL longer than %d bytes", url_disagreement_max_bytes_v1()
+  )
+}
+
 # One matcher URL and one note per row, under the selected mode, and the
 # rfc3986 and whatwg targets the disagreement flag compares, whatever the
-# mode. `whatwg_failed` marks the rows rurl could not parse. NA and empty
-# URLs pass as they are, with no note, in every mode.
+# mode. `whatwg_failed` marks the rows rurl could not parse, and
+# `not_compared` the rows over the cap whose whatwg form was not computed.
+# NA and empty URLs pass as they are, with no note, in every mode.
 preprocess_matcher_url_v1 <- function(url, url_normalization) {
+  not_compared <- !identical(url_normalization, "whatwg") & !is.na(url) &
+    nchar(url, type = "bytes") > url_disagreement_max_bytes_v1()
   rfc3986 <- rfc3986_matcher_urls_v1(url)
-  whatwg <- whatwg_matcher_urls_v1(url)
+  whatwg <- whatwg_matcher_urls_v1(url, skip = not_compared)
   selected <- switch(
     url_normalization,
     rfc3986 = rfc3986,
@@ -60,7 +79,7 @@ preprocess_matcher_url_v1 <- function(url, url_normalization) {
   list(
     matcher_url = selected$url, note = selected$note,
     rfc3986_url = rfc3986$url, whatwg_url = whatwg$url,
-    whatwg_failed = whatwg$failed
+    whatwg_failed = whatwg$failed, not_compared = not_compared
   )
 }
 
@@ -106,11 +125,12 @@ whatwg_serialize_v1 <- function(url) {
   out
 }
 
-whatwg_matcher_urls_v1 <- function(url) {
+# Rows in `skip` keep their input, with no note, and are not serialized.
+whatwg_matcher_urls_v1 <- function(url, skip = logical(length(url))) {
   out <- url
   note <- rep(NA_character_, length(url))
   failed <- rep(FALSE, length(url))
-  todo <- which(!is.na(url) & nzchar(url))
+  todo <- which(!is.na(url) & nzchar(url) & !skip)
   serialized <- whatwg_serialize_v1(url[todo])
   for (k in seq_along(todo)) {
     i <- todo[[k]]
@@ -203,14 +223,17 @@ side_decision_v1 <- function(rows, target, matcher_url, decided, decide) {
 url_disagreement_v1 <- function(preprocessed, matcher_rows, url_decision,
                                 decide) {
   failed <- preprocessed$whatwg_failed
+  skipped <- preprocessed$not_compared
   flag <- failed
+  flag[skipped] <- NA
   clients <- rep(NA_character_, length(flag))
   families <- url_client_families_v1()
   clients[failed] <- sprintf(
     "rfc3986: %s; whatwg cannot parse the URL: %s",
     families[["rfc3986"]], families[["whatwg"]]
   )
-  differ <- !failed & !bytes_equal_v1(
+  clients[skipped] <- url_disagreement_not_compared_v1()
+  differ <- !failed & !skipped & !bytes_equal_v1(
     preprocessed$rfc3986_url, preprocessed$whatwg_url
   )
   rows <- matcher_rows[differ[matcher_rows]]

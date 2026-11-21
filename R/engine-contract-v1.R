@@ -2079,9 +2079,12 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' outside ASCII is percent-encoded, the host is put in lower case and a
 #' default port dropped). Userinfo is left out and the fragment dropped, as
 #' under `"rfc3986"`. A URL it cannot parse, such as `"/a/../b"`, is
-#' evaluated as given, with the note `not a valid WHATWG URL: evaluated as given`; a
-#' changed URL has the note `WHATWG URL serialization changed the URL`,
-#' then `userinfo removed` or `fragment dropped` where those apply.
+#' evaluated as given, with the note
+#' `not a valid WHATWG URL: evaluated as given`; a changed URL has the note
+#' `WHATWG URL serialization changed the URL`, then `userinfo removed` or
+#' `fragment dropped` where those apply. `"whatwg"` serializes a URL of any
+#' length, and its cost grows faster than linearly on a long path with many
+#' dot segments (rurl's serializer).
 #'
 #' In every mode, `preprocessing_disagreement` is `TRUE` when the URL the
 #' matcher reads under `"rfc3986"` and the one it reads under `"whatwg"`
@@ -2092,7 +2095,11 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' is `FALSE`; otherwise it gives each side's decision and the clients
 #' surveyed to send that form: `wget 1.25, curl/libcurl < 8.13.0` for
 #' `"rfc3986"` and `Chrome 157, Node 26 fetch, curl/libcurl >= 8.13.0` for
-#' `"whatwg"`.
+#' `"whatwg"`. Under `"rfc3986"` and `"none"`, a URL longer than 8192 bytes
+#' is not compared: the `"whatwg"` form is not computed, no second match
+#' runs, `preprocessing_disagreement` is `NA` and `disagreement_clients` is
+#' `not compared: URL longer than 8192 bytes`. Under `"whatwg"` every length
+#' is compared.
 #'
 #' @param robots_txt A single, non-missing character value containing the
 #'   robots.txt body. A body marked UTF-8 is used as written. An unmarked body

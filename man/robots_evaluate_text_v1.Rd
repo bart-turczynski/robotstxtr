@@ -165,9 +165,12 @@ encoding and host as that standard does (a space becomes \verb{\%20}, a byte
 outside ASCII is percent-encoded, the host is put in lower case and a
 default port dropped). Userinfo is left out and the fragment dropped, as
 under \code{"rfc3986"}. A URL it cannot parse, such as \code{"/a/../b"}, is
-evaluated as given, with the note \verb{not a valid WHATWG URL: evaluated as given}; a
-changed URL has the note \verb{WHATWG URL serialization changed the URL},
-then \verb{userinfo removed} or \verb{fragment dropped} where those apply.
+evaluated as given, with the note
+\verb{not a valid WHATWG URL: evaluated as given}; a changed URL has the note
+\verb{WHATWG URL serialization changed the URL}, then \verb{userinfo removed} or
+\verb{fragment dropped} where those apply. \code{"whatwg"} serializes a URL of any
+length, and its cost grows faster than linearly on a long path with many
+dot segments (rurl's serializer).
 
 In every mode, \code{preprocessing_disagreement} is \code{TRUE} when the URL the
 matcher reads under \code{"rfc3986"} and the one it reads under \code{"whatwg"}
@@ -178,7 +181,11 @@ rows whose two URLs differ. \code{disagreement_clients} is \code{NA} when the fl
 is \code{FALSE}; otherwise it gives each side's decision and the clients
 surveyed to send that form: \verb{wget 1.25, curl/libcurl < 8.13.0} for
 \code{"rfc3986"} and \verb{Chrome 157, Node 26 fetch, curl/libcurl >= 8.13.0} for
-\code{"whatwg"}.
+\code{"whatwg"}. Under \code{"rfc3986"} and \code{"none"}, a URL longer than 8192 bytes
+is not compared: the \code{"whatwg"} form is not computed, no second match
+runs, \code{preprocessing_disagreement} is \code{NA} and \code{disagreement_clients} is
+\verb{not compared: URL longer than 8192 bytes}. Under \code{"whatwg"} every length
+is compared.
 }
 \examples{
 # A non-Google-named token evaluated through the default Google backend

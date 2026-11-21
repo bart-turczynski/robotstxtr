@@ -174,6 +174,11 @@ on matcher rows whose two URLs differ bytewise, so the common case costs one pas
 for every row in every mode, which costs a `rurl` call per URL (about 0.1 ms each on the
 maintainer's machine, and more on a long path with many dot segments).
 
+Under `"rfc3986"` and `"none"`, a URL longer than 8192 bytes is not compared, because `rurl`'s cost
+grows faster than linearly on long dot-heavy paths (about 53 s for 20,000 `/seg/..` pairs): its
+flag is `NA`, `disagreement_clients` is `not compared: URL longer than 8192 bytes`, and no second
+pass runs. `"whatwg"` serializes and compares any length.
+
 The schema revision of both facades moves to `2026-11-21.2`. No policy revision moves.
 `as_legacy_robots_decisions_v1()` drops both columns.
 

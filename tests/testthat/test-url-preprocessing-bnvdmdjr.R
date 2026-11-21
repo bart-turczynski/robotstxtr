@@ -890,3 +890,92 @@ test_that("evaluate_url_v1 under whatwg: same fetch, flag on the row", {
   expect_true(new$results$preprocessing_disagreement)
   expect_true(old$results$preprocessing_disagreement)
 })
+
+# ---- the length cap on the comparison ----------------------------------------
+
+# A URL of `bytes` bytes whose rfc3986 and whatwg forms decide apart:
+# padding in the query moves neither decision.
+pp_sized <- function(bytes) {
+  head <- "https://example.com/latam/%2e%2e/account/x?q="
+  paste0(head, strrep("a", bytes - nchar(head, type = "bytes")))
+}
+
+pp_not_compared <- "not compared: URL longer than 8192 bytes"
+
+pp_count_rurl <- function(env) {
+  real <- rurl::serialize_url
+  local_mocked_bindings(
+    serialize_url = function(url, ...) {
+      env$rurl <- c(env$rurl, url)
+      real(url, ...)
+    },
+    .package = "rurl", .env = parent.frame()
+  )
+}
+
+test_that("the cap is 8192 bytes of the input URL", {
+  expect_identical(url_disagreement_max_bytes_v1(), 8192L)
+  expect_identical(url_disagreement_not_compared_v1(), pp_not_compared)
+  expect_identical(nchar(pp_sized(8192L), type = "bytes"), 8192L)
+  expect_identical(nchar(pp_sized(8193L), type = "bytes"), 8193L)
+})
+
+test_that("rfc3986 and none compare 8192 bytes, not 8193, and skip rurl", {
+  at <- pp_sized(8192L)
+  over <- pp_sized(8193L)
+  for (mode in c("rfc3986", "none")) {
+    for (backend in names(pp_engines)) {
+      seen <- new.env(parent = emptyenv())
+      pp_count_rurl(seen)
+      r <- pp_eval(c(at, over), backend, pp_engines[[backend]], mode)
+      expect_identical(
+        r$preprocessing_disagreement, c(TRUE, NA),
+        label = paste(mode, backend)
+      )
+      expect_identical(
+        r$disagreement_clients,
+        c(pp_clients("allow", "disallow"), pp_not_compared)
+      )
+      expect_identical(seen$rurl, at)
+      # The selected decision is untouched by the cap.
+      expect_identical(r$url_decision, c("allow", "allow"))
+    }
+  }
+})
+
+test_that("a URL over the cap gets no second matcher pass", {
+  seen <- new.env(parent = emptyenv())
+  pp_count_dispatch(seen)
+  over <- pp_sized(8193L)
+  r <- pp_eval(over, "google", "Googlebot", "rfc3986")
+  expect_identical(seen$urls, r$matcher_url)
+  # Under "none" too, though its rfc3986 target differs from the input.
+  seen$urls <- NULL
+  long_dots <- paste0("https://example.com/a/../", strrep("b", 8200L))
+  pp_eval(long_dots, "google", "Googlebot", "none")
+  expect_identical(seen$urls, long_dots)
+})
+
+test_that("whatwg compares and serializes any length", {
+  over <- pp_sized(8193L)
+  seen <- new.env(parent = emptyenv())
+  pp_count_rurl(seen)
+  r <- pp_whatwg(over)
+  expect_identical(seen$rurl, over)
+  expect_true(r$preprocessing_disagreement)
+  expect_identical(r$disagreement_clients, pp_clients("allow", "disallow"))
+  expect_identical(r$url_decision, "disallow")
+})
+
+test_that("20,000 dot-segment pairs under the default stay fast", {
+  long <- paste0("https://example.com", strrep("/seg/..", 20000L), "/a/b")
+  elapsed <- system.time(
+    r <- robots_evaluate_text_v1(
+      pp_body, long, "Googlebot", "google", "google"
+    )$results
+  )[["elapsed"]]
+  expect_identical(r$matcher_url, "https://example.com/a/b")
+  expect_identical(r$preprocessing_disagreement, NA)
+  # rurl's whatwg serializer took about 53 seconds on this URL.
+  expect_lt(elapsed, 10)
+})

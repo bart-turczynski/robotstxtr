@@ -309,7 +309,10 @@ Schema revision `2026-11-21.2` adds two more columns after
   bytewise and the row's matcher decides them differently (`url_decision`);
   `FALSE` otherwise, including an `NA` or empty URL and a row no matcher
   decided. A second matcher pass reads the other URL only on matcher rows
-  whose two URLs differ.
+  whose two URLs differ. Under `"rfc3986"` and `"none"`, `NA` for a URL
+  longer than 8192 bytes, which is not compared (`disagreement_clients`:
+  `not compared: URL longer than 8192 bytes`); `"whatwg"` compares any
+  length.
 - `disagreement_clients` (character): `NA` when the flag is `FALSE`;
   otherwise `rfc3986 <decision>: wget 1.25, curl/libcurl < 8.13.0; whatwg
   <decision>: Chrome 157, Node 26 fetch, curl/libcurl >= 8.13.0`, or
