@@ -233,29 +233,29 @@ test_that("each wording branch for several look-alikes is pinned", {
                 label = value)
   }
   # Nothing invisible: no "or are invisible".
-  ends("a‐b‑c", paste0(
+  ends("a\u2010b\u2011c", paste0(
     "characters that look like ASCII: U+2010 HYPHEN at byte 2 (looks ",
     "like '-'), U+2011 NON-BREAKING HYPHEN at byte 6 (looks like '-')"
   ), "a-b-c")
   # A soft hyphen beside a hyphen: dropped and replaced, all ASCII after.
-  ends("a­b‑c", paste0(
+  ends("a\u00adb\u2011c", paste0(
     "characters that look like ASCII or are invisible: U+00AD SOFT HYPHEN ",
     "at byte 2 (invisible), U+2011 NON-BREAKING HYPHEN at byte 5 (looks ",
     "like '-')"
   ), "ab-c")
   # Other non-ASCII text kept: replaced only, then replaced and dropped.
-  ends("a‐b‑cé", paste0(
+  ends("a\u2010b\u2011c\u00e9", paste0(
     "characters that look like ASCII: U+2010 HYPHEN at byte 2 (looks ",
     "like '-'), U+2011 NON-BREAKING HYPHEN at byte 6 (looks like '-')"
   ), "a-b-c\\xC3\\xA9", "with ASCII in their place")
-  ends("a­b‑cé", paste0(
+  ends("a\u00adb\u2011c\u00e9", paste0(
     "characters that look like ASCII or are invisible: U+00AD SOFT HYPHEN ",
     "at byte 2 (invisible), U+2011 NON-BREAKING HYPHEN at byte 5 (looks ",
     "like '-')"
   ), "ab-c\\xC3\\xA9",
   "with ASCII for the look-alikes and the invisible one dropped")
   # One invisible character beside other non-ASCII text.
-  ends("a­bé", "U+00AD SOFT HYPHEN at byte 2, which is invisible",
+  ends("a\u00adb\u00e9", "U+00AD SOFT HYPHEN at byte 2, which is invisible",
        "ab\\xC3\\xA9", "without it")
 })
 
@@ -348,7 +348,7 @@ test_that("a long line whose value ends before the buffer keeps its tail", {
   # A comment or trailing blanks make the line long, but the value ends
   # well before the buffer: its own E2 80 is invalid UTF-8, not a cut, so
   # today's handling stays and no look-alike sentence misquotes it.
-  value <- c(charToRaw("User-agent: Bingbоt"), as.raw(c(0xE2, 0x80)))
+  value <- c(charToRaw("User-agent: Bingb\u043et"), as.raw(c(0xE2, 0x80)))
   tails <- list(comment = c(charToRaw(" #"), rep(charToRaw("c"), 17000L)),
                 blanks = rep(charToRaw(" "), 17000L))
   for (name in names(tails)) {
