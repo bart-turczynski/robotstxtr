@@ -879,6 +879,15 @@ test_that("a latin1 scheme-less URL reads as its UTF-8 twin", {
   expect_identical(r$preprocessing_disagreement, c(FALSE, FALSE))
 })
 
+test_that("a scheme-less URL whose lead is not UTF-8 fails whatwg", {
+  bad <- "a\xfe/%2e%2e/x"
+  expect_identical(Encoding(bad), "unknown")
+  pre <- preprocess_matcher_url_v1(bad, "whatwg")
+  expect_true(pre$whatwg_failed)
+  expect_identical(pre$matcher_url, bad)
+  expect_identical(pre$note, pp_ww_invalid)
+})
+
 test_that("whatwg reads UTF-8 bytes the same in a C locale", {
   url <- rawToChar(charToRaw("https://example.com/caf\xc3\xa9/x"))
   body <- "User-agent: *\nDisallow: /caf%C3%A9\n"

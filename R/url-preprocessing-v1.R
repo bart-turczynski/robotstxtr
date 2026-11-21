@@ -161,25 +161,26 @@ whatwg_serialize_v1 <- function(url) {
 
 # A URL with no scheme, split exactly as "rfc3986" splits it
 # (url_target_parts_v1()). NULL when that path does not start with "/" (it
-# is then read as "rfc3986" reads it); else the split, the input's mark,
-# and the placeholder URL to serialize (NA when the path and query are not
-# valid UTF-8).
+# is then read as "rfc3986" reads it); else the split of its UTF-8 bytes
+# (the delimiters are ASCII, so it splits where the input does), and the
+# placeholder URL to serialize. A URL that is not valid UTF-8, its lead
+# included, has no placeholder URL (NA) and so fails, as rurl fails on any
+# other such URL.
 whatwg_schemeless_input_v1 <- function(url) {
   input <- url_bytes_v1(url)
   target <- url_target_parts_v1(input$bytes)
   if (length(target$path) == 0L || target$path[[1L]] != as.raw(0x2f)) {
     return(NULL)
   }
-  tail <- url_utf8_for_rurl_v1(
-    string_with_mark_v1(c(target$path, target$query), input$encoding)
-  )
+  utf8 <- url_utf8_for_rurl_v1(url)
+  if (is.na(utf8)) {
+    return(list(target = target, wrapped = NA_character_))
+  }
+  target <- url_target_parts_v1(charToRaw(utf8))
+  tail <- string_with_mark_v1(c(target$path, target$query), "UTF-8")
   list(
-    target = target, encoding = input$encoding,
-    wrapped = if (is.na(tail)) {
-      NA_character_
-    } else {
-      paste0(whatwg_placeholder_origin_v1(), tail)
-    }
+    target = target, encoding = "UTF-8",
+    wrapped = paste0(whatwg_placeholder_origin_v1(), tail)
   )
 }
 
