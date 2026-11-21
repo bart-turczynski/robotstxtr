@@ -474,6 +474,48 @@ test_that("ROBO-ybhwztid: an origin with no final response is not followed", {
     "http://example.com/robots.txt", "http://example.org/robots.txt",
     "http://example.net/robots.txt"
   ))
+  # The same failures after a hop to another site: still no final response.
+  for (end in list(
+    function(req) fake_refusal("private"),
+    function(req) fake_failure("timeout"),
+    dest_moved("http://example.net/a")
+  )) {
+    routes <- list(
+      "http://example.com/robots.txt" = dest_moved("http://example.net/a"),
+      "http://example.net/a" = end
+    )
+    run <- dest_fetch(routes)
+    expect_identical(nrow(run$opted$destinations), 0L)
+    expect_false("http://example.net/robots.txt" %in% run$urls)
+  }
+})
+
+test_that("ROBO-ybhwztid: the trigger needs both a final URL and a status", {
+  from <- "http://example.com/robots.txt"
+  expect_identical(
+    destination_robots_url(from, "http://example.net/", 200L),
+    "http://example.net/robots.txt"
+  )
+  # Acquisition sets both or neither; each is checked on its own anyway.
+  expect_identical(
+    destination_robots_url(from, "http://example.net/", NA_integer_),
+    NA_character_
+  )
+  expect_identical(
+    destination_robots_url(from, NA_character_, 200L), NA_character_
+  )
+  expect_identical(
+    destination_robots_url(from, "not a url", 200L), NA_character_
+  )
+})
+
+test_that("ROBO-ybhwztid: any final status on another site is followed", {
+  routes <- dest_routes()
+  routes[["http://example.net/"]] <- dest_page("oops", status = 500L)
+  run <- dest_fetch(routes)
+  expect_identical(run$opted$robots$fetch_outcome, "http_error")
+  expect_identical(run$urls, dest_three)
+  expect_identical(run$opted$destinations$fetch_outcome, "fetched")
 })
 
 test_that("ROBO-ybhwztid: a 3xx too large after a cross-site hop is followed", {
