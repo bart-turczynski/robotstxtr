@@ -80,14 +80,14 @@ test_that("at most five written values are named, then a count", {
 })
 
 test_that("only the values of a token the cut merges are named", {
-  # `Bar` names one whole value in both groups, so only `Foo` merges by a
-  # cut; both tokens are named when both do.
+  # Both groups name `Bar` whole, so a whole-value reader merges them too:
+  # the plain text.
   d <- dc_rows(dc_lines(
     "User-agent: Foo a", "User-agent: Bar", "Disallow: /a", "Disallow: /z",
     "", "User-agent: Foo b", "User-agent: Bar", "Disallow: /a"
   ))
-  expect_identical(d$message,
-                   dc_cut(3L, "'Foo a' and 'Foo b' as one token, 'Foo',"))
+  expect_identical(d$message, dc_plain(3L))
+  # Both tokens are named when the cut merges both.
   d <- dc_rows(dc_lines(
     "User-agent: Foo a", "User-agent: Bar a", "Disallow: /a", "Disallow: /z",
     "", "User-agent: Foo b", "User-agent: Bar b", "Disallow: /a"
@@ -111,16 +111,15 @@ test_that("a written value is named as raw_text renders it", {
             charToRaw("User-agent: Foo\\xE9\nDisallow: /a\n"))
   expect_identical(dc_rows(body)$message,
                    dc_cut(2L, "'Foo\\xE9' and 'Foo\\xE9' as one token, 'Foo',"))
-  # Values differing only in ASCII case are one value, named as first written.
+  # Values differing only in ASCII case are one whole value: the groups
+  # share it and merge for a whole-value reader too.
   d <- dc_rows(dc_lines(
     "User-agent: Foo a", "Disallow: /a", "Disallow: /z", "",
     "User-agent: FOO A", "User-agent: Foo b", "Disallow: /a", "Disallow: /y",
     "", "User-agent: Foo a", "User-agent: Foo b", "Disallow: /a"
   ))
   expect_identical(d$line, c(7L, 12L))
-  expect_identical(d$message[[1L]],
-                   dc_cut(2L, "'Foo a' and 'Foo b' as one token, 'Foo',"))
-  expect_identical(d$message[[2L]], dc_plain(2L))
+  expect_identical(d$message, dc_plain(c(2L, 2L)))
 })
 
 test_that("a NUL in the file keeps Google's reading note", {
@@ -201,6 +200,48 @@ test_that("a rule an uncut group already gives is a real duplicate", {
   expect_identical(d$message, c(
     dc_cut(2L, "'foo' and 'Foo bar' as one token, 'foo',"), dc_plain(2L)
   ))
+})
+
+test_that("a group sharing a whole value merges for every matcher", {
+  # The repeat's group also names `bingbot` (`Yandex`) whole, so the Bing
+  # (Yandex) backend merges it with the earlier group: line 6 is a repeat
+  # there too, and keeps the plain text. Without line 2's rule, line 6
+  # decides.
+  for (case in list(c("bingbot", "bingbot/2.0", "bing"),
+                    c("Yandex", "Yandex 2.0", "yandex"))) {
+    body <- function(first_rule) {
+      dc_lines(paste("User-agent:", case[[1L]]), first_rule, "",
+               paste("User-agent:", case[[1L]]),
+               paste("User-agent:", case[[2L]]), "Disallow: /a")
+    }
+    d <- dc_rows(body("Disallow: /a"))
+    expect_identical(d$line, 6L, label = case[[3L]])
+    expect_identical(d$message, dc_plain(2L), label = case[[3L]])
+    for (rule in c("Disallow: /a", "Disallow: /zz")) {
+      x <- robots_evaluate_text_v1(body(rule), "http://e.com/a", case[[1L]],
+                                   case[[3L]], case[[3L]])$results
+      expect_identical(x$url_decision, "disallow", label = case[[3L]])
+      expect_identical(x$matched_line,
+                       if (rule == "Disallow: /a") 2L else 6L,
+                       label = case[[3L]])
+    }
+  }
+})
+
+test_that("a cut value Google reads no token from is a whole value", {
+  d <- dc_rows(dc_lines(
+    "User-agent: Foo", "Disallow: /a", "Disallow: /b", "", "User-agent: Foo",
+    "User-agent: 1bot", "Disallow: /a"
+  ))
+  expect_identical(d$line, 7L)
+  expect_identical(d$message, dc_plain(2L))
+  # Shared only by `1bot`, the groups still merge for a whole-value reader.
+  d <- dc_rows(dc_lines(
+    "User-agent: Foo a", "User-agent: 1bot", "Disallow: /a", "Disallow: /b",
+    "", "User-agent: Foo b", "User-agent: 1bot", "Disallow: /a"
+  ))
+  expect_identical(d$line, 8L)
+  expect_identical(d$message, dc_plain(3L))
 })
 
 # The matchers, unchanged by this ticket. Each probe file has a second group

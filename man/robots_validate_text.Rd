@@ -615,14 +615,17 @@ neither gets a \code{duplicate_rule} row nor counts as the earlier rule of
 one. In other groups, such a line keeps \code{rule_lowercase_escape} and may
 get \code{duplicate_rule}. Groups merge as Google's matcher merges them, so
 \verb{Foo web spider} and \verb{Foo blog}, both read as \code{Foo}, share their rules. A
-repeat that exists only through such a cut (the rule is no repeat when
-each whole value, folded to ASCII lower case, names its own crawler) does
-not say the rule has no effect: its message says the repeat is Google's
-only, names the written values (five at most, then a count) and the
-token read, and points to the \code{user_agent_cut} rows. The package's Bing
-and Yandex matchers compare the whole value and keep those groups apart.
-A rule that a group naming the same whole value already gives keeps the
-plain message.
+repeat that exists only through such a cut (no earlier line with the rule
+sits in a group that shares a whole User-agent value, folded to ASCII
+lower case, with the repeat's group) does not say the rule has no effect:
+its message says the repeat is Google's only, names the written values
+(five at most, then a count) and the token read, and points to the
+\code{user_agent_cut} rows. The package's Bing and Yandex matchers compare the
+whole value and keep those groups apart. When an earlier group with the
+rule shares a whole value with the repeat's group, as \code{User-agent: Foo}
+beside \code{User-agent: Foo} and \verb{User-agent: 1bot} does, a matcher that
+compares the whole value merges them too, and the row keeps the plain
+message.
 
 On a document holding a NUL byte, \code{wildcard_rules_not_inherited},
 \code{disallow_tied_by_allow}, \code{duplicate_rule} and the AI-training codes

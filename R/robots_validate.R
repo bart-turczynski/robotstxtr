@@ -606,14 +606,17 @@ validation_unsupported <- c(
 #' one. In other groups, such a line keeps `rule_lowercase_escape` and may
 #' get `duplicate_rule`. Groups merge as Google's matcher merges them, so
 #' `Foo web spider` and `Foo blog`, both read as `Foo`, share their rules. A
-#' repeat that exists only through such a cut (the rule is no repeat when
-#' each whole value, folded to ASCII lower case, names its own crawler) does
-#' not say the rule has no effect: its message says the repeat is Google's
-#' only, names the written values (five at most, then a count) and the
-#' token read, and points to the `user_agent_cut` rows. The package's Bing
-#' and Yandex matchers compare the whole value and keep those groups apart.
-#' A rule that a group naming the same whole value already gives keeps the
-#' plain message.
+#' repeat that exists only through such a cut (no earlier line with the rule
+#' sits in a group that shares a whole User-agent value, folded to ASCII
+#' lower case, with the repeat's group) does not say the rule has no effect:
+#' its message says the repeat is Google's only, names the written values
+#' (five at most, then a count) and the token read, and points to the
+#' `user_agent_cut` rows. The package's Bing and Yandex matchers compare the
+#' whole value and keep those groups apart. When an earlier group with the
+#' rule shares a whole value with the repeat's group, as `User-agent: Foo`
+#' beside `User-agent: Foo` and `User-agent: 1bot` does, a matcher that
+#' compares the whole value merges them too, and the row keeps the plain
+#' message.
 #'
 #' On a document holding a NUL byte, `wildcard_rules_not_inherited`,
 #' `disallow_tied_by_allow`, `duplicate_rule` and the AI-training codes
@@ -1885,8 +1888,8 @@ rsl_license_scope <- function(at, first, names, has_global, local_groups) {
 #   ASCII-safe as `raw_text` renders it, for messages that name the agent:
 #   the cut token is Google's reading only, ROBO-txnzyugl) and `uncut` (the
 #   merge key of a matcher that compares the whole value: `key`, except on
-#   a cut line Google reads a token from, where it is the full value folded
-#   to ASCII lower case, written as `#` and hex bytes; ROBO-qwfoyouo).
+#   a cut line, where it is the full value folded to ASCII lower case,
+#   written as `#` and hex bytes; ROBO-qwfoyouo).
 # - `rules`: one row per Allow or Disallow inside a group (rules before the
 #   first User-agent are dropped): `group`, `line`, `type` ("allow" or
 #   "disallow"), `value` (canonical, as parsed), `empty` and `key` (type and
@@ -1959,14 +1962,14 @@ validation_groups <- function(parsed) {
 
 # The merge key of each User-agent line for a matcher that compares the
 # whole value (ROBO-qwfoyouo): `key` where Google's matcher reads the value
-# whole or reads no token, else the full value with ASCII upper case folded,
-# as `#` and hex bytes. The hex form is exact for any byte, where `name`
-# renders the text `\xE9` and the byte 0xE9 alike, and `#` keeps it apart
-# from every token key.
+# whole (and "" for a global line), else the full value with ASCII upper
+# case folded, as `#` and hex bytes, also where Google reads no token
+# (`1bot`). The hex form is exact for any byte, where `name` renders the
+# text `\xE9` and the byte 0xE9 alike, and `#` keeps it apart from every
+# token key.
 validation_uncut_keys <- function(agent_bytes, key, cut) {
   uncut <- key
-  folded <- cut & nzchar(key)
-  uncut[folded] <- vapply(agent_bytes[folded], function(bytes) {
+  uncut[cut] <- vapply(agent_bytes[cut], function(bytes) {
     upper <- bytes >= as.raw(0x41) & bytes <= as.raw(0x5a)
     bytes[upper] <- as.raw(as.integer(bytes[upper]) + 32L)
     paste0("#", paste(as.character(bytes), collapse = ""))
@@ -3646,10 +3649,11 @@ validation_token_expander <- function(groups, key = groups$agents$key) {
 # nor count as the earlier rule. Returns a data frame of `line`, `type` and
 # `message`, in line order; the message names the smallest line among each
 # token's first identical rule.
-# A row is a repeat only through a cut when the same check on the merge keys
-# of a matcher that compares the whole value (`agents$uncut`) finds none:
-# Google's matcher merged the groups of values it cuts to one token, and the
-# message says so instead of calling the rule a no-op (ROBO-qwfoyouo).
+# A row is a repeat only through a cut when no earlier line holding the rule
+# sits in a group sharing a whole value with the repeat's group
+# (duplicate_rule_cut_only()): Google's matcher merged the groups of values
+# it cuts to one token, and the message says so instead of calling the rule
+# a no-op (ROBO-qwfoyouo).
 duplicate_rule_diagnostics <- function(groups, skip = integer()) {
   rules <- groups$rules
   # Any rule line, empty or not, ends its group. A group's only rule line
@@ -3704,17 +3708,24 @@ duplicate_rule_repeats <- function(rules, expand) {
 }
 
 # Which repeats in `owner` (indexes of `rules`) are repeats only for Google's
-# matcher: under the whole-value keys they are none. A rule an uncut group
-# already gives stays a repeat there, so it keeps the plain text.
+# matcher. A matcher that compares the whole value merges two groups for a
+# crawler whose value both name, so the repeat is Google's only when no
+# earlier line holding the same rule sits in a group sharing a whole value
+# (`agents$uncut`, `*` for a global line) with the repeat's group. Where one
+# does, a crawler going by that value gets the rule twice there too, and the
+# row keeps the plain text.
 duplicate_rule_cut_only <- function(groups, rules, owner) {
   agents <- groups$agents
   if (length(owner) == 0L || all(agents$uncut == agents$key)) {
     return(logical(length(owner)))
   }
-  whole <- duplicate_rule_repeats(
-    rules, validation_token_expander(groups, agents$uncut)
-  )
-  !owner %in% whole$owner
+  by_rule <- validation_token_expander(groups, agents$uncut)(rules$group)
+  held <- by_rule$owner
+  key <- paste(by_rule$class, rules$type[held], rules$value[held],
+               sep = "\n")
+  # Rows are in file order, so a key's first row has its smallest line.
+  shared <- held[rules$line[held[match(key, key)]] < rules$line[held]]
+  !owner %in% shared
 }
 
 # The message of a repeat that exists only because Google's matcher cuts
