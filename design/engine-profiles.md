@@ -455,6 +455,12 @@ group's first `User-agent` line, which on a joined group is the earlier agent's 
 internetcom.jp, the second `*`), not the named crawler's. On a body holding a NUL byte the codes
 follow Google's reading and say so. Pinned by `tests/testthat/test-user-agent-joined-xepnhfgs.R`.
 
+An agent is named as written (ROBO-txnzyugl). When Google's matcher cuts the value (`Foo Bar`,
+read as `Foo`), the message adds a sentence naming the cut values with their lines (five at most)
+and pointing to their `user_agent_cut` rows (ROBO-zqyqbudf); `ai_training_token_stacked` adds it
+for the crawler it names. The sentence speaks of Google's reading only. Pinned by
+`tests/testthat/test-cut-note-zqyqbudf.R`.
+
 ### 5e. Repeated groups for one crawler (ROBO-vnhirero; validator only)
 
 A crawler named in two or more groups follows all of them merged. Google merges them (`src/robots.cc`;
@@ -536,6 +542,13 @@ merge into one, anchored on the earliest group and naming each group with its li
 count). Warning rows never merge across groups. Pinned by
 `tests/testthat/test-wildcard-disallows-pbwijkdq.R`.
 
+Both codes name each crawler by its value as written. Where Google's matcher cuts it
+(`Peer39_Crawler` and `Peer42`, both read as `Peer`), a crawler going by the full value gets `*`
+there, so the row adds a sentence naming the cut values with their lines (five at most) and
+pointing to their `user_agent_cut` rows; a merged info row names only its cut values
+(ROBO-zqyqbudf, `tests/testthat/test-cut-note-zqyqbudf.R`). `empty_disallow_with_full_block`
+(§5e) adds the same sentence.
+
 ### 5h. A named group's Allow that reopens a `*` Disallow (ROBO-cufxicmz; validator only)
 
 Under a full block, sites list Allow prefixes for the sections a named crawler may read. A `*`
@@ -560,6 +573,8 @@ Disallow, ten at most, and those Disallows leave the group's `wildcard_rules_not
 §5g are exempt. A row whose every path is reopened by an every-path Allow (`Disallow: /` with
 `Allow: /`, which allows everything since Allow wins the tie) is an explicit grant and is info, as in
 §5g (owner decision, 2026-11-18); a narrower Allow keeps it a warning. Pinned by `tests/testthat/test-allow-reopens-cufxicmz.R`.
+A crawler whose value Google's matcher cuts gets the §5g sentence pointing to its
+`user_agent_cut` row (ROBO-zqyqbudf).
 
 ## 6. Matcher capability availability
 

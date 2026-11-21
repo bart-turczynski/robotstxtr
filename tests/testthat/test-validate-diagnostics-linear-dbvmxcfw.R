@@ -171,7 +171,25 @@ test_that("the frame of a body on every emission path is pinned", {
     # wildcard_rules_not_inherited@25 names `Foo.Bot` as written.
     # ROBO-pbwijkdq: the lost `*` Disallows are warnings at 25, 31, 34 and
     # 38, and the four groups share one info row for the lost Allow.
+    # ROBO-zqyqbudf: both rows at 25 name the cut `Foo.Bot`, and only they
+    # gain a sentence on Google's reading of it.
     seam_digest(d, linear_frame_extra(d)),
+    "c11611911c13a62a8e8a29c91671d054"
+  )
+  # Without that sentence the frame is the one pinned before: the two rows
+  # at 25 are the only change, and only their message changed.
+  note <- paste0(" Google's matcher reads only a product token from ",
+                 "`Foo.Bot` (line 25) and takes the agent to be that token; ",
+                 "see the user_agent_cut row.")
+  noted <- endsWith(d$message, note)
+  expect_identical(linear_rows(d)[noted],
+                   c("wildcard_disallows_not_inherited@25",
+                     "wildcard_rules_not_inherited@25"))
+  old <- d
+  old$message[noted] <- substr(old$message[noted], 1L,
+                               nchar(old$message[noted]) - nchar(note))
+  expect_identical(
+    seam_digest(old, linear_frame_extra(old)),
     "cbe39d47996685e43092c40053b28f37"
   )
 })
