@@ -892,6 +892,12 @@ test_that("whatwg reads UTF-8 bytes the same in a C locale", {
   expect_identical(
     preprocess_matcher_url_v1(rel, "whatwg")$whatwg_url, "/caf%C3%A9/b"
   )
+  # A non-ASCII lead is kept with its bytes and its mark, so the matcher
+  # reads it as UTF-8 here too.
+  lead <- "café/a/../b"
+  out <- preprocess_matcher_url_v1(lead, "whatwg")$matcher_url
+  expect_identical(Encoding(out), "UTF-8")
+  expect_identical(charToRaw(out), charToRaw("café/b"))
 })
 
 test_that("whatwg: an unchanged URL passes as given, with no note", {
