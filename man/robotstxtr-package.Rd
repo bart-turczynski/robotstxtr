@@ -51,7 +51,7 @@ Contract introspection: \code{\link[=robots_engine_contract_v1]{robots_engine_co
 \code{\link[=robots_engine_contract_v2]{robots_engine_contract_v2()}}.
 Google-matcher entry points: \code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}},
 \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}}.
-Acquisition evidence: \code{\link[=robots_fetch]{robots_fetch()}}.
+Acquisition evidence: \code{\link[=robots_fetch]{robots_fetch()}}, \code{\link[=robots_compare_fetches]{robots_compare_fetches()}}.
 Document validation: \code{\link[=robots_validate_text]{robots_validate_text()}}, \code{\link[=robots_validate_url]{robots_validate_url()}}.
 Result inspection: \code{\link[=robots_body]{robots_body()}}, \code{\link[=as_legacy_robots_decisions_v1]{as_legacy_robots_decisions_v1()}}.
 

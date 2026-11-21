@@ -6,7 +6,7 @@
 #' [robots_engine_contract_v2()].
 #' Google-matcher entry points: [allowed_by_robots_text()],
 #' [allowed_by_robots_url()].
-#' Acquisition evidence: [robots_fetch()].
+#' Acquisition evidence: [robots_fetch()], [robots_compare_fetches()].
 #' Document validation: [robots_validate_text()], [robots_validate_url()].
 #' Result inspection: [robots_body()], [as_legacy_robots_decisions_v1()].
 #'

@@ -594,3 +594,153 @@ http_date_epoch <- function(year, month_day, hms) {
   }
   as.double(date) * 86400 + sum(hms * c(3600, 60, 1))
 }
+
+# --- robots_compare_fetches() inputs (ROBO-syoccfej) -------------------------
+
+# `max_requests` must be one non-missing, POSITIVE, WHOLE-NUMBER value no
+# greater than `.Machine$integer.max`, as validate_max_bytes() checks
+# `max_bytes` (Inf fails the upper bound, NaN the NA check). It has no
+# default: the budget is always the caller's.
+validate_max_requests <- function(max_requests) {
+  if (missing(max_requests) || !is.numeric(max_requests) ||
+        length(max_requests) != 1L || is.na(max_requests) ||
+        max_requests <= 0 || max_requests != trunc(max_requests) ||
+        max_requests > .Machine$integer.max) {
+    robots_abort(
+      paste(
+        "`max_requests` must be a single, positive, finite, whole-number",
+        "value no greater than `.Machine$integer.max`."
+      ),
+      "robotstxtr_invalid_max_requests"
+    )
+  }
+  as.integer(max_requests)
+}
+
+# The most observations one robots_compare_fetches() call may plan:
+# `sum(repeats)` over every variant. The budget bounds requests; this bounds
+# the plan, so a huge `repeats` is a call error instead of hours of work.
+compare_max_observations <- 10000L
+
+# The columns `variants` may have.
+variants_columns <- c("url", "fetch_user_agent", "label", "repeats")
+
+invalid_variants <- function(detail) {
+  robots_abort(
+    paste(
+      "`variants` must be a character vector of URLs or a data frame with a",
+      "character `url` column.", detail
+    ),
+    "robotstxtr_invalid_variants"
+  )
+}
+
+# A character column of `variants`, or `default` when it is absent. A factor
+# is read as its labels; a column of only NA (logical) as character NA.
+variants_character <- function(x, name, default) {
+  if (is.null(x)) {
+    return(default)
+  }
+  if (is.factor(x) || (is.logical(x) && all(is.na(x)))) {
+    x <- as.character(x)
+  }
+  if (!is.character(x)) {
+    invalid_variants(sprintf("Column `%s` is not character.", name))
+  }
+  unname(x)
+}
+
+# Each non-NA `fetch_user_agent` is checked as robots_fetch() checks its own.
+variants_user_agents <- function(agents) {
+  for (i in which(!is.na(agents))) {
+    tryCatch(
+      validate_fetch_user_agent(agents[[i]]),
+      robotstxtr_invalid_fetch_user_agent = function(e) {
+        robots_abort(
+          sprintf(
+            "`variants$fetch_user_agent` row %d: %s", i, conditionMessage(e)
+          ),
+          "robotstxtr_invalid_fetch_user_agent"
+        )
+      }
+    )
+  }
+  agents
+}
+
+# `repeats`, absent (1 each) or whole numbers of at least 1, summing to at
+# most compare_max_observations. The sum, taken as a double, also bounds each
+# value, so one past the integer range or Inf is refused by it.
+variants_repeats <- function(repeats, n) {
+  if (is.null(repeats)) {
+    repeats <- rep(1L, n)
+  }
+  if (!is.numeric(repeats) || anyNA(repeats) || any(repeats < 1) ||
+        any(repeats != trunc(repeats))) {
+    invalid_variants(
+      "Column `repeats` must hold whole numbers of at least 1, with no NA."
+    )
+  }
+  planned <- sum(as.double(repeats))
+  if (planned > compare_max_observations) {
+    robots_abort(
+      sprintf(
+        paste(
+          "`variants` plans %.0f observations (the sum of `repeats`); at most",
+          "%d are allowed in one call."
+        ),
+        planned, compare_max_observations
+      ),
+      "robotstxtr_invalid_variants"
+    )
+  }
+  as.integer(repeats)
+}
+
+# The shape of `variants`: a character vector becomes `data.frame(url = .)`;
+# anything else must be a data frame with a `url` column and no column
+# outside variants_columns (a misspelled column is an error, never ignored).
+variants_frame <- function(variants) {
+  if (is.character(variants) && is.null(dim(variants))) {
+    variants <- data.frame(url = unname(variants), stringsAsFactors = FALSE)
+  }
+  if (!is.data.frame(variants)) {
+    invalid_variants("It is neither.")
+  }
+  if (!"url" %in% names(variants)) {
+    invalid_variants("It has no `url` column.")
+  }
+  unknown <- setdiff(names(variants), variants_columns)
+  if (length(unknown) > 0L) {
+    invalid_variants(sprintf(
+      "Unknown column%s %s; the columns are %s.",
+      if (length(unknown) == 1L) "" else "s",
+      paste0("`", unknown, "`", collapse = ", "),
+      paste0("`", variants_columns, "`", collapse = ", ")
+    ))
+  }
+  variants
+}
+
+# `variants` as a plain data frame of `url`, `fetch_user_agent` (NA: the
+# package agent), `label` (NA or absent: `variant_<i>`) and `repeats`
+# (absent: 1). Columns are read by exact name. Every check runs before any
+# request.
+validate_variants <- function(variants) {
+  variants <- variants_frame(variants)
+  n <- nrow(variants)
+  default_label <- sprintf("variant_%d", seq_len(n))
+  url <- variants_character(variants[["url"]], "url", NULL)
+  agents <- variants_character(
+    variants[["fetch_user_agent"]], "fetch_user_agent", rep(NA_character_, n)
+  )
+  label <- variants_character(variants[["label"]], "label", default_label)
+  label[is.na(label)] <- default_label[is.na(label)]
+  data.frame(
+    url = url,
+    fetch_user_agent = variants_user_agents(agents),
+    label = label,
+    repeats = variants_repeats(variants[["repeats"]], n),
+    stringsAsFactors = FALSE
+  )
+}

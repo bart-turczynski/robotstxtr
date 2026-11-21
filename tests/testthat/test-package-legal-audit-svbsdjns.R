@@ -61,14 +61,16 @@ pl_skip_if_no_native <- function() {
 }
 
 # The frozen public export surface. getNamespaceExports() returns exactly these
-# twelve symbols; the four S3 print methods register for dispatch but are not in
-# the exports set. Adding an export is a deliberate API change that MUST update
-# this list (and the setequal freeze below will otherwise fail).
+# thirteen symbols; the five S3 print methods register for dispatch but are not
+# in the exports set. Adding an export is a deliberate API change that MUST
+# update this list (and the setequal freeze below will otherwise fail).
+# robots_compare_fetches joined in ROBO-syoccfej.
 pl_public_exports <- c(
   "allowed_by_robots_text",
   "allowed_by_robots_url",
   "as_legacy_robots_decisions_v1",
   "robots_body",
+  "robots_compare_fetches",
   "robots_engine_contract_v1",
   "robots_engine_contract_v2",
   "robots_evaluate_text_v1",

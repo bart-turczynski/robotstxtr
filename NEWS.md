@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* Fetch: new `robots_compare_fetches(variants, max_requests)` compares robots.txt responses across chosen URLs, User-Agent headers and repeats under a hard request budget (ROBO-syoccfej).
+
 * Fetch: `robots` rows keep the final response's raw `Cache-Control`, `Age`, `Date`, `Expires`, `ETag`, `Last-Modified` and `Vary` as character columns; `NA` absent, `""` empty (ROBO-zleohwyz).
 
 * Validator: `robots_validate_text()` and `robots_validate_url()` warn `xml_body` or `json_body` when a body starts with markup or looks like JSON, its lines still read as directives (ROBO-mgtngbpm).

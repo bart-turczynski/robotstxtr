@@ -49,9 +49,11 @@ reference:
   - title: "Fetching"
     desc: >
       Fetch robots.txt documents under the deterministic policy without
-      matching, and read back a stored body.
+      matching, compare the responses to explicitly chosen fetch variants,
+      and read back a stored body.
     contents:
       - robots_fetch
+      - robots_compare_fetches
       - robots_body
 
   - title: "Document validation"
@@ -81,4 +83,5 @@ reference:
     contents:
       - print.robots_decisions
       - print.robots_fetches
+      - print.robots_fetch_comparison
       - print.robots_validations
