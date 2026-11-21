@@ -717,3 +717,19 @@ test_that("ROBO-ybhwztid: a reused body is copied and validated once more", {
   expect_identical(d$destinations$body, d$robots$body[2L])
   expect_length(log$urls, 3L)
 })
+
+test_that("ROBO-ybhwztid: robots_body() reads a destination body", {
+  log <- dest_log()
+  local_fake_ssrfr(dest_router(dest_routes(), log))
+  d <- allowed_by_robots_url(dest_inputs, "my-bot", destination_robots = TRUE)
+  id <- d$results$destination_source_id[[1L]]
+  expect_identical(robots_body(d, id, raw = TRUE), charToRaw(dest_rules_body))
+  expect_identical(robots_body(d, id, n = Inf), dest_rules_body)
+  # NULL still means the one origin source, never a destination.
+  expect_identical(robots_body(d, raw = TRUE), dest_html_body())
+  expect_error(
+    robots_body(d, "destination_2"),
+    "available: \"robots_1\", \"destination_1\"",
+    fixed = TRUE, class = "robotstxtr_unknown_source"
+  )
+})

@@ -10,8 +10,9 @@ robots_body(x, source_id = NULL, n = 20, raw = FALSE)
 \item{x}{A \code{robots_decisions} object.}
 
 \item{source_id}{A single non-empty character string naming the source to
-read from \code{x$robots$source_id}, or \code{NULL} (the default) to select the only
-source when the object holds exactly one.}
+read from \code{x$robots$source_id} or \code{x$destinations$source_id}, or \code{NULL}
+(the default) to select the only \code{robots} source when the object holds
+exactly one.}
 
 \item{n}{A single positive number giving the maximum number of body bytes to
 include in the preview. Defaults to \code{20}. Use \code{n = Inf} for the full body.
@@ -39,7 +40,11 @@ Selection follows the \code{robots$source_id} column. If \code{source_id} is \co
 If \code{source_id} is \code{NULL} and the object holds more than one source, the call
 is
 ambiguous and raises a package error rather than choosing silently. An
-unknown \code{source_id} is also a package error.
+unknown \code{source_id} is also a package error. A result of
+\code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} called with \code{destination_robots = TRUE} also
+holds destination rows: name one by its \code{source_id} (\code{destination_1} and
+so on, as \code{results$destination_source_id} gives it) to read its body.
+They are never chosen when \code{source_id} is \code{NULL}.
 
 When \code{raw = FALSE}, the selected body's bytes are rendered to a character
 string. Robots.txt bodies may be arbitrary bytes (for example non-UTF-8 or a
