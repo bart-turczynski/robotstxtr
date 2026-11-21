@@ -141,13 +141,19 @@ dropped. Only the literal segments \code{.} and \code{..} are removed; no byte i
 percent-encoded, decoded or case-folded, so \verb{/\%2e\%2e/} is kept. A URL that
 is not a valid RFC 3986 URI (a raw space, a byte outside ASCII, a
 backslash, another character RFC 3986 excludes, or a \verb{\%} without two hex
-digits) is still evaluated. A URL with no scheme or authority, such as
-\code{"/a/../b"}, has its dot segments removed from the first \code{/} on. Under
-\code{"none"} the matcher reads the URL as given, as before. The \code{url} column
-always holds the input; \code{matcher_url} holds the URL the matcher read, and
-\code{url_preprocessing_note} names the rule that changed it, or why the input
-is not a valid URI, and is \code{NA} otherwise. \code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}} and
-\code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} read the URL as given.
+digits) is still evaluated. A URL with no authority, such as \code{"/a/../b"},
+keeps the bytes before its first \code{/} and has its dot segments removed from
+there on, unless that would start the path with \verb{//} and so read as a
+host (\code{"/a/..//h/x"}): then it is evaluated as given. Under \code{"none"} the
+matcher reads the URL as given, as before. The \code{url} column always holds
+the input and \code{matcher_url} the URL the matcher read.
+\code{url_preprocessing_note} is \code{NA} under \code{"none"}, and under \code{"rfc3986"}
+when the input is a valid RFC 3986 URI with an authority and the
+preprocessing changed nothing. Otherwise it says why the input is not a
+valid URI, that it has no authority, and which rule changed it (or why
+its dot segments were left in place), joined by \code{"; "}.
+\code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}} and \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} read the URL as
+given.
 }
 \examples{
 # A non-Google-named token evaluated through the default Google backend

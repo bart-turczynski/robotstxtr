@@ -39,7 +39,7 @@ validate_url_normalization_v1 <- function(url_normalization) {
 preprocess_matcher_url_v1 <- function(url, url_normalization) {
   n <- length(url)
   note <- rep(NA_character_, n)
-  if (identical(url_normalization, "none") || n == 0L) {
+  if (identical(url_normalization, "none")) {
     return(list(matcher_url = url, note = note))
   }
   matcher_url <- url
@@ -51,15 +51,12 @@ preprocess_matcher_url_v1 <- function(url, url_normalization) {
   list(matcher_url = matcher_url, note = note)
 }
 
-# The bytes the native bindings read: a latin1 string arrives as its UTF-8
-# bytes (cpp11), every other string as written. `encoding` is the mark a
-# rebuilt string takes.
+# The URL's bytes as written, and the mark a rebuilt string takes. A latin1
+# string is worked on in its latin1 bytes and keeps its mark: every byte
+# this file looks for is ASCII, and the native bindings convert a latin1
+# string to UTF-8 (cpp11) whether or not it was rebuilt.
 url_bytes_v1 <- function(url) {
-  encoding <- Encoding(url)
-  if (identical(encoding, "latin1")) {
-    return(list(bytes = charToRaw(enc2utf8(url)), encoding = "UTF-8"))
-  }
-  list(bytes = charToRaw(url), encoding = encoding)
+  list(bytes = charToRaw(url), encoding = Encoding(url))
 }
 
 # `bytes` from position `from` to the end; raw(0) past the end.
@@ -70,13 +67,9 @@ byte_tail_v1 <- function(bytes, from) {
   bytes[from:length(bytes)]
 }
 
-# The first position at or after `from` holding one of `set`, or NA.
-first_byte_of_v1 <- function(bytes, set, from = 1L) {
-  if (from > length(bytes)) {
-    return(NA_integer_)
-  }
-  hit <- which(bytes[from:length(bytes)] %in% set)
-  if (length(hit) == 0L) NA_integer_ else from + hit[[1L]] - 1L
+# The first position holding one of `set`, or NA: one pass over `bytes`.
+first_byte_of_v1 <- function(bytes, set) {
+  match(TRUE, bytes %in% set)
 }
 
 # RFC 3986 Appendix B on raw bytes: `scheme` (with its ":"), whether an
@@ -131,7 +124,12 @@ url_host_port_v1 <- function(authority) {
 # RFC 3986 section 5.2.4 remove_dot_segments, step for step, on raw bytes.
 # Only the literal segments "." and ".." are dots; "%2e" is not decoded.
 # Each output entry is one segment with its leading "/", so "remove the last
-# segment and its preceding /" pops one entry. Linear in the path length.
+# segment and its preceding /" pops one entry. The output is a preallocated
+# stack with a top index, and the slash positions are found in one pass and
+# walked forward with the input pointer, so the work is linear in the path
+# length: each step moves the pointer forward or ends the loop, and each
+# step does a bounded amount of work apart from the segment copy in E, whose
+# copies add up to the path length.
 remove_dot_segments_v1 <- function(path) {
   n <- length(path)
   if (n == 0L) {
@@ -146,7 +144,10 @@ remove_dot_segments_v1 <- function(path) {
   rest_is <- function(i, pattern) {
     n - i + 1L == length(pattern) && at(i, pattern)
   }
-  out <- vector("list", 0L)
+  slashes <- c(which(path == slash), n + 1L)
+  next_slash <- 1L # slashes[next_slash] is the first slash past the pointer
+  out <- vector("list", n)
+  top <- 0L
   i <- 1L
   while (i <= n) {
     if (at(i, c(dot, dot, slash))) {
@@ -156,26 +157,30 @@ remove_dot_segments_v1 <- function(path) {
     } else if (at(i, c(slash, dot, slash))) {
       i <- i + 2L # B: "/./" -> "/"
     } else if (rest_is(i, c(slash, dot))) {
-      out[[length(out) + 1L]] <- slash # B: "/." -> "/"
+      top <- top + 1L # B: "/." -> "/"
+      out[[top]] <- slash
       break
     } else if (at(i, c(slash, dot, dot, slash))) {
-      out <- out[-length(out)] # C: "/../" -> "/", pop
+      top <- max(top - 1L, 0L) # C: "/../" -> "/", pop
       i <- i + 3L
     } else if (rest_is(i, c(slash, dot, dot))) {
-      out <- out[-length(out)] # C: "/.." -> "/", pop
-      out[[length(out) + 1L]] <- slash
+      top <- max(top - 1L, 0L) + 1L # C: "/.." -> "/", pop, then push "/"
+      out[[top]] <- slash
       break
     } else if (rest_is(i, dot) || rest_is(i, c(dot, dot))) {
       break # D
     } else {
       # E: move the first segment, with its leading "/", to the output.
-      end <- first_byte_of_v1(path, slash, i + 1L)
-      end <- if (is.na(end)) n else end - 1L
-      out[[length(out) + 1L]] <- path[i:end]
+      while (slashes[[next_slash]] <= i) {
+        next_slash <- next_slash + 1L
+      }
+      end <- slashes[[next_slash]] - 1L
+      top <- top + 1L
+      out[[top]] <- path[i:end]
       i <- end + 1L
     }
   }
-  if (length(out) == 0L) raw(0) else unlist(out, use.names = FALSE)
+  if (top == 0L) raw(0) else unlist(out[seq_len(top)], use.names = FALSE)
 }
 
 # Why `bytes` is not a valid RFC 3986 URI, as the classes found, in a fixed
@@ -199,24 +204,51 @@ rfc3986_invalid_classes_v1 <- function(bytes) {
   names(found)[found]
 }
 
-# The row note: what is invalid, then each change, joined by "; "; NA when
-# the input is valid and nothing changed.
+# The row note: what is invalid, then the authority, then each change,
+# joined by "; "; NA when the input is a valid RFC 3986 URI with an
+# authority and preprocessing changed nothing. `no_authority` is "slash"
+# (no authority, a "/" in the path), "none" (no authority and no "/") or
+# NA (an authority). `dots` is "removed", "kept" (removing them would have
+# started the path with "//") or NA (none found).
 url_preprocessing_note_v1 <- function(invalid, no_authority, dots, userinfo,
                                       fragment) {
-  section <- "§"
+  section <- "\u00a7"
   parts <- c(
     if (length(invalid) > 0L) {
       paste0("not a valid RFC 3986 URI: ", toString(invalid))
     },
-    if (no_authority) "no scheme or authority: path read from the first /",
-    if (dots && length(invalid) > 0L) "dot segments removed as given",
-    if (dots && length(invalid) == 0L) {
-      paste0("RFC 3986 ", section, "5.2.4 removed dot segments")
-    },
+    switch(
+      no_authority,
+      slash = "no authority: path read from the first /",
+      none = "no authority and no /: evaluated as given"
+    ),
+    switch(
+      dots,
+      removed = if (length(invalid) > 0L) {
+        "dot segments removed as given"
+      } else {
+        paste0("RFC 3986 ", section, "5.2.4 removed dot segments")
+      },
+      kept = paste0(
+        "dot segments left in place: removing them would start the path ",
+        "with // (RFC 3986 ", section, "5.2.4)"
+      )
+    ),
     if (userinfo) paste0("userinfo removed (RFC 3986 ", section, "3.2.1)"),
     if (fragment) paste0("fragment dropped (RFC 3986 ", section, "3.5)")
   )
   if (length(parts) == 0L) NA_character_ else paste(parts, collapse = "; ")
+}
+
+# The no-authority reading of `path`: the bytes before its first "/" are
+# kept, and the rest is the path the backend reads.
+url_path_after_first_slash_v1 <- function(path) {
+  slash <- match(as.raw(0x2f), path)
+  keep <- if (is.na(slash)) length(path) else slash - 1L
+  list(
+    lead = path[seq_len(keep)], rest = byte_tail_v1(path, keep + 1L),
+    no_authority = if (is.na(slash)) "none" else "slash"
+  )
 }
 
 # One URL under "rfc3986": the rebuilt URL and its note.
@@ -224,6 +256,7 @@ rfc3986_matcher_url_v1 <- function(url) {
   input <- url_bytes_v1(url)
   parts <- url_split_rfc3986_v1(input$bytes)
   userinfo <- FALSE
+  no_authority <- NA_character_
   if (parts$has_authority) {
     host <- url_host_port_v1(parts$authority)
     userinfo <- !identical(host, parts$authority)
@@ -232,23 +265,31 @@ rfc3986_matcher_url_v1 <- function(url) {
   } else {
     # No authority (the text entry point accepts "/a/../b" and
     # "example.com/a"): the path the backend reads starts at the first "/".
-    slash <- match(as.raw(0x2f), parts$path)
-    keep <- if (is.na(slash)) length(parts$path) else slash - 1L
-    lead <- c(parts$scheme, parts$path[seq_len(keep)])
-    before <- byte_tail_v1(parts$path, keep + 1L)
+    split <- url_path_after_first_slash_v1(parts$path)
+    lead <- c(parts$scheme, split$lead)
+    before <- split$rest
+    no_authority <- split$no_authority
   }
   path <- remove_dot_segments_v1(before)
+  dots <- if (identical(path, before)) NA_character_ else "removed"
   rebuilt <- c(lead, path, parts$query)
+  if (!parts$has_authority && identical(dots, "removed") &&
+        length(path) >= 2L && identical(path[1:2], charToRaw("//"))) {
+    # Removing the dots would turn the path into an authority that the
+    # input does not have ("/a/..//h/x" -> "//h/x"): keep the input.
+    dots <- "kept"
+    rebuilt <- input$bytes
+    parts$fragment <- FALSE
+  }
   note <- url_preprocessing_note_v1(
     invalid = rfc3986_invalid_classes_v1(input$bytes),
-    no_authority = !parts$has_authority,
-    dots = !identical(path, before),
+    no_authority = no_authority,
+    dots = dots,
     userinfo = userinfo,
     fragment = parts$fragment
   )
-  if (identical(rebuilt, input$bytes)) {
-    return(list(url = url, note = note))
-  }
+  # The rebuilt bytes take the input's mark, so an unchanged URL comes back
+  # with its bytes and its mark.
   out <- rawToChar(rebuilt)
   if (!identical(input$encoding, "unknown")) {
     Encoding(out) <- input$encoding

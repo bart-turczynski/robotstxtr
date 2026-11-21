@@ -2007,13 +2007,19 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' percent-encoded, decoded or case-folded, so `/%2e%2e/` is kept. A URL that
 #' is not a valid RFC 3986 URI (a raw space, a byte outside ASCII, a
 #' backslash, another character RFC 3986 excludes, or a `%` without two hex
-#' digits) is still evaluated. A URL with no scheme or authority, such as
-#' `"/a/../b"`, has its dot segments removed from the first `/` on. Under
-#' `"none"` the matcher reads the URL as given, as before. The `url` column
-#' always holds the input; `matcher_url` holds the URL the matcher read, and
-#' `url_preprocessing_note` names the rule that changed it, or why the input
-#' is not a valid URI, and is `NA` otherwise. [allowed_by_robots_text()] and
-#' [allowed_by_robots_url()] read the URL as given.
+#' digits) is still evaluated. A URL with no authority, such as `"/a/../b"`,
+#' keeps the bytes before its first `/` and has its dot segments removed from
+#' there on, unless that would start the path with `//` and so read as a
+#' host (`"/a/..//h/x"`): then it is evaluated as given. Under `"none"` the
+#' matcher reads the URL as given, as before. The `url` column always holds
+#' the input and `matcher_url` the URL the matcher read.
+#' `url_preprocessing_note` is `NA` under `"none"`, and under `"rfc3986"`
+#' when the input is a valid RFC 3986 URI with an authority and the
+#' preprocessing changed nothing. Otherwise it says why the input is not a
+#' valid URI, that it has no authority, and which rule changed it (or why
+#' its dot segments were left in place), joined by `"; "`.
+#' [allowed_by_robots_text()] and [allowed_by_robots_url()] read the URL as
+#' given.
 #'
 #' @param robots_txt A single, non-missing character value containing the
 #'   robots.txt body. A body marked UTF-8 is used as written. An unmarked body

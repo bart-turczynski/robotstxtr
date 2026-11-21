@@ -24,9 +24,14 @@ pp_engines <- list(
   google = "Googlebot", bing = "bingbot", yandex = "Yandex"
 )
 
-sect <- "§"
+sect <- "\u00a7"
 pp_dots <- paste0("RFC 3986 ", sect, "5.2.4 removed dot segments")
-pp_noauth <- "no scheme or authority: path read from the first /"
+pp_noauth <- "no authority: path read from the first /"
+pp_noslash <- "no authority and no /: evaluated as given"
+pp_kept <- paste0(
+  "dot segments left in place: removing them would start the path with // ",
+  "(RFC 3986 ", sect, "5.2.4)"
+)
 
 # ---- "none": the URL as given (the pins of the first commit) ---------------
 
@@ -72,7 +77,7 @@ pp_matrix_urls <- c(
   "https://example.com/latam/../account/x",
   "https://example.com/latam/%2e%2e/account/x",
   "https://u;v@example.com/x",
-  "https://example.com/p q", "https://example.com/café",
+  "https://example.com/p q", "https://example.com/caf\u00e9",
   "https://example.com/a\\b", "https://example.com/x#frag",
   "/a/../b", "example.com/a/./b", "https://example.com/a/b/.."
 )
@@ -266,7 +271,7 @@ test_that("rfc3986 notes the rule, and records invalid input", {
     c("https://example.com/p q", "not a valid RFC 3986 URI: raw space"),
     c("https://example.com/a/../p q",
       "not a valid RFC 3986 URI: raw space; dot segments removed as given"),
-    c("https://example.com/café",
+    c("https://example.com/caf\u00e9",
       "not a valid RFC 3986 URI: raw non-ASCII"),
     c("https://example.com/a\\b", "not a valid RFC 3986 URI: backslash"),
     c("https://example.com/a|b",
@@ -285,7 +290,7 @@ test_that("rfc3986 notes the rule, and records invalid input", {
 
 test_that("rfc3986 evaluates invalid input, its path bytes unchanged", {
   urls <- c(
-    "https://example.com/a b", "https://example.com/café/x",
+    "https://example.com/a b", "https://example.com/caf\u00e9/x",
     "https://example.com/a\\..\\b"
   )
   for (backend in names(pp_engines)) {
@@ -316,6 +321,118 @@ test_that("rfc3986 on a URL with no scheme or authority", {
       pp_today("/a/./b", backend, token)$reason
     )
   }
+})
+
+test_that("rfc3986 never makes an authority the input does not have", {
+  # "/a/..//evil.com/x" would become "//evil.com/x", which a reader takes
+  # as a host; "https:/q/..//h2/a/x" would become "https://h2/a/x". Both
+  # are kept as given, with the reason (review round 1).
+  rows <- list(
+    list("/a/..//evil.com/x", "User-agent: *\nDisallow: /x\n"),
+    list("https:/q/..//h2/a/x", "User-agent: *\nDisallow: /a/\n")
+  )
+  for (row in rows) {
+    new <- pp_eval(row[[1]], "google", "Googlebot", "rfc3986", row[[2]])
+    old <- pp_today(row[[1]], "google", "Googlebot", row[[2]])
+    expect_identical(new$matcher_url, row[[1]])
+    expect_identical(new$url_decision, old$url_decision)
+    expect_identical(new$url_decision, "allow")
+    expect_identical(
+      new$url_preprocessing_note, paste0(pp_noauth, "; ", pp_kept)
+    )
+    for (backend in c("bing", "yandex")) {
+      token <- pp_engines[[backend]]
+      expect_identical(
+        pp_eval(row[[1]], backend, token, "rfc3986", row[[2]])[
+          c("matcher_status", "url_decision", "reason")
+        ],
+        pp_today(row[[1]], backend, token, row[[2]])[
+          c("matcher_status", "url_decision", "reason")
+        ],
+        label = backend
+      )
+    }
+  }
+  # With an authority, a leading "//" in the path is only a path.
+  r <- pp_rfc3986("https://h/a/..//x")
+  expect_identical(r$matcher_url, "https://h//x")
+  expect_identical(r$url_preprocessing_note, pp_dots)
+})
+
+test_that("rfc3986 notes say what the input lacks", {
+  urls <- c(
+    "x", "example.com", "https:", "mailto:a.b", "/a", "https:/a", "x//y"
+  )
+  r <- pp_rfc3986(urls)
+  expect_identical(r$matcher_url, urls)
+  # "x//y" has no dot segment, so nothing was left in place.
+  expect_identical(
+    r$url_preprocessing_note,
+    c(rep(pp_noslash, 4L), rep(pp_noauth, 3L))
+  )
+})
+
+test_that("rfc3986 reads a leading `:` as no scheme (Appendix B)", {
+  # The scheme needs one character before its ":". Read as a scheme, ":"
+  # would give "://h/a/../x" the authority "h" and the URL "://h/x".
+  r <- pp_rfc3986("://h/a/../x")
+  expect_identical(r$matcher_url, "://h/a/../x")
+  expect_identical(r$url_preprocessing_note, paste0(pp_noauth, "; ", pp_kept))
+})
+
+test_that("rfc3986 records controls as characters outside RFC 3986", {
+  r <- pp_rfc3986(c("https://example.com/a\tb", "https://example.com/a\x7fb"))
+  expect_identical(
+    r$url_preprocessing_note,
+    rep("not a valid RFC 3986 URI: character outside RFC 3986", 2L)
+  )
+})
+
+test_that("rfc3986 keeps an unchanged URL's bytes and encoding mark", {
+  latin <- "https://example.com/caf\xe9"
+  Encoding(latin) <- "latin1"
+  utf8 <- enc2utf8(latin)
+  pre <- preprocess_matcher_url_v1(c(latin, utf8), "rfc3986")
+  expect_identical(Encoding(pre$matcher_url), c("latin1", "UTF-8"))
+  expect_identical(charToRaw(pre$matcher_url[[1]]), charToRaw(latin))
+  expect_identical(charToRaw(pre$matcher_url[[2]]), charToRaw(utf8))
+})
+
+test_that("rfc3986 rebuilds a latin1 URL in latin1, read as its UTF-8 twin", {
+  latin <- "https://example.com/a/../caf\xe9"
+  Encoding(latin) <- "latin1"
+  utf8 <- enc2utf8(latin)
+  pre <- preprocess_matcher_url_v1(c(latin, utf8), "rfc3986")
+  expect_identical(Encoding(pre$matcher_url), c("latin1", "UTF-8"))
+  expect_identical(enc2utf8(pre$matcher_url[[1]]), pre$matcher_url[[2]])
+  # An ASCII rule, so the decision turns on the dot removal alone.
+  body <- "User-agent: *\nDisallow: /caf\n"
+  for (backend in names(pp_engines)) {
+    token <- pp_engines[[backend]]
+    expect_identical(
+      pp_eval(latin, backend, token, "rfc3986", body)$url_decision,
+      pp_eval(utf8, backend, token, "rfc3986", body)$url_decision,
+      label = backend
+    )
+  }
+  expect_identical(
+    pp_eval(latin, "google", "Googlebot", "rfc3986", body)$url_decision,
+    "disallow"
+  )
+})
+
+test_that("rfc3986 stays linear when the output stack grows", {
+  deep <- paste0("https://h", strrep("/a", 4000L), strrep("/..", 4000L), "/x")
+  flat <- paste0("https://h", strrep("/a", 4000L))
+  elapsed <- system.time({
+    deep_out <- preprocess_matcher_url_v1(deep, "rfc3986")
+    flat_out <- preprocess_matcher_url_v1(flat, "rfc3986")
+  })[["elapsed"]]
+  expect_identical(deep_out$matcher_url, "https://h/x")
+  expect_identical(flat_out$matcher_url, flat)
+  # Quadratic code took about six seconds here; linear code takes well
+  # under one.
+  expect_lt(elapsed, 2)
 })
 
 test_that("rfc3986 edge inputs: NA, empty, latin1, bytes and a long path", {

@@ -181,10 +181,15 @@ body_text <- function(bytes) {
   txt
 }
 as_answer <- function(x) if (is.na(x)) "NA" else if (isTRUE(x)) "1" else "0"
+# The v1 answer reads the URL as given (`url_normalization = "none"`), as
+# the reference and the other libraries are handed it: the recorded answers
+# compare matchers on one path, and the v1 default, "rfc3986", would remove
+# dot segments first (ADR 0002, ROBO-bnvdmdjr; design/library-comparison.md
+# class 21).
 cases$robotstxtr_v1 <- vapply(seq_len(nrow(cases)), function(k) {
   r <- robots_evaluate_text_v1(
     body_text(body_of(k)), cases$url[[k]], cases$token[[k]], "google",
-    "google"
+    "google", url_normalization = "none"
   )$results
   if (is.na(r$url_decision)) "NA" else as_answer(r$url_decision == "allow")
 }, character(1L))
