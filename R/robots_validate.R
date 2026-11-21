@@ -856,6 +856,8 @@ robots_validate_url <- function(url, timeout = 10, max_bytes = 524288L,
                                 safety_level = "strict",
                                 fetch_allow_ranges = character(),
                                 destination_robots = FALSE) {
+  # destination_robots first, as robots_fetch() checks it (ROBO-ybhwztid).
+  validate_destination_robots(destination_robots)
   safety_level <- validate_safety_level(safety_level)
   fetched <- robots_fetch(
     url = url,

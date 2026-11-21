@@ -733,3 +733,25 @@ test_that("ROBO-ybhwztid: robots_body() reads a destination body", {
     fixed = TRUE, class = "robotstxtr_unknown_source"
   )
 })
+
+test_that("ROBO-ybhwztid: a bad destination_robots is the first error", {
+  # Each entry point checks it first, so one bad call raises one class.
+  log <- dest_log()
+  local_fake_ssrfr(dest_router(dest_routes(), log))
+  calls <- list(
+    function(...) robots_fetch(...),
+    function(...) robots_validate_url(...),
+    function(...) allowed_by_robots_url(user_agent = "my-bot", ...)
+  )
+  for (call in calls) {
+    expect_error(
+      call(url = dest_inputs, timeout = -1, destination_robots = NA),
+      class = "robotstxtr_invalid_destination_robots"
+    )
+    expect_error(
+      call(url = 1, safety_level = "nope", destination_robots = NA),
+      class = "robotstxtr_invalid_destination_robots"
+    )
+  }
+  expect_identical(log$urls, character())
+})

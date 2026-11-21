@@ -275,8 +275,9 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
                          fetch_allow_ranges = character(),
                          destination_robots = FALSE) {
   # --- Call-level input validation / shared fetch controls (PRD 6.6). --------
-  validate_url_type(url)
+  # destination_robots first, in all three entry points (ROBO-ybhwztid).
   validate_destination_robots(destination_robots)
+  validate_url_type(url)
   timeout <- validate_timeout(timeout)
   validate_fetch_user_agent(fetch_user_agent)
   max_bytes_int <- validate_max_bytes(max_bytes)
