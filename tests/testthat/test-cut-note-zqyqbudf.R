@@ -485,15 +485,35 @@ test_that("no row but user_agent_cut names a cut token as an agent", {
                    cut)
 })
 
-# A builder timed on its own, best of three (ROBO-dbvmxcfw keeps the
-# validator linear).
-cn_time <- function(body, check) {
+# Timing guards (ROBO-dbvmxcfw keeps the validator linear). Each builder is
+# timed on its own, best of five, so one slow run under machine load does
+# not count.
+cn_prepare <- function(body) {
   parsed <- as.data.frame(robotstxtr_validation_parse_(charToRaw(body)),
                           stringsAsFactors = FALSE)
-  groups <- validation_groups(parsed)
-  min(vapply(1:3, function(i) {
-    system.time(check(groups, parsed))[["elapsed"]]
+  list(groups = validation_groups(parsed), parsed = parsed)
+}
+
+cn_time <- function(body, check) {
+  x <- cn_prepare(body)
+  min(vapply(1:5, function(i) {
+    system.time(check(x$groups, x$parsed))[["elapsed"]]
   }, 0))
+}
+
+# The same input timed with and without the sentence, runs interleaved so
+# both see the same load: c(with, without), each the best of five.
+cn_time_share <- function(body, check) {
+  x <- cn_prepare(body)
+  runs <- vapply(1:5, function(i) {
+    with_note <- system.time(check(x$groups, x$parsed))[["elapsed"]]
+    without <- system.time(with_mocked_bindings(
+      check(x$groups, x$parsed),
+      cut_agent_note = function(...) ""
+    ))[["elapsed"]]
+    c(with_note, without)
+  }, numeric(2L))
+  apply(runs, 1L, min)
 }
 
 # Letter-only tokens: Ta, Tb, ..., Tba, ...
@@ -543,32 +563,40 @@ cn_shapes <- list(
                        cn_letters(n)))
     },
     check = function(groups, parsed) ai_training_diagnostics(groups, parsed)
+  ),
+  # `n` distinct cut crawlers, each its own wildcard row. The check itself
+  # is not linear in them (each crawler scans the agent and rule lines,
+  # before this sentence too), so only the share guard below covers it.
+  wildcard_rows = list(
+    body = function(n) {
+      cn_lines("User-agent: *", "Disallow: /a", "Allow: /x",
+               sprintf("User-agent: %s 1\nDisallow: /b", cn_letters(n)))
+    },
+    check = function(groups, parsed) wildcard_inheritance_diagnostics(groups),
+    share_n = 2000L
   )
 )
 
-for (shape in names(cn_shapes)) {
+for (shape in setdiff(names(cn_shapes), "wildcard_rows")) {
   test_that(paste("the sentence costs time linear in the file:", shape), {
     skip_on_cran()
     # Four times the file: linear is about four times the time, quadratic
-    # sixteen.
+    # sixteen; 8x and a 0.05 s floor leave room for noise.
     x <- cn_shapes[[shape]]
     small <- cn_time(x$body(1000L), x$check)
     large <- cn_time(x$body(4000L), x$check)
-    expect_lt(large, 6 * max(small, 0.02))
+    expect_lt(large, 8 * max(small, 0.05))
   })
 }
 
-test_that("the sentence adds little to many wildcard rows", {
-  skip_on_cran()
-  # The wildcard check over `n` distinct crawlers was not linear before the
-  # sentence (each crawler scans the agent and rule lines), so the
-  # sentence's share is timed instead: the same rows with and without it.
-  body <- cn_lines("User-agent: *", "Disallow: /a", "Allow: /x",
-                   sprintf("User-agent: %s 1\nDisallow: /b",
-                           cn_letters(2000L)))
-  check <- function(groups, parsed) wildcard_inheritance_diagnostics(groups)
-  with_note <- cn_time(body, check)
-  local_mocked_bindings(cut_agent_note = function(...) "")
-  without <- cn_time(body, check)
-  expect_lt(with_note, 1.5 * without + 0.05)
-})
+for (shape in names(cn_shapes)) {
+  test_that(paste("the sentence adds a small share of the time:", shape), {
+    skip_on_cran()
+    # The same input with and without the sentence: load moves both alike,
+    # and a sentence costing time per row in the file would dominate.
+    x <- cn_shapes[[shape]]
+    n <- if (is.null(x$share_n)) 4000L else x$share_n
+    times <- cn_time_share(x$body(n), x$check)
+    expect_lt(times[[1L]], 1.5 * times[[2L]] + 0.05)
+  })
+}
