@@ -122,7 +122,10 @@ A warning only when the value is not an absolute URI
 \code{#}, so it holds no fragment. \code{X-RSL} and other keys stay
 \code{unknown_directive}. \cr
 \code{unknown_directive} \tab warning \tab
-A directive this profile does not recognize. \cr
+A directive this profile does not recognize. A key that is valid
+UTF-8 and holds a look-alike character, as \code{user_agent_cut}
+lists them, names it and gives the ASCII spelling
+(\code{Disallow} for a key written with a Cyrillic a). \cr
 \code{empty_user_agent} \tab error \tab
 A User-agent line with an empty value. \cr
 \code{user_agent_cut} \tab warning or info \tab
@@ -138,7 +141,17 @@ read is a documented Google crawler token the value did not mean
 (\code{Googlebot/2.1}) or a trailing \code{*} is info, as the token
 read is the crawler the value names, and any other token is info, as
 Google's crawlers do not go by it. The Bing and Yandex
-matchers do not cut the value. Every other code names the agent as
+matchers do not cut the value. A value that is valid UTF-8 and holds
+a look-alike character (a Unicode hyphen or dash such as U+2011,
+U+2212 or U+FF0D, U+FF3F FULLWIDTH LOW LINE, or a Cyrillic or Greek
+letter that Unicode's confusables list maps to one ASCII letter)
+adds a sentence naming each by code point and name with its byte
+offset, at most ten, and giving the ASCII spelling, which no byte
+compare matches; U+00AD SOFT HYPHEN is named as invisible and dropped
+from the spelling. The sentence names the package's Bing or Yandex
+matcher only when the spelling is a crawler that backend evaluates
+(\code{bingbot} written with a Cyrillic o). Latin letters with
+diacritics are not look-alikes. Every other code names the agent as
 written, and a code that names a cut value adds a sentence pointing
 to this row; \code{duplicate_rule} names the token read. \cr
 \code{rule_without_user_agent} \tab error \tab
@@ -676,7 +689,9 @@ still a C1 control and gets \code{rule_invisible_character}. No other
 non-ASCII character is matched, so most paths with accented letters, a
 path in Japanese, or a Latin-1 string converted to UTF-8 on input stay
 silent, as do a typed escape such as \verb{\%E2\%80\%8B}, a comment, a
-User-agent or Sitemap value, and a rule value that is not valid UTF-8
+User-agent value (a cut one names its look-alike characters on its
+\code{user_agent_cut} row instead), a Sitemap value, and a rule value that is
+not valid UTF-8
 (bytes after the cut, in a comment or past a NUL, do not count; a
 character the line buffer splits is dropped). Each message quotes code
 points as \code{U+XXXX} with byte offsets counted from 1 at the value's first
