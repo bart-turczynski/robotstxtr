@@ -135,9 +135,10 @@ validation_unsupported <- c(
 #'     character (below) is a warning whatever the token, as no byte
 #'     compare matches it. The Bing and Yandex
 #'     matchers do not cut the value. A value that is valid UTF-8 and holds
-#'     a look-alike character (a Unicode hyphen or dash such as U+2011,
-#'     U+2212 or U+FF0D, U+FF3F FULLWIDTH LOW LINE, or a Cyrillic or Greek
-#'     letter that Unicode's confusables list maps to one ASCII letter)
+#'     a look-alike character, from a closed list of common ones (Unicode
+#'     hyphens and dashes such as U+2011, U+2212 and U+FF0D, U+FF3F
+#'     FULLWIDTH LOW LINE, and some Cyrillic and Greek letters that look
+#'     like one ASCII letter, such as U+0430 and U+03BF)
 #'     adds a sentence naming each by code point and name with its byte
 #'     offset, at most ten, and giving the ASCII spelling, which no byte
 #'     compare matches; U+00AD SOFT HYPHEN is named as invisible and dropped
@@ -4806,9 +4807,10 @@ mojibake_units <- function(points) {
 # Look-alike characters (ROBO-wtixhwlo): a closed, hand-written table of
 # code points that look like an ASCII `-`, `_` or letter, with the Unicode
 # name and the ASCII each resembles. The hyphens and dashes are the
-# characters a paste turns `-` into; the letters are the Cyrillic and Greek
-# entries of Unicode's confusables.txt (UTS #39) that map to one ASCII
-# letter. U+00AD SOFT HYPHEN is invisible (as validation_invisible_code_
+# characters a paste turns `-` into; the letters are a closed subset of
+# common Cyrillic and Greek look-alikes, each one that Unicode's
+# confusables.txt (UTS #39) maps to one ASCII letter. It is not the whole
+# of that file, and the list grows only by hand. U+00AD SOFT HYPHEN is invisible (as validation_invisible_code_
 # points has it), so it resembles nothing and is dropped from the spelling.
 # Latin letters with diacritics are not look-alikes.
 validation_lookalike_code_points <- data.frame(

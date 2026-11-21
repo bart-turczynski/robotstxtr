@@ -144,9 +144,10 @@ Google's crawlers do not go by it; a value holding a look-alike
 character (below) is a warning whatever the token, as no byte
 compare matches it. The Bing and Yandex
 matchers do not cut the value. A value that is valid UTF-8 and holds
-a look-alike character (a Unicode hyphen or dash such as U+2011,
-U+2212 or U+FF0D, U+FF3F FULLWIDTH LOW LINE, or a Cyrillic or Greek
-letter that Unicode's confusables list maps to one ASCII letter)
+a look-alike character, from a closed list of common ones (Unicode
+hyphens and dashes such as U+2011, U+2212 and U+FF0D, U+FF3F
+FULLWIDTH LOW LINE, and some Cyrillic and Greek letters that look
+like one ASCII letter, such as U+0430 and U+03BF)
 adds a sentence naming each by code point and name with its byte
 offset, at most ten, and giving the ASCII spelling, which no byte
 compare matches; U+00AD SOFT HYPHEN is named as invisible and dropped
