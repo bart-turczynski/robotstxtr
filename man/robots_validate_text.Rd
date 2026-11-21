@@ -286,6 +286,10 @@ A crawler (or \code{*}) is named in a later group as well as an
 earlier one, so Google, Bing and Yandex merge the groups. Anchored on
 the later group's first line naming it; the message lists the earlier
 lines. \cr
+\code{user_agent_duplicate_in_group} \tab info \tab
+A User-agent line repeats a name, in any case or \code{*}, already in
+its own group, which changes nothing (RFC 9309 section 2.2.1). Anchored
+on the repeated line; the message names the first line naming it. \cr
 \code{empty_disallow_with_full_block} \tab warning \tab
 The rules one crawler follows hold an empty \code{Disallow:} and a
 full block (\code{Disallow: /}, no non-empty Allow): Google and Bing
@@ -560,6 +564,18 @@ line, draws nothing but still counts for later groups. The warning fires
 within one group too, where the engines split the same way. An every-path
 Allow beside \verb{Disallow: /} is no split (every engine allows) and draws
 neither.
+
+For \code{user_agent_duplicate_in_group}, a User-agent line that repeats a name
+already in its own group, in any case (\code{*} included), is reported on the
+repeated line. RFC 9309 section 2.2.1 matches a product token
+case-insensitively, so the repeat changes nothing; the row is info, so
+\code{validation_status} is unchanged. Names are compared as written, folded to
+ASCII lowercase, so \verb{Foo Bot} and \code{foo} stay apart: Google reads only \code{Foo}
+from the first. A line that a \verb{user_agent_joined_*}, \code{user_agent_cut} or
+\code{wildcard_rules_not_inherited} report already owns, or a policy-token line,
+draws nothing but still counts as an earlier name. A group with no rule line
+draws nothing. A repeat across a blank or a directive that still joins the
+group counts as in-group, unless the joined row owns that line.
 
 For \code{disallow_tied_by_allow}, an Allow and a Disallow with the same
 pattern match the same paths with the same priority, and Allow wins the

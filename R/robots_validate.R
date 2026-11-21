@@ -277,6 +277,10 @@ validation_unsupported <- c(
 #'     earlier one, so Google, Bing and Yandex merge the groups. Anchored on
 #'     the later group's first line naming it; the message lists the earlier
 #'     lines. \cr
+#'   \code{user_agent_duplicate_in_group} \tab info \tab
+#'     A User-agent line repeats a name, in any case or \code{*}, already in
+#'     its own group, which changes nothing (RFC 9309 section 2.2.1). Anchored
+#'     on the repeated line; the message names the first line naming it. \cr
 #'   \code{empty_disallow_with_full_block} \tab warning \tab
 #'     The rules one crawler follows hold an empty \code{Disallow:} and a
 #'     full block (\code{Disallow: /}, no non-empty Allow): Google and Bing
@@ -551,6 +555,18 @@ validation_unsupported <- c(
 #' within one group too, where the engines split the same way. An every-path
 #' Allow beside `Disallow: /` is no split (every engine allows) and draws
 #' neither.
+#'
+#' For `user_agent_duplicate_in_group`, a User-agent line that repeats a name
+#' already in its own group, in any case (`*` included), is reported on the
+#' repeated line. RFC 9309 section 2.2.1 matches a product token
+#' case-insensitively, so the repeat changes nothing; the row is info, so
+#' `validation_status` is unchanged. Names are compared as written, folded to
+#' ASCII lowercase, so `Foo Bot` and `foo` stay apart: Google reads only `Foo`
+#' from the first. A line that a `user_agent_joined_*`, `user_agent_cut` or
+#' `wildcard_rules_not_inherited` report already owns, or a policy-token line,
+#' draws nothing but still counts as an earlier name. A group with no rule line
+#' draws nothing. A repeat across a blank or a directive that still joins the
+#' group counts as in-group, unless the joined row owns that line.
 #'
 #' For `disallow_tied_by_allow`, an Allow and a Disallow with the same
 #' pattern match the same paths with the same priority, and Allow wins the
@@ -1436,11 +1452,20 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     wildcard_inheritance_diagnostics(groups)
   # A crawler named again in a later group (ROBO-vnhirero); a line a join,
   # cut or inheritance report owns is skipped (one line, one report).
-  found <- repeated_group_diagnostics(
-    groups,
-    skip = c(joined_lines, agents$line[agents$cut],
-             unlist(lapply(inheritance, `[[`, "owned")))
-  )
+  owned_lines <- c(joined_lines, agents$line[agents$cut],
+                   unlist(lapply(inheritance, `[[`, "owned")))
+  found <- repeated_group_diagnostics(groups, skip = owned_lines)
+  if (nrow(found) > 0L) {
+    add_chunk(
+      found$line, found$severity, found$code, found$directive,
+      vapply(raw_lines[found$line], render_validation_line, "",
+             USE.NAMES = FALSE),
+      paste0(found$message, nul_reading)
+    )
+  }
+  # A name repeated within one group (ROBO-wnuttuit), skipping the same lines.
+  found <- user_agent_duplicate_in_group_diagnostics(groups,
+                                                     skip = owned_lines)
   if (nrow(found) > 0L) {
     add_chunk(
       found$line, found$severity, found$code, found$directive,
@@ -2558,6 +2583,47 @@ repeated_group_diagnostics <- function(groups, skip = integer(), cap = 5L) {
   }, "")
   ai_training_rows(line[later], "info", "user_agent_repeated_group",
                    "user-agent", message)
+}
+
+# A User-agent line that repeats a name already in its own group
+# (ROBO-wnuttuit). RFC 9309 section 2.2.1 matches a product token
+# case-insensitively, so the repeat names no crawler the group does not
+# already name and changes nothing. The name compared is the value as written,
+# folded to ASCII lowercase, and `*` for a global line. A cut value keeps its
+# full text, so `Foo Bot` and `foo` stay apart (ROBO-txnzyugl). Policy-token
+# lines are left to ai_training_*. A line in `skip` draws nothing but still
+# counts as an earlier name; a group with no rule line draws nothing, as in
+# repeated_group_diagnostics(). One info per repeated line, naming the first
+# line of its group with the same name.
+user_agent_duplicate_in_group_diagnostics <- function(groups,
+                                                      skip = integer()) {
+  agents <- groups$agents
+  if (nrow(agents) < 2L) {
+    return(ai_training_rows())
+  }
+  family <- ai_training_kind(agents)$family
+  keep <- (agents$global | nzchar(agents$key)) & !family
+  agents <- agents[keep, , drop = FALSE]
+  folded <- ifelse(agents$global, "*", ascii_lower(agents$name))
+  pair <- paste(agents$group, folded, sep = "\n")
+  first <- match(pair, pair)
+  repeated <- which(first < seq_along(pair))
+  repeated <- repeated[!agents$line[repeated] %in% skip &
+                         agents$group[repeated] %in% groups$rules$group]
+  if (length(repeated) == 0L) {
+    return(ai_training_rows())
+  }
+  name <- ifelse(agents$global, "*", agents$name)
+  message <- sprintf(
+    paste0("`User-agent: %s` (line %d) repeats `User-agent: %s` (line %d) ",
+           "in the same group. Product tokens match case-insensitively (RFC ",
+           "9309 section 2.2.1), so the group names the same crawler with or ",
+           "without this line, and the line can be deleted."),
+    ai_training_name(name[repeated]), agents$line[repeated],
+    ai_training_name(name[first[repeated]]), agents$line[first[repeated]]
+  )
+  ai_training_rows(agents$line[repeated], rep("info", length(repeated)),
+                   "user_agent_duplicate_in_group", "user-agent", message)
 }
 
 # An empty `Disallow:` and a full block in the rules one crawler follows
