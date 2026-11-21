@@ -67,9 +67,15 @@ test_that("at most five written values are named, then a count", {
   d <- dc_rows(dc_lines(
     sprintf("User-agent: Foo %d\nDisallow: /a\nDisallow: /b\n", 1:7)
   ))
+  # Past five, the repeat's own value stays among those named.
   last <- d[d$line == max(d$line), , drop = FALSE]
   expect_identical(last$message, dc_cut(
-    3L, paste("'Foo 1', 'Foo 2', 'Foo 3', 'Foo 4', 'Foo 5' and 2 more as",
+    3L, paste("'Foo 1', 'Foo 2', 'Foo 3', 'Foo 4', 'Foo 7' and 2 more as",
+              "one token, 'Foo',")
+  ))
+  six <- d[d$line == 22L, , drop = FALSE]
+  expect_identical(six$message, dc_cut(
+    2L, paste("'Foo 1', 'Foo 2', 'Foo 3', 'Foo 4', 'Foo 6' and 1 more as",
               "one token, 'Foo',")
   ))
   five <- d[d$line == 19L, , drop = FALSE]
@@ -77,6 +83,32 @@ test_that("at most five written values are named, then a count", {
     3L, paste("'Foo 1', 'Foo 2', 'Foo 3', 'Foo 4' and 'Foo 5' as",
               "one token, 'Foo',")
   ))
+})
+
+test_that("a group's other tokens are not named", {
+  # `Baz x` and `Baz y` also cut to one token, but the repeat's group names
+  # only `Foo b`.
+  d <- dc_rows(dc_lines(
+    "User-agent: Foo a", "User-agent: Baz x", "Disallow: /a", "Disallow: /z",
+    "", "User-agent: Baz y", "Disallow: /a", "Disallow: /q", "",
+    "User-agent: Foo b", "Disallow: /a"
+  ))
+  expect_identical(d$line, c(7L, 11L))
+  expect_identical(d$message, c(
+    dc_cut(3L, "'Baz x' and 'Baz y' as one token, 'Baz',"),
+    dc_cut(3L, "'Foo a' and 'Foo b' as one token, 'Foo',")
+  ))
+})
+
+test_that("values differing only in ASCII case are named once", {
+  d <- dc_rows(dc_lines(
+    "User-agent: Foo a", "Disallow: /a", "Disallow: /z", "",
+    "User-agent: foo A", "Disallow: /q", "Disallow: /r", "",
+    "User-agent: Foo b", "Disallow: /a"
+  ))
+  expect_identical(d$line, 10L)
+  expect_identical(d$message,
+                   dc_cut(2L, "'Foo a' and 'Foo b' as one token, 'Foo',"))
 })
 
 test_that("only the values of a token the cut merges are named", {
@@ -286,6 +318,30 @@ test_that("the Bing and Yandex matchers keep those groups apart", {
   expect_identical(x$matcher_status, rep("unsupported_profile", 2L))
   x <- dc_probe("Yandex", "Yandex 2.0", "Yandex 2.0", "yandex")
   expect_identical(x$matcher_status, rep("not_evaluated", 2L))
+})
+
+# Two groups of `n` cut agents sharing `n` rules: every row of the second
+# group is a repeat only through the cut (ROBO-dbvmxcfw keeps the validator
+# linear). The check is timed on its own, best of three.
+dc_time_cut <- function(n) {
+  agents <- function(tag) sprintf("User-agent: Foo %s%d", tag, seq_len(n))
+  rules <- sprintf("Disallow: /r%d", seq_len(n))
+  groups <- validation_groups(as.data.frame(
+    robotstxtr_validation_parse_(charToRaw(dc_lines(
+      agents("a"), rules, "", agents("b"), rules
+    ))),
+    stringsAsFactors = FALSE
+  ))
+  min(vapply(1:3, function(i) {
+    system.time(duplicate_rule_diagnostics(groups))[["elapsed"]]
+  }, 0))
+}
+
+test_that("cut-only rows cost time linear in the file", {
+  skip_on_cran()
+  small <- dc_time_cut(1000L)
+  large <- dc_time_cut(2000L)
+  expect_lt(large, 3 * max(small, 0.02))
 })
 
 for (locale in readLines(test_path("fixtures", "case-folding-locales.txt"))) {

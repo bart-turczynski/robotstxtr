@@ -3729,44 +3729,12 @@ duplicate_rule_cut_only <- function(groups, rules, owner) {
 }
 
 # The message of a repeat that exists only because Google's matcher cuts
-# written User-agent values to one token and merges their groups. It names
-# the written values, in the repeat's group and the earlier groups holding
-# the rule, of each token they share that more than one whole value cuts to
-# (five at most, then a count), and the tokens read (five at most).
-duplicate_rule_cut_message <- function(agents, rules, owner, first,
-                                       cap = 5L) {
-  keep <- !agents$global & nzchar(agents$key)
-  group <- agents$group[keep]
-  key <- agents$key[keep]
-  pair <- paste(key, agents$uncut[keep], sep = "\n")
-  name <- agents$name[keep]
-  token <- agents$token[keep]
-  rule_key <- paste(rules$type, rules$value, sep = "\n")
-  holders <- split(seq_len(nrow(rules)), rule_key)
-  quote <- function(x) sprintf("'%s'", ai_training_name(x))
-  read_as <- vapply(owner, function(o) {
-    held <- holders[[rule_key[[o]]]]
-    held <- held[rules$line[held] <= rules$line[[o]]]
-    near <- which(group %in% rules$group[held])
-    near <- near[key[near] %in% key[near[group[near] == rules$group[[o]]]]]
-    # A token more than one whole value cuts to is a merge through a cut.
-    # Values differing only in ASCII case count once, the first written.
-    distinct <- near[!duplicated(pair[near])]
-    merged <- unique(key[distinct][duplicated(key[distinct])])
-    distinct <- distinct[key[distinct] %in% merged]
-    written <- name[distinct]
-    tokens <- token[distinct][!duplicated(key[distinct])]
-    paste(
-      joined_and(quote(utils::head(written, cap)), length(written) - cap),
-      "as",
-      if (length(tokens) == 1L) {
-        sprintf("one token, %s,", quote(tokens))
-      } else {
-        paste("the tokens", joined_and(quote(utils::head(tokens, cap)),
-                                       length(tokens) - cap))
-      }
-    )
-  }, "")
+# written User-agent values to one token and merges their groups. The
+# wording depends on the repeat's group only, so it is built once per group.
+duplicate_rule_cut_message <- function(agents, rules, owner, first) {
+  group <- rules$group[owner]
+  wanted <- unique(group)
+  read_as <- duplicate_rule_cut_names(agents, wanted)[match(group, wanted)]
   sprintf(paste0(
     "This %s repeats line %d only for Google's matcher, which reads %s ",
     "and merges their groups. The package's Bing and Yandex matchers ",
@@ -3774,6 +3742,63 @@ duplicate_rule_cut_message <- function(agents, rules, owner, first,
     "a repeat; see the user_agent_cut rows."
   ), ifelse(rules$type[owner] == "allow", "Allow", "Disallow"), first,
   read_as)
+}
+
+# For each group in `wanted`, the "<values> as <tokens>" part of the message:
+# each token the group names that more than one whole value cuts to in the
+# groups up to and including it (Google merges all of them), its written
+# values in file order (five at most, then a count, always one of the
+# group's own) and the tokens as first written (five at most). Values
+# differing only in ASCII case count once, the first written. The lookups
+# are built once, so the cost is linear in the agent lines (ROBO-dbvmxcfw).
+duplicate_rule_cut_names <- function(agents, wanted, cap = 5L) {
+  keep <- !agents$global & nzchar(agents$key)
+  key <- agents$key[keep]
+  pair <- paste(key, agents$uncut[keep], sep = "\n")
+  first_of <- match(pair, pair)
+  distinct <- which(first_of == seq_along(pair))
+  look <- list(
+    key = key, line = agents$line[keep], name = agents$name[keep],
+    token = agents$token[keep], first_of = first_of,
+    # Each token's distinct whole values, as agent indexes in line order.
+    by_key = split(distinct, factor(key[distinct], unique(key[distinct]))),
+    in_group = split(seq_along(key), agents$group[keep])
+  )
+  vapply(wanted, function(g) {
+    duplicate_rule_cut_group_names(look, look$in_group[[as.character(g)]],
+                                   cap)
+  }, "", USE.NAMES = FALSE)
+}
+
+duplicate_rule_cut_group_names <- function(look, own, cap) {
+  last <- max(look$line[own])
+  keys <- unique(look$key[own])
+  # How many distinct whole values each token has up to this group.
+  count <- vapply(keys, function(k) {
+    findInterval(last, look$line[look$by_key[[k]]])
+  }, 0L, USE.NAMES = FALSE)
+  merged <- keys[count > 1L]
+  count <- count[count > 1L]
+  total <- sum(count)
+  heads <- unlist(Map(function(k, n) look$by_key[[k]][seq_len(min(cap, n))],
+                      merged, count), use.names = FALSE)
+  shown <- sort(heads)[seq_len(min(cap, total))]
+  mine <- look$first_of[own][look$key[own] %in% merged]
+  if (!any(mine %in% shown)) {
+    shown <- sort(c(shown[-length(shown)], min(mine)))
+  }
+  firsts <- vapply(look$by_key[merged], `[[`, 0L, 1L, USE.NAMES = FALSE)
+  tokens <- look$token[sort(firsts)]
+  quote <- function(x) sprintf("'%s'", ai_training_name(x))
+  paste(
+    joined_and(quote(look$name[shown]), total - length(shown)), "as",
+    if (length(tokens) == 1L) {
+      sprintf("one token, %s,", quote(tokens))
+    } else {
+      paste("the tokens", joined_and(quote(utils::head(tokens, cap)),
+                                     length(tokens) - cap))
+    }
+  )
 }
 
 wildcard_inheritance_message <- function(tokens, one_group, missing,
