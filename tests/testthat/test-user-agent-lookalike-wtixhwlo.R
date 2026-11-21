@@ -46,7 +46,7 @@ la_none <- function(fallback = la_no_star) {
 
 la_unknown <- "Directive is not recognized by this validation profile."
 
-la_perplexity <- "User-agent: Perplexity‑User"
+la_perplexity <- "User-agent: Perplexity\u2011User"
 
 test_that("a look-alike cut row keeps today's text as its start", {
   x <- la_text(la_perplexity, "Disallow: /x")
@@ -82,11 +82,11 @@ test_that("the cut pointer on the wildcard row is unchanged", {
 
 test_that("other look-alike cuts keep today's text as their start", {
   cases <- list(
-    list("User-agent: Perplexity−User", la_read_as("Perplexity")),
-    list("User-agent: Bingbоt", la_read_as("Bingb")),
-    list("User-agent: аbcbot", la_none()),
-    list("User-agent: google＿extended", la_read_as("google")),
-    list("User-agent: Perplexity­User", la_read_as("Perplexity"))
+    list("User-agent: Perplexity\u2212User", la_read_as("Perplexity")),
+    list("User-agent: Bingb\u043et", la_read_as("Bingb")),
+    list("User-agent: \u0430bcbot", la_none()),
+    list("User-agent: google\uff3fextended", la_read_as("google")),
+    list("User-agent: Perplexity\u00adUser", la_read_as("Perplexity"))
   )
   for (case in cases) {
     row <- la_rows(la_text(case[[1L]], "Disallow: /x"))
@@ -94,7 +94,7 @@ test_that("other look-alike cuts keep today's text as their start", {
     expect_identical(row$severity, "info", label = case[[1L]])
     expect_true(startsWith(row$message, case[[2L]]), label = case[[1L]])
   }
-  x <- la_text("Disаllow: /a")
+  x <- la_text("Dis\u0430llow: /a")
   row <- la_rows(x, "unknown_directive")
   expect_true(startsWith(row$message, la_unknown))
 })
@@ -115,15 +115,15 @@ test_that("inputs without a look-alike keep today's text exactly", {
     list("User-agent: B\xE4r\nDisallow: /x\n", la_read_as("B")),
     list("User-agent: Bingb\xf6t\nDisallow: /x\n", la_read_as("Bingb")),
     list(latin, la_read_as("Caf")),
-    list("User-agent: __usage_aï-training\nDisallow: /x\n",
+    list("User-agent: __usage_a\u00ef-training\nDisallow: /x\n",
          la_read_as("__usage_a"))
   )
   for (case in cases) {
     row <- la_rows(robots_validate_text(case[[1L]]))
     expect_identical(row$message, case[[2L]], label = case[[1L]])
   }
-  for (body in c("Café: /x\n",
-                 "User-agent: a\nDisallow: /x\n﻿User-agent: b\n")) {
+  for (body in c("Caf\u00e9: /x\n",
+                 "User-agent: a\nDisallow: /x\n\ufeffUser-agent: b\n")) {
     row <- la_rows(robots_validate_text(body), "unknown_directive")
     expect_identical(row$message, la_unknown, label = body)
   }
@@ -133,8 +133,8 @@ test_that("inputs without a look-alike keep today's text exactly", {
 
 test_that("a look-alike Google's parser never reads stays silent", {
   nul <- c(charToRaw("User-agent: Perplexity"), as.raw(0),
-           charToRaw("‑User\nDisallow: /x\n"))
-  hash <- "User-agent: Perplexity #‑User\nDisallow: /x\n"
+           charToRaw("\u2011User\nDisallow: /x\n"))
+  hash <- "User-agent: Perplexity #\u2011User\nDisallow: /x\n"
   for (body in list(nul, hash)) {
     x <- robots_validate_text(body)
     expect_identical(nrow(la_rows(x)), 0L)
@@ -154,8 +154,8 @@ test_that("Google gives the ASCII spelling the `*` group", {
 test_that("Bing and Yandex give their crawler's ASCII spelling `*`", {
   # Each backend evaluates only its own selectors (duplicate_rule_cut_
   # engines()), so only those look-alikes are checked there.
-  cases <- list(c("Bingbоt", "bingbot", "bing"),
-                c("Yandeх", "Yandex", "yandex"))
+  cases <- list(c("Bingb\u043et", "bingbot", "bing"),
+                c("Yande\u0445", "Yandex", "yandex"))
   for (case in cases) {
     body <- paste0("User-agent: ", case[[1L]], "\nDisallow: /x\n\n",
                    "User-agent: *\nDisallow: /a\n")
@@ -187,11 +187,11 @@ test_that("a cut value names its look-alike and the ASCII spelling", {
   expect_identical(row$severity, "info")
   expect_false(grepl("[^ -~]", row$message))
 
-  row <- la_rows(la_text("User-agent: Perplexity−User", "Disallow: /x"))
+  row <- la_rows(la_text("User-agent: Perplexity\u2212User", "Disallow: /x"))
   expect_true(endsWith(row$message, la_sentence(
     "U+2212 MINUS SIGN at byte 11, which looks like '-'", "Perplexity-User"
   )))
-  row <- la_rows(la_text("User-agent: google＿extended", "Disallow: /x"))
+  row <- la_rows(la_text("User-agent: google\uff3fextended", "Disallow: /x"))
   expect_true(endsWith(row$message, la_sentence(
     "U+FF3F FULLWIDTH LOW LINE at byte 7, which looks like '_'",
     "google_extended"
@@ -199,14 +199,14 @@ test_that("a cut value names its look-alike and the ASCII spelling", {
 })
 
 test_that("a look-alike that leads the value names no crawler", {
-  row <- la_rows(la_text("User-agent: аbcbot", "Disallow: /x"))
+  row <- la_rows(la_text("User-agent: \u0430bcbot", "Disallow: /x"))
   expect_identical(row$message, paste(la_none(), la_sentence(
     "U+0430 CYRILLIC SMALL LETTER A at byte 1, which looks like 'a'", "abcbot"
   )))
 })
 
 test_that("a soft hyphen is named as invisible and dropped", {
-  row <- la_rows(la_text("User-agent: Perplexity­User", "Disallow: /x"))
+  row <- la_rows(la_text("User-agent: Perplexity\u00adUser", "Disallow: /x"))
   expect_true(endsWith(row$message, la_sentence(
     "U+00AD SOFT HYPHEN at byte 11, which is invisible", "PerplexityUser",
     "without it"
@@ -214,7 +214,7 @@ test_that("a soft hyphen is named as invisible and dropped", {
 })
 
 test_that("other non-ASCII text is kept escaped in the spelling", {
-  row <- la_rows(la_text("User-agent: Perplexity‑Usér",
+  row <- la_rows(la_text("User-agent: Perplexity\u2011Us\u00e9r",
                          "Disallow: /x"))
   expect_true(endsWith(row$message, la_sentence(
     "U+2011 NON-BREAKING HYPHEN at byte 11, which looks like '-'",
@@ -223,7 +223,7 @@ test_that("other non-ASCII text is kept escaped in the spelling", {
 })
 
 test_that("a Google token cut by a look-alike still warns", {
-  row <- la_rows(la_text("User-agent: Googlebot‑Image", "Disallow: /x"))
+  row <- la_rows(la_text("User-agent: Googlebot\u2011Image", "Disallow: /x"))
   expect_identical(row$severity, "warning")
   expect_true(endsWith(row$message, la_sentence(
     "U+2011 NON-BREAKING HYPHEN at byte 10, which looks like '-'",
@@ -232,7 +232,7 @@ test_that("a Google token cut by a look-alike still warns", {
 })
 
 test_that("Bing or Yandex is named only for its own crawler", {
-  row <- la_rows(la_text("User-agent: Bingbоt", "Disallow: /x"))
+  row <- la_rows(la_text("User-agent: Bingb\u043et", "Disallow: /x"))
   expect_identical(row$message, paste0(
     la_read_as("Bingb"), " ",
     la_sentence(paste0("U+043E CYRILLIC SMALL LETTER O at byte 6, which ",
@@ -240,36 +240,36 @@ test_that("Bing or Yandex is named only for its own crawler", {
     " The package's Bing matcher compares the whole value as written, so ",
     "there 'Bingbot' does not match this line either."
   ))
-  row <- la_rows(la_text("User-agent: Yandeх", "Disallow: /x"))
+  row <- la_rows(la_text("User-agent: Yande\u0445", "Disallow: /x"))
   expect_true(endsWith(row$message, paste0(
     "The package's Yandex matcher compares the whole value as written, so ",
     "there 'Yandex' does not match this line either."
   )))
   expect_false(grepl("Bing", row$message, fixed = TRUE))
   # A spelling that is not exactly a selector names no engine.
-  row <- la_rows(la_text("User-agent: Bingbоt-Image", "Disallow: /x"))
+  row <- la_rows(la_text("User-agent: Bingb\u043et-Image", "Disallow: /x"))
   expect_false(grepl("Bing matcher|Yandex", row$message))
 })
 
 test_that("an unknown key names its look-alike and the ASCII spelling", {
-  row <- la_rows(la_text("Disаllow: /a"), "unknown_directive")
+  row <- la_rows(la_text("Dis\u0430llow: /a"), "unknown_directive")
   expect_identical(row$message, paste(
     la_unknown,
     paste0("The key holds U+0430 CYRILLIC SMALL LETTER A at byte 4, which ",
            "looks like 'a'; written in ASCII the key is 'Disallow'.")
   ))
   expect_false(grepl("[^ -~]", row$message))
-  x <- la_text("User-аgent: foo", "Disallow: /a")
+  x <- la_text("User-\u0430gent: foo", "Disallow: /a")
   expect_true(endsWith(la_rows(x, "unknown_directive")$message,
                        "written in ASCII the key is 'User-agent'."))
   # Not valid UTF-8: today's text.
-  key <- c(charToRaw("Disаllow"), as.raw(0xE4), charToRaw(": /a\n"))
+  key <- c(charToRaw("Dis\u0430llow"), as.raw(0xE4), charToRaw(": /a\n"))
   expect_identical(la_rows(robots_validate_text(key),
                            "unknown_directive")$message, la_unknown)
 })
 
 test_that("only a cut value that is valid UTF-8 is read", {
-  bytes <- c(charToRaw("User-agent: Perplexity‑User"), as.raw(0xE4),
+  bytes <- c(charToRaw("User-agent: Perplexity\u2011User"), as.raw(0xE4),
              charToRaw("\nDisallow: /x\n"))
   x <- robots_validate_text(bytes)
   expect_true("invalid_utf8" %in% x$diagnostics$code)
@@ -294,9 +294,9 @@ test_that("at most ten look-alikes are named, then a count", {
 test_that("a character split by the line buffer is dropped first", {
   # The line buffer keeps 16,663 bytes: the U+2011 at the end loses its
   # last byte, and the one at byte 11 is still named.
-  head <- paste0("User-agent: Perplexity‑User",
+  head <- paste0("User-agent: Perplexity\u2011User",
                  strrep("A", 16663L - 29L - 2L))
-  body <- paste0(head, "‑B\nDisallow: /x\n")
+  body <- paste0(head, "\u2011B\nDisallow: /x\n")
   x <- robots_validate_text(body)
   expect_true("line_too_long" %in% x$diagnostics$code)
   row <- la_rows(x)
@@ -315,7 +315,7 @@ la_best <- function(f) {
 }
 
 la_values <- function(n) {
-  sprintf("Peer%s‑аgent",
+  sprintf("Peer%s\u2011\u0430gent",
           chartr("0123456789", "abcdefghij", seq_len(n)))
 }
 
@@ -330,8 +330,8 @@ test_that("the look-alike notes grow linearly with the cut lines", {
 
 test_that("one look-alike value's note grows linearly with its length", {
   skip_on_cran()
-  small <- strrep("a‑а", 4000L)
-  large <- strrep("a‑а", 16000L)
+  small <- strrep("a\u2011\u0430", 4000L)
+  large <- strrep("a\u2011\u0430", 16000L)
   t_small <- la_best(function() lookalike_note(small, "value"))
   t_large <- la_best(function() lookalike_note(large, "value"))
   expect_lt(t_large, 8 * max(t_small, 0.05))
