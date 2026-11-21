@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* Validator: new `rule_dot_segment` warning for an Allow or Disallow pattern with a `.` or `..` path segment, which many URL parsers remove before requesting (RFC 3986 §5.2.4) (ROBO-rnjfbhvn).
+
 * Validator: `user_agent_cut` and `unknown_directive` name a look-alike character (a Unicode hyphen, Cyrillic or Greek letter) by code point and give its ASCII spelling; such a `user_agent_cut` row warns (ROBO-wtixhwlo).
 
 * Validator: wildcard, joined-group, empty-Disallow and stacked-token rows naming a User-agent value Google's matcher cuts add a sentence pointing to its `user_agent_cut` row (ROBO-zqyqbudf).
