@@ -362,6 +362,30 @@ test_that("a cut policy token is not named as an agent", {
   expect_no_match(d$message, "product token from", fixed = TRUE)
 })
 
+test_that("a cut value on the joining line is named", {
+  # The row is anchored on `Foo Bar` (line 3), the agent that joins.
+  for (between in c("Crawl-delay: 1", "")) {
+    code <- if (nzchar(between)) "user_agent_joined_across_directive" else
+      "user_agent_joined_across_blank"
+    d <- cn_rows(cn_lines("User-agent: Baz", between, "User-agent: Foo Bar",
+                          "Disallow: /x"), code)
+    expect_identical(d$line, 3L, label = code)
+    expect_true(endsWith(d$message, cn_note("`Foo Bar` (line 3)")),
+                label = code)
+  }
+})
+
+test_that("a cut opener sharing the joining agent's key is named", {
+  # `Foo/1` (line 1) and `Foo` (line 4) share the key `foo`, so `Foo/1` is
+  # not among the earlier agents; the message names it as the opener.
+  d <- cn_rows(cn_lines("User-agent: Foo/1", "User-agent: Bar",
+                        "Crawl-delay: 1", "User-agent: Foo", "Disallow: /x"),
+               "user_agent_joined_across_directive")
+  expect_identical(d$line, 4L)
+  expect_match(d$message, "`User-agent: Foo/1` opened", fixed = TRUE)
+  expect_true(endsWith(d$message, cn_note("`Foo/1` (line 1)")))
+})
+
 test_that("an opener Google reads no token from is not named as an agent", {
   # `1bot` and `*bot` name no crawler for Google's matcher (their
   # user_agent_cut rows say so), so the sentence does not name them.
