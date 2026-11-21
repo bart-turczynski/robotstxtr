@@ -19,8 +19,9 @@
 # 4. ssrfr's misuse errors, which become a robotstxtr error class.
 #
 # An optional request budget (robots_compare_fetches()'s `max_requests`,
-# ROBO-syoccfej) is checked before every fetch, redirect hops included, by
-# acquire_fetch_budgeted(). Without one, every caller behaves as before.
+# ROBO-syoccfej) is checked before every hop is prepared, redirect hops
+# included, by acquire_within_budget(), and spent by acquire_fetch_budgeted().
+# Without one, every caller behaves as before.
 #
 # ssrfr resolves a name once and pins the connection to the validated
 # addresses, so the guard covers what is dialed, not only what is spelled.
@@ -40,19 +41,27 @@ acquire_fetch <- function(binding) {
   ssrfr::ssrf_fetch(binding)
 }
 
-# One fetch under an optional request budget: an environment whose
-# `remaining` counts the requests left, shared by every chain of one audit
-# call. It is checked and decremented before the request, so the budget bounds
-# every outbound request. An exhausted budget makes no request and returns an
+# The optional request budget: NULL, or an environment whose `remaining`
+# counts the requests left, shared by every chain of one audit call.
+#
+# Every hop is prepared through acquire_within_budget() and fetched through
+# acquire_fetch_budgeted(), so the budget is checked before each hop is
+# prepared, which is before its request and before any name lookup: an
+# exhausted budget causes no network activity at all. `expr`, the prepare
+# call, is evaluated only when a request is left; otherwise the result is an
 # outcome of class `robotstxtr_budget_exhausted`, which
 # acquire_outcome_result() turns into the audit-only `budget_exhausted`.
+acquire_within_budget <- function(budget, expr) {
+  if (!is.null(budget) && budget$remaining < 1L) {
+    return(structure(list(), class = "robotstxtr_budget_exhausted"))
+  }
+  expr
+}
+
+# One fetch, spending one request of the budget (checked when its hop was
+# prepared).
 acquire_fetch_budgeted <- function(binding, budget = NULL) {
   if (!is.null(budget)) {
-    if (budget$remaining < 1L) {
-      return(structure(list(hop = binding$hop),
-        class = "robotstxtr_budget_exhausted"
-      ))
-    }
     budget$remaining <- budget$remaining - 1L
   }
   acquire_call(acquire_fetch(binding))
@@ -338,9 +347,9 @@ acquire_robots <- function(robots_url, timeout, fetch_ua, max_bytes,
   redirect_hops <- list()
   visited <- character(0)
 
-  binding <- acquire_call(acquire_prepare_hop(
+  binding <- acquire_within_budget(budget, acquire_call(acquire_prepare_hop(
     robots_url, policy, request = list()
-  ))
+  )))
   if (!inherits(binding, "ssrfr_binding")) {
     return(acquire_outcome_result(
       binding, NULL, redirect_count, redirect_hops, max_bytes
@@ -391,8 +400,8 @@ acquire_robots <- function(robots_url, timeout, fetch_ua, max_bytes,
     # request, so a refusal of the target (a downgrade under "strict") wins
     # over a loop.
     redirect <- list(status = status, location = location)
-    following <- acquire_call(acquire_prepare_hop(
-      location, policy, from = binding
+    following <- acquire_within_budget(budget, acquire_call(
+      acquire_prepare_hop(location, policy, from = binding)
     ))
     if (!inherits(following, "ssrfr_binding")) {
       return(acquire_outcome_result(

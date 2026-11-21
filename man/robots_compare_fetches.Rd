@@ -21,10 +21,12 @@ character column \code{url} and optional columns \code{fetch_user_agent} (the HT
 \verb{robotstxtr/<version>}; each other value must be a valid HTTP field
 value, as in \code{\link[=robots_fetch]{robots_fetch()}}), \code{label} (a name for the report; \code{NA}, or
 no column, gives \code{"variant_<i>"}) and \code{repeats} (how many observations of
-the variant to make, a whole number of at least 1; 1 when absent). A
+the variant to make, a whole number of at least 1; 1 when absent). Any
+other column, a misspelled one included, is a call-level error. A
 variant is one row: list a URL twice with different agents to compare the
-agents. May have zero rows. Every check runs before any request, and a
-bad value is a call-level error.}
+agents. \code{sum(repeats)}, the number of planned observations, may be at
+most 10000. May have zero rows. Every check runs before any request, and
+a bad value is a call-level error.}
 
 \item{max_requests}{The request budget: a single positive, finite,
 whole-number value no greater than \code{.Machine$integer.max}. Required; it
@@ -93,9 +95,9 @@ An opt-in audit: fetches robots.txt once per planned observation of the
 variants you supply, under a hard request budget, and reports how the
 responses differ. It is meant for spotting a CDN or firewall that answers
 differently by HTTP User-Agent, by origin variant (\code{http} or \code{https}, \code{www}
-or the bare host, a port) or over time. No other function makes more than
-one request per origin; only this one repeats a fetch, and only as
-\code{variants} asks.
+or the bare host, a port) or over time. The other fetching functions make
+one request chain per origin (a request and up to five redirects); this
+one may make several, as \code{variants} asks, up to \code{max_requests} requests.
 }
 \details{
 Each variant's \code{url} is reduced to its robots.txt URL as \code{\link[=robots_fetch]{robots_fetch()}}
@@ -128,7 +130,9 @@ on the observation's \code{body}, or match it with \code{\link[=allowed_by_robot
 \code{max_requests} bounds every outbound HTTP request of the call: each
 observation's first request, every redirect hop it follows, and every
 repeat. It is checked before each request, never after, so the call makes
-at most \code{max_requests} requests. Observations run in round-robin passes:
+at most \code{max_requests} requests; and before the request's host name is
+looked up, so a spent budget causes no network activity at all.
+Observations run in round-robin passes:
 every variant once, in row order, then a second pass over the variants with
 \code{repeats} of at least 2, and so on. So the budget goes to every variant
 once before it goes to any repeat. An observation whose chain the budget

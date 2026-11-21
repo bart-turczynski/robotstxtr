@@ -163,7 +163,8 @@ test_that("max_requests counts every redirect hop", {
   expect_identical(rec$urls, c("http://a/robots.txt", "http://b/robots.txt"))
   expect_identical(obs$observation_status, "budget_exhausted")
   expect_identical(obs$fetch_outcome, "budget_exhausted")
-  expect_identical(obs$redirect_count, 2L)
+  # b's redirect is logged but not followed: its target was never prepared.
+  expect_identical(obs$redirect_count, 1L)
   expect_length(obs$redirect_hops[[1]], 2L)
   expect_null(obs$body[[1]])
   expect_identical(attr(x, "requests_made"), 2L)
@@ -475,4 +476,160 @@ test_that("print shows the header, statuses and differing fields", {
   expect_match(out[[2]], "response 2, not_requested 1", fixed = TRUE)
   expect_match(out[[3]], "body_label (2)", fixed = TRUE)
   expect_false(any(grepl("user-agent", out, fixed = TRUE)))
+})
+
+# --- Fix round 1 --------------------------------------------------------------
+
+# Count every hop prepared (the step that resolves a name, live), on top of
+# local_fake_ssrfr()'s fake.
+local_counting_prepare <- function(env = parent.frame()) {
+  count <- new.env(parent = emptyenv())
+  count$urls <- character()
+  testthat::local_mocked_bindings(
+    acquire_prepare_hop = function(url, policy, request = NULL, from = NULL) {
+      count$urls <- c(count$urls, url)
+      fake_prepare_hop(url, policy, from)
+    },
+    .package = "robotstxtr", .env = env
+  )
+  count
+}
+
+test_that("a spent budget prepares no further hop and no further origin", {
+  rec <- new_recorder()
+  routes <- chain_routes()
+  routes[["http://d/robots.txt"]] <- ok_body()
+  local_fake_ssrfr(mock_router(routes, recorder = rec))
+  prepared <- local_counting_prepare()
+
+  x <- robots_compare_fetches(c("http://a/", "http://d/"), max_requests = 2)
+
+  expect_identical(prepared$urls, c("http://a/robots.txt", "http://b/robots.txt"))
+  expect_length(rec$urls, 2L)
+  expect_identical(
+    x$observations$observation_status, c("budget_exhausted", "not_requested")
+  )
+})
+
+test_that("sum(repeats) over 10000 is a call error before any request", {
+  rec <- new_recorder()
+  local_fake_ssrfr(mock_router(list(), recorder = rec))
+  for (v in list(
+    data.frame(url = "http://a/", repeats = 10001),
+    data.frame(url = c("http://a/", "http://b/"), repeats = c(5000, 5001)),
+    data.frame(url = "http://a/", repeats = 2^31)
+  )) {
+    expect_error(
+      robots_compare_fetches(v, max_requests = 1),
+      class = "robotstxtr_invalid_variants"
+    )
+  }
+  expect_length(rec$urls, 0L)
+})
+
+test_that("a 10000-observation plan stops observing once the budget is spent", {
+  rec <- new_recorder()
+  local_fake_ssrfr(mock_router(list(
+    "http://a/robots.txt" = ok_body()
+  ), recorder = rec))
+  calls <- new.env(parent = emptyenv())
+  calls$n <- 0L
+  real_observe <- compare_observe
+  local_mocked_bindings(compare_observe = function(...) {
+    calls$n <- calls$n + 1L
+    real_observe(...)
+  })
+
+  started <- proc.time()[["elapsed"]]
+  x <- robots_compare_fetches(
+    data.frame(url = "http://a/", repeats = 10000), max_requests = 1
+  )
+  elapsed <- proc.time()[["elapsed"]] - started
+
+  expect_identical(calls$n, 1L)
+  expect_length(rec$urls, 1L)
+  expect_identical(nrow(x$observations), 10000L)
+  expect_identical(
+    x$observations$observation_status,
+    c("response", rep("not_requested", 9999L))
+  )
+  expect_lt(elapsed, 20)
+})
+
+test_that("max_requests and repeats reject values past the integer range", {
+  rec <- new_recorder()
+  local_fake_ssrfr(mock_router(list(
+    "http://a/robots.txt" = ok_body()
+  ), recorder = rec))
+  expect_error(
+    robots_compare_fetches("http://a/", max_requests = 2^31),
+    class = "robotstxtr_invalid_max_requests"
+  )
+  expect_error(
+    robots_compare_fetches(
+      data.frame(url = "http://a/", repeats = Inf), max_requests = 1
+    ),
+    class = "robotstxtr_invalid_variants"
+  )
+  expect_length(rec$urls, 0L)
+  x <- robots_compare_fetches("http://a/", max_requests = .Machine$integer.max)
+  expect_identical(attr(x, "max_requests"), .Machine$integer.max)
+  expect_identical(attr(x, "requests_made"), 1L)
+})
+
+test_that("variants columns: defaults, coercions and exact names", {
+  rec <- new_recorder()
+  local_fake_ssrfr(mock_router(list(
+    "http://a/robots.txt" = ok_body()
+  ), recorder = rec))
+
+  x <- robots_compare_fetches(
+    data.frame(
+      url = factor(c("http://a/", "http://a/")),
+      fetch_user_agent = c(NA, NA),
+      label = c("first", NA),
+      stringsAsFactors = FALSE
+    ),
+    max_requests = 2
+  )
+  obs <- x$observations
+  expect_identical(obs$url, c("http://a/", "http://a/"))
+  expect_identical(obs$robots_url, rep("http://a/robots.txt", 2L))
+  expect_identical(obs$label, c("first", "variant_2"))
+  expect_identical(rec$agents, rep(package_fetch_user_agent(), 2L))
+
+  for (col in c("fetch_user_agents", "labels", "user_agent")) {
+    v <- data.frame(url = "http://a/", x = "AuditBot/1.0")
+    names(v)[[2]] <- col
+    expect_error(
+      robots_compare_fetches(v, max_requests = 1),
+      regexp = sprintf("`%s`", col), class = "robotstxtr_invalid_variants"
+    )
+  }
+  expect_error(
+    robots_compare_fetches(matrix("http://a/"), max_requests = 1),
+    class = "robotstxtr_invalid_variants"
+  )
+  expect_length(rec$urls, 2L)
+})
+
+test_that("print: more than ten rows, no difference, and no observation", {
+  local_fake_ssrfr(mock_router(list()))
+  x <- robots_compare_fetches(
+    data.frame(url = "http://127.0.0.1/", repeats = 11), max_requests = 1
+  )
+  out <- capture.output(print(x))
+  expect_match(out[[1]], "11 observations of 1 variant, 0 of 1 requests",
+               fixed = TRUE)
+  expect_identical(out[[2]], "Status: refused 11")
+  expect_identical(
+    out[[3]], "Differs: nothing among the completed observations"
+  )
+  expect_identical(out[[length(out)]], "  ... and 1 more row")
+
+  empty <- robots_compare_fetches(character(), max_requests = 1)
+  expect_identical(
+    capture.output(print(empty)),
+    "<robots_fetch_comparison>: 0 observations of 0 variants, 0 of 1 requests"
+  )
 })

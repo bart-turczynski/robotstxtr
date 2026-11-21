@@ -4,9 +4,9 @@
 #' variants you supply, under a hard request budget, and reports how the
 #' responses differ. It is meant for spotting a CDN or firewall that answers
 #' differently by HTTP User-Agent, by origin variant (`http` or `https`, `www`
-#' or the bare host, a port) or over time. No other function makes more than
-#' one request per origin; only this one repeats a fetch, and only as
-#' `variants` asks.
+#' or the bare host, a port) or over time. The other fetching functions make
+#' one request chain per origin (a request and up to five redirects); this
+#' one may make several, as `variants` asks, up to `max_requests` requests.
 #'
 #' Each variant's `url` is reduced to its robots.txt URL as [robots_fetch()]
 #' reduces it (`scheme://host[:port]/robots.txt`). Scheme, host and port stay
@@ -37,7 +37,9 @@
 #' `max_requests` bounds every outbound HTTP request of the call: each
 #' observation's first request, every redirect hop it follows, and every
 #' repeat. It is checked before each request, never after, so the call makes
-#' at most `max_requests` requests. Observations run in round-robin passes:
+#' at most `max_requests` requests; and before the request's host name is
+#' looked up, so a spent budget causes no network activity at all.
+#' Observations run in round-robin passes:
 #' every variant once, in row order, then a second pass over the variants with
 #' `repeats` of at least 2, and so on. So the budget goes to every variant
 #' once before it goes to any repeat. An observation whose chain the budget
@@ -80,10 +82,12 @@
 #'   `robotstxtr/<version>`; each other value must be a valid HTTP field
 #'   value, as in [robots_fetch()]), `label` (a name for the report; `NA`, or
 #'   no column, gives `"variant_<i>"`) and `repeats` (how many observations of
-#'   the variant to make, a whole number of at least 1; 1 when absent). A
+#'   the variant to make, a whole number of at least 1; 1 when absent). Any
+#'   other column, a misspelled one included, is a call-level error. A
 #'   variant is one row: list a URL twice with different agents to compare the
-#'   agents. May have zero rows. Every check runs before any request, and a
-#'   bad value is a call-level error.
+#'   agents. `sum(repeats)`, the number of planned observations, may be at
+#'   most 10000. May have zero rows. Every check runs before any request, and
+#'   a bad value is a call-level error.
 #' @param max_requests The request budget: a single positive, finite,
 #'   whole-number value no greater than `.Machine$integer.max`. Required; it
 #'   bounds every outbound request, redirect hops and repeats included.
@@ -154,9 +158,7 @@ robots_compare_fetches <- function(variants, max_requests, timeout = 10,
   plan <- compare_plan(variants)
   budget <- new.env(parent = emptyenv())
   budget$remaining <- max_requests
-  observed <- lapply(seq_len(nrow(plan)), function(i) {
-    compare_observe(plan[i, , drop = FALSE], controls, budget)
-  })
+  observed <- compare_run(plan, controls, budget)
   observations <- compare_observation_frame(plan, observed)
   structure(
     list(
@@ -199,18 +201,34 @@ compare_plan <- function(variants) {
 
 # --- Observe ----------------------------------------------------------------
 
-# One planned observation: its status, start time and source result (NULL
-# when nothing was requested).
-compare_observe <- function(row, controls, budget) {
-  if (is.na(row$robots_url)) {
-    return(list(status = "input_invalid", fetched_at = NA_real_, result = NULL))
+# Every planned observation, in plan order: a list of its status, start time
+# and source result (NULL when nothing was requested). Each starts as
+# `not_requested` (`input_invalid` without a robots URL), in one step; the
+# valid ones are then observed in order until the budget is spent, so no
+# work is done per observation once it is.
+compare_run <- function(plan, controls, budget) {
+  unrun <- function(status) {
+    list(status = status, fetched_at = NA_real_, result = NULL)
   }
-  if (budget$remaining < 1L) {
-    return(list(status = "not_requested", fetched_at = NA_real_, result = NULL))
+  invalid <- is.na(plan$robots_url)
+  observed <- rep(list(unrun("not_requested")), nrow(plan))
+  observed[invalid] <- list(unrun("input_invalid"))
+  for (i in which(!invalid)) {
+    if (budget$remaining < 1L) {
+      break
+    }
+    observed[[i]] <- compare_observe(
+      plan$robots_url[[i]], plan$http_user_agent[[i]], controls, budget
+    )
   }
+  observed
+}
+
+# One observation of `robots_url`, sending `agent`.
+compare_observe <- function(robots_url, agent, controls, budget) {
   fetched_at <- acquire_now()
   result <- acquire_robots(
-    row$robots_url, controls$timeout, row$http_user_agent, controls$max_bytes,
+    robots_url, controls$timeout, agent, controls$max_bytes,
     TRUE, controls$safety_level, controls$fetch_allow_ranges,
     budget = budget
   )
