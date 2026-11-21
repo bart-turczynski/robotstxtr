@@ -919,6 +919,76 @@ test_that("the attribution decodes the input's encoded dots", {
   )
 })
 
+test_that("the families need the same lead, folded only for case and port", {
+  body <- paste0(
+    "User-agent: *\nDisallow: /account/\nAllow: /latam\nAllow: /a\n",
+    "Disallow: /x\n"
+  )
+  rows <- function(urls) pp_eval(urls, "google", "Googlebot", "rfc3986", body)
+  # whatwg makes "latam" a host, and punycodes bucher: not encoded dots only.
+  r <- rows(c(
+    "http:/latam/%2e%2e/account/x",
+    "http://bücher.de/latam/%2e%2e/account/x"
+  ))
+  expect_identical(r$preprocessing_disagreement, c(TRUE, TRUE))
+  expect_identical(
+    r$disagreement_clients, rep(pp_neutral("allow", "disallow"), 2L)
+  )
+  # A latin1 lead equals whatwg's UTF-8 lead, and a scheme and host case or
+  # a default port is folded: encoded dots only.
+  latin <- "caf\xe9/latam/%2e%2e/account/x"
+  Encoding(latin) <- "latin1"
+  r <- rows(c(latin, "HTTP://Example.COM:80/a/%2e%2e/x"))
+  expect_identical(pp_whatwg(latin, body = body)$matcher_url,
+                   "café/account/x")
+  expect_identical(r$preprocessing_disagreement, c(TRUE, TRUE))
+  expect_identical(
+    r$disagreement_clients, rep(pp_clients("allow", "disallow"), 2L)
+  )
+})
+
+pp_two_bodies <- list(
+  a = "User-agent: *\nDisallow: /account/\nAllow: /latam\n",
+  b = "User-agent: *\nAllow: /\n"
+)
+
+test_that("the second pass reads each candidate row's own body", {
+  # Both rows reach the second pass; only row 1's body decides it apart, so
+  # reading the bodies in the wrong order moves the flag.
+  local_fake_ssrfr(function(req) {
+    host <- if (grepl("^http://b/", req$url)) "b" else "a"
+    fake_response(200L, body = pp_two_bodies[[host]])
+  })
+  r <- robots_evaluate_url_v1(
+    c("http://a/latam/%2e%2e/account/x", "http://b/latam/%2e%2e/account/x"),
+    "FooBot", "google", "google"
+  )$results
+  expect_identical(r$url_decision, c("allow", "allow"))
+  expect_identical(r$preprocessing_disagreement, c(TRUE, FALSE))
+})
+
+test_that("the second pass sends each row to its own backend", {
+  url <- "https://example.com/latam/%2e%2e/account/x"
+  r <- robots_evaluate_text_v1(
+    pp_body, rep(url, 3L), c("Googlebot", "bingbot", "Yandex"),
+    c("google", "bing", "yandex"), c("google", "bing", "yandex")
+  )$results
+  expect_identical(r$url_decision, rep("allow", 3L))
+  expect_identical(r$preprocessing_disagreement, rep(TRUE, 3L))
+  expect_identical(
+    r$disagreement_clients, rep(pp_clients("allow", "disallow"), 3L)
+  )
+})
+
+test_that("a scheme-less whatwg note says userinfo, and is NA when unchanged", {
+  r <- pp_whatwg(c("//u@h/a/../x", "//h/x"))
+  expect_identical(r$matcher_url, c("//h/x", "//h/x"))
+  expect_identical(
+    r$url_preprocessing_note,
+    c(paste0("userinfo removed; ", pp_ww_changed), NA_character_)
+  )
+})
+
 test_that("a scheme-less URL whose lead is not UTF-8 fails whatwg", {
   bad <- "a\xfe/%2e%2e/x"
   expect_identical(Encoding(bad), "unknown")
