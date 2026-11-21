@@ -879,6 +879,25 @@ test_that("a latin1 scheme-less URL reads as its UTF-8 twin", {
   expect_identical(r$preprocessing_disagreement, c(FALSE, FALSE))
 })
 
+test_that("the attribution decodes the input's encoded dots, not the target's", {
+  # rfc3986 removes "%2e/.." or "%2e%2e/.." as ordinary segments first, so
+  # decoding its target would miss the dots a browser reads.
+  urls <- c(
+    "https://example.com/latam/%2e/../account/x",
+    "https://example.com/latam/q/%2e%2e/../account/x"
+  )
+  r <- pp_eval(urls, "google", "Googlebot", "rfc3986")
+  expect_identical(
+    r$matcher_url,
+    c("https://example.com/latam/account/x",
+      "https://example.com/latam/q/account/x")
+  )
+  expect_identical(r$preprocessing_disagreement, c(TRUE, TRUE))
+  expect_identical(
+    r$disagreement_clients, rep(pp_clients("allow", "disallow"), 2L)
+  )
+})
+
 test_that("a scheme-less URL whose lead is not UTF-8 fails whatwg", {
   bad <- "a\xfe/%2e%2e/x"
   expect_identical(Encoding(bad), "unknown")

@@ -384,14 +384,16 @@ url_targets_alike_v1 <- function(a, b) {
     ka$host == kb$host & ka$path == kb$path & ka$query == kb$query
 }
 
-# Whether the rfc3986 and whatwg targets differ only through encoded dot
-# segments: the rfc3986 path, its encoded dot segments read as dots and
-# removed (RFC 3986 section 5.2.4), with its query, equals the whatwg path
-# and query, under the same lead (url_target_parts_v1(), as
-# url_lead_key_v1() folds it). Only then do the surveyed client
-# families apply.
-url_encoded_dots_only_v1 <- function(rfc3986, whatwg) {
-  r <- url_target_parts_v1(target_utf8_bytes_v1(rfc3986))
+# Whether the two forms differ only through encoded dot segments: the
+# INPUT's path, its complete encoded dot segments read as dots, then run
+# through the rfc3986 removal (RFC 3986 section 5.2.4), with its query,
+# equals the whatwg path and query, under the same lead
+# (url_target_parts_v1(), as url_lead_key_v1() folds it). The input, not
+# the rfc3986 target: that has already had its literal dots removed, so
+# "/latam/%2e/../x" would lose the "%2e" a browser reads as a dot. Only
+# then do the surveyed client families apply.
+url_encoded_dots_only_v1 <- function(input, whatwg) {
+  r <- url_target_parts_v1(target_utf8_bytes_v1(input))
   w <- url_target_parts_v1(target_utf8_bytes_v1(whatwg))
   path <- remove_dot_segments_v1(url_decode_dot_segments_v1(r$path))
   identical(c(path, r$query), c(w$path, w$query)) &&
@@ -542,7 +544,7 @@ url_disagreement_v1 <- function(preprocessed, matcher_rows, url_decision,
   apart <- !mapply(identical, rfc3986, other, USE.NAMES = FALSE)
   hit <- cand[apart]
   named <- mapply(
-    url_encoded_dots_only_v1, preprocessed$rfc3986_url[hit], whatwg$url[hit],
+    url_encoded_dots_only_v1, preprocessed$url[hit], whatwg$url[hit],
     USE.NAMES = FALSE
   )
   flag[hit] <- TRUE
