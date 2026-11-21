@@ -78,11 +78,19 @@ lc_catalog_path <- function(id, n = 1L) {
   m$path[m$id == id][[n]]
 }
 
-# robotstxtr's answer on both Google paths, as "allow" or "disallow".
-lc_answer <- function(body, path, token = "FooBot") {
+# robotstxtr's answer on both Google paths, as "allow" or "disallow". The v1
+# path reads the URL as given (`url_normalization = "none"`) unless told
+# otherwise: the recorded answers compare matchers on the path a library is
+# handed, and the reference reads it as given. The default, "rfc3986",
+# removes dot segments first (ADR 0002, ROBO-bnvdmdjr); class 21 pins it.
+lc_answer <- function(body, path, token = "FooBot",
+                      url_normalization = "none") {
   url <- paste0("https://example.com", path)
   Encoding(url) <- "UTF-8"
-  v1 <- robots_evaluate_text_v1(body, url, token, "google", "google")$results
+  v1 <- robots_evaluate_text_v1(
+    body, url, token, "google", "google",
+    url_normalization = url_normalization
+  )$results
   text <- allowed_by_robots_text(body, url, token)$results$allowed
   text <- if (is.na(text)) NA_character_ else if (text) "allow" else "disallow"
   c(v1 = v1$url_decision, text = text)
@@ -402,6 +410,19 @@ test_that("class 20: the query as the URL parser rewrites it", {
 test_that("class 21: a dot segment in the path", {
   # Reference disallow; rs js allow (the URL parser removes `/.`).
   lc_expect(lc_fixture("dot-segment"), "/a/./b", "disallow")
+  # The v1 default, "rfc3986", removes `/.` from the URL as rs and js do,
+  # and the rule is not normalized, so v1 allows (ADR 0002, ROBO-bnvdmdjr).
+  expect_identical(
+    lc_answer(lc_fixture("dot-segment"), "/a/./b",
+              url_normalization = "rfc3986"),
+    c(v1 = "allow", text = "disallow")
+  )
+  v1_default <- robots_evaluate_text_v1(
+    lc_fixture("dot-segment"), "https://example.com/a/./b", "FooBot",
+    "google", "google"
+  )$results
+  expect_identical(v1_default$url_decision, "allow")
+  expect_identical(v1_default$matcher_url, "https://example.com/a/b")
 })
 
 test_that("class 22: Allow: /index.html also allows the directory", {

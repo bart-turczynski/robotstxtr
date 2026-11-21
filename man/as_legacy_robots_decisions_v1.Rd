@@ -41,6 +41,12 @@ with only a \code{Googlebot} group and a \code{*} group gets the \code{Googlebot
 here and the \code{*} group there, and \code{AdsBot-Google} on a body with only a
 \code{*} group is allowed here and obeys \code{*} there. The \code{group_token} column is
 not carried over.
+
+Its decisions are the v1 result's, so they follow the \code{url_normalization}
+the result was built with: under the default \code{"rfc3986"},
+\verb{https://example.com/a/../b} is decided as \verb{https://example.com/b}, where
+\code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}} reads it as given. The \code{matcher_url} and
+\code{url_preprocessing_note} columns are not carried over.
 }
 \examples{
 # Build a v1 engine result offline, then adapt it for a legacy consumer.

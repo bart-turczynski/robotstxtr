@@ -10,7 +10,8 @@ robots_evaluate_text_v1(
   robots_product_token,
   robots_policy_ruleset,
   matcher_backend,
-  source_id = "supplied"
+  source_id = "supplied",
+  url_normalization = "rfc3986"
 )
 }
 \arguments{
@@ -45,6 +46,12 @@ unaccepted selector leaves its rows undecided rather than raising.}
 \code{length(url)}: \code{"google"}, \code{"yandex"}, \code{"rfc9309"}, or \code{"bing"}.}
 
 \item{source_id}{A non-empty identifier for the supplied body.}
+
+\item{url_normalization}{How the URL is read before matching, one of:
+\code{"rfc3986"} (the default) removes dot segments from the path (RFC 3986
+section 5.2.4), leaves userinfo out and drops the fragment, and never
+encodes, decodes or case-folds a byte, so \verb{\%2e} is kept; \code{"none"} hands
+the URL to the matcher as given. See Details.}
 }
 \value{
 A \code{robots_engine_decisions_v1} object with \code{results}, neutral
@@ -123,6 +130,24 @@ row over the window has \code{matcher_body_truncated = TRUE}, and
 has no window and reads the whole body; \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} reads
 the complete lines of its \code{max_bytes} cut, 512,000 bytes by default
 (\code{design/engine-profiles.md} section 7).
+
+Since schema revision \code{2026-11-21.1}, \code{url_normalization} decides which
+URL the matcher reads (\code{design/adr/0002-evaluator-url-preprocessing.md}).
+Under \code{"rfc3986"}, the default, the URL is split the RFC 3986 way and
+rebuilt as scheme, \verb{//}, host and port, the path with its dot segments
+removed (section 5.2.4), and the query: userinfo is left out, so Google no
+longer reads \verb{https://u;v@host/x} from its \verb{;}, and the fragment is
+dropped. Only the literal segments \code{.} and \code{..} are removed; no byte is
+percent-encoded, decoded or case-folded, so \verb{/\%2e\%2e/} is kept. A URL that
+is not a valid RFC 3986 URI (a raw space, a byte outside ASCII, a
+backslash, another character RFC 3986 excludes, or a \verb{\%} without two hex
+digits) is still evaluated. A URL with no scheme or authority, such as
+\code{"/a/../b"}, has its dot segments removed from the first \code{/} on. Under
+\code{"none"} the matcher reads the URL as given, as before. The \code{url} column
+always holds the input; \code{matcher_url} holds the URL the matcher read, and
+\code{url_preprocessing_note} names the rule that changed it, or why the input
+is not a valid URI, and is \code{NA} otherwise. \code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}} and
+\code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} read the URL as given.
 }
 \examples{
 # A non-Google-named token evaluated through the default Google backend
