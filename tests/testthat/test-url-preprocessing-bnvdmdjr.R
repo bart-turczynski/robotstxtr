@@ -633,6 +633,18 @@ pp_whatwg <- function(url, backend = "google", token = "Googlebot",
   pp_eval(url, backend, token, "whatwg", body)
 }
 
+pp_families <- c(
+  rfc3986 = "wget 1.25, curl/libcurl < 8.13.0",
+  whatwg = "Chrome 157, Node 26 fetch, curl/libcurl >= 8.13.0"
+)
+
+pp_clients <- function(rfc3986, whatwg) {
+  sprintf(
+    "rfc3986 %s: %s; whatwg %s: %s",
+    rfc3986, pp_families[["rfc3986"]], whatwg, pp_families[["whatwg"]]
+  )
+}
+
 pp_ww_changed <- "WHATWG URL serialization changed the URL"
 pp_ww_invalid <- "not a valid WHATWG URL: evaluated as given"
 
@@ -679,7 +691,7 @@ test_that("whatwg leaves userinfo out and drops the fragment", {
 })
 
 test_that("whatwg evaluates a URL rurl cannot parse as given", {
-  urls <- c("/a/../b", "example.com/a/./b")
+  urls <- c("https://[::1/x", "https://[::1/a/../b")
   for (backend in names(pp_engines)) {
     token <- pp_engines[[backend]]
     new <- pp_whatwg(urls, backend, token)
@@ -692,6 +704,63 @@ test_that("whatwg evaluates a URL rurl cannot parse as given", {
     )
     expect_identical(new$preprocessing_disagreement, c(TRUE, TRUE))
   }
+})
+
+pp_ww_relative <- "no scheme: resolved as a relative reference"
+
+test_that("whatwg resolves a URL with no scheme as a relative reference", {
+  # Chrome and Node request /account/x for this link.
+  urls <- c(
+    "/latam/../account/x", "/latam/%2e%2e/account/x", "/latam/y?q=1#f"
+  )
+  r <- pp_whatwg(urls)
+  expect_identical(r$matcher_url, c("/account/x", "/account/x", "/latam/y?q=1"))
+  expect_identical(r$url_decision, c("disallow", "disallow", "allow"))
+  expect_identical(
+    r$url_preprocessing_note,
+    c(
+      rep(paste0(pp_ww_relative, "; ", pp_ww_changed), 2L),
+      paste0(pp_ww_relative, "; fragment dropped")
+    )
+  )
+  # Not a failure: the literal-dot row is no disagreement under the default,
+  # and the encoded one is named with the families.
+  d <- pp_eval(urls[1:2], "google", "Googlebot", "rfc3986")
+  expect_identical(d$url_decision, c("disallow", "allow"))
+  expect_identical(d$preprocessing_disagreement, c(FALSE, TRUE))
+  expect_identical(
+    d$disagreement_clients[[2]], pp_clients("allow", "disallow")
+  )
+  # Bing and Yandex refuse a target with no authority in every mode.
+  for (backend in c("bing", "yandex")) {
+    token <- pp_engines[[backend]]
+    expect_identical(
+      pp_whatwg(urls[[1]], backend, token)$reason,
+      pp_today(urls[[1]], backend, token)$reason
+    )
+  }
+})
+
+test_that("whatwg reads UTF-8 bytes the same in a C locale", {
+  url <- rawToChar(charToRaw("https://example.com/caf\xc3\xa9/x"))
+  body <- "User-agent: *\nDisallow: /caf%C3%A9\n"
+  old <- Sys.getlocale("LC_CTYPE")
+  on.exit(Sys.setlocale("LC_CTYPE", old), add = TRUE)
+  set <- suppressWarnings(Sys.setlocale("LC_CTYPE", "C"))
+  skip_if(!nzchar(set), "the C locale is not available")
+  pre <- preprocess_matcher_url_v1(url, "whatwg")
+  expect_identical(pre$whatwg_url, "https://example.com/caf%C3%A9/x")
+  expect_identical(
+    pp_eval(url, "google", "Googlebot", "whatwg", body)$url_decision,
+    "disallow"
+  )
+  # A latin1-marked URL is converted from latin1, not from the locale.
+  latin <- "https://example.com/caf\xe9/x"
+  Encoding(latin) <- "latin1"
+  expect_identical(
+    preprocess_matcher_url_v1(latin, "whatwg")$whatwg_url,
+    "https://example.com/caf%C3%A9/x"
+  )
 })
 
 test_that("whatwg: an unchanged URL passes as given, with no note", {
@@ -734,19 +803,24 @@ test_that("whatwg: NA, empty, bytes-marked and failing URLs", {
   )
 })
 
-# ---- the disagreement flag ---------------------------------------------------
-
-pp_families <- c(
-  rfc3986 = "wget 1.25, curl/libcurl < 8.13.0",
-  whatwg = "Chrome 157, Node 26 fetch, curl/libcurl >= 8.13.0"
-)
-
-pp_clients <- function(rfc3986, whatwg) {
-  sprintf(
-    "rfc3986 %s: %s; whatwg %s: %s",
-    rfc3986, pp_families[["rfc3986"]], whatwg, pp_families[["whatwg"]]
+test_that("rurl sees each distinct URL once; a short answer is retried", {
+  seen <- new.env(parent = emptyenv())
+  local_mocked_bindings(
+    serialize_url = function(url, standard) {
+      seen$calls <- c(seen$calls, length(url))
+      # One answer short for a vector: the length check must catch it.
+      if (length(url) > 1L) url[-1L] else url
+    },
+    .package = "rurl"
   )
-}
+  expect_identical(
+    whatwg_serialize_v1(c("https://h/a", "https://h/b", "https://h/a")),
+    c("https://h/a", "https://h/b", "https://h/a")
+  )
+  expect_identical(seen$calls, c(2L, 1L, 1L))
+})
+
+# ---- the disagreement flag ---------------------------------------------------
 
 pp_unparsed <- sprintf(
   "rfc3986: %s; whatwg cannot parse the URL: %s",
@@ -757,6 +831,13 @@ test_that("the client families name the curl boundary", {
   expect_identical(url_client_families_v1(), pp_families)
 })
 
+# A URL of `bytes` bytes whose rfc3986 and whatwg forms decide apart:
+# padding in the query moves neither decision.
+pp_sized <- function(bytes) {
+  head <- "https://example.com/latam/%2e%2e/account/x?q="
+  paste0(head, strrep("a", bytes - nchar(head, type = "bytes")))
+}
+
 # Rows: the encoded dots decide apart (both directions), forms that differ
 # but decide alike, identical targets, literal dots (both modes remove
 # them), and a URL whatwg cannot parse.
@@ -765,8 +846,60 @@ pp_flag_urls <- c(
   "https://example.com/q/%2e%2e/z",
   "https://example.com/a/b",
   "https://example.com/latam/../account/x",
-  "/a/../b"
+  "https://[::1/a/../b"
 )
+
+pp_neutral <- function(rfc3986, whatwg) {
+  sprintf(
+    paste0(
+      "rfc3986 %s; whatwg %s: the forms differ in more than dot segments; ",
+      "no client survey covers this"
+    ),
+    rfc3986, whatwg
+  )
+}
+
+test_that("the families are named only for a dot-segment disagreement", {
+  latin <- "https://example.com/caf\xe9"
+  Encoding(latin) <- "latin1"
+  rows <- list(
+    list("https://example.com/a b", "User-agent: *\nDisallow: /a%20b\n"),
+    list("https://example.com/a\\b",
+         "User-agent: *\nAllow: /a\\b\nDisallow: /a\n"),
+    list(latin, "User-agent: *\nDisallow: /caf%C3%A9\n")
+  )
+  for (row in rows) {
+    for (backend in names(pp_engines)) {
+      r <- pp_eval(row[[1]], backend, pp_engines[[backend]], "rfc3986",
+                   row[[2]])
+      expect_true(r$preprocessing_disagreement, label = backend)
+      expect_identical(r$disagreement_clients, pp_neutral("allow", "disallow"))
+    }
+  }
+  # A dot segment in either case, encoded or not, names them.
+  dotted <- c(
+    "https://example.com/latam/%2E%2E/account/x",
+    "https://example.com/latam/.%2e/account/x",
+    "https://example.com/latam/%2e./account/x"
+  )
+  r <- pp_eval(dotted, "google", "Googlebot", "rfc3986")
+  expect_identical(
+    r$disagreement_clients, rep(pp_clients("allow", "disallow"), 3L)
+  )
+  expect_identical(
+    vapply(
+      c("/a/./b", "/a/%2E", "/A/..", "/a.b/c", "/a%2eb", "/%252e/", "/x"),
+      url_has_dot_segment_v1, logical(1L), USE.NAMES = FALSE
+    ),
+    c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE)
+  )
+  # A URL whatwg cannot parse, with no dot segment, is neutral too.
+  r <- pp_eval("https://[::1/x", "google", "Googlebot", "rfc3986")
+  expect_identical(
+    r$disagreement_clients,
+    "rfc3986; whatwg cannot parse the URL; no client survey covers this"
+  )
+})
 
 test_that("the flag marks rows the two forms decide apart, in every mode", {
   for (mode in engine_url_normalizations_v1()) {
@@ -799,14 +932,84 @@ test_that("the flag works the other way round: whatwg allows", {
     expect_identical(rfc$disagreement_clients, pp_clients("disallow", "allow"))
     expect_identical(ww$disagreement_clients, rfc$disagreement_clients)
   }
+  # Both directions in one batch: each row carries its own decisions.
+  body <- paste0(
+    "User-agent: *\nDisallow: /account/\nAllow: /latam\n",
+    "Disallow: /b/%2E%2E/\n"
+  )
+  r <- pp_eval(
+    c(
+      "https://example.com/latam/%2E%2E/account/x",
+      "https://example.com/b/%2E%2E/c"
+    ),
+    "google", "Googlebot", "rfc3986", body
+  )
+  expect_identical(
+    r$disagreement_clients,
+    c(pp_clients("allow", "disallow"), pp_clients("disallow", "allow"))
+  )
 })
 
-test_that("rows no matcher decides are flagged only when whatwg fails", {
-  r <- pp_eval(pp_flag_urls, "rfc9309", "FooBot", "rfc3986")
-  expect_identical(r$matcher_status, rep("capability_unavailable", 5L))
-  expect_identical(
-    r$preprocessing_disagreement, c(FALSE, FALSE, FALSE, FALSE, TRUE)
+test_that("rows no matcher decides are never flagged", {
+  # The last row is one whatwg cannot parse, and one over the cap.
+  urls <- c(pp_flag_urls, pp_sized(2049L))
+  for (mode in engine_url_normalizations_v1()) {
+    r <- pp_eval(urls, "rfc9309", "FooBot", mode)
+    expect_identical(r$matcher_status, rep("capability_unavailable", 6L))
+    expect_identical(r$preprocessing_disagreement, rep(FALSE, 6L))
+    expect_identical(r$disagreement_clients, rep(NA_character_, 6L))
+  }
+})
+
+test_that("an undecided side is shown as undecided", {
+  url <- "https://example.com/latam/%2e%2e/account/x"
+  pre <- preprocess_matcher_url_v1(url, "rfc3986")
+  out <- url_disagreement_v1(
+    pre, 1L, "allow", decide = function(rows, urls) NA_character_
   )
+  expect_true(out$flag)
+  expect_identical(out$clients, pp_clients("allow", "undecided"))
+})
+
+# Two origins with two bodies, and crawler tokens with and without a parent,
+# so a second pass that reads another row's body or profile changes a
+# result. Only rows 2 to 4 have targets that differ, and only row 2's
+# decide apart.
+pp_batch_bodies <- list(
+  a = "User-agent: *\nDisallow: /account/\nAllow: /latam\n",
+  b = paste0(
+    "User-agent: Googlebot\nAllow: /\n\n",
+    "User-agent: *\nDisallow: /account/\nAllow: /latam\n"
+  )
+)
+
+test_that("the second pass reads each row's own body and crawler profile", {
+  local_fake_ssrfr(function(req) {
+    host <- if (grepl("^http://b/", req$url)) "b" else "a"
+    fake_response(200L, body = pp_batch_bodies[[host]])
+  })
+  urls <- c(
+    "http://a/plain", "http://a/latam/%2e%2e/account/x",
+    "http://b/latam/%2e%2e/account/x", "http://b/q/%2e%2e/z"
+  )
+  tokens <- c("FooBot", "FooBot", "Googlebot-Image", "FooBot")
+  for (mode in c("rfc3986", "none")) {
+    r <- robots_evaluate_url_v1(
+      urls, tokens, "google", "google", url_normalization = mode
+    )$results
+    expect_identical(r$url_decision, rep("allow", 4L), label = mode)
+    expect_identical(
+      r$preprocessing_disagreement, c(FALSE, TRUE, FALSE, FALSE)
+    )
+  }
+  # Under whatwg, row 3 reads its parent's group (Allow: /) on body b.
+  r <- robots_evaluate_url_v1(
+    urls, tokens, "google", "google", url_normalization = "whatwg"
+  )$results
+  expect_identical(
+    r$url_decision, c("allow", "disallow", "allow", "allow")
+  )
+  expect_identical(r$preprocessing_disagreement, c(FALSE, TRUE, FALSE, FALSE))
 })
 
 pp_count_dispatch <- function(env) {
@@ -893,14 +1096,7 @@ test_that("evaluate_url_v1 under whatwg: same fetch, flag on the row", {
 
 # ---- the length cap on the comparison ----------------------------------------
 
-# A URL of `bytes` bytes whose rfc3986 and whatwg forms decide apart:
-# padding in the query moves neither decision.
-pp_sized <- function(bytes) {
-  head <- "https://example.com/latam/%2e%2e/account/x?q="
-  paste0(head, strrep("a", bytes - nchar(head, type = "bytes")))
-}
-
-pp_not_compared <- "not compared: URL longer than 8192 bytes"
+pp_not_compared <- "not compared: URL longer than 2048 bytes"
 
 pp_count_rurl <- function(env) {
   real <- rurl::serialize_url
@@ -913,16 +1109,16 @@ pp_count_rurl <- function(env) {
   )
 }
 
-test_that("the cap is 8192 bytes of the input URL", {
-  expect_identical(url_disagreement_max_bytes_v1(), 8192L)
+test_that("the cap is 2048 bytes of the input URL", {
+  expect_identical(url_disagreement_max_bytes_v1(), 2048L)
   expect_identical(url_disagreement_not_compared_v1(), pp_not_compared)
-  expect_identical(nchar(pp_sized(8192L), type = "bytes"), 8192L)
-  expect_identical(nchar(pp_sized(8193L), type = "bytes"), 8193L)
+  expect_identical(nchar(pp_sized(2048L), type = "bytes"), 2048L)
+  expect_identical(nchar(pp_sized(2049L), type = "bytes"), 2049L)
 })
 
-test_that("rfc3986 and none compare 8192 bytes, not 8193, and skip rurl", {
-  at <- pp_sized(8192L)
-  over <- pp_sized(8193L)
+test_that("rfc3986 and none compare 2048 bytes, not 2049, and skip rurl", {
+  at <- pp_sized(2048L)
+  over <- pp_sized(2049L)
   for (mode in c("rfc3986", "none")) {
     for (backend in names(pp_engines)) {
       seen <- new.env(parent = emptyenv())
@@ -946,18 +1142,18 @@ test_that("rfc3986 and none compare 8192 bytes, not 8193, and skip rurl", {
 test_that("a URL over the cap gets no second matcher pass", {
   seen <- new.env(parent = emptyenv())
   pp_count_dispatch(seen)
-  over <- pp_sized(8193L)
+  over <- pp_sized(2049L)
   r <- pp_eval(over, "google", "Googlebot", "rfc3986")
   expect_identical(seen$urls, r$matcher_url)
   # Under "none" too, though its rfc3986 target differs from the input.
   seen$urls <- NULL
-  long_dots <- paste0("https://example.com/a/../", strrep("b", 8200L))
+  long_dots <- paste0("https://example.com/a/../", strrep("b", 2100L))
   pp_eval(long_dots, "google", "Googlebot", "none")
   expect_identical(seen$urls, long_dots)
 })
 
 test_that("whatwg compares and serializes any length", {
-  over <- pp_sized(8193L)
+  over <- pp_sized(2049L)
   seen <- new.env(parent = emptyenv())
   pp_count_rurl(seen)
   r <- pp_whatwg(over)
@@ -978,4 +1174,19 @@ test_that("20,000 dot-segment pairs under the default stay fast", {
   expect_identical(r$preprocessing_disagreement, NA)
   # rurl's whatwg serializer took about 53 seconds on this URL.
   expect_lt(elapsed, 10)
+})
+
+test_that("dot-heavy URLs just under the cap stay quick", {
+  head <- "https://example.com"
+  url <- paste0(head, strrep("/s/..", 403L), "/x")
+  url <- paste0(url, strrep("y", 2040L - nchar(url)))
+  expect_identical(nchar(url, type = "bytes"), 2040L)
+  elapsed <- system.time(
+    r <- robots_evaluate_text_v1(
+      pp_body, rep(url, 5L), "Googlebot", "google", "google"
+    )$results
+  )[["elapsed"]]
+  expect_identical(r$preprocessing_disagreement, rep(FALSE, 5L))
+  # rurl sees the URL once, however many rows repeat it.
+  expect_lt(elapsed, 3)
 })

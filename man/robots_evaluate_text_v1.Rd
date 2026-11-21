@@ -164,7 +164,12 @@ dot segments (\verb{/\%2e\%2e/} too) and, unlike \code{"rfc3986"}, changes the
 encoding and host as that standard does (a space becomes \verb{\%20}, a byte
 outside ASCII is percent-encoded, the host is put in lower case and a
 default port dropped). Userinfo is left out and the fragment dropped, as
-under \code{"rfc3986"}. A URL it cannot parse, such as \code{"/a/../b"}, is
+under \code{"rfc3986"}. The URL's bytes are read as UTF-8 whatever the
+session's locale (a \code{"latin1"}-marked URL is converted from latin1). A
+URL with no scheme, such as \code{"/a/../b"}, is resolved as a browser
+resolves a relative reference, against a placeholder origin, and the
+matcher reads only the path and query (\code{"/b"}), with the note
+\verb{no scheme: resolved as a relative reference}. A URL it cannot parse is
 evaluated as given, with the note
 \verb{not a valid WHATWG URL: evaluated as given}; a changed URL has the note
 \verb{WHATWG URL serialization changed the URL}, then \verb{userinfo removed} or
@@ -172,19 +177,25 @@ evaluated as given, with the note
 length, and its cost grows faster than linearly on a long path with many
 dot segments (in \code{rurl::serialize_url()}).
 
-In every mode, \code{preprocessing_disagreement} is \code{TRUE} when the URL the
-matcher reads under \code{"rfc3986"} and the one it reads under \code{"whatwg"}
-differ and are decided differently (\code{url_decision}), or when \code{"whatwg"}
-cannot parse the URL; it is \code{FALSE} otherwise, including for an \code{NA} or
-empty URL and for a row no matcher decided. The second match runs only on
-rows whose two URLs differ. \code{disagreement_clients} is \code{NA} when the flag
-is \code{FALSE}; otherwise it gives each side's decision and the clients
-surveyed to send that form: \verb{wget 1.25, curl/libcurl < 8.13.0} for
-\code{"rfc3986"} and \verb{Chrome 157, Node 26 fetch, curl/libcurl >= 8.13.0} for
-\code{"whatwg"}. Under \code{"rfc3986"} and \code{"none"}, a URL longer than 8192 bytes
-is not compared: the \code{"whatwg"} form is not computed, no second match
-runs, \code{preprocessing_disagreement} is \code{NA} and \code{disagreement_clients} is
-\verb{not compared: URL longer than 8192 bytes}. Under \code{"whatwg"} every length
+In every mode, \code{preprocessing_disagreement} compares the URL the matcher
+reads under \code{"rfc3986"} with the one it reads under \code{"whatwg"}, on the
+rows a matcher decides. It is \code{TRUE} when the two differ and are decided
+differently (\code{url_decision}), or when \code{"whatwg"} cannot parse the URL,
+and \code{FALSE} otherwise. A row no matcher decided (an \code{NA} or empty URL,
+\code{capability_unavailable}, a policy decision) is always \code{FALSE}, with \code{NA}
+\code{disagreement_clients}. The second match runs only on rows whose two
+URLs differ. \code{disagreement_clients} is \code{NA} when the flag is \code{FALSE};
+otherwise it gives each side's decision. When the input's path has a dot
+segment (\code{.}, \code{..}, \verb{\%2e}, \verb{.\%2e}, \verb{\%2e.} or \verb{\%2e\%2e}, either case), it
+also names the clients surveyed to send each form:
+\verb{wget 1.25, curl/libcurl < 8.13.0} for \code{"rfc3986"} and
+\verb{Chrome 157, Node 26 fetch, curl/libcurl >= 8.13.0} for \code{"whatwg"}.
+Otherwise it says the forms differ in more than dot segments and that no
+client survey covers this. Under \code{"rfc3986"} and \code{"none"}, a matcher row
+whose URL is longer than 2048 bytes is not compared: the \code{"whatwg"} form
+is not computed, no second match runs, \code{preprocessing_disagreement} is
+\code{NA} and \code{disagreement_clients} is
+\verb{not compared: URL longer than 2048 bytes}. Under \code{"whatwg"} every length
 is compared.
 }
 \examples{

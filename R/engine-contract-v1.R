@@ -2078,7 +2078,12 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' encoding and host as that standard does (a space becomes `%20`, a byte
 #' outside ASCII is percent-encoded, the host is put in lower case and a
 #' default port dropped). Userinfo is left out and the fragment dropped, as
-#' under `"rfc3986"`. A URL it cannot parse, such as `"/a/../b"`, is
+#' under `"rfc3986"`. The URL's bytes are read as UTF-8 whatever the
+#' session's locale (a `"latin1"`-marked URL is converted from latin1). A
+#' URL with no scheme, such as `"/a/../b"`, is resolved as a browser
+#' resolves a relative reference, against a placeholder origin, and the
+#' matcher reads only the path and query (`"/b"`), with the note
+#' `no scheme: resolved as a relative reference`. A URL it cannot parse is
 #' evaluated as given, with the note
 #' `not a valid WHATWG URL: evaluated as given`; a changed URL has the note
 #' `WHATWG URL serialization changed the URL`, then `userinfo removed` or
@@ -2086,19 +2091,25 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' length, and its cost grows faster than linearly on a long path with many
 #' dot segments (in `rurl::serialize_url()`).
 #'
-#' In every mode, `preprocessing_disagreement` is `TRUE` when the URL the
-#' matcher reads under `"rfc3986"` and the one it reads under `"whatwg"`
-#' differ and are decided differently (`url_decision`), or when `"whatwg"`
-#' cannot parse the URL; it is `FALSE` otherwise, including for an `NA` or
-#' empty URL and for a row no matcher decided. The second match runs only on
-#' rows whose two URLs differ. `disagreement_clients` is `NA` when the flag
-#' is `FALSE`; otherwise it gives each side's decision and the clients
-#' surveyed to send that form: `wget 1.25, curl/libcurl < 8.13.0` for
-#' `"rfc3986"` and `Chrome 157, Node 26 fetch, curl/libcurl >= 8.13.0` for
-#' `"whatwg"`. Under `"rfc3986"` and `"none"`, a URL longer than 8192 bytes
-#' is not compared: the `"whatwg"` form is not computed, no second match
-#' runs, `preprocessing_disagreement` is `NA` and `disagreement_clients` is
-#' `not compared: URL longer than 8192 bytes`. Under `"whatwg"` every length
+#' In every mode, `preprocessing_disagreement` compares the URL the matcher
+#' reads under `"rfc3986"` with the one it reads under `"whatwg"`, on the
+#' rows a matcher decides. It is `TRUE` when the two differ and are decided
+#' differently (`url_decision`), or when `"whatwg"` cannot parse the URL,
+#' and `FALSE` otherwise. A row no matcher decided (an `NA` or empty URL,
+#' `capability_unavailable`, a policy decision) is always `FALSE`, with `NA`
+#' `disagreement_clients`. The second match runs only on rows whose two
+#' URLs differ. `disagreement_clients` is `NA` when the flag is `FALSE`;
+#' otherwise it gives each side's decision. When the input's path has a dot
+#' segment (`.`, `..`, `%2e`, `.%2e`, `%2e.` or `%2e%2e`, either case), it
+#' also names the clients surveyed to send each form:
+#' `wget 1.25, curl/libcurl < 8.13.0` for `"rfc3986"` and
+#' `Chrome 157, Node 26 fetch, curl/libcurl >= 8.13.0` for `"whatwg"`.
+#' Otherwise it says the forms differ in more than dot segments and that no
+#' client survey covers this. Under `"rfc3986"` and `"none"`, a matcher row
+#' whose URL is longer than 2048 bytes is not compared: the `"whatwg"` form
+#' is not computed, no second match runs, `preprocessing_disagreement` is
+#' `NA` and `disagreement_clients` is
+#' `not compared: URL longer than 2048 bytes`. Under `"whatwg"` every length
 #' is compared.
 #'
 #' @param robots_txt A single, non-missing character value containing the
