@@ -81,10 +81,8 @@ ua_expect_adds_only <- function(input, label) {
 }
 
 ua_expect_silent <- function(input, label) {
-  off <- robots_validate_text(input)
-  on <- robots_validate_text(input, unicode_advisories = TRUE)
-  expect_identical(on$diagnostics, off$diagnostics, label = label)
-  expect_identical(on$documents, off$documents, label = label)
+  expect_identical(nrow(ua_rows(robots_validate_text(input))), 0L,
+                   label = label)
 }
 
 test_that("ROBO-qxcwxtbm: the default reports nothing for U+200B or U+FFFD", {
@@ -253,8 +251,24 @@ test_that("ROBO-qxcwxtbm: invalid UTF-8 keeps invalid_utf8 and no advisory", {
   body <- c(charToRaw("User-agent: *\nDisallow: /a"), as.raw(0xff),
             charToRaw(ua_chr(0x200b, 0xfffd)), charToRaw("\n"))
   ua_expect_silent(body, "invalid")
-  x <- robots_validate_text(body, unicode_advisories = TRUE)
+  x <- robots_validate_text(body)
   expect_identical(x$diagnostics$code, "invalid_utf8")
+})
+
+test_that("ROBO-qxcwxtbm: the advisory rows change no status or error count", {
+  for (point in c(0x200b, 0xfffd)) {
+    x <- robots_validate_text(ua_body("Disallow: /a", ua_chr(point), "b"))
+    label <- sprintf("U+%04X", point)
+    expect_identical(x$documents$validation_status, "valid", label = label)
+    expect_identical(x$documents$warning_count, 0L, label = label)
+    expect_identical(x$documents$error_count, 0L, label = label)
+  }
+  # A leading U+200B or U+FEFF is left to the slash row alone.
+  for (point in c(0x200b, 0xfeff)) {
+    x <- robots_validate_text(ua_body("Disallow: ", ua_chr(point), "/a"))
+    expect_identical(x$diagnostics$code, "rule_missing_leading_slash",
+                     label = sprintf("U+%04X", point))
+  }
 })
 
 test_that("ROBO-qxcwxtbm: raw and character input give the same rows", {
@@ -401,7 +415,7 @@ test_that("ROBO-qxcwxtbm: the flag must be TRUE or FALSE", {
   }
 })
 
-test_that("ROBO-qxcwxtbm: the edge-case fixtures keep their default rows", {
+test_that("ROBO-qxcwxtbm: the edge-case fixtures gain no advisory row", {
   edge_dir <- test_path("fixtures", "edge-cases")
   files <- list.files(edge_dir, pattern = "[.](txt|hex)$")
   expect_gt(length(files), 0L)
@@ -412,12 +426,8 @@ test_that("ROBO-qxcwxtbm: the edge-case fixtures keep their default rows", {
     } else {
       readBin(path, "raw", file.size(path))
     }
-    default <- robots_validate_text(bytes)
-    expect_identical(
-      robots_validate_text(bytes, unicode_advisories = FALSE), default,
-      label = file
-    )
-    ua_expect_adds_only(bytes, file)
+    expect_identical(nrow(ua_rows(robots_validate_text(bytes))), 0L,
+                     label = file)
   }
 })
 
