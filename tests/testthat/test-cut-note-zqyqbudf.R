@@ -362,6 +362,19 @@ test_that("a cut policy token is not named as an agent", {
   expect_no_match(d$message, "product token from", fixed = TRUE)
 })
 
+test_that("an opener Google reads no token from is not named as an agent", {
+  # `1bot` and `*bot` name no crawler for Google's matcher (their
+  # user_agent_cut rows say so), so the sentence does not name them.
+  for (opener in c("1bot", "*bot")) {
+    body <- sprintf(paste0("User-agent: %s\nUser-agent: Bar\n",
+                           "Sitemap: https://e.com/s.xml\nUser-agent: Foo\n",
+                           "Disallow: /x\n"), opener)
+    d <- cn_rows(body, "user_agent_joined_across_directive")
+    expect_identical(d$line, 4L, label = opener)
+    expect_no_match(d$message, "product token from", fixed = TRUE)
+  }
+})
+
 # A cut-heavy file: every row family that names an agent, on values whose
 # tokens (`Peer`, `Zork`, `Spinn`, `GPT`) are never a word of the written
 # value.

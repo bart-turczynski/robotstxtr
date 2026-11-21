@@ -2415,8 +2415,11 @@ joined_user_agent_diagnostics <- function(groups, parsed, cap = 5L) {
   names_crawler <- (agents$global | nzchar(agents$key)) & !family
   id <- ifelse(agents$global, "*", agents$key)
   # The line of each crawler whose value Google's matcher cuts, for the
-  # sentence a row naming it adds (ROBO-zqyqbudf); NA otherwise.
-  agents$cut_line <- ifelse(agents$cut & !family, agents$line, NA_integer_)
+  # sentence a row naming it adds (ROBO-zqyqbudf); NA otherwise. A value
+  # Google reads no token from (`1bot`, `*bot`) names no crawler there, as
+  # its user_agent_cut row says, so it is not one.
+  agents$cut_line <- ifelse(agents$cut & nzchar(agents$key) & !family,
+                            agents$line, NA_integer_)
 
   last_line <- max(parsed$line, agents$line)
   is_directive <- logical(last_line)
