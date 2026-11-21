@@ -274,6 +274,22 @@ test_that("ROBO-mgtngbpm: a comment-led body draws no xml_body", {
   expect_false("xml_body" %in% robots_validate_text(bom)$diagnostics$code)
 })
 
+test_that("ROBO-mgtngbpm: a comment lead is read from the sniffer window only", {
+  # The lead is looked for in the first 4,096 bytes, as the sniffer reads them.
+  # A NUL past that window leaves the read "xml", and the lead check must not
+  # hand the whole body to rawToChar(), which errors on an embedded NUL. The
+  # NUL draws nul_byte; no xml_body.
+  body <- c(charToRaw("<!-- c -->\n"), charToRaw(strrep("a", 5000L)),
+            as.raw(0), charToRaw("\n"))
+  expect_identical(robots_content_flag(body), "xml")
+  x <- robots_validate_text(body)
+  expect_identical(
+    row_keys(x),
+    c("nul_byte@2", "malformed_line@1", "malformed_line@2", "no_rules@NA")
+  )
+  expect_false("xml_body" %in% x$diagnostics$code)
+})
+
 test_that("ROBO-mgtngbpm: body_kind_advisory() prefers html, xml, json", {
   expect_identical(body_kind_advisory("json", "html"), "html")
   expect_identical(body_kind_advisory("html", "xml"), "html")
