@@ -126,14 +126,14 @@ validation_unsupported <- c(
 #'     read, or says it names no crawler (\code{*bot}), and states the
 #'     effect: there the written value does not match its own record, so a
 #'     crawler going by it gets another group naming it, else
-#'     \code{User-agent: *}, else no rules. A warning only when the token
-#'     read is a documented Google crawler token the value did not mean
-#'     (\code{Googlebot Image}, read as \code{Googlebot}); a version suffix
-#'     (\code{Googlebot/2.1}) or a trailing \code{*} is info, as the token
-#'     read is the crawler the value names, and any other token is info, as
-#'     Google's crawlers do not go by it; a value holding a look-alike
-#'     character (below) is a warning whatever the token, as no byte
-#'     compare matches it. The Bing and Yandex
+#'     \code{User-agent: *}, else no rules. A warning in two cases: the
+#'     value holds a look-alike character (below), whatever the token, as
+#'     no byte compare matches it; or the token read is a documented Google
+#'     crawler token the value did not mean (\code{Googlebot Image}, read
+#'     as \code{Googlebot}). Otherwise info: a version suffix
+#'     (\code{Googlebot/2.1}) or a trailing \code{*}, as the token read is
+#'     the crawler the value names, and any other token, as Google's
+#'     crawlers do not go by it. The Bing and Yandex
 #'     matchers do not cut the value. A value that is valid UTF-8 and holds
 #'     a look-alike character, from a closed list of common ones (Unicode
 #'     hyphens and dashes such as U+2011, U+2212 and U+FF0D, U+FF3F
