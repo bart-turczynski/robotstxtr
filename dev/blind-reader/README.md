@@ -109,15 +109,37 @@ with a `robots.rds`, as `dev/corpus/README.md` describes).
    control, U+2028 or U+2029) as `\xHH`; encoding questions are answered
    from the bytes, by `pool.rds` and the validator, not by the reader.
 
-4. Read. For each prompt, spawn one subagent on model `haiku` whose whole
-   input is that file's text, and save its reply, unedited, as
-   `<store>/answers/stage1/<id>.txt`. The reader must have no tools, so it
-   cannot run robotstxtr or fetch anything and stays blind: spawn it from an
-   agent definition that grants no tools. Where that is not possible, the
-   prompt already forbids tool use; check each transcript for tool calls
-   and record which reads had any. Record the model alias and, where the
-   transcript shows it, the resolved model id, in
-   `<store>/answers/stage1/run-meta.txt`. No API calls and no keys.
+4. Read. Answers go in one directory per stage, `<store>/answers/<stage>/`
+   (`stage1`, then `stage2`). For each rendered prompt, spawn one reader on
+   model `haiku` and give it only this one-line instruction, where `<prompt>`
+   is the absolute path of `<store>/prompts/<stage>/<id>.txt`:
+
+   ```text
+   Read <prompt> with the Read tool, then answer the prompt it holds. Use no other tool and read no other file.
+   ```
+
+   Save its reply, unedited, as `<store>/answers/<stage>/<id>.txt`. Spawn
+   it from an agent definition that grants the Read tool and nothing else,
+   where that is possible.
+
+   Before spawning, check each prompt for a line longer than 2,000
+   characters: the Read tool truncates such a line, so the reader would not
+   see the whole file. A sample with one is recorded as not read; it is not
+   spawned, and its answer is not guessed.
+
+   `<store>/answers/<stage>/run-meta.txt` records the model alias and,
+   where the transcript shows it, the resolved model id; then, per id, the
+   tool calls the transcript shows, or `not read` and why. A read is valid
+   only when the transcript shows exactly one Read call, on that id's own
+   prompt path, and no other tool call. A reply from a read that is not
+   valid is not saved as an answer, so `score.R` reports that id as
+   `missing`. No API calls and no keys.
+
+   Holding a Read tool weakens blindness slightly: the reader could read
+   something besides its prompt. That is accepted because the alternative,
+   retyping the prompt into the spawn call, cannot be checked byte for byte
+   and fails on very long lines; the one-call check above catches a reader
+   that reads anything else.
 
 5. Score:
 
@@ -155,3 +177,26 @@ with a `robots.rds`, as `dev/corpus/README.md` describes).
 The RFC 9309 passages in `prompt.md` are quoted word for word from the RFC;
 only the sentence on the case of record names is not RFC 9309 text, and the
 prompt says so.
+
+## Changes after stage 1
+
+- The surprise question drew remarks on group selection working as RFC
+  9309 describes (a crawler falling back to the `*` group, or its own group
+  overriding `*`) on nearly every file, which buries real surprises. The
+  prompt now asks only for something a validator should warn about that the
+  issue lines do not cover, names group selection, the `*` fallback and
+  longest-match precedence as not surprises, and asks for `surprise: none`
+  then.
+- A few answers broke the format: a surprise line over the word limit and a
+  decision line citing three sections. The prompt now states the 15-word
+  limit next to the format block and says plainly that the decision cites at
+  most two sections. The answer format and what `score.R` checks are
+  unchanged.
+- The stage-1 prompts reached the readers by being retyped into each spawn
+  call, which cannot be checked byte for byte and fails on very long lines.
+  Each reader now reads its own rendered prompt file with the Read tool
+  (step 4), a read is valid only with that single Read call, and a prompt
+  with a line the Read tool would truncate is recorded as not read. Since
+  the reader now holds a tool, the prompt's opening says to use no tool
+  from there on instead of saying it has none.
+- Answers are kept per stage, under `answers/<stage>/`.
