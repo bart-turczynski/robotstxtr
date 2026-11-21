@@ -504,7 +504,9 @@ test_that("a spent budget prepares no further hop and no further origin", {
 
   x <- robots_compare_fetches(c("http://a/", "http://d/"), max_requests = 2)
 
-  expect_identical(prepared$urls, c("http://a/robots.txt", "http://b/robots.txt"))
+  expect_identical(
+    prepared$urls, c("http://a/robots.txt", "http://b/robots.txt")
+  )
   expect_length(rec$urls, 2L)
   expect_identical(
     x$observations$observation_status, c("budget_exhausted", "not_requested")

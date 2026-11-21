@@ -668,15 +668,15 @@ variants_user_agents <- function(agents) {
   agents
 }
 
-# `repeats`, absent (1 each) or whole numbers of at least 1 (Inf fails the
-# upper bound), summing to at most compare_max_observations.
+# `repeats`, absent (1 each) or whole numbers of at least 1, summing to at
+# most compare_max_observations. The sum, taken as a double, also bounds each
+# value, so one past the integer range or Inf is refused by it.
 variants_repeats <- function(repeats, n) {
   if (is.null(repeats)) {
     repeats <- rep(1L, n)
   }
   if (!is.numeric(repeats) || anyNA(repeats) || any(repeats < 1) ||
-        any(repeats != trunc(repeats)) ||
-        any(repeats > .Machine$integer.max)) {
+        any(repeats != trunc(repeats))) {
     invalid_variants(
       "Column `repeats` must hold whole numbers of at least 1, with no NA."
     )
