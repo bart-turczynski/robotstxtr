@@ -102,20 +102,17 @@ rfc3986_matcher_urls_v1 <- function(url) {
 
 # The URL as UTF-8 for rurl, never read through the native encoding: a
 # latin1-marked string is converted from latin1, and any other string is
-# taken as the bytes it holds, marked UTF-8. Bytes that are not valid UTF-8
-# give NA, which rurl cannot parse either (rurl would otherwise read them
-# as U+FFFD). The UTF-8 bytes matter beyond rurl: a URL with no scheme is
-# cut from them (whatwg_relative_input_v1()).
+# taken as the bytes it holds (rurl reads them as UTF-8 whatever their
+# mark). Bytes that are not valid UTF-8 give NA, which rurl cannot parse
+# either (rurl would otherwise read them as U+FFFD). The UTF-8 bytes matter
+# beyond rurl: a URL with no scheme is cut from them
+# (whatwg_relative_input_v1()).
 url_utf8_for_rurl_v1 <- function(url) {
   latin <- Encoding(url) == "latin1"
   out <- url
   out[latin] <- enc2utf8(url[latin])
   as_bytes <- which(!latin)
-  valid <- validUTF8(url[as_bytes])
-  out[as_bytes[!valid]] <- NA_character_
-  marked <- url[as_bytes[valid]]
-  Encoding(marked) <- "UTF-8"
-  out[as_bytes[valid]] <- marked
+  out[as_bytes[!validUTF8(url[as_bytes])]] <- NA_character_
   out
 }
 
