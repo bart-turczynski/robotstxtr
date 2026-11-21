@@ -380,31 +380,55 @@ test_that("the Bing and Yandex matchers keep those groups apart", {
   expect_identical(x$matcher_status, rep("not_evaluated", 2L))
 })
 
-# Two groups of `n` cut agents sharing `n` rules: every row of the second
-# group is a repeat only through the cut (ROBO-dbvmxcfw keeps the validator
-# linear). The check is timed on its own, best of three.
-dc_time_cut <- function(n) {
-  agents <- function(tag) sprintf("User-agent: Foo %s%d", tag, seq_len(n))
-  rules <- sprintf("Disallow: /r%d", seq_len(n))
+# duplicate_rule_diagnostics() timed on its own, best of three
+# (ROBO-dbvmxcfw keeps the validator linear).
+dc_time_check <- function(body) {
   groups <- validation_groups(as.data.frame(
-    robotstxtr_validation_parse_(charToRaw(dc_lines(
-      agents("a"), rules, "", agents("b"), rules
-    ))),
-    stringsAsFactors = FALSE
+    robotstxtr_validation_parse_(charToRaw(body)), stringsAsFactors = FALSE
   ))
   min(vapply(1:3, function(i) {
     system.time(duplicate_rule_diagnostics(groups))[["elapsed"]]
   }, 0))
 }
 
-test_that("cut-only rows cost time linear in the file", {
-  skip_on_cran()
-  # Four times the file: linear is about four times the time, quadratic
-  # sixteen.
-  small <- dc_time_cut(1000L)
-  large <- dc_time_cut(4000L)
-  expect_lt(large, 6 * max(small, 0.02))
-})
+# Letter-only tokens: Ta, Tb, ..., Tba, ...
+dc_letters <- function(n) {
+  paste0("T", chartr("0123456789", "abcdefghij", seq_len(n)))
+}
+
+# Each shape at `n`: every repeat is one only through the cut.
+dc_shapes <- list(
+  # Two groups of `n` cut agents sharing `n` rules.
+  two_groups = function(n) {
+    agents <- function(tag) sprintf("User-agent: Foo %s%d", tag, seq_len(n))
+    rules <- sprintf("Disallow: /r%d", seq_len(n))
+    dc_lines(agents("a"), rules, "", agents("b"), rules)
+  },
+  # `n` groups whose values all cut to `Foo`.
+  one_token = function(n) {
+    dc_lines(sprintf("User-agent: Foo %d\nDisallow: /r\nDisallow: /s",
+                     seq_len(n)))
+  },
+  # `n` tokens, each in groups `<token> a` and `<token> b`.
+  many_tokens = function(n) {
+    tokens <- dc_letters(n)
+    dc_lines(sprintf(
+      "User-agent: %s a\nDisallow: /r\nDisallow: /s\nUser-agent: %s b\n%s",
+      tokens, tokens, "Disallow: /r\nDisallow: /s"
+    ))
+  }
+)
+
+for (shape in names(dc_shapes)) {
+  test_that(paste("cut-only rows cost time linear in the file:", shape), {
+    skip_on_cran()
+    # Four times the file: linear is about four times the time, quadratic
+    # sixteen.
+    small <- dc_time_check(dc_shapes[[shape]](1000L))
+    large <- dc_time_check(dc_shapes[[shape]](4000L))
+    expect_lt(large, 6 * max(small, 0.02))
+  })
+}
 
 for (locale in readLines(test_path("fixtures", "case-folding-locales.txt"))) {
   test_that(paste("whole values compare the same under", locale), {

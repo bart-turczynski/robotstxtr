@@ -3778,65 +3778,84 @@ duplicate_rule_cut_apart <- function(keys, engines) {
 }
 
 # For each group in `wanted`, a column of two message parts. The first is
-# "<values> as <tokens>": each token the group names that more than one
+# "<values> as <tokens>": the tokens the group names that more than one
 # whole value cuts to in the groups up to and including it (Google merges
-# all of them), its written values in file order (five at most, then a
-# count, always one of the group's own) and the tokens as first written
-# (five at most). Values differing only in ASCII case count once, the first
-# written. The second is duplicate_rule_cut_apart() for those tokens. The
-# lookups are built once, so the cost is linear in the agent lines
+# all of them), as first written (five at most, then a count), and their
+# written values in file order (five at most, then a count): one of the
+# group's own for each token named, then the earliest others. Values
+# differing only in ASCII case count once, the first written. A line
+# reading no token (`1bot`) is left out. The second part is
+# duplicate_rule_cut_apart() for those tokens.
+# The lookups are integer vectors built once, and a group reads only its own
+# lines and the values it shows, so the cost is linear in the agent lines
 # (ROBO-dbvmxcfw).
 duplicate_rule_cut_names <- function(agents, wanted, cap = 5L) {
   keep <- !agents$global & nzchar(agents$key)
-  key <- agents$key[keep]
-  pair <- paste(key, agents$uncut[keep], sep = "\n")
+  key <- match(agents$key[keep], unique(agents$key[keep]))
+  pair <- paste(agents$key[keep], agents$uncut[keep], sep = "\n")
   first_of <- match(pair, pair)
-  distinct <- which(first_of == seq_along(pair))
+  is_first <- first_of == seq_along(pair)
+  distinct <- which(is_first)
+  # Each token's first `cap` distinct whole values, as agent indexes in line
+  # order, by integer token id.
+  ids <- factor(key[distinct], seq_len(max(key, 0L)))
+  heads <- lapply(split(distinct, ids), utils::head, cap)
+  group <- agents$group[keep]
+  runs <- rle(group)
+  ends <- cumsum(runs$lengths)
   look <- list(
-    key = key, line = agents$line[keep], name = agents$name[keep],
-    token = agents$token[keep], first_of = first_of,
-    # Each token's distinct whole values, as agent indexes in line order.
-    by_key = split(distinct, factor(key[distinct], unique(key[distinct]))),
-    in_group = split(seq_along(key), agents$group[keep]),
-    engines = duplicate_rule_cut_engines()
+    key = key, name = agents$name[keep], token = agents$token[keep],
+    first_of = first_of, heads = heads,
+    # The distinct whole values of a line's token up to and including it.
+    seen = stats::ave(as.integer(is_first), key, FUN = cumsum),
+    engines = duplicate_rule_cut_engines(),
+    folded = agents$key[keep]
   )
-  vapply(wanted, function(g) {
-    duplicate_rule_cut_group_names(look, look$in_group[[as.character(g)]],
-                                   cap)
+  at <- match(wanted, runs$values)
+  vapply(seq_along(wanted), function(i) {
+    own <- seq.int(ends[[at[[i]]]] - runs$lengths[[at[[i]]]] + 1L,
+                   ends[[at[[i]]]])
+    duplicate_rule_cut_group_names(look, own, cap)
   }, character(2L), USE.NAMES = FALSE)
 }
 
 duplicate_rule_cut_group_names <- function(look, own, cap) {
-  last <- max(look$line[own])
-  keys <- unique(look$key[own])
-  # How many distinct whole values each token has up to this group.
-  count <- vapply(keys, function(k) {
-    findInterval(last, look$line[look$by_key[[k]]])
-  }, 0L, USE.NAMES = FALSE)
-  merged <- keys[count > 1L]
-  count <- count[count > 1L]
-  total <- sum(count)
-  heads <- unlist(Map(function(k, n) look$by_key[[k]][seq_len(min(cap, n))],
-                      merged, count), use.names = FALSE)
-  shown <- sort(heads)[seq_len(min(cap, total))]
-  mine <- look$first_of[own][look$key[own] %in% merged]
-  if (!any(mine %in% shown)) {
-    shown <- sort(c(shown[-length(shown)], min(mine)))
-  }
-  firsts <- vapply(look$by_key[merged], `[[`, 0L, 1L, USE.NAMES = FALSE)
-  tokens <- look$token[sort(firsts)]
+  # A token's last line in the group holds its count up to the group.
+  last <- own[!duplicated(look$key[own], fromLast = TRUE)]
+  last <- last[look$seen[last] > 1L]
+  heads <- look$heads[look$key[last]]
+  firsts <- vapply(heads, `[[`, 0L, 1L)
+  order_by <- order(firsts)
+  last <- last[order_by]
+  heads <- heads[order_by]
+  firsts <- firsts[order_by]
+  merged <- look$key[last]
+  # One own value for each token named, then the earliest others.
+  named <- utils::head(seq_along(merged), cap)
+  mine <- vapply(named, function(j) {
+    min(look$first_of[own][look$key[own] == merged[[j]]])
+  }, 0L)
+  others <- unlist(Map(function(h, n) h[seq_len(min(cap, n))],
+                       heads[named], look$seen[last][named]),
+                   use.names = FALSE)
+  others <- sort.int(others[!others %in% mine])
+  shown <- sort.int(c(mine, others[seq_len(min(length(others),
+                                               cap - length(mine)))]))
+  total <- sum(look$seen[last])
   quote <- function(x) sprintf("'%s'", ai_training_name(x))
+  tokens <- look$token[firsts]
   c(
     paste(
       joined_and(quote(look$name[shown]), total - length(shown)), "as",
       if (length(tokens) == 1L) {
         sprintf("one token, %s,", quote(tokens))
       } else {
-        paste("the tokens", joined_and(quote(utils::head(tokens, cap)),
-                                       length(tokens) - cap))
+        sprintf("the tokens %s", joined_and(
+          quote(utils::head(tokens, cap)), length(tokens) - cap
+        ))
       }
     ),
-    duplicate_rule_cut_apart(merged, look$engines)
+    duplicate_rule_cut_apart(look$folded[firsts], look$engines)
   )
 }
 
