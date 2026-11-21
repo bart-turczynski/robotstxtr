@@ -651,6 +651,67 @@ Content-Signal makes the message wrong.
 default, kept unless a crawler documents it. None of the pages above does. Pinned by
 `tests/testthat/test-content-signal-fqkgreev.R`.
 
+### 7b. RSL License lines (ROBO-ahqpndzq; pages read 2026-11-21)
+
+Validator only: no matcher reads a `License` line as a rule (Google: "Rules other than allow,
+disallow, and user-agent are ignored by the robots.txt parser"), and nothing here changes a
+decision. `license` is in `validation_unsupported`, so the line counts in `unsupported_directives`
+and `recognized_directives`, no longer in `unknown_directives`.
+
+The directive is Really Simple Licensing's: RSL 1.0 (RSL-SPEC-1.0, Recommendation, published
+2025-12-10), §4.4 "robots.txt License Association" (https://rslstandard.org/rsl, read
+2026-11-21). Its value "MUST be an absolute URI"; it does not modify what `Allow` or `Disallow`
+permit; a `License` line inside a `User-agent` group applies only to clients that select that group
+under RFC 9309, one outside every group applies to all clients, and a client whose selected group
+has `License` lines uses only those, falling back to the global ones otherwise. Several lines are
+several candidate licenses.
+
+| Code | Severity | When |
+|---|---|---|
+| `rsl_license_directive` | info | A `License` line (any ASCII case) whose value is an RFC 3986 §4.3 absolute URI: a scheme (`[A-Za-z][A-Za-z0-9+.-]*:`), then only unreserved and reserved characters and `%HH` escapes. |
+| `rsl_license_directive` | warning | The same line with an empty value, or one that is not such a URI: relative (`/license.xml`), with whitespace, a non-ASCII byte or a malformed `%`. |
+
+The message names RSL 1.0 section 4.4, says the line changes no crawl access, says no crawler
+operator is documented as reading it, and states its scope; it never calls the placement an error.
+Scope follows RFC 9309 groups, which blank and unknown lines do not end, so a `License` line belongs
+to the last group whose first `User-agent` line precedes it, and is global only before the first
+`User-agent` line. A trailing line after a blank line is read as the last group's too; that reading
+rests on RFC 9309 grouping, not on an RSL example: RSL 1.0 §4.4.4 example 2 places each `License`
+right after its group's `Allow`, with the blank line after it. A
+group-scoped row names the group's first line and its agents (five, then a count); with no global
+`License` it adds that crawlers outside the group find no `License` in the file unless their own group
+has one, and that a line before the first `User-agent` line applies to every crawler. With a global
+line it says the group's line replaces it. A group whose only `User-agent` lines are empty can be
+selected by no crawler, so its row says the line reaches none. A global row names the groups that
+have their own lines.
+
+Reading the value: the parser cuts a line at its first `#`, so the value checked never holds a
+fragment, and at its first NUL, so only the prefix Google reads is checked. The parser also
+%-escapes a non-ASCII byte in the value it returns, so the check reads the value's raw bytes for
+one, as the parser read them: after a line-1 byte-order mark or a leading part of one, up to the
+first NUL and `#`, and within the 16,663-byte line buffer (`rule_raw_value()`). A
+`License https://example.com/l.xml` line with no colon after the key is not a License line: the parser's separator
+is the first colon, the scheme's, and the key becomes `License https` (`unknown_directive`). A
+`License` line between stacked `User-agent` lines keeps `user_agent_joined_across_directive` (§5d),
+and one in a `__usage_ai-training` group keeps `ai_training_group_extra_line` (§5c).
+
+`X-RSL:` stays `unknown_directive`: RSL 1.0 §4.4 defines only `License`, and an `X-` key is not
+that directive.
+
+As of 2026-11-21, no crawler operator below documents reading RSL or a robots.txt `License` line
+`[documented]` (by absence on each page):
+
+| Operator or project | Pages read 2026-11-21 | Finding |
+|---|---|---|
+| Google | https://developers.google.com/crawling/docs/robots-txt/robots-txt-spec | No RSL or `License`; rules other than `allow`, `disallow` and `user-agent` are ignored. |
+| OpenAI | https://developers.openai.com/api/docs/bots | No RSL or `License`; controls are `User-agent` groups for its crawlers. |
+| Anthropic | https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler | No RSL or `License`; covers `User-agent` groups, `Crawl-delay` and the aipref training signal. |
+| Perplexity | https://docs.perplexity.ai/guides/bots | No RSL or `License`. |
+| crawler-commons | https://github.com/crawler-commons/crawler-commons/issues/617 | "Support for robots.txt extension RSL", opened 2026-10-18, still open; its linked pull request #627 is open, not merged. |
+
+Re-read these pages when RSL or a vendor page changes; a crawler that documents reading `License`
+makes the message wrong. Pinned by `tests/testthat/test-rsl-license-ahqpndzq.R`.
+
 ## 8. Future-validator reference (NOT executed this release)
 
 For the eventual validator (ADR-009 §8), not executable now: Yandex 2048 rules / 1024 chars per rule /

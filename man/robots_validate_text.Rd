@@ -108,6 +108,19 @@ A known directive this profile ignores, such as \code{crawl-delay}. \cr
 A \code{Content-Signal} line, from an expired Internet-Draft that no
 crawler operator documents honoring; it counts as an unsupported
 directive. \cr
+\code{rsl_license_directive} \tab info or warning \tab
+A \code{License} line, the directive of Really Simple Licensing (RSL
+1.0 section 4.4) that points to licensing terms; it counts as an
+unsupported directive. The message says the line changes no crawl
+access, that no crawler operator is documented as reading it, and its
+scope: before the first User-agent line it is global, otherwise it
+applies only to the crawlers that select the group it sits in (blank
+lines end no group), a group's own License lines replace the global
+ones, and a group of only empty User-agent lines reaches no crawler.
+A warning only when the value is not an absolute URI
+(RFC 3986 section 4.3); the value is read up to the line's first
+\code{#}, so it holds no fragment. \code{X-RSL} and other keys stay
+\code{unknown_directive}. \cr
 \code{unknown_directive} \tab warning \tab
 A directive this profile does not recognize. \cr
 \code{empty_user_agent} \tab error \tab
