@@ -2080,14 +2080,14 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' default port dropped). Userinfo is left out and the fragment dropped, as
 #' under `"rfc3986"`. The URL's bytes are read as UTF-8 whatever the
 #' session's locale (a `"latin1"`-marked URL is converted from latin1). A
-#' URL with no scheme, such as `"/a/../b"` or `"example.com/a/./b"`, is read
-#' from its first `/` as under `"rfc3986"`: that path is appended to the
-#' placeholder origin `http://h.invalid` and serialized, and the matcher
-#' reads the bytes before the `/` followed by the serialized path and query
-#' (`"/b"`, `"example.com/a/b"`); one with no `/` is read as under
-#' `"rfc3986"`. When the serialized path starts with `//`
-#' (`"/a/..//h/x"`), the matcher reads `http://h.invalid//h/x`, so the path
-#' stays `//h/x` as a browser would request it. A URL it cannot parse is
+#' URL with no scheme, such as `"/a/../b"`, `"example.com/a/./b"` or
+#' `"//h/a/../x"`, is split exactly as under `"rfc3986"`: only its path, when
+#' that starts with `/`, is serialized (on the placeholder origin
+#' `http://h.invalid`, with its query), and the serialized path and query
+#' follow the same lead `"rfc3986"` keeps (`"/b"`, `"example.com/a/b"`,
+#' `"//h/x"`). Any other scheme-less URL is read as under `"rfc3986"`, and
+#' one whose serialized path would start with `//` after a lead with no
+#' authority (`"/a/..//h/x"`) is evaluated as given. A URL it cannot parse is
 #' evaluated as given, with the note
 #' `not a valid WHATWG URL: evaluated as given`; a changed URL has the note
 #' `WHATWG URL serialization changed the URL`, then `userinfo removed` or
@@ -2095,10 +2095,13 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' length, and its cost grows faster than linearly on a long path with many
 #' dot segments (in `rurl::serialize_url()`).
 #'
-#' In every mode, `preprocessing_disagreement` compares the URL the matcher
-#' reads under `"rfc3986"` with the one it reads under `"whatwg"`, on the
-#' rows the matcher decided (`url_decision` not `NA`); the `"whatwg"` form
-#' is computed only for those rows. It is `TRUE` when the two differ and
+#' Under `"rfc3986"` and `"whatwg"`, `preprocessing_disagreement` compares
+#' the URL the matcher reads under `"rfc3986"` with the one it reads under
+#' `"whatwg"`, on the rows the matcher decided (`url_decision` not `NA`);
+#' the `"whatwg"` form is computed only for those rows. Under `"none"` it is
+#' never computed: a decided row is `NA`, with `disagreement_clients`
+#' `not compared under url_normalization = "none"`, and nothing beyond the
+#' old reading runs. It is `TRUE` when the two differ and
 #' are decided differently, or when `"whatwg"` cannot parse the URL, and
 #' `FALSE` otherwise. Any other row (an `NA` or empty URL, an empty token,
 #' `capability_unavailable`, a policy decision, a token or target the
@@ -2115,7 +2118,7 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' 8.13.0` for `"whatwg"`. Otherwise it says the forms differ in more than
 #' dot segments and that no client survey covers this, or, when `"whatwg"`
 #' cannot parse the URL, gives the `"rfc3986"` decision and says so. Under
-#' `"rfc3986"` and `"none"`, a decided row
+#' `"rfc3986"`, a decided row
 #' whose URL is longer than 2048 bytes is not compared: the `"whatwg"` form
 #' is not computed, no second match runs, `preprocessing_disagreement` is
 #' `NA` and `disagreement_clients` is

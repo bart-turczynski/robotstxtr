@@ -274,13 +274,13 @@ extractor, which stays byte-transparent; `url` keeps the input.
   query's dots are kept. Unlike `"rfc3986"` it changes the encoding and the
   host as the WHATWG URL Standard does. The URL's bytes are read as UTF-8
   whatever the locale (a `"latin1"`-marked URL is converted from latin1).
-  A URL with no scheme is read from its first `/` as under `"rfc3986"`:
-  that path is appended to `http://h.invalid` (never resolved) and
-  serialized, and the matcher reads the bytes before the `/` and the
-  serialized path and query; one with no `/` is read as under
-  `"rfc3986"`. When the serialized path starts with `//`, the matcher reads
-  `http://h.invalid//…`, so the path stays `//…`. A URL it cannot parse is
-  evaluated as given.
+  A URL with no scheme is split exactly as under `"rfc3986"`: only its
+  path, when that starts with `/`, is serialized (`http://h.invalid` plus
+  the path and query, never resolved), and the serialized path and query
+  follow the same lead, an authority or the bytes before the first `/`.
+  Any other scheme-less URL is read as under `"rfc3986"`, and one whose
+  serialized path would start with `//` after a lead with no authority is
+  evaluated as given. A URL it cannot parse is evaluated as given.
 - `"none"`: the matcher reads the URL as given, byte for byte, as before
   this revision.
 
@@ -305,14 +305,18 @@ The `results` frame gains two columns between `group_token` and
   were left in place is evaluated as given, fragment included. Under
   `"whatwg"`, `NA` when the rebuilt URL is the input byte for byte;
   otherwise `not a valid WHATWG URL: evaluated as given`, or the parts that
-  apply of `no scheme: path from the first / serialized on
-  http://h.invalid` (or, for a path starting with `//`, `no scheme: the
-  serialized path starts with //, so the matcher reads it on the
-  placeholder origin http://h.invalid`), `WHATWG URL serialization changed
-  the URL`, `userinfo removed` and `fragment dropped`, joined by `"; "`.
+  apply of `no authority: path read from the first /`, `WHATWG URL
+  serialization changed the URL` (or, when the serialized path would start
+  with `//`, `WHATWG serialization left in place: it would start the path
+  with //`), `userinfo removed` and `fragment dropped`, joined by `"; "`. A
+  scheme-less URL whose path does not start with `/` has the `"rfc3986"`
+  note.
 
 Schema revision `2026-11-21.2` adds two more columns after
-`url_preprocessing_note`, on every row and in every mode:
+`url_preprocessing_note`, on every row and in every mode. Under `"none"`
+they are never computed: a decided row has the flag `NA` and the clients
+note `not compared under url_normalization = "none"`, and no `rurl` call
+or second pass runs. The rest describes `"rfc3986"` and `"whatwg"`:
 
 - `preprocessing_disagreement` (logical): on a row the matcher decided
   (`url_decision` not `NA`), `TRUE` when `"whatwg"` cannot parse the URL,
@@ -323,7 +327,9 @@ Schema revision `2026-11-21.2` adds two more columns after
   `"whatwg"` form is not computed under the other modes. A second matcher
   pass reads the other URL only on rows whose two URLs differ in more than
   the scheme or host case, a default port, an empty path against `/`, or
-  the fragment. Under `"rfc3986"` and `"none"`, `NA` for a decided row
+  the fragment. That second pass is the one exception to each batch
+  adapter being invoked once per evaluation: a second batch call with only
+  those rows. Under `"rfc3986"`, `NA` for a decided row
   whose URL is longer than 2048 bytes, which is not compared
   (`disagreement_clients`: `not compared: URL longer than 2048 bytes`);
   `"whatwg"` compares any length.

@@ -147,20 +147,26 @@ encoding of spaces or non-ASCII, which differs between those versions.
 The URL's bytes are handed to `rurl` as UTF-8 and never read through the session's native
 encoding, so the form does not depend on the locale: a `"latin1"`-marked URL is converted from
 latin1, any other is taken as its bytes, and bytes that are not valid UTF-8 cannot be parsed. A
-URL with no scheme is read from its first `/` as `"rfc3986"` reads it: that path is appended to
-the placeholder origin `http://h.invalid` by string concatenation (never resolved, so a leading
-`//` stays a path), serialized, and the matcher reads the bytes before the `/` followed by the
-serialized path and query (`"/latam/../account/x"` gives `/account/x`, `"example.com/a/./b"`
-gives `example.com/a/b`); one with no `/` is read as under `"rfc3986"`. When the serialized path
-starts with `//` (`"/a/..//h/x"`), the matcher reads `http://h.invalid//h/x`, so its path is
-`//h/x`, as a browser would request it; Bing and Yandex evaluate that wrapper, where they refuse
-the authority-less `"rfc3986"` form (review round 2). A URL `rurl` cannot parse (it returns `NA`) is evaluated as given, with the note
+URL with no scheme is split by the splitter `"rfc3986"` uses (`url_target_parts_v1()`), never its
+own: only the path it finds, when that starts with `/`, is serialized, as `http://h.invalid` plus
+the path and query (string concatenation, never resolution), and the serialized path and query
+follow the same lead `"rfc3986"` keeps, an authority or the bytes before the first `/`
+(`"/latam/../account/x"` gives `/account/x`, `"example.com/a/./b"` gives `example.com/a/b`,
+`"//h/a/../x"` gives `//h/x`); the fragment is dropped as there. Any other scheme-less input
+(`"foo?q=/a/../b"`, `"a#/b"`) is read as `"rfc3986"` reads it, with the same note, and one whose
+serialized path would start with `//` after a lead with no authority (`"/a/..//h/x"`) is evaluated
+as given, mirroring `"rfc3986"`'s guard, so Bing and Yandex refuse every scheme-less target in
+every mode (review round 3). A URL `rurl` cannot parse (it returns `NA`) is evaluated as given, with the note
 `not a valid WHATWG URL: evaluated as given`. A changed URL has the note
 `WHATWG URL serialization changed the URL`, then `userinfo removed` or `fragment dropped`.
 
 ### 7. The disagreement flag (part B)
 
-Two more columns after `url_preprocessing_note`, on every row and in every mode:
+Two more columns after `url_preprocessing_note`, on every row and in every mode. Under `"none"`
+they are never computed: every decided row has the flag `NA` and the clients note
+`not compared under url_normalization = "none"`, with no `"rfc3986"` target, no `rurl` call and no
+second pass, so `"none"` is the old reading with nothing extra (review round 3). The rest of this
+section describes `"rfc3986"` and `"whatwg"`.
 
 - `preprocessing_disagreement` (logical): on a row the selected matcher decided (`url_decision`
   not `NA`), `TRUE` when `"whatwg"` cannot parse the URL ("one mode fails"), or when the
@@ -186,12 +192,14 @@ is unrecorded.
 The selected mode's pass decides the row. A second matcher pass reads the other mode's URL only
 on decided rows whose two URLs differ in more than the scheme or host ASCII case, a default port
 (80 for http, 443 for https), an empty path against `/`, or the fragment, compared on the split
-parts (review round 2); under `"none"`, each side whose URL differs from the input is read once.
-Under `"rfc3986"` and `"none"` the `"whatwg"` URL is computed only for the rows compared, with
-one `rurl` call per distinct URL (about 0.1 ms each on the maintainer's machine, and more on a
-long path with many dot segments).
+parts in one vectorized call (review rounds 2 and 3). Under `"rfc3986"` the `"whatwg"` URL is
+computed only for the rows compared, with one `rurl` call per distinct URL (about 0.1 ms each on
+the maintainer's machine, and more on a long path with many dot segments). That second pass is the
+one exception to each batch adapter being invoked once per evaluation (`BI-V2-DISPATCH`, the
+Yandex and Bing adapters): it is a second batch call with only the candidate rows, so only their
+bodies are parsed again.
 
-Under `"rfc3986"` and `"none"`, a URL longer than 2048 bytes is not compared, because `rurl`'s cost
+Under `"rfc3986"`, a URL longer than 2048 bytes is not compared, because `rurl`'s cost
 grows faster than linearly on long dot-heavy paths (about 53 s for 20,000 `/seg/..` pairs): its
 flag is `NA`, `disagreement_clients` is `not compared: URL longer than 2048 bytes`, and no second
 pass runs. `"whatwg"` serializes and compares any length.

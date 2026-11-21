@@ -166,14 +166,14 @@ outside ASCII is percent-encoded, the host is put in lower case and a
 default port dropped). Userinfo is left out and the fragment dropped, as
 under \code{"rfc3986"}. The URL's bytes are read as UTF-8 whatever the
 session's locale (a \code{"latin1"}-marked URL is converted from latin1). A
-URL with no scheme, such as \code{"/a/../b"} or \code{"example.com/a/./b"}, is read
-from its first \code{/} as under \code{"rfc3986"}: that path is appended to the
-placeholder origin \verb{http://h.invalid} and serialized, and the matcher
-reads the bytes before the \code{/} followed by the serialized path and query
-(\code{"/b"}, \code{"example.com/a/b"}); one with no \code{/} is read as under
-\code{"rfc3986"}. When the serialized path starts with \verb{//}
-(\code{"/a/..//h/x"}), the matcher reads \verb{http://h.invalid//h/x}, so the path
-stays \verb{//h/x} as a browser would request it. A URL it cannot parse is
+URL with no scheme, such as \code{"/a/../b"}, \code{"example.com/a/./b"} or
+\code{"//h/a/../x"}, is split exactly as under \code{"rfc3986"}: only its path, when
+that starts with \code{/}, is serialized (on the placeholder origin
+\verb{http://h.invalid}, with its query), and the serialized path and query
+follow the same lead \code{"rfc3986"} keeps (\code{"/b"}, \code{"example.com/a/b"},
+\code{"//h/x"}). Any other scheme-less URL is read as under \code{"rfc3986"}, and
+one whose serialized path would start with \verb{//} after a lead with no
+authority (\code{"/a/..//h/x"}) is evaluated as given. A URL it cannot parse is
 evaluated as given, with the note
 \verb{not a valid WHATWG URL: evaluated as given}; a changed URL has the note
 \verb{WHATWG URL serialization changed the URL}, then \verb{userinfo removed} or
@@ -181,10 +181,13 @@ evaluated as given, with the note
 length, and its cost grows faster than linearly on a long path with many
 dot segments (in \code{rurl::serialize_url()}).
 
-In every mode, \code{preprocessing_disagreement} compares the URL the matcher
-reads under \code{"rfc3986"} with the one it reads under \code{"whatwg"}, on the
-rows the matcher decided (\code{url_decision} not \code{NA}); the \code{"whatwg"} form
-is computed only for those rows. It is \code{TRUE} when the two differ and
+Under \code{"rfc3986"} and \code{"whatwg"}, \code{preprocessing_disagreement} compares
+the URL the matcher reads under \code{"rfc3986"} with the one it reads under
+\code{"whatwg"}, on the rows the matcher decided (\code{url_decision} not \code{NA});
+the \code{"whatwg"} form is computed only for those rows. Under \code{"none"} it is
+never computed: a decided row is \code{NA}, with \code{disagreement_clients}
+\verb{not compared under url_normalization = "none"}, and nothing beyond the
+old reading runs. It is \code{TRUE} when the two differ and
 are decided differently, or when \code{"whatwg"} cannot parse the URL, and
 \code{FALSE} otherwise. Any other row (an \code{NA} or empty URL, an empty token,
 \code{capability_unavailable}, a policy decision, a token or target the
@@ -200,7 +203,7 @@ handle dot segments that way:
 and \verb{dot segments as in: Chrome 157, Node 26 fetch, curl/libcurl >= 8.13.0} for \code{"whatwg"}. Otherwise it says the forms differ in more than
 dot segments and that no client survey covers this, or, when \code{"whatwg"}
 cannot parse the URL, gives the \code{"rfc3986"} decision and says so. Under
-\code{"rfc3986"} and \code{"none"}, a decided row
+\code{"rfc3986"}, a decided row
 whose URL is longer than 2048 bytes is not compared: the \code{"whatwg"} form
 is not computed, no second match runs, \code{preprocessing_disagreement} is
 \code{NA} and \code{disagreement_clients} is
