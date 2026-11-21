@@ -95,11 +95,12 @@ test_that("ROBO-qxcwxtbm: U+200B and U+FFFD give info rows, still valid", {
 test_that("ROBO-qxcwxtbm: the API has no flag and the checks always run", {
   # The exact formals pin the API: there is no flag, and with no `...` an
   # old call that passes one is an unused-argument error (no shim).
+  # `destination_robots` is a fetch option (ROBO-ybhwztid), not a flag.
   expect_named(formals(robots_validate_text), c("robots_txt", "source_id"))
   expect_named(
     formals(robots_validate_url),
     c("url", "timeout", "max_bytes", "fetch_user_agent", "ssrf_guard",
-      "safety_level", "fetch_allow_ranges")
+      "safety_level", "fetch_allow_ranges", "destination_robots")
   )
   x <- robots_validate_text(ua_body("Disallow: /a"))
   expect_setequal(

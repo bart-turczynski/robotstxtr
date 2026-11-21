@@ -12,7 +12,8 @@ allowed_by_robots_url(
   fetch_user_agent = NULL,
   ssrf_guard = TRUE,
   safety_level = "strict",
-  fetch_allow_ranges = character()
+  fetch_allow_ranges = character(),
+  destination_robots = FALSE
 )
 }
 \arguments{
@@ -72,12 +73,28 @@ no host bits set. The metadata host names are never reopened, and an
 entry naming exactly one cloud-metadata endpoint (such as
 \code{"169.254.169.254/32"}) is a call-level error, as is \code{NA}, an empty
 string or any other entry the guard cannot read.}
+
+\item{destination_robots}{A single logical, \code{FALSE} by default. \code{TRUE}
+also reads the redirect destination's own robots.txt when an origin's
+robots.txt request ended on another site; see "Destination robots.txt"
+in \code{\link[=robots_fetch]{robots_fetch()}}.
+Any other value is a call-level error, raised before any request.}
 }
 \value{
 An S3 object of class \code{robots_decisions}: a named list with two
 components, \code{results} (one row per input URL, in input order) and \code{robots}
 (one row per fetched source body). Each fetched body is stored once as a
 raw vector in \code{robots$body}. Large body values never appear in \code{results}.
+With \code{destination_robots = TRUE} it also has the \code{destinations} and
+\code{destination_map} components of \code{\link[=robots_fetch]{robots_fetch()}}, and \code{results} gains
+\code{destination_source_id}, \code{destination_allowed},
+\code{destination_decision_source}, \code{destination_matched_line},
+\code{destination_matched_rule_type} and \code{destination_matched_rule_value}:
+the input URL, as given, matched against the destination's robots.txt
+by the same rules as the origin columns, and \code{NA} on a row with no
+destination read. They are the destination's decisions, for the caller
+to weigh: \code{allowed} and \code{decision_source} stay those of the file the
+origin reached.
 }
 \description{
 Fetches the governing \verb{/robots.txt} for one or more target URLs and matches

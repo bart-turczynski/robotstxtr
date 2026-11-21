@@ -96,8 +96,10 @@ variants you supply, under a hard request budget, and reports how the
 responses differ. It is meant for spotting a CDN or firewall that answers
 differently by HTTP User-Agent, by origin variant (\code{http} or \code{https}, \code{www}
 or the bare host, a port) or over time. The other fetching functions make
-one request chain per origin (a request and up to five redirects); this
-one may make several, as \code{variants} asks, up to \code{max_requests} requests.
+one request chain per origin (a request and up to five redirects), plus at
+most one per distinct cross-site redirect destination when called with
+\code{destination_robots = TRUE}; this one may make several, as \code{variants}
+asks, up to \code{max_requests} requests.
 }
 \details{
 Each variant's \code{url} is reduced to its robots.txt URL as \code{\link[=robots_fetch]{robots_fetch()}}

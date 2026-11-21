@@ -377,7 +377,14 @@ bytes: a 2xx is now cut and read to its last complete line; a 3xx, an
 unknown status or a status mismatch is now `body_too_large` (`NA`,
 `fetch_unknown`) where its redirect was followed before; a 4xx or 5xx keeps
 its status outcome but is built from the status alone, so `retry_after` is
-`NA` (a 404 or 410 still decides `missing_allow`). No v1 enum,
+`NA` (a 404 or 410 still decides `missing_allow`). `robots_fetch()`,
+`robots_validate_url()` and `allowed_by_robots_url()` also take an opt-in
+`destination_robots = FALSE` (ROBO-ybhwztid): `TRUE` reads a cross-site
+redirect destination's own robots.txt and reports it in components and
+`destination_*` columns of its own; the default makes no extra request and
+returns exactly the components and columns it did before. The destination's
+rules never decide the origin, and the v1 facades do not take the argument.
+No v1 enum,
 column, schema revision or policy revision moves. For consumers migrating
 incrementally, `as_legacy_robots_decisions_v1()` explicitly converts a v1 result
 whose policy and matcher are both Google into the original `robots_decisions`
