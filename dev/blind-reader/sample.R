@@ -50,7 +50,7 @@ exclusion_names <- function(path) {
 
 pool_reason <- function(read, max_bytes) {
   rec <- read$record
-  if (is.null(rec)) {
+  if (!is.list(rec)) {
     return("unreadable")
   }
   status <- suppressWarnings(as.integer(rec$http_status[1L]))
@@ -60,6 +60,9 @@ pool_reason <- function(read, max_bytes) {
   body <- rec$body
   if (is.null(body)) {
     return("no_body")
+  }
+  if (!is.raw(body)) {
+    return("unreadable")
   }
   if (!length(body)) {
     return("empty_body")
@@ -74,9 +77,10 @@ read_pool <- function(h, corpus, hosts, max_bytes) {
   rows <- lapply(hosts, function(host) {
     read <- h$read_corpus_record(file.path(corpus, host, "robots.rds"))
     reason <- pool_reason(read, max_bytes)
-    body <- if (reason == "kept") read$record$body else NULL
+    rec <- if (is.list(read$record)) read$record else list()
+    body <- if (reason == "kept") rec$body else NULL
     list(host = host, reason = reason, body = body,
-         truncated = isTRUE(read$record$body_truncated))
+         truncated = isTRUE(rec$body_truncated[1L]))
   })
   sha <- vapply(rows, function(r) {
     if (is.null(r$body)) NA_character_ else tools::sha256sum(bytes = r$body)
@@ -264,6 +268,9 @@ anchor_rows <- function(pkg, n_silent) {
 # Output
 
 sample_frame <- function(h, pool, drawn, n_stage1) {
+  if (!nrow(drawn)) {
+    return(list(frame = NULL, bytes = list()))
+  }
   bodies <- pool$bodies[drawn$index]
   tokens <- vapply(bodies, choose_token, character(1))
   paths <- vapply(bodies, function(b) choose_path(h, b), character(1))
@@ -326,9 +333,19 @@ write_outputs <- function(out, df, bytes, pool, record) {
   invisible(df)
 }
 
-verify_against <- function(df, previous) {
+# SAME only when the sample list and the package commit both match: the
+# strata come from the package's readings, so another commit may draw
+# another list from the same seed and corpus.
+verify_against <- function(df, record, previous) {
   prev <- readRDS(file.path(previous, "sample.rds"))
-  same <- identical(sample_key(df), sample_key(prev))
+  prev_sha <- readRDS(file.path(previous, "record.rds"))$package$git_sha
+  same_list <- identical(sample_key(df), sample_key(prev))
+  same_pkg <- identical(record$package$git_sha, prev_sha)
+  if (!same_pkg) {
+    cat("package commit differs:", record$package$git_sha, "vs", prev_sha,
+        "\n")
+  }
+  same <- same_list && same_pkg
   cat(if (same) "SAME" else "DIFFERENT", "sample list as", previous, "\n")
   if (!same) quit(save = "no", status = 1L)
 }
@@ -365,8 +382,15 @@ main <- function(args) {
   started <- Sys.time()
 
   hosts <- h$list_host_dirs(corpus)
-  excluded <- unique(unlist(lapply(opts$exclude, exclusion_names)))
-  excluded <- intersect(hosts, excluded)
+  per_source <- lapply(opts$exclude, function(p) {
+    intersect(hosts, exclusion_names(p))
+  })
+  exclude_counts <- data.frame(source = as.character(opts$exclude),
+                               corpus_hosts = lengths(per_source))
+  for (p in exclude_counts$source[exclude_counts$corpus_hosts == 0L]) {
+    message("WARNING: --exclude ", p, " names no corpus host")
+  }
+  excluded <- unique(unlist(per_source))
   hosts <- setdiff(hosts, excluded)
   hosts <- hosts[file.exists(file.path(corpus, hosts, "robots.rds"))]
 
@@ -391,7 +415,7 @@ main <- function(args) {
     ticket = "ROBO-nvgtqdlu", seed = seed, n = n, pool = pool_n,
     max_bytes = max_bytes, anchors_silent = n_silent, stage1 = n_stage1,
     max_rule_paths = max_rule_paths, corpus = normalizePath(corpus),
-    exclude = opts$exclude, excluded_hosts = length(excluded),
+    exclude = exclude_counts, excluded_hosts = length(excluded),
     pool_reasons = table(pool$table$reason),
     drawn = table(drawn$kind), shortfall = n - nrow(drawn),
     package = h$package_git_facts(fns$path),
@@ -404,7 +428,7 @@ main <- function(args) {
   if (record$shortfall > 0L) {
     cat("NOTE: drew", record$shortfall, "fewer than --n\n")
   }
-  if (!is.null(opts$verify)) verify_against(df, opts$verify)
+  if (!is.null(opts$verify)) verify_against(df, record, opts$verify)
 }
 
 main(commandArgs(trailingOnly = TRUE))

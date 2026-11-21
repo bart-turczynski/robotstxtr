@@ -22,6 +22,22 @@ already exists. A finding goes into the repository only as a synthetic
 - `render.R`: fills the prompt for each sampled file.
 - `score.R`: checks each answer's format and compares it with the package.
 - `common.R`: shared helpers; it reuses `dev/corpus/harness.R`.
+- `selftest.R`: the tools' own check, on synthetic data only (below).
+
+## Self-test
+
+```sh
+Rscript dev/blind-reader/selftest.R
+```
+
+It builds a tiny synthetic corpus (`.example` hosts, plus records the pool
+must skip: a 404, a missing body, a body that is not raw bytes, a file that
+is not a record) and a synthetic answer set in a temporary directory outside
+any git work tree, runs `sample.R` and `score.R` on them, and exits 1 when
+any check fails: `score.R` accepts well-formed answers and rejects each
+malformed class with its own code; no host an `--exclude` source names
+reaches the sample; the same seed reproduces the sample list and another
+seed does not. Run it after changing any script here.
 
 ## Steps
 
@@ -67,9 +83,17 @@ with a `robots.rds`, as `dev/corpus/README.md` describes).
    git state).
 
 2. Check the seed reproduces the list, which the ticket's verification
-   asks for: run step 1 again with the same arguments into another
-   directory and `--verify <store>/sample`. It prints `SAME` and exits 0,
-   or `DIFFERENT` and exits 1.
+   asks for. The list depends on the package's readings and on the corpus
+   as well as on the seed, so a rerun is `SAME` only on the same package
+   commit and the same corpus: check out the package at the `git_sha` that
+   `<store>/sample/record.rds` records (`$package$git_sha`), with no
+   uncommitted changes, and run step 1 again with the same arguments, into
+   another directory, adding `--verify <store>/sample` (and `--pkg <that
+   tree>` if it is not the tree holding the script). It prints `SAME` and
+   exits 0 when both the sample list and the package commit match, or
+   `DIFFERENT` (naming a commit mismatch) and exits 1. `record.rds` also
+   counts, per `--exclude` source, the corpus hosts it named; a source that
+   names none is warned about at run time.
 
 3. Render the stage-1 prompts:
 
@@ -79,9 +103,11 @@ with a `robots.rds`, as `dev/corpus/README.md` describes).
    ```
 
    Each `<id>.txt` is the whole prompt for one file, and the directory
-   keeps a copy of the `prompt.md` it was rendered from. Bytes that cannot
-   be shown as text appear as `\xHH`; encoding questions are answered from
-   the bytes, by `pool.rds` and the validator, not by the reader.
+   keeps a copy of the `prompt.md` it was rendered from. A backslash in
+   the file appears as `\\`, and bytes that cannot be shown as text
+   (controls, invalid UTF-8, and the bytes of a byte order mark, a C1
+   control, U+2028 or U+2029) as `\xHH`; encoding questions are answered
+   from the bytes, by `pool.rds` and the validator, not by the reader.
 
 4. Read. For each prompt, spawn one subagent on model `haiku` whose whole
    input is that file's text, and save its reply, unedited, as
@@ -106,7 +132,9 @@ with a `robots.rds`, as `dev/corpus/README.md` describes).
    `unspecified` or `cannot_tell`, an em dash and a `§` section; one to
    three `issue:` lines (`L<n> "<quote>" — <at most 15 words>`) or
    `issue: none`; a `surprise:` line of at most 15 words; no other lines,
-   no fence, LF line ends. A missing file fails as `missing`. `score.tsv`
+   no blank line, no fence, no NUL byte, LF line ends. A missing file fails
+   as `missing`; a broken answer never stops the others being scored.
+   `score.tsv`
    has one row per answer: the format result, the reader's decision and
    section, the google, bing and yandex readings (`n/a` where a bounded
    backend does not take the token), the catalog's RFC 9309 decision on an
@@ -124,6 +152,6 @@ with a `robots.rds`, as `dev/corpus/README.md` describes).
 7. Classify each candidate in one line on the epic, resolved against the
    RFC text or observed engine behavior before it is called a finding.
 
-The RFC 9309 passages in `prompt.md` were written from memory of the RFC
-(the repository holds no copy); check a passage against the published RFC
-before resolving a finding on it.
+The RFC 9309 passages in `prompt.md` are quoted word for word from the RFC;
+only the sentence on the case of record names is not RFC 9309 text, and the
+prompt says so.

@@ -26,11 +26,14 @@ format_fail <- function(error) {
        clause = NA_character_, issues = NULL, surprise = NA_character_)
 }
 
-# Split an answer file into lines: valid UTF-8, LF line ends, one final line
-# end allowed, nothing else stripped.
+# Split an answer file into lines: no NUL byte, valid UTF-8, LF line ends,
+# one final line end allowed, no blank line, nothing else stripped.
 answer_lines <- function(bytes) {
   if (!length(bytes)) {
     return("empty")
+  }
+  if (any(bytes == as.raw(0L))) {
+    return("nul_byte")
   }
   txt <- rawToChar(bytes)
   if (!validUTF8(txt)) {
@@ -45,12 +48,15 @@ answer_lines <- function(bytes) {
   if (any(startsWith(lines, "```") | startsWith(lines, "~~~"))) {
     return("fenced")
   }
+  if (!all(nzchar(trimws(lines))) || endsWith(txt, "\n")) {
+    return("blank_line")
+  }
   list(lines)
 }
 
 check_decision <- function(line) {
   sec <- "(RFC 9309 )?\u00a7[0-9]+(\\.[0-9]+)*"
-  pat <- paste0("^decision: ([a-z_]+) \u2014 (", sec, "(, ", sec, ")?)$")
+  pat <- paste0("^decision: ([A-Za-z_]+) \u2014 (", sec, "(, ", sec, ")?)$")
   if (!grepl("^decision: ", line)) {
     return("decision_line")
   }
@@ -108,7 +114,7 @@ check_answer <- function(bytes) {
     return(format_fail(lines))
   }
   lines <- lines[[1L]]
-  if (length(lines) < 3L || length(lines) > 5L) {
+  if (length(lines) < 3L) {
     return(format_fail("line_count"))
   }
   dec <- check_decision(lines[[1L]])
@@ -244,6 +250,9 @@ main <- function(args) {
   fns <- br_load_pkg(opts$pkg)
   df <- readRDS(file.path(opts$sample, "sample.rds"))
   if (stage != "all") df <- df[df$stage == stage, ]
+  if (!nrow(df)) {
+    br_refuse("the sample has no rows for --stage ", stage)
+  }
   scored <- lapply(seq_len(nrow(df)), function(i) {
     score_one(fns, opts$sample, opts$answers, df[i, ])
   })

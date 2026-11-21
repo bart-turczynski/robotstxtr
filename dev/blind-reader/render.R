@@ -24,18 +24,26 @@ prompt_template <- function(path) {
   txt
 }
 
-# Replace the one `placeholder` with `value` taken literally (sub() would
-# read backslashes in a file's text as escapes).
-replace_once <- function(txt, placeholder, value) {
-  at <- regexpr(placeholder, txt, fixed = TRUE)
-  paste0(substr(txt, 1L, at - 1L), value,
-         substr(txt, at + nchar(placeholder), nchar(txt)))
+# A Markdown code span holding `x` verbatim: delimited by one backtick more
+# than the longest backtick run in `x`, padded with a space when `x` starts
+# or ends with a backtick.
+code_span <- function(x) {
+  runs <- attr(gregexpr("`+", x)[[1L]], "match.length")
+  ticks <- strrep("`", max(1L, runs + 1L))
+  pad <- if (grepl("^`|`$", x)) " " else ""
+  paste0(ticks, pad, x, pad, ticks)
 }
 
+# Fill every placeholder in one pass over the template, each value taken
+# literally, so a value that holds placeholder text is never filled again.
 fill_prompt <- function(template, token, path, bytes) {
-  txt <- replace_once(template, "{{TOKEN}}", token)
-  txt <- replace_once(txt, "{{PATH}}", path)
-  replace_once(txt, "{{FILE}}", br_render_file(bytes))
+  values <- c(TOKEN = code_span(token), PATH = code_span(path),
+              FILE = br_render_file(bytes))
+  pat <- "\\{\\{(TOKEN|PATH|FILE)\\}\\}"
+  hits <- gregexpr(pat, template)[[1L]]
+  keys <- gsub("[{}]", "", regmatches(template, list(hits))[[1L]])
+  pieces <- regmatches(template, list(hits), invert = TRUE)[[1L]]
+  paste0(pieces, c(values[keys], ""), collapse = "")
 }
 
 main <- function(args) {

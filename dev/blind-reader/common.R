@@ -190,28 +190,55 @@ br_utf8_len <- function(bytes, i) {
   if (validUTF8(rawToChar(chunk))) len else 0L
 }
 
-# One line as the reader sees it: printable text kept, a control byte other
-# than tab or an invalid UTF-8 byte as \xHH, a byte order mark as \uFEFF.
+br_hex_escape <- function(bytes) {
+  paste(sprintf("\\x%02X", as.integer(bytes)), collapse = "")
+}
+
+# One ASCII byte as shown: a backslash doubled, a control byte other than
+# tab escaped.
+br_show_ascii <- function(b) {
+  if (b == 0x5c) {
+    return("\\\\")
+  }
+  if ((b < 0x20 && b != 0x09) || b == 0x7f) {
+    return(br_hex_escape(as.raw(b)))
+  }
+  rawToChar(as.raw(b))
+}
+
+# A valid UTF-8 character that would be invisible or break the line: a byte
+# order mark, a C1 control (U+0080-U+009F), U+2028 or U+2029.
+br_hidden_char <- function(chunk) {
+  x <- as.integer(chunk)
+  identical(x, c(0xefL, 0xbbL, 0xbfL)) ||
+    (length(x) == 2L && x[[1L]] == 0xc2 && x[[2L]] <= 0x9f) ||
+    identical(x, c(0xe2L, 0x80L, 0xa8L)) ||
+    identical(x, c(0xe2L, 0x80L, 0xa9L))
+}
+
+# One line as the reader sees it: printable text kept, a backslash as \\,
+# and as \xHH a control byte other than tab, an invalid UTF-8 byte and each
+# byte of a hidden character (br_hidden_char()).
 br_show_line <- function(bytes) {
   out <- character()
   i <- 1L
-  bom <- as.raw(c(0xef, 0xbb, 0xbf))
   while (i <= length(bytes)) {
     b <- as.integer(bytes[[i]])
     if (b < 0x80) {
-      ctl <- (b < 0x20 && b != 0x09) || b == 0x7f
-      out <- c(out, if (ctl) sprintf("\\x%02X", b) else rawToChar(bytes[i]))
+      out <- c(out, br_show_ascii(b))
       i <- i + 1L
       next
     }
     len <- br_utf8_len(bytes, i)
     if (!len) {
-      out <- c(out, sprintf("\\x%02X", b))
+      out <- c(out, br_hex_escape(bytes[i]))
       i <- i + 1L
       next
     }
     chunk <- bytes[i:(i + len - 1L)]
-    out <- c(out, if (identical(chunk, bom)) "\\uFEFF" else rawToChar(chunk))
+    out <- c(out, if (br_hidden_char(chunk)) br_hex_escape(chunk) else {
+      rawToChar(chunk)
+    })
     i <- i + len
   }
   txt <- paste(out, collapse = "")
