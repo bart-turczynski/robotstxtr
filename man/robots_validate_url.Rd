@@ -82,8 +82,10 @@ Uses \code{\link[=robots_fetch]{robots_fetch()}} unchanged, then validates each 
 exactly once. Shared origins therefore remain shared and no second HTTP path
 or refetch is introduced; the one exception is the opt-in
 \code{destination_robots = TRUE}, which reads a cross-site redirect
-destination's own robots.txt as \code{\link[=robots_fetch]{robots_fetch()}} describes and validates it
-apart. Acquisition failures are retained as evidence and
+destination's own robots.txt as \code{\link[=robots_fetch]{robots_fetch()}} describes and validates
+each destination row apart, so a destination that reuses an origin's
+result has that body validated once more, under its own \code{source_id}.
+Acquisition failures are retained as evidence and
 produce \code{"not_validated"} document rows. A 2xx body over \code{max_bytes} is cut
 at the limit: its first \code{max_bytes} bytes are validated up to their last
 complete line (the partial line after the last line break is not read), as

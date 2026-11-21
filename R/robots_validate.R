@@ -732,8 +732,10 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' exactly once. Shared origins therefore remain shared and no second HTTP path
 #' or refetch is introduced; the one exception is the opt-in
 #' `destination_robots = TRUE`, which reads a cross-site redirect
-#' destination's own robots.txt as [robots_fetch()] describes and validates it
-#' apart. Acquisition failures are retained as evidence and
+#' destination's own robots.txt as [robots_fetch()] describes and validates
+#' each destination row apart, so a destination that reuses an origin's
+#' result has that body validated once more, under its own `source_id`.
+#' Acquisition failures are retained as evidence and
 #' produce `"not_validated"` document rows. A 2xx body over `max_bytes` is cut
 #' at the limit: its first `max_bytes` bytes are validated up to their last
 #' complete line (the partial line after the last line break is not read), as

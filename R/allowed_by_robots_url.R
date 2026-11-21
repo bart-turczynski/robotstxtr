@@ -94,7 +94,9 @@
 #'   (one row per fetched source body). Each fetched body is stored once as a
 #'   raw vector in `robots$body`. Large body values never appear in `results`.
 #'   With `destination_robots = TRUE` it also has the `destinations` and
-#'   `destination_map` components of [robots_fetch()], and `results` gains
+#'   `destination_map` components of [robots_fetch()] (a destination that
+#'   reuses an origin's result stores a copy of its body in
+#'   `destinations$body`), and `results` gains
 #'   `destination_source_id`, `destination_allowed`,
 #'   `destination_decision_source`, `destination_matched_line`,
 #'   `destination_matched_rule_type` and `destination_matched_rule_value`:

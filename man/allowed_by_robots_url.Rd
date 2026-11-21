@@ -86,7 +86,9 @@ components, \code{results} (one row per input URL, in input order) and \code{rob
 (one row per fetched source body). Each fetched body is stored once as a
 raw vector in \code{robots$body}. Large body values never appear in \code{results}.
 With \code{destination_robots = TRUE} it also has the \code{destinations} and
-\code{destination_map} components of \code{\link[=robots_fetch]{robots_fetch()}}, and \code{results} gains
+\code{destination_map} components of \code{\link[=robots_fetch]{robots_fetch()}} (a destination that
+reuses an origin's result stores a copy of its body in
+\code{destinations$body}), and \code{results} gains
 \code{destination_source_id}, \code{destination_allowed},
 \code{destination_decision_source}, \code{destination_matched_line},
 \code{destination_matched_rule_type} and \code{destination_matched_rule_value}:

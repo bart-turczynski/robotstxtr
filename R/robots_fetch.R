@@ -224,8 +224,10 @@
 #' a second request: an origin's result when it was fetched as an origin, or
 #' the rest of an origin's chain (the same final response, with the
 #' redirects from there) when that chain passed through it. A robots.txt
-#' path counts whatever its query or fragment. A destination is never
-#' followed up in
+#' path counts whatever its query or fragment. A reused result is copied
+#' into its `destinations` row, body included, so each destination row
+#' stands on its own and that body is stored there once more. A destination
+#' is never followed up in
 #' turn: one whose robots.txt redirects again is reported as it ended.
 #'
 #' The destination's file never governs the origin: `map` and `robots` are

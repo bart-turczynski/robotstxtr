@@ -695,3 +695,25 @@ test_that("ROBO-ybhwztid: a destination the origin's chain passed is reused", {
     "http://example.net/robots.txt"
   ))
 })
+
+test_that("ROBO-ybhwztid: a reused body is copied and validated once more", {
+  # The documented choice: each destination row stands on its own, so a
+  # reused origin result is stored again under `destinations` and validated
+  # again under the destination's source_id.
+  log <- dest_log()
+  local_fake_ssrfr(dest_router(dest_routes(), log))
+  inputs <- c("http://example.com/", "http://example.net/x")
+  v <- robots_validate_url(inputs, destination_robots = TRUE)
+  expect_length(log$urls, 3L)
+  expect_identical(v$documents$source_id, c("robots_1", "robots_2"))
+  expect_identical(v$destination_documents$source_id, "destination_1")
+  same <- v$destination_documents
+  same$source_id <- "robots_2"
+  same$source_type <- "fetched"
+  rownames(same) <- 2L
+  expect_identical(same, v$documents[2L, , drop = FALSE])
+  log$urls <- character()
+  d <- allowed_by_robots_url(inputs, "my-bot", destination_robots = TRUE)
+  expect_identical(d$destinations$body, d$robots$body[2L])
+  expect_length(log$urls, 3L)
+})
