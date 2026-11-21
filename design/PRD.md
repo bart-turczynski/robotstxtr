@@ -468,7 +468,7 @@ Required `robots` columns:
 | Column | Type | Meaning |
 |---|---|---|
 | `source_id` | character | unique, stable within the result object |
-| `source_type` | character | `fetched` or `supplied` |
+| `source_type` | character | `fetched` or `supplied`; `redirect_destination` in the opt-in `destinations` frame (ROBO-ybhwztid) |
 | `robots_url` | character | requested robots URL, or `NA` for supplied text |
 | `effective_url` | character | final response URL, or `NA` |
 | `http_status` | integer | final status, or `NA` |
