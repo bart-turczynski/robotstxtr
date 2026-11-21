@@ -169,80 +169,61 @@ test_that("a group of 5,000 repeats of one name draws 4,999 rows", {
   expect_identical(r$line[[1L]], 2L)
 })
 
-# The message of a repeat that a blank line separates from its first name
-# (line 3 repeats line 1, line 2 is blank). A comment line draws the same.
-dg_yandex_blank <- paste0(
+# The message of a repeat whose two names have one blank, comment, Crawl-delay,
+# Sitemap or unknown-field line between them (line 3 repeats line 1). The
+# Bing and Yandex testers (Bing Webmaster Tools / Yandex Webmaster, 2026-11-21,
+# ROBO-wnuttuit) showed that the stacked run ends at a break but no following
+# rule leaves the agent, so the line stays deletable. Sitemap was not probed.
+dg_plain_message <- paste0(
   "`User-agent: acme-bot` (line 3) repeats `User-agent: Acme-Bot` ",
   "(line 1) in the same group. Product tokens match case-insensitively ",
-  "(RFC 9309 section 2.2.1), so Google reads one group with or without ",
-  "this line. Yandex ends a group at every blank or comment line, as at ",
-  "line 2, so deleting this line would take the rules below it from that ",
-  "crawler on Yandex."
+  "(RFC 9309 section 2.2.1), so the group names the same crawler with or ",
+  "without this line, and the line can be deleted."
 )
 
-test_that("a repeat across a blank line names Yandex and advises no deletion", {
+test_that("a blank line between the names gives the plain message", {
+  # Yandex Webmaster, 2026-11-21, ROBO-wnuttuit: blank line probed.
   body <- dg_lines("User-agent: Acme-Bot", "", "User-agent: acme-bot",
                    "Disallow: /a")
   expect_identical(dg_rows(body, "user_agent_duplicate_in_group")$message,
-                   dg_yandex_blank)
+                   dg_plain_message)
 })
 
-test_that("a repeat across a comment line draws the same Yandex message", {
+test_that("a comment line between the names gives the plain message", {
+  # Yandex Webmaster, 2026-11-21, ROBO-wnuttuit: comment line probed.
   body <- dg_lines("User-agent: Acme-Bot", "# note", "User-agent: acme-bot",
                    "Disallow: /a")
   expect_identical(dg_rows(body, "user_agent_duplicate_in_group")$message,
-                   dg_yandex_blank)
+                   dg_plain_message)
 })
 
-test_that("a repeat across a Crawl-delay names Bing and Yandex", {
+test_that("a Crawl-delay line between the names gives the plain message", {
+  # Bing and Yandex Webmaster, 2026-11-21, ROBO-wnuttuit: Crawl-delay probed.
   body <- dg_lines("User-agent: Acme-Bot", "Crawl-delay: 1",
                    "User-agent: acme-bot", "Disallow: /a")
-  expect_identical(
-    dg_rows(body, "user_agent_duplicate_in_group")$message,
-    paste0(
-      "`User-agent: acme-bot` (line 3) repeats `User-agent: Acme-Bot` ",
-      "(line 1) in the same group. Product tokens match case-insensitively ",
-      "(RFC 9309 section 2.2.1), so Google reads one group with or without ",
-      "this line. Bing and Yandex end the group at line 2, so deleting this ",
-      "line would take the rules below it from that crawler on Bing and ",
-      "Yandex."
-    )
-  )
+  expect_identical(dg_rows(body, "user_agent_duplicate_in_group")$message,
+                   dg_plain_message)
 })
 
-test_that("a repeat across another directive names Bing only", {
+test_that("a Sitemap line between the names gives the plain message", {
+  # Not probed by the testers (ROBO-wnuttuit); plain by the recorded rule.
   body <- dg_lines("User-agent: Acme-Bot",
                    "Sitemap: https://example.com/s.xml",
                    "User-agent: acme-bot", "Disallow: /a")
-  expect_identical(
-    dg_rows(body, "user_agent_duplicate_in_group")$message,
-    paste0(
-      "`User-agent: acme-bot` (line 3) repeats `User-agent: Acme-Bot` ",
-      "(line 1) in the same group. Product tokens match case-insensitively ",
-      "(RFC 9309 section 2.2.1), so Google reads one group with or without ",
-      "this line. Bing ends the group at line 2, so deleting this line would ",
-      "take the rules below it from that crawler on Bing."
-    )
-  )
+  expect_identical(dg_rows(body, "user_agent_duplicate_in_group")$message,
+                   dg_plain_message)
 })
 
-test_that("a blank then a Crawl-delay names both engines' first breaks", {
-  body <- dg_lines("User-agent: Acme-Bot", "", "Crawl-delay: 1",
+test_that("an unknown-field line between the names gives the plain message", {
+  # Bing Webmaster Tools, 2026-11-21, ROBO-wnuttuit: `Foobar: baz` probed.
+  body <- dg_lines("User-agent: Acme-Bot", "Foobar: baz",
                    "User-agent: acme-bot", "Disallow: /a")
-  expect_identical(
-    dg_rows(body, "user_agent_duplicate_in_group")$message,
-    paste0(
-      "`User-agent: acme-bot` (line 4) repeats `User-agent: Acme-Bot` ",
-      "(line 1) in the same group. Product tokens match case-insensitively ",
-      "(RFC 9309 section 2.2.1), so Google reads one group with or without ",
-      "this line. Bing ends the group at line 3, and Yandex ends it at line ",
-      "2, so deleting this line would take the rules below it from that ",
-      "crawler on Bing and Yandex."
-    )
-  )
+  expect_identical(dg_rows(body, "user_agent_duplicate_in_group")$message,
+                   dg_plain_message)
 })
 
-test_that("a `*` repeat across a Crawl-delay names every crawler it covers", {
+test_that("a `*` line across a Crawl-delay gives the plain message", {
+  # Bing and Yandex Webmaster, 2026-11-21, ROBO-wnuttuit: Crawl-delay probed.
   body <- dg_lines("User-agent: *", "Crawl-delay: 1", "User-agent: *",
                    "Disallow: /a")
   expect_identical(
@@ -250,10 +231,8 @@ test_that("a `*` repeat across a Crawl-delay names every crawler it covers", {
     paste0(
       "`User-agent: *` (line 3) repeats `User-agent: *` (line 1) in the ",
       "same group. Product tokens match case-insensitively (RFC 9309 section ",
-      "2.2.1), so Google reads one group with or without this line. Bing and ",
-      "Yandex end the group at line 2, so deleting this line would take the ",
-      "rules below it from every crawler without a group of its own on Bing ",
-      "and Yandex."
+      "2.2.1), so the group names the same crawler with or without this line, ",
+      "and the line can be deleted."
     )
   )
 })

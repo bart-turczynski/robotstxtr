@@ -472,7 +472,7 @@ reads it as allowing every path that no longer `Disallow` matches (tester, ydx-1
 | Code | Severity | When |
 |---|---|---|
 | `user_agent_repeated_group` | info | A crawler token (`*` for a global line, the merge key otherwise) is named in a later group as well as an earlier one, Google's groups, so a joined line counts. One report per later group and token, on the first line of that group naming it; the message lists the first line naming it in each earlier group (five at most, then a count). |
-| `user_agent_duplicate_in_group` | info | A User-agent line repeats a name already in its own group, in any case or `*`. Google reads the same group with or without the repeat (RFC 9309 section 2.2.1 matches product tokens case-insensitively). Where Bing (any directive between the two lines) or Yandex (a blank, comment or Crawl-delay line between) ends the group, the message names that engine and does not offer deletion. Anchored on the repeated line; the message names the first line of the group with that name. The name is compared as written, folded to ASCII lowercase, so `Foo Bot` and `foo` stay apart (ROBO-txnzyugl). |
+| `user_agent_duplicate_in_group` | info | A User-agent line repeats a name already in its own group, in any case or `*`. RFC 9309 section 2.2.1 matches product tokens case-insensitively, so the repeat changes nothing and the line can be deleted. Anchored on the repeated line; the message names the first line of the group with that name. The name is compared as written, folded to ASCII lowercase, so `Foo Bot` and `foo` stay apart (ROBO-txnzyugl). |
 | `empty_disallow_with_full_block` | warning | The rules one crawler follows, in one group or merged, hold an empty `Disallow:`, a `disallow /` key and no non-empty `Allow`. Anchored on the first full-block line; crawlers sharing that line get one report. The message names the empty lines, says which engines block and which allow, and offers deleting one side. Skipped on a cut body. |
 
 A line a `user_agent_joined_*` (§5d), `user_agent_cut` or `wildcard_rules_not_inherited` report
@@ -486,7 +486,9 @@ the message suggests a group of their own instead. Pinned by
 condition for a repeat inside one group. A repeat across a blank or directive that still joins
 the group counts as in-group, unless a join row owns that line; a repeat a join already owns
 draws only that join row. Unlike a line a join owns, which still counts as an earlier name, a
-policy-token line is dropped before the comparison and never counts as one. Pinned by
+policy-token line is dropped before the comparison and never counts as one. The blank, comment,
+Crawl-delay and unknown-field shapes between the two names were checked against the Bing and
+Yandex testers (2026-11-21). Pinned by
 `tests/testthat/test-user-agent-duplicate-in-group-wnuttuit.R`.
 
 ### 5f. The allow-all idiom (ROBO-vyystald; validator only)

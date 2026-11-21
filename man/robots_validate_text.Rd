@@ -288,11 +288,10 @@ the later group's first line naming it; the message lists the earlier
 lines. \cr
 \code{user_agent_duplicate_in_group} \tab info \tab
 A User-agent line repeats a name, in any case or \code{*}, already in
-its own group. Google reads the same group with or without it (RFC 9309
-section 2.2.1). Where Bing or Yandex ends the group between the two
-lines, the message names that engine and does not offer deletion.
-Anchored on the repeated line; the message names the first line naming
-it. \cr
+its own group, which changes nothing (RFC 9309 section 2.2.1). Anchored
+on the repeated line; the message names the first line naming it. Blank,
+comment, Crawl-delay and unknown-field lines between the two names were
+checked against the Bing and Yandex testers (2026-11-21). \cr
 \code{empty_disallow_with_full_block} \tab warning \tab
 The rules one crawler follows hold an empty \code{Disallow:} and a
 full block (\code{Disallow: /}, no non-empty Allow): Google and Bing
@@ -571,18 +570,17 @@ neither.
 For \code{user_agent_duplicate_in_group}, a User-agent line that repeats a name
 already in its own group, in any case (\code{*} included), is reported on the
 repeated line; the row is info, so \code{validation_status} is unchanged. RFC 9309
-section 2.2.1 matches a product token case-insensitively, so Google reads the
-same group with or without the repeat. Bing ends a group at any directive
-between the two lines, and Yandex at a blank, comment or Crawl-delay line
-(\code{design/engine-profiles.md} section 5d). When one lies between, the message
-names that engine and does not offer deletion. Names are compared as
-written, folded to ASCII lowercase, so \verb{Foo Bot} and \code{foo} stay apart: Google
-reads only \code{Foo} from the first. A line that a \verb{user_agent_joined_*},
-\code{user_agent_cut} or \code{wildcard_rules_not_inherited} report already owns draws
-nothing but still counts as an earlier name; a policy-token line is left to
-\verb{ai_training_*} and never counts as an earlier name. A group with no rule
-line draws nothing. A repeat across a blank or a directive that still joins
-the group counts as in-group, unless a join row owns that line.
+section 2.2.1 matches a product token case-insensitively, so the repeat
+changes nothing and the line can be deleted. Blank, comment, Crawl-delay and
+unknown-field lines between the two names were checked against the Bing and
+Yandex testers (2026-11-21). Names are compared as written, folded to ASCII
+lowercase, so \verb{Foo Bot} and \code{foo} stay apart: Google reads only \code{Foo} from
+the first. A line that a \verb{user_agent_joined_*}, \code{user_agent_cut} or
+\code{wildcard_rules_not_inherited} report already owns draws nothing but still
+counts as an earlier name; a policy-token line is left to \verb{ai_training_*} and
+never counts as an earlier name. A group with no rule line draws nothing. A
+repeat across a blank or a directive that still joins the group counts as
+in-group, unless a join row owns that line.
 
 For \code{disallow_tied_by_allow}, an Allow and a Disallow with the same
 pattern match the same paths with the same priority, and Allow wins the
