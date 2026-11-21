@@ -285,7 +285,9 @@ validation_unsupported <- c(
 #'     read and reported one by one. \cr
 #'   \code{xml_body} \tab warning \tab
 #'     The body starts with markup (\code{<}), such as XML, not a robots.txt;
-#'     its lines are still read and reported one by one. \cr
+#'     its lines are still read and reported one by one. A body that opens
+#'     with a markup comment (\code{<!--}) is a robots.txt with a comment
+#'     first, so it draws none. \cr
 #'   \code{json_body} \tab warning \tab
 #'     The body looks like a JSON object or array, such as an API error, not a
 #'     robots.txt; its lines are still read and reported one by one. At most
@@ -899,6 +901,29 @@ body_kind_messages <- c(
                 "anyway.")
 )
 
+# A body that opens with a markup comment is a robots.txt with a comment first
+# (ROBO-isbpzgqn), so the sniffer's "xml" read for it draws no xml_body
+# (ROBO-mgtngbpm). The check reads the same bytes the read came from, after an
+# optional UTF-8 BOM and leading ASCII whitespace.
+body_opens_with_comment <- function(body) {
+  window <- body[seq_len(min(length(body), content_check_bytes))]
+  if (length(window) >= 3L &&
+        identical(window[1:3], as.raw(c(0xef, 0xbb, 0xbf)))) {
+    window <- window[-(1:3)]
+  }
+  grepl("^[ \t\r\n\f\v]*<!--", rawToChar(window), perl = TRUE, useBytes = TRUE)
+}
+
+# One read of a body as an advisory kind: the content flag, except that an
+# "xml" read of a body opening with a markup comment is no kind (ROBO-mgtngbpm).
+body_read_kind <- function(body) {
+  flag <- robots_content_flag(body)
+  if (identical(flag, "xml") && body_opens_with_comment(body)) {
+    return(NA_character_)
+  }
+  flag
+}
+
 # The body-kind advisory a document draws, or NA (ROBO-mgtngbpm). Both reads of
 # the content sniffer count: the stored bytes, so a body cut mid-line keeps its
 # kind, and the validated bytes, so a NUL or invalid UTF-8 in the partial line a
@@ -1448,8 +1473,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # inside it is still enforced. Where the validated bytes hold the NUL or
   # mostly invalid UTF-8, the flag is "binary", and nul_byte or invalid_utf8
   # reports it instead.
-  body_kind <- body_kind_advisory(robots_content_flag(stored_bytes),
-                                  robots_content_flag(bytes))
+  body_kind <- body_kind_advisory(body_read_kind(stored_bytes),
+                                  body_read_kind(bytes))
   if (!is.na(body_kind)) {
     add_diagnostic(
       NA_integer_, "warning", paste0(body_kind, "_body"), NA_character_,

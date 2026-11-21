@@ -241,6 +241,39 @@ test_that("ROBO-mgtngbpm: an HTML page keeps html_body beside its lines", {
   expect_body_kind(x, "html_body")
 })
 
+test_that("ROBO-mgtngbpm: a comment-led body draws no xml_body", {
+  # ROBO-isbpzgqn: a body that opens with a markup comment is a robots.txt
+  # with a comment first, so its sniffer read "xml" draws no advisory. The
+  # first two are the comment-led bodies of test-html-body-ccfsanhq.R, pinned
+  # here as well; the third has an element after the comment and no robots
+  # line, and the same rule suppresses it.
+  bodies <- list(
+    generated = "<!-- generated -->\nUser-agent: *\nDisallow: /*<script\n",
+    commented = "<!-- <script> -->\nUser-agent: *\nDisallow: /\n",
+    element = "<!-- c -->\n<Error><Code>x</Code></Error>\n"
+  )
+  for (label in names(bodies)) {
+    expect_identical(robots_content_flag(charToRaw(bodies[[label]])), "xml",
+                     label = label)
+    expect_false(
+      "xml_body" %in% robots_validate_text(bodies[[label]])$diagnostics$code,
+      label = label
+    )
+  }
+  expect_identical(
+    row_keys(robots_validate_text(bodies$generated)),
+    "malformed_line@1"
+  )
+  expect_identical(
+    row_keys(robots_validate_text(bodies$element)),
+    c("malformed_line@1", "malformed_line@2", "no_rules@NA")
+  )
+  # A BOM and leading whitespace before the comment do not change the lead.
+  bom <- c(as.raw(c(0xef, 0xbb, 0xbf)), charToRaw(" \n"),
+           charToRaw(bodies$element))
+  expect_false("xml_body" %in% robots_validate_text(bom)$diagnostics$code)
+})
+
 test_that("ROBO-mgtngbpm: body_kind_advisory() prefers html, xml, json", {
   expect_identical(body_kind_advisory("json", "html"), "html")
   expect_identical(body_kind_advisory("html", "xml"), "html")

@@ -294,7 +294,9 @@ The body looks like an HTML page, not a robots.txt; its lines are still
 read and reported one by one. \cr
 \code{xml_body} \tab warning \tab
 The body starts with markup (\code{<}), such as XML, not a robots.txt;
-its lines are still read and reported one by one. \cr
+its lines are still read and reported one by one. A body that opens
+with a markup comment (\code{<!--}) is a robots.txt with a comment
+first, so it draws none. \cr
 \code{json_body} \tab warning \tab
 The body looks like a JSON object or array, such as an API error, not a
 robots.txt; its lines are still read and reported one by one. At most
