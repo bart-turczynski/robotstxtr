@@ -190,8 +190,7 @@ percent-escape an unreserved character such as `%7E` for `~` (Google never
 matches the escape against the character), on patterns with a lower-case
 escape such as `%3c` (Google upper-cases the rule, not the URL), and on a
 Sitemap value
-that is not an absolute `http`, `https` or `ftp` URL. With
-`unicode_advisories = TRUE`, it also adds info rows for a U+FFFD, an invisible
+that is not an absolute `http`, `https` or `ftp` URL. It also reports info rows for a U+FFFD, an invisible
 or formatting character, or two or more possible mojibake sequences in an
 Allow or Disallow value: advisories only, since valid UTF-8 can neither prove
 nor disprove corruption and the character may be meant. A named User-agent
