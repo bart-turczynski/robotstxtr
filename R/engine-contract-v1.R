@@ -2080,10 +2080,14 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' default port dropped). Userinfo is left out and the fragment dropped, as
 #' under `"rfc3986"`. The URL's bytes are read as UTF-8 whatever the
 #' session's locale (a `"latin1"`-marked URL is converted from latin1). A
-#' URL with no scheme, such as `"/a/../b"`, is resolved as a browser
-#' resolves a relative reference, against a placeholder origin, and the
-#' matcher reads only the path and query (`"/b"`), with the note
-#' `no scheme: resolved as a relative reference`. A URL it cannot parse is
+#' URL with no scheme, such as `"/a/../b"` or `"example.com/a/./b"`, is read
+#' from its first `/` as under `"rfc3986"`: that path is appended to the
+#' placeholder origin `http://h.invalid` and serialized, and the matcher
+#' reads the bytes before the `/` followed by the serialized path and query
+#' (`"/b"`, `"example.com/a/b"`); one with no `/` is read as under
+#' `"rfc3986"`. When the serialized path starts with `//`
+#' (`"/a/..//h/x"`), the matcher reads `http://h.invalid//h/x`, so the path
+#' stays `//h/x` as a browser would request it. A URL it cannot parse is
 #' evaluated as given, with the note
 #' `not a valid WHATWG URL: evaluated as given`; a changed URL has the note
 #' `WHATWG URL serialization changed the URL`, then `userinfo removed` or
@@ -2093,19 +2097,25 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #'
 #' In every mode, `preprocessing_disagreement` compares the URL the matcher
 #' reads under `"rfc3986"` with the one it reads under `"whatwg"`, on the
-#' rows a matcher decides. It is `TRUE` when the two differ and are decided
-#' differently (`url_decision`), or when `"whatwg"` cannot parse the URL,
-#' and `FALSE` otherwise. A row no matcher decided (an `NA` or empty URL,
-#' `capability_unavailable`, a policy decision) is always `FALSE`, with `NA`
-#' `disagreement_clients`. The second match runs only on rows whose two
-#' URLs differ. `disagreement_clients` is `NA` when the flag is `FALSE`;
-#' otherwise it gives each side's decision. When the input's path has a dot
-#' segment (`.`, `..`, `%2e`, `.%2e`, `%2e.` or `%2e%2e`, either case), it
-#' also names the clients surveyed to send each form:
-#' `wget 1.25, curl/libcurl < 8.13.0` for `"rfc3986"` and
-#' `Chrome 157, Node 26 fetch, curl/libcurl >= 8.13.0` for `"whatwg"`.
-#' Otherwise it says the forms differ in more than dot segments and that no
-#' client survey covers this. Under `"rfc3986"` and `"none"`, a matcher row
+#' rows the matcher decided (`url_decision` not `NA`); the `"whatwg"` form
+#' is computed only for those rows. It is `TRUE` when the two differ and
+#' are decided differently, or when `"whatwg"` cannot parse the URL, and
+#' `FALSE` otherwise. Any other row (an `NA` or empty URL, an empty token,
+#' `capability_unavailable`, a policy decision, a token or target the
+#' backend refuses) is always `FALSE`, with `NA` `disagreement_clients`.
+#' The second match runs only on rows whose two URLs differ in more than
+#' the scheme or host case, a default port, an empty path against `/`, or
+#' the fragment. `disagreement_clients` is `NA` when the flag is `FALSE`;
+#' otherwise it gives each side's decision. When the two forms differ only
+#' through encoded dot segments (`%2e`, `.%2e`, `%2e.` or `%2e%2e` as a
+#' whole segment, either case), it also names the clients surveyed to
+#' handle dot segments that way:
+#' `dot segments as in: wget 1.25, curl/libcurl < 8.13.0` for `"rfc3986"`
+#' and `dot segments as in: Chrome 157, Node 26 fetch, curl/libcurl >=
+#' 8.13.0` for `"whatwg"`. Otherwise it says the forms differ in more than
+#' dot segments and that no client survey covers this, or, when `"whatwg"`
+#' cannot parse the URL, gives the `"rfc3986"` decision and says so. Under
+#' `"rfc3986"` and `"none"`, a decided row
 #' whose URL is longer than 2048 bytes is not compared: the `"whatwg"` form
 #' is not computed, no second match runs, `preprocessing_disagreement` is
 #' `NA` and `disagreement_clients` is
