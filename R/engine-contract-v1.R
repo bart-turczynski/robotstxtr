@@ -2097,9 +2097,13 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #'
 #' Under `"rfc3986"` and `"whatwg"`, `preprocessing_disagreement` compares
 #' the URL the matcher reads under `"rfc3986"` with the one it reads under
-#' `"whatwg"`, on the rows the matcher decided (`url_decision` not `NA`);
-#' the `"whatwg"` form is computed only for those rows. Under `"none"` it is
-#' never computed: a decided row is `NA`, with `disagreement_clients`
+#' `"whatwg"`, on the rows the matcher decided (`url_decision` not `NA`).
+#' Under `"rfc3986"` the `"whatwg"` form is computed only for those rows;
+#' under `"whatwg"` it is the URL the matcher reads, so it is computed for
+#' every non-empty row. Comparing with the WHATWG form makes the default
+#' `"rfc3986"` cost about 3 to 10 times the old preprocessing; `"none"` is
+#' unchanged. Under `"none"` the flag is never computed: a decided row is
+#' `NA`, with `disagreement_clients`
 #' `not compared under url_normalization = "none"`, and nothing beyond the
 #' old reading runs. It is `TRUE` when the two differ and
 #' are decided differently, or when `"whatwg"` cannot parse the URL, and

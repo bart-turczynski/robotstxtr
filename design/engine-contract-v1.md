@@ -720,7 +720,10 @@ Backend dispatch and revision/capability metadata live together in
 entry alone, never on a backend's name (ROBO-bukqpjli): it collects the rows
 that need a matcher, calls each backend's adapter once with all of its rows,
 and scatters the decision frame back. Google, Yandex and Bing all sit behind
-the same interface.
+the same interface. The one exception is the disagreement flag (ADR 0002,
+ROBO-bnvdmdjr): under `"rfc3986"` and `"whatwg"` it calls an adapter a
+second time, with only the rows whose two URL forms differ, reading the
+other form.
 
 A **matcher adapter** is `callable(bodies, urls, product_tokens)`: a list of
 raw bodies and two character vectors, one element per row. It returns a
@@ -754,8 +757,9 @@ each distinct body once, cut to Google's 512,000-byte window, and the line
 collector reads each body that has a matched row once more; row for row it
 gives what its reference row matcher `match_google_v1()` gives, and its
 `matched_rule_value_raw` is `NULL`. A row with a parent token runs a second
-matcher on its body's one parse, so a body is still parsed once; the row
-matcher runs each token on its own parse.
+matcher on its body's one parse, so a body is still parsed once per adapter
+call; the row matcher runs each token on its own parse. The disagreement
+flag's second call parses again only the bodies of its rows.
 
 To add a backend without changing the core result schema:
 

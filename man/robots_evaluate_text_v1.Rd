@@ -183,9 +183,13 @@ dot segments (in \code{rurl::serialize_url()}).
 
 Under \code{"rfc3986"} and \code{"whatwg"}, \code{preprocessing_disagreement} compares
 the URL the matcher reads under \code{"rfc3986"} with the one it reads under
-\code{"whatwg"}, on the rows the matcher decided (\code{url_decision} not \code{NA});
-the \code{"whatwg"} form is computed only for those rows. Under \code{"none"} it is
-never computed: a decided row is \code{NA}, with \code{disagreement_clients}
+\code{"whatwg"}, on the rows the matcher decided (\code{url_decision} not \code{NA}).
+Under \code{"rfc3986"} the \code{"whatwg"} form is computed only for those rows;
+under \code{"whatwg"} it is the URL the matcher reads, so it is computed for
+every non-empty row. Comparing with the WHATWG form makes the default
+\code{"rfc3986"} cost about 3 to 10 times the old preprocessing; \code{"none"} is
+unchanged. Under \code{"none"} the flag is never computed: a decided row is
+\code{NA}, with \code{disagreement_clients}
 \verb{not compared under url_normalization = "none"}, and nothing beyond the
 old reading runs. It is \code{TRUE} when the two differ and
 are decided differently, or when \code{"whatwg"} cannot parse the URL, and

@@ -84,9 +84,12 @@ y$results[c("matcher_url", "url_decision", "url_preprocessing_note")]
 
 `url_normalization = "whatwg"` reads the URL as browsers and Node `fetch`
 do (the WHATWG URL Standard, through rurl), which removes `%2e%2e` too and
-may change the encoding. Whatever the mode, `preprocessing_disagreement`
-marks a URL whose two forms decide differently, and `disagreement_clients`
-names the clients surveyed on each side:
+may change the encoding. Under `"rfc3986"` and `"whatwg"`,
+`preprocessing_disagreement` marks a URL whose two forms decide
+differently, and `disagreement_clients` gives each side's decision; it
+names the clients surveyed on each side only when the forms differ through
+encoded dot segments alone. A row the selected backend refuses is `FALSE`,
+and under `"none"` the flag is `NA`, since nothing is compared:
 
 ```{r}
 y$results[c("preprocessing_disagreement", "disagreement_clients")]

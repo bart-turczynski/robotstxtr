@@ -25,8 +25,9 @@
 # NA under "rfc3986" for a URL over url_disagreement_max_bytes_v1(), and NA
 # on every decided row under "none", which computes nothing extra.
 
-# The `url_normalization` value set, default first. Adding a mode is one
-# entry here and one branch in preprocess_matcher_url_v1().
+# The `url_normalization` value set, default first. Adding a mode means an
+# entry here, a branch in preprocess_matcher_url_v1(), and a decision in
+# url_disagreement_v1() on whether, and how, that mode is compared.
 engine_url_normalizations_v1 <- function() {
   c("rfc3986", "whatwg", "none")
 }
@@ -47,11 +48,12 @@ validate_url_normalization_v1 <- function(url_normalization) {
 }
 
 # The longest input URL, in bytes, whose whatwg form the disagreement flag
-# computes under "rfc3986" and "none". rurl's WHATWG serializer grows faster
-# than linearly on a long path with many dot segments (about 53 seconds for
-# 20,000 "/seg/.." pairs, and a tenth of a second for a 2,040-byte one),
-# and those modes did not ask for it. A longer URL is not compared: its
-# flag is NA. "whatwg" itself serializes any length.
+# computes under "rfc3986" ("none" computes no flag). rurl's WHATWG
+# serializer grows faster than linearly on a long path with many dot
+# segments (about 53 seconds for 20,000 "/seg/.." pairs, and a tenth of a
+# second for a 2,040-byte one), and "rfc3986" did not ask for it. A longer
+# URL is not compared: its flag is NA. "whatwg" itself serializes any
+# length.
 url_disagreement_max_bytes_v1 <- function() {
   2048L
 }
