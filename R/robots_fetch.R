@@ -277,46 +277,9 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
   }
 
   # --- robots source table (one row per fetched source). --------------------
-  robots <- data.frame(
-    source_id = source_ids,
-    source_type = rep("fetched", n_src),
-    robots_url = distinct_origins,
-    effective_url = vapply(results, function(r) r$effective_url,
-                           character(1L)),
-    http_status = vapply(results, function(r) r$http_status, integer(1L)),
-    fetch_outcome = vapply(results, function(r) r$fetch_outcome, character(1L)),
-    redirect_count = vapply(results, function(r) r$redirect_count, integer(1L)),
-    body_size = vapply(results, function(r) r$body_size, integer(1L)),
-    timeout = rep(timeout, n_src),
-    max_bytes = rep(max_bytes_int, n_src),
-    error_stage = vapply(results, function(r) r$error_stage, character(1L)),
-    error_class = vapply(results, function(r) r$error_class, character(1L)),
-    error_message = vapply(results, function(r) r$error_message, character(1L)),
-    retry_after = vapply(results, function(r) r$retry_after, character(1L)),
-    retry_after_seconds = vapply(
-      results, function(r) r$retry_after_seconds, numeric(1L)
-    ),
-    content_type = vapply(results, function(r) r$content_type, character(1L)),
-    content_flag = vapply(results, function(r) r$content_flag, character(1L)),
-    # The final response's cache fields, raw (ROBO-zleohwyz).
-    cache_header_frame(results),
-    body_truncated = vapply(
-      results, function(r) r$body_truncated, logical(1L)
-    ),
-    # Why a redirect chain ended, and the guard's refusal code
-    # (ROBO-bsloeclp; design/engine-profiles.md section 2).
-    terminal_redirect_reason = vapply(
-      results, function(r) r$terminal_redirect_reason, character(1L)
-    ),
-    safety_block_reason = vapply(
-      results, function(r) r$safety_block_reason, character(1L)
-    ),
-    stringsAsFactors = FALSE
+  robots <- robots_source_frame(
+    source_ids, "fetched", distinct_origins, results, timeout, max_bytes_int
   )
-  # The redirect hop log, as the v1 evidence keeps it (ROBO-cscdbael).
-  robots$redirect_hops <- lapply(results, function(r) r$redirect_hops)
-  # `body` is a list-of-raw column: each fetched body stored exactly once.
-  robots$body <- lapply(results, function(r) r$body)
 
   # --- Per-input map (one row per input URL, in input order). ---------------
   # Match each eligible input to its source row by origin key; invalid inputs
@@ -359,6 +322,56 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
   )
 
   new_robots_fetches(map, robots)
+}
+
+# The `robots` source frame: one row per acquire_robots() result, with
+# `source_ids` and `robots_urls` naming each row and `source_type` the
+# role every row shares. The one column builder for every source frame,
+# so `robots` and `destinations` cannot drift (ROBO-ybhwztid).
+robots_source_frame <- function(source_ids, source_type, robots_urls,
+                                results, timeout, max_bytes) {
+  n_src <- length(results)
+  robots <- data.frame(
+    source_id = source_ids,
+    source_type = rep(source_type, n_src),
+    robots_url = robots_urls,
+    effective_url = vapply(results, function(r) r$effective_url,
+                           character(1L)),
+    http_status = vapply(results, function(r) r$http_status, integer(1L)),
+    fetch_outcome = vapply(results, function(r) r$fetch_outcome, character(1L)),
+    redirect_count = vapply(results, function(r) r$redirect_count, integer(1L)),
+    body_size = vapply(results, function(r) r$body_size, integer(1L)),
+    timeout = rep(timeout, n_src),
+    max_bytes = rep(max_bytes, n_src),
+    error_stage = vapply(results, function(r) r$error_stage, character(1L)),
+    error_class = vapply(results, function(r) r$error_class, character(1L)),
+    error_message = vapply(results, function(r) r$error_message, character(1L)),
+    retry_after = vapply(results, function(r) r$retry_after, character(1L)),
+    retry_after_seconds = vapply(
+      results, function(r) r$retry_after_seconds, numeric(1L)
+    ),
+    content_type = vapply(results, function(r) r$content_type, character(1L)),
+    content_flag = vapply(results, function(r) r$content_flag, character(1L)),
+    # The final response's cache fields, raw (ROBO-zleohwyz).
+    cache_header_frame(results),
+    body_truncated = vapply(
+      results, function(r) r$body_truncated, logical(1L)
+    ),
+    # Why a redirect chain ended, and the guard's refusal code
+    # (ROBO-bsloeclp; design/engine-profiles.md section 2).
+    terminal_redirect_reason = vapply(
+      results, function(r) r$terminal_redirect_reason, character(1L)
+    ),
+    safety_block_reason = vapply(
+      results, function(r) r$safety_block_reason, character(1L)
+    ),
+    stringsAsFactors = FALSE
+  )
+  # The redirect hop log, as the v1 evidence keeps it (ROBO-cscdbael).
+  robots$redirect_hops <- lapply(results, function(r) r$redirect_hops)
+  # `body` is a list-of-raw column: each fetched body stored exactly once.
+  robots$body <- lapply(results, function(r) r$body)
+  robots
 }
 
 #' Construct a `robots_fetches` object

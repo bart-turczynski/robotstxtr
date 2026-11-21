@@ -4954,38 +4954,7 @@ validate_fetched_documents <- function(fetched, safety_level = "strict") {
   diagnostics <- list()
   robots <- fetched$robots
   for (i in seq_len(nrow(robots))) {
-    source <- robots[i, , drop = FALSE]
-    body <- robots$body[[i]]
-    if (!is.null(body)) {
-      validated <- validate_document_bytes(
-        bytes = body,
-        source_id = source$source_id,
-        source_type = source$source_type,
-        robots_url = source$robots_url,
-        effective_url = source$effective_url,
-        http_status = source$http_status,
-        fetch_outcome = source$fetch_outcome,
-        max_bytes = source$max_bytes,
-        body_truncated = isTRUE(robots$body_truncated[[i]])
-      )
-      redirect <- redirect_host_diagnostic(source)
-      if (!is.null(redirect)) {
-        validated <- add_document_diagnostic(validated, redirect)
-      }
-      downgrade <- redirect_downgrade_diagnostic(source)
-      if (!is.null(downgrade)) {
-        validated <- add_document_diagnostic(validated, downgrade)
-      }
-      header_rows <- content_type_diagnostics(
-        source$source_id, source$content_type, body,
-        validated$document$encoding_signature
-      )
-      for (header_row in header_rows) {
-        validated <- add_document_diagnostic(validated, header_row)
-      }
-    } else {
-      validated <- unavailable_validation(source, safety_level = safety_level)
-    }
+    validated <- validate_fetched_source(robots, i, safety_level)
     documents[[i]] <- validated$document
     if (nrow(validated$diagnostics) > 0L) {
       diagnostics[[length(diagnostics) + 1L]] <- validated$diagnostics
@@ -5023,6 +4992,45 @@ validate_fetched_documents <- function(fetched, safety_level = "strict") {
     do.call(rbind, diagnostics)
   }
   new_robots_validations(map, document_frame, diagnostic_frame)
+}
+
+# The validated document and its diagnostics for row `i` of a source frame
+# (`robots` or `destinations`): a stored body is validated, then given its
+# redirect and Content-Type rows; a source with no body gets its acquisition
+# row.
+validate_fetched_source <- function(robots, i, safety_level = "strict") {
+  source <- robots[i, , drop = FALSE]
+  body <- robots$body[[i]]
+  if (is.null(body)) {
+    return(unavailable_validation(source, safety_level = safety_level))
+  }
+  validated <- validate_document_bytes(
+    bytes = body,
+    source_id = source$source_id,
+    source_type = source$source_type,
+    robots_url = source$robots_url,
+    effective_url = source$effective_url,
+    http_status = source$http_status,
+    fetch_outcome = source$fetch_outcome,
+    max_bytes = source$max_bytes,
+    body_truncated = isTRUE(robots$body_truncated[[i]])
+  )
+  redirect <- redirect_host_diagnostic(source)
+  if (!is.null(redirect)) {
+    validated <- add_document_diagnostic(validated, redirect)
+  }
+  downgrade <- redirect_downgrade_diagnostic(source)
+  if (!is.null(downgrade)) {
+    validated <- add_document_diagnostic(validated, downgrade)
+  }
+  header_rows <- content_type_diagnostics(
+    source$source_id, source$content_type, body,
+    validated$document$encoding_signature
+  )
+  for (header_row in header_rows) {
+    validated <- add_document_diagnostic(validated, header_row)
+  }
+  validated
 }
 
 unavailable_validation <- function(source, safety_level = "strict") {

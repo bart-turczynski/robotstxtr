@@ -195,6 +195,40 @@ allowed_by_robots_url <- function(url, user_agent, timeout = 10,
   error_class_col[invalid_ua] <- "robots_invalid_user_agent"
   error_message_col[invalid_ua] <- "User agent is missing or empty."
 
+  # --- Match each row against its source body (PRD 6.2, 6.6).
+  matched <- match_source_rows(
+    robots, url, user_agent, source_id_col, fetch_outcome_col
+  )
+
+  results <- data.frame(
+    input_id = seq_len(n),
+    url = url,
+    user_agent = user_agent,
+    allowed = matched$allowed,
+    decision_source = matched$decision_source,
+    source_id = source_id_col,
+    robots_url = robots_url_col,
+    http_status = http_status_col,
+    fetch_outcome = fetch_outcome_col,
+    error_stage = error_stage_col,
+    error_class = error_class_col,
+    error_message = error_message_col,
+    matched_line = matched$matched_line,
+    matched_rule_type = matched$matched_rule_type,
+    matched_rule_value = matched$matched_rule_value,
+    stringsAsFactors = FALSE
+  )
+
+  new_robots_decisions(results, robots)
+}
+
+# The decision columns of every row: `url` and `user_agent` matched against
+# the body of the `robots` row named by `source_id_col`, under the row's
+# `fetch_outcome_col` (never NA). The one matching path for origin and
+# destination rows (ROBO-ybhwztid).
+match_source_rows <- function(robots, url, user_agent, source_id_col,
+                              fetch_outcome_col) {
+  n <- length(url)
   # --- Decode each fetched source body to the matcher string ONCE (PRD 6.2
   # bridge, mirrors allowed_by_robots_text): `decode_matcher_body()` ends each
   # line at its first NUL byte, as Google's parser does (ROBO-pvqrfvol), and
@@ -297,24 +331,9 @@ allowed_by_robots_url <- function(url, user_agent, timeout = 10,
     matched_rule_value <- normalized$matched_rule_value
   }
 
-  results <- data.frame(
-    input_id = seq_len(n),
-    url = url,
-    user_agent = user_agent,
-    allowed = allowed,
-    decision_source = decision_source,
-    source_id = source_id_col,
-    robots_url = robots_url_col,
-    http_status = http_status_col,
-    fetch_outcome = fetch_outcome_col,
-    error_stage = error_stage_col,
-    error_class = error_class_col,
-    error_message = error_message_col,
-    matched_line = matched_line,
-    matched_rule_type = matched_rule_type,
-    matched_rule_value = matched_rule_value,
-    stringsAsFactors = FALSE
+  list(
+    allowed = allowed, decision_source = decision_source,
+    matched_line = matched_line, matched_rule_type = matched_rule_type,
+    matched_rule_value = matched_rule_value
   )
-
-  new_robots_decisions(results, robots)
 }
