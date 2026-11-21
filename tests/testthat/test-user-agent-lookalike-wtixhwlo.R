@@ -433,6 +433,30 @@ test_that("a `#` right after an invalid tail ends the value early", {
   expect_identical(row$severity, "info")
 })
 
+test_that("an early end wins even when the byte past the buffer fits", {
+  # The value ends in E2 80 well before the buffer (at a `#` with no blank
+  # before it, or before trailing blanks), and the line's byte just past
+  # the buffer is 0x91, which would complete it. The buffer split nothing,
+  # so today's text stays.
+  head <- c(charToRaw(paste0("User-agent: Bingb", intToUtf8(0x043E), "t")),
+            as.raw(c(0xE2, 0x80)))
+  past <- function(filler) {
+    rest <- 16663L - length(filler) - length(head)
+    c(head, filler, rep(filler[length(filler)], rest), as.raw(0x91),
+      rep(filler[length(filler)], 100L), charToRaw("\nDisallow: /x\n"))
+  }
+  for (filler in list(charToRaw("#c"), charToRaw(" "))) {
+    body <- past(filler)
+    expect_identical(body[[16664L]], as.raw(0x91))
+    x <- robots_validate_text(body)
+    expect_true("line_too_long" %in% x$diagnostics$code)
+    row <- la_rows(x)
+    expect_identical(row$message, la_read_as("Bingb"),
+                     label = rawToChar(filler))
+    expect_identical(row$severity, "info", label = rawToChar(filler))
+  }
+})
+
 test_that("a caller without raw lines reads a long User-agent line", {
   # validation_rule_keys() calls validation_groups() with no raw lines.
   body <- c(charToRaw("User-agent: Foo/"), rep(charToRaw("A"), 20000L),
