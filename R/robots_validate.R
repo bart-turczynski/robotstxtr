@@ -279,8 +279,11 @@ validation_unsupported <- c(
 #'     lines. \cr
 #'   \code{user_agent_duplicate_in_group} \tab info \tab
 #'     A User-agent line repeats a name, in any case or \code{*}, already in
-#'     its own group, which changes nothing (RFC 9309 section 2.2.1). Anchored
-#'     on the repeated line; the message names the first line naming it. \cr
+#'     its own group. Google reads the same group with or without it (RFC 9309
+#'     section 2.2.1). Where Bing or Yandex ends the group between the two
+#'     lines, the message names that engine and does not offer deletion.
+#'     Anchored on the repeated line; the message names the first line naming
+#'     it. \cr
 #'   \code{empty_disallow_with_full_block} \tab warning \tab
 #'     The rules one crawler follows hold an empty \code{Disallow:} and a
 #'     full block (\code{Disallow: /}, no non-empty Allow): Google and Bing
@@ -558,15 +561,19 @@ validation_unsupported <- c(
 #'
 #' For `user_agent_duplicate_in_group`, a User-agent line that repeats a name
 #' already in its own group, in any case (`*` included), is reported on the
-#' repeated line. RFC 9309 section 2.2.1 matches a product token
-#' case-insensitively, so the repeat changes nothing; the row is info, so
-#' `validation_status` is unchanged. Names are compared as written, folded to
-#' ASCII lowercase, so `Foo Bot` and `foo` stay apart: Google reads only `Foo`
-#' from the first. A line that a `user_agent_joined_*`, `user_agent_cut` or
-#' `wildcard_rules_not_inherited` report already owns, or a policy-token line,
-#' draws nothing but still counts as an earlier name. A group with no rule line
-#' draws nothing. A repeat across a blank or a directive that still joins the
-#' group counts as in-group, unless the joined row owns that line.
+#' repeated line; the row is info, so `validation_status` is unchanged. RFC 9309
+#' section 2.2.1 matches a product token case-insensitively, so Google reads the
+#' same group with or without the repeat. Bing ends a group at any directive
+#' between the two lines, and Yandex at a blank, comment or Crawl-delay line
+#' (`design/engine-profiles.md` section 5d). When one lies between, the message
+#' names that engine and does not offer deletion. Names are compared as
+#' written, folded to ASCII lowercase, so `Foo Bot` and `foo` stay apart: Google
+#' reads only `Foo` from the first. A line that a `user_agent_joined_*`,
+#' `user_agent_cut` or `wildcard_rules_not_inherited` report already owns draws
+#' nothing but still counts as an earlier name; a policy-token line is left to
+#' `ai_training_*` and never counts as an earlier name. A group with no rule
+#' line draws nothing. A repeat across a blank or a directive that still joins
+#' the group counts as in-group, unless a join row owns that line.
 #'
 #' For `disallow_tied_by_allow`, an Allow and a Disallow with the same
 #' pattern match the same paths with the same priority, and Allow wins the
@@ -1464,7 +1471,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     )
   }
   # A name repeated within one group (ROBO-wnuttuit), skipping the same lines.
-  found <- user_agent_duplicate_in_group_diagnostics(groups,
+  found <- user_agent_duplicate_in_group_diagnostics(groups, parsed,
                                                      skip = owned_lines)
   if (nrow(found) > 0L) {
     add_chunk(
@@ -2318,6 +2325,16 @@ ai_training_preference_rows <- function(groups, exact, truncated,
                    rep("user-agent", nrow(agents)), message)
 }
 
+# The name each parsed line is read as: its type, or for an unknown field its
+# ASCII-lowercase name (ROBO-xepnhfgs). Shared by the joined and the duplicate
+# checks, so both read a Crawl-delay line the same way.
+parsed_action <- function(parsed) {
+  ifelse(parsed$type == "unknown",
+         ascii_lower(ifelse(Encoding(parsed$action) == "bytes", "",
+                            parsed$action)),
+         parsed$type)
+}
+
 # User-agent lines joined into one group across a non-rule line
 # (ROBO-xepnhfgs), as a data frame like ai_training_rows(). Google's parser
 # starts a new group only after an Allow or Disallow line (src/robots.cc,
@@ -2355,10 +2372,7 @@ joined_user_agent_diagnostics <- function(groups, parsed, cap = 5L) {
                              parsed$type != "user-agent"]] <- TRUE
   is_blank <- logical(last_line)
   is_blank[parsed$line[parsed$is_empty | parsed$is_comment]] <- TRUE
-  action <- ifelse(parsed$type == "unknown",
-                   ascii_lower(ifelse(Encoding(parsed$action) == "bytes", "",
-                                      parsed$action)),
-                   parsed$type)
+  action <- parsed_action(parsed)
   ends_yandex <- is_blank
   ends_yandex[parsed$line[parsed$has_directive &
                             action == "crawl-delay"]] <- TRUE
@@ -2587,20 +2601,20 @@ repeated_group_diagnostics <- function(groups, skip = integer(), cap = 5L) {
 
 # A User-agent line that repeats a name already in its own group
 # (ROBO-wnuttuit). RFC 9309 section 2.2.1 matches a product token
-# case-insensitively, so the repeat names no crawler the group does not
-# already name and changes nothing. The name compared is the value as written,
-# folded to ASCII lowercase, and `*` for a global line. A cut value keeps its
-# full text, so `Foo Bot` and `foo` stay apart (ROBO-txnzyugl). Policy-token
-# lines are left to ai_training_*. A line in `skip` draws nothing but still
-# counts as an earlier name; a group with no rule line draws nothing, as in
-# repeated_group_diagnostics(). One info per repeated line, naming the first
-# line of its group with the same name.
-user_agent_duplicate_in_group_diagnostics <- function(groups,
+# case-insensitively, so Google reads the same group with or without the line.
+# Bing and Yandex may end the group between the two lines
+# (design/engine-profiles.md section 5d): Bing at any directive, Yandex at a
+# blank, comment or Crawl-delay line. Then the message names the engine and
+# does not offer deletion. The name compared is the value as written, folded
+# to ASCII lowercase, and `*` for a global line; a cut value keeps its full
+# text, so `Foo Bot` and `foo` stay apart (ROBO-txnzyugl). Policy-token lines
+# are dropped here and left to ai_training_*. A line in `skip` draws nothing
+# but still counts as an earlier name; a group with no rule line draws nothing,
+# as in repeated_group_diagnostics(). One info per repeated line, naming the
+# first line of its group with the same name.
+user_agent_duplicate_in_group_diagnostics <- function(groups, parsed,
                                                       skip = integer()) {
   agents <- groups$agents
-  if (nrow(agents) < 2L) {
-    return(ai_training_rows())
-  }
   family <- ai_training_kind(agents)$family
   keep <- (agents$global | nzchar(agents$key)) & !family
   agents <- agents[keep, , drop = FALSE]
@@ -2613,17 +2627,104 @@ user_agent_duplicate_in_group_diagnostics <- function(groups,
   if (length(repeated) == 0L) {
     return(ai_training_rows())
   }
-  name <- ifelse(agents$global, "*", agents$name)
+  earlier <- agents$line[first[repeated]]
+  later <- agents$line[repeated]
+  flags <- duplicate_break_flags(parsed, max(parsed$line, agents$line))
+  bing <- first_break_between(flags$bing, earlier, later)
+  yandex <- first_break_between(flags$yandex, earlier, later)
+  message <- duplicate_messages(agents, repeated, first, bing, yandex)
+  ai_training_rows(later, rep("info", length(later)),
+                   "user_agent_duplicate_in_group", "user-agent", message)
+}
+
+# Per line number, the lines that end a group for Bing (any directive) and for
+# Yandex (a blank, comment or Crawl-delay line), as design/engine-profiles.md
+# section 5d records them.
+duplicate_break_flags <- function(parsed, last_line) {
+  as_flags <- function(rows) {
+    flags <- logical(last_line)
+    flags[parsed$line[rows]] <- TRUE
+    flags
+  }
+  directive <- parsed$has_directive & parsed$type != "user-agent"
+  blank <- parsed$is_empty | parsed$is_comment
+  crawl_delay <- parsed$has_directive & parsed_action(parsed) == "crawl-delay"
+  list(bing = as_flags(directive), yandex = as_flags(blank | crawl_delay))
+}
+
+# The first flagged line after `from` and before `to`; NA when there is none.
+# `flags` marks line numbers, so which() lists them in order.
+first_break_between <- function(flags, from, to) {
+  lines <- which(flags)
+  hit <- lines[findInterval(from, lines) + 1L]
+  ifelse(!is.na(hit) & hit < to, hit, NA_integer_)
+}
+
+# The engine clause of each repeated line, in the wording of the joined codes:
+# NA when no break lies between its two lines. `engines` names the engines the
+# clause is about.
+duplicate_break_clause <- function(bing, yandex) {
+  clause <- rep(NA_character_, length(bing))
+  b <- !is.na(bing)
+  y <- !is.na(yandex)
+  only_yandex <- y & !b
+  only_bing <- b & !y
+  both <- b & y
+  same <- both & bing == yandex
+  split <- both & !same
+  clause[only_yandex] <- sprintf(
+    "Yandex ends a group at every blank or comment line, as at line %d",
+    yandex[only_yandex]
+  )
+  clause[only_bing] <- sprintf("Bing ends the group at line %d",
+                               bing[only_bing])
+  clause[same] <- sprintf("Bing and Yandex end the group at line %d",
+                          bing[same])
+  clause[split] <- sprintf(
+    "Bing ends the group at line %d, and Yandex ends it at line %d",
+    bing[split], yandex[split]
+  )
+  engines <- rep("Yandex", length(bing))
+  engines[b] <- "Bing"
+  engines[both] <- "Bing and Yandex"
+  engines[is.na(clause)] <- NA_character_
+  list(clause = clause, engines = engines)
+}
+
+# The message of each repeated line. With no break between its two lines, the
+# repeat changes nothing and the line can be deleted. With one, the message
+# names the engine that ends the group there, and says that deleting the line
+# would take the rules below it away from the crawler on that engine.
+duplicate_messages <- function(agents, repeated, first, bing, yandex) {
+  later <- agents$line[repeated]
+  earlier <- agents$line[first[repeated]]
+  named <- ai_training_name(agents$name[repeated])
+  named_before <- ai_training_name(agents$name[first[repeated]])
   message <- sprintf(
     paste0("`User-agent: %s` (line %d) repeats `User-agent: %s` (line %d) ",
            "in the same group. Product tokens match case-insensitively (RFC ",
            "9309 section 2.2.1), so the group names the same crawler with or ",
            "without this line, and the line can be deleted."),
-    ai_training_name(name[repeated]), agents$line[repeated],
-    ai_training_name(name[first[repeated]]), agents$line[first[repeated]]
+    named, later, named_before, earlier
   )
-  ai_training_rows(agents$line[repeated], rep("info", length(repeated)),
-                   "user_agent_duplicate_in_group", "user-agent", message)
+  broken <- duplicate_break_clause(bing, yandex)
+  rows <- which(!is.na(broken$clause))
+  if (length(rows) == 0L) {
+    return(message)
+  }
+  crawler <- ifelse(agents$global[repeated][rows],
+                    "every crawler without a group of its own",
+                    "that crawler")
+  message[rows] <- sprintf(
+    paste0("`User-agent: %s` (line %d) repeats `User-agent: %s` (line %d) ",
+           "in the same group. Product tokens match case-insensitively (RFC ",
+           "9309 section 2.2.1), so Google reads one group with or without ",
+           "this line. %s, so deleting this line would take the rules below ",
+           "it from %s on %s."),
+    named[rows], later[rows], named_before[rows], earlier[rows],
+    broken$clause[rows], crawler, broken$engines[rows]
+  )
+  message
 }
 
 # An empty `Disallow:` and a full block in the rules one crawler follows
