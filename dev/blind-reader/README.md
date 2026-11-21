@@ -115,31 +115,42 @@ with a `robots.rds`, as `dev/corpus/README.md` describes).
    is the absolute path of `<store>/prompts/<stage>/<id>.txt`:
 
    ```text
-   Read <prompt> with the Read tool, then answer the prompt it holds. Use no other tool and read no other file.
+   Read all of <prompt> with the Read tool, paging with offset and limit while it says more lines remain, then answer the prompt it holds. The numbers in the Read tool's left margin are not the robots.txt line numbers: cite the number before "| " on each file line. Use no other tool and read no other file.
    ```
 
    Save its reply, unedited, as `<store>/answers/<stage>/<id>.txt`. Spawn
    it from an agent definition that grants the Read tool and nothing else,
    where that is possible.
 
-   Before spawning, check each prompt for a line longer than 2,000
-   characters: the Read tool truncates such a line, so the reader would not
-   see the whole file. A sample with one is recorded as not read; it is not
-   spawned, and its answer is not guessed.
+   Before spawning, check each prompt's longest line and its line count.
+   The Read tool truncates a line longer than 2,000 characters, so the
+   reader would not see the whole file: a sample with such a line is
+   recorded as not read; it is not spawned, and its answer is not guessed.
+   The Read tool returns at most 2,000 lines per call by default, so a
+   prompt (the prompt text, about 215 lines, plus the file) longer than
+   that needs more than one Read call; record its line count, which the
+   validity check below needs. This prints each prompt's path, longest line
+   in bytes (never less than its length in characters, so a line it puts
+   under 2,000 is safe) and line count:
+
+   ```sh
+   awk 'FNR==1&&NR>1{print f, m, n} FNR==1{f=FILENAME;m=0} {if(length($0)>m)m=length($0);n=FNR} END{print f, m, n}' <store>/prompts/<stage>/*.txt
+   ```
 
    `<store>/answers/<stage>/run-meta.txt` records the model alias and,
    where the transcript shows it, the resolved model id; then, per id, the
-   tool calls the transcript shows, or `not read` and why. A read is valid
-   only when the transcript shows exactly one Read call, on that id's own
-   prompt path, and no other tool call. A reply from a read that is not
-   valid is not saved as an answer, so `score.R` reports that id as
-   `missing`. No API calls and no keys.
+   prompt's line count and the tool calls the transcript shows, or `not
+   read` and why. A read is valid only when every tool call the transcript
+   shows is a Read of that id's own prompt path, and together those calls
+   cover every line of the prompt. A reply from a read that is not valid is
+   not saved as an answer, so `score.R` reports that id as `missing`. No
+   API calls and no keys.
 
    Holding a Read tool weakens blindness slightly: the reader could read
    something besides its prompt. That is accepted because the alternative,
    retyping the prompt into the spawn call, cannot be checked byte for byte
-   and fails on very long lines; the one-call check above catches a reader
-   that reads anything else.
+   and fails on very long lines; the check that every call is a Read of the
+   reader's own prompt catches a reader that reads anything else.
 
 5. Score:
 
@@ -195,8 +206,11 @@ prompt says so.
 - The stage-1 prompts reached the readers by being retyped into each spawn
   call, which cannot be checked byte for byte and fails on very long lines.
   Each reader now reads its own rendered prompt file with the Read tool
-  (step 4), a read is valid only with that single Read call, and a prompt
-  with a line the Read tool would truncate is recorded as not read. Since
+  (step 4), paging when the prompt runs past the tool's per-call line
+  limit, and cites the prompt's own line numbers, not the tool's margin
+  numbers. A read is valid only when every tool call is a Read of that
+  prompt and together they cover it, and a prompt with a line the Read tool
+  would truncate is recorded as not read. Since
   the reader now holds a tool, the prompt's opening says to use no tool
   from there on instead of saying it has none.
 - Answers are kept per stage, under `answers/<stage>/`.
