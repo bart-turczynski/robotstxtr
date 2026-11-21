@@ -6,6 +6,8 @@
 
 * `robots_evaluate_text_v1()` and `robots_evaluate_url_v1()` now remove dot segments (RFC 3986 §5.2.4) and userinfo before matching, adding `matcher_url` and `url_preprocessing_note`; `url_normalization = "none"` keeps the old reading (ROBO-bnvdmdjr).
 
+* Validator: `robots_validate_text()` and `robots_validate_url()` note a User-agent line that repeats a name in its own group, ignoring case, as info `user_agent_duplicate_in_group` (RFC 9309 §2.2.1) (ROBO-wnuttuit).
+
 * Fetch: `robots` rows keep the final response's raw `Cache-Control`, `Age`, `Date`, `Expires`, `ETag`, `Last-Modified` and `Vary` as character columns; `NA` absent, `""` empty (ROBO-zleohwyz).
 
 * Validator: `robots_validate_text()` and `robots_validate_url()` warn `xml_body` or `json_body` when a body starts with markup or looks like JSON, its lines still read as directives (ROBO-mgtngbpm).
