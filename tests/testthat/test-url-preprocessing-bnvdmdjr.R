@@ -1,8 +1,10 @@
 # Evaluator URL preprocessing (ROBO-bnvdmdjr; design/adr/0002). The v1
 # facades take `url_normalization`: "rfc3986" (the default) applies RFC 3986
 # section 5.2.4 to the path, splits the authority the RFC 3986 way and drops
-# the fragment, and never encodes, decodes or case-folds an escape; "none"
-# reads the URL as given, as the facades did before.
+# the fragment, and never encodes, decodes or case-folds an escape; "whatwg"
+# reads the URL as rurl's WHATWG serializer writes it; "none" reads the URL
+# as given, as the facades did before. Every row carries the disagreement
+# flag, which compares the rfc3986 and whatwg targets.
 
 pp_body <- paste0(
   "User-agent: *\nDisallow: /account/\nAllow: /latam\nDisallow: /x\n",
@@ -130,14 +132,25 @@ test_that("the legacy functions read dot segments as given", {
 # ---- the argument ----------------------------------------------------------
 
 test_that("url_normalization is one value from the published set", {
-  expect_identical(engine_url_normalizations_v1(), c("rfc3986", "none"))
+  expect_identical(
+    engine_url_normalizations_v1(), c("rfc3986", "whatwg", "none")
+  )
+  expect_identical(
+    robots_engine_contract_v1()$url_normalizations,
+    engine_url_normalizations_v1()
+  )
+  expect_identical(
+    robots_engine_contract_v2()$url_normalizations,
+    engine_url_normalizations_v1()
+  )
   expect_identical(
     formals(robots_evaluate_text_v1)$url_normalization, "rfc3986"
   )
   expect_identical(
     formals(robots_evaluate_url_v1)$url_normalization, "rfc3986"
   )
-  for (bad in list("whatwg", c("none", "rfc3986"), NA_character_, 1, "")) {
+  bads <- list("WHATWG", c("none", "rfc3986"), NA_character_, 1, "")
+  for (bad in bads) {
     expect_error(
       robots_evaluate_text_v1(
         pp_body, "https://example.com/x", "Googlebot", "google", "google",
@@ -157,20 +170,24 @@ test_that("url_normalization is one value from the published set", {
   expect_false("url_normalization" %in% names(formals(allowed_by_robots_url)))
 })
 
-test_that("before whatwg: the frame ends at the URL columns, no flag", {
-  r <- pp_eval(
-    "https://example.com/latam/%2e%2e/account/x", "google", "Googlebot",
-    "rfc3986"
-  )
-  expect_false(any(
-    c("preprocessing_disagreement", "disagreement_clients") %in% names(r)
-  ))
-  expect_identical(
-    names(r)[ncol(r) - 2:0],
-    c("matcher_url", "url_preprocessing_note", "matched_rule_value_raw")
-  )
-  expect_null(robots_engine_contract_v1()$url_normalizations)
-  expect_null(robots_engine_contract_v2()$url_normalizations)
+test_that("the flag columns follow the URL columns, in every mode", {
+  for (mode in engine_url_normalizations_v1()) {
+    r <- pp_eval(
+      "https://example.com/latam/%2e%2e/account/x", "google", "Googlebot",
+      mode
+    )
+    expect_identical(
+      names(r)[ncol(r) - 4:0],
+      c(
+        "matcher_url", "url_preprocessing_note",
+        "preprocessing_disagreement", "disagreement_clients",
+        "matched_rule_value_raw"
+      ),
+      label = mode
+    )
+    expect_type(r$preprocessing_disagreement, "logical")
+    expect_type(r$disagreement_clients, "character")
+  }
 })
 
 # What rurl's WHATWG serializer does with the forms every client keeps or
@@ -466,12 +483,14 @@ test_that("rfc3986 rebuilds a latin1 URL in latin1, read as its UTF-8 twin", {
 test_that("rfc3986 stays linear when the output stack grows", {
   deep <- paste0("https://h", strrep("/a", 4000L), strrep("/..", 4000L), "/x")
   flat <- paste0("https://h", strrep("/a", 4000L))
+  # The rfc3986 targets alone: preprocess_matcher_url_v1() also asks rurl
+  # for the whatwg target, whose cost is rurl's.
   elapsed <- system.time({
-    deep_out <- preprocess_matcher_url_v1(deep, "rfc3986")
-    flat_out <- preprocess_matcher_url_v1(flat, "rfc3986")
+    deep_out <- rfc3986_matcher_urls_v1(deep)
+    flat_out <- rfc3986_matcher_urls_v1(flat)
   })[["elapsed"]]
-  expect_identical(deep_out$matcher_url, "https://h/x")
-  expect_identical(flat_out$matcher_url, flat)
+  expect_identical(deep_out$url, "https://h/x")
+  expect_identical(flat_out$url, flat)
   # Quadratic code took about six seconds here; linear code takes well
   # under one.
   expect_lt(elapsed, 2)
@@ -600,7 +619,274 @@ test_that("the legacy adapter carries the decision, not the columns", {
   legacy <- as_legacy_robots_decisions_v1(engine)
   expect_false(legacy$results$allowed)
   expect_false(any(
-    c("matcher_url", "url_preprocessing_note", "group_token") %in%
+    c(
+      "matcher_url", "url_preprocessing_note", "preprocessing_disagreement",
+      "disagreement_clients", "group_token"
+    ) %in% names(legacy$results)
+  ))
+})
+
+# ---- "whatwg" ----------------------------------------------------------------
+
+pp_whatwg <- function(url, backend = "google", token = "Googlebot",
+                      body = pp_body) {
+  pp_eval(url, backend, token, "whatwg", body)
+}
+
+pp_ww_changed <- "WHATWG URL serialization changed the URL"
+pp_ww_invalid <- "not a valid WHATWG URL: evaluated as given"
+
+test_that("whatwg reads the URL as rurl serializes it (stable forms)", {
+  urls <- vapply(pp_whatwg_stable, `[[`, "", 1L)
+  r <- pp_whatwg(urls)
+  expect_identical(r$matcher_url, vapply(pp_whatwg_stable, `[[`, "", 2L))
+  expect_identical(r$url, urls)
+  changed <- r$matcher_url != urls
+  expect_identical(
+    r$url_preprocessing_note, ifelse(changed, pp_ww_changed, NA_character_)
+  )
+})
+
+test_that("whatwg removes literal and encoded dots on every backend", {
+  urls <- c(
+    "https://example.com/latam/../account/x",
+    "https://example.com/latam/%2e%2e/account/x",
+    "https://example.com/latam/%2E%2E/account/x",
+    "https://example.com/latam/.%2E/account/x",
+    "https://example.com/latam/%252e%252e/account/x"
+  )
+  for (backend in names(pp_engines)) {
+    r <- pp_whatwg(urls, backend, pp_engines[[backend]])
+    expect_identical(
+      r$url_decision, c(rep("disallow", 4L), "allow"), label = backend
+    )
+    expect_identical(
+      r$matcher_url[1:4], rep("https://example.com/account/x", 4L)
+    )
+  }
+})
+
+test_that("whatwg leaves userinfo out and drops the fragment", {
+  urls <- c("https://u;v@example.com/x", "https://example.com/x#a/../b")
+  for (backend in names(pp_engines)) {
+    r <- pp_whatwg(urls, backend, pp_engines[[backend]])
+    expect_identical(r$url_decision, c("disallow", "disallow"))
+    expect_identical(r$matcher_url, rep("https://example.com/x", 2L))
+    expect_identical(
+      r$url_preprocessing_note, c("userinfo removed", "fragment dropped")
+    )
+  }
+})
+
+test_that("whatwg evaluates a URL rurl cannot parse as given", {
+  urls <- c("/a/../b", "example.com/a/./b")
+  for (backend in names(pp_engines)) {
+    token <- pp_engines[[backend]]
+    new <- pp_whatwg(urls, backend, token)
+    old <- pp_today(urls, backend, token)
+    expect_identical(new$matcher_url, urls, label = backend)
+    expect_identical(new$url_preprocessing_note, rep(pp_ww_invalid, 2L))
+    expect_identical(
+      new[c("matcher_status", "url_decision", "reason")],
+      old[c("matcher_status", "url_decision", "reason")]
+    )
+    expect_identical(new$preprocessing_disagreement, c(TRUE, TRUE))
+  }
+})
+
+test_that("whatwg: an unchanged URL passes as given, with no note", {
+  urls <- c("https://example.com/a/b?q=1", "https://example.com/latam/y")
+  for (backend in names(pp_engines)) {
+    token <- pp_engines[[backend]]
+    new <- pp_whatwg(urls, backend, token)
+    old <- pp_today(urls, backend, token)
+    expect_identical(new$matcher_url, urls, label = backend)
+    expect_true(all(is.na(new$url_preprocessing_note)))
+    expect_identical(new[names(old)], old)
+  }
+})
+
+test_that("whatwg: NA, empty, bytes-marked and failing URLs", {
+  r <- pp_whatwg(c(NA_character_, ""))
+  expect_identical(r$matcher_url, c(NA_character_, ""))
+  expect_identical(r$url_preprocessing_note, c(NA_character_, NA_character_))
+  expect_identical(r$preprocessing_disagreement, c(FALSE, FALSE))
+  expect_identical(r$disagreement_clients, c(NA_character_, NA_character_))
+
+  raw_url <- "https://example.com/a/%2e%2e/b\xff"
+  Encoding(raw_url) <- "bytes"
+  pre <- preprocess_matcher_url_v1(raw_url, "whatwg")
+  expect_identical(pre$matcher_url, raw_url)
+  expect_identical(Encoding(pre$matcher_url), "bytes")
+  expect_true(pre$whatwg_failed)
+
+  # An error on the vector is retried URL by URL, so one URL fails alone.
+  local_mocked_bindings(
+    serialize_url = function(url, standard) {
+      if (any(grepl("boom", url, fixed = TRUE))) stop("rurl failed")
+      url
+    },
+    .package = "rurl"
+  )
+  expect_identical(
+    whatwg_serialize_v1(c("https://h/a", "https://h/boom", "https://h/b")),
+    c("https://h/a", NA, "https://h/b")
+  )
+})
+
+# ---- the disagreement flag ---------------------------------------------------
+
+pp_families <- c(
+  rfc3986 = "wget 1.25, curl/libcurl < 8.13.0",
+  whatwg = "Chrome 157, Node 26 fetch, curl/libcurl >= 8.13.0"
+)
+
+pp_clients <- function(rfc3986, whatwg) {
+  sprintf(
+    "rfc3986 %s: %s; whatwg %s: %s",
+    rfc3986, pp_families[["rfc3986"]], whatwg, pp_families[["whatwg"]]
+  )
+}
+
+pp_unparsed <- sprintf(
+  "rfc3986: %s; whatwg cannot parse the URL: %s",
+  pp_families[["rfc3986"]], pp_families[["whatwg"]]
+)
+
+test_that("the client families name the curl boundary", {
+  expect_identical(url_client_families_v1(), pp_families)
+})
+
+# Rows: the encoded dots decide apart (both directions), forms that differ
+# but decide alike, identical targets, literal dots (both modes remove
+# them), and a URL whatwg cannot parse.
+pp_flag_urls <- c(
+  "https://example.com/latam/%2e%2e/account/x",
+  "https://example.com/q/%2e%2e/z",
+  "https://example.com/a/b",
+  "https://example.com/latam/../account/x",
+  "/a/../b"
+)
+
+test_that("the flag marks rows the two forms decide apart, in every mode", {
+  for (mode in engine_url_normalizations_v1()) {
+    for (backend in names(pp_engines)) {
+      r <- pp_eval(pp_flag_urls, backend, pp_engines[[backend]], mode)
+      expect_identical(
+        r$preprocessing_disagreement, c(TRUE, FALSE, FALSE, FALSE, TRUE),
+        label = paste(mode, backend)
+      )
+      expect_identical(
+        r$disagreement_clients,
+        c(pp_clients("allow", "disallow"), NA, NA, NA, pp_unparsed)
+      )
+    }
+  }
+})
+
+test_that("the flag works the other way round: whatwg allows", {
+  body <- "User-agent: *\nDisallow: /latam/%2E%2E/\n"
+  url <- "https://example.com/latam/%2E%2E/account/x"
+  for (backend in names(pp_engines)) {
+    token <- pp_engines[[backend]]
+    rfc <- pp_eval(url, backend, token, "rfc3986", body)
+    ww <- pp_eval(url, backend, token, "whatwg", body)
+    expect_identical(
+      c(rfc$url_decision, ww$url_decision), c("disallow", "allow"),
+      label = backend
+    )
+    expect_true(rfc$preprocessing_disagreement)
+    expect_identical(rfc$disagreement_clients, pp_clients("disallow", "allow"))
+    expect_identical(ww$disagreement_clients, rfc$disagreement_clients)
+  }
+})
+
+test_that("rows no matcher decides are flagged only when whatwg fails", {
+  r <- pp_eval(pp_flag_urls, "rfc9309", "FooBot", "rfc3986")
+  expect_identical(r$matcher_status, rep("capability_unavailable", 5L))
+  expect_identical(
+    r$preprocessing_disagreement, c(FALSE, FALSE, FALSE, FALSE, TRUE)
+  )
+})
+
+pp_count_dispatch <- function(env) {
+  real <- dispatch_matcher_v1
+  local_mocked_bindings(
+    dispatch_matcher_v1 = function(registry, backend, bodies, urls, ...) {
+      env$urls <- c(env$urls, urls)
+      real(registry, backend, bodies, urls, ...)
+    },
+    .env = parent.frame()
+  )
+}
+
+test_that("the second pass runs only on rows whose targets differ", {
+  seen <- new.env(parent = emptyenv())
+  pp_count_dispatch(seen)
+  r <- pp_eval(pp_flag_urls, "google", "Googlebot", "rfc3986")
+  # The selected pass reads the five rfc3986 targets; the second reads the
+  # whatwg target of the two rows whose targets differ.
+  expect_identical(
+    seen$urls,
+    c(
+      r$matcher_url,
+      "https://example.com/account/x", "https://example.com/z"
+    )
+  )
+  seen$urls <- NULL
+  pp_eval("https://example.com/a/b", "google", "Googlebot", "none")
+  expect_identical(seen$urls, "https://example.com/a/b")
+})
+
+test_that("under none, each differing side is read once", {
+  seen <- new.env(parent = emptyenv())
+  pp_count_dispatch(seen)
+  url <- "https://example.com/latam/../q/%2e%2e/account/x"
+  r <- pp_eval(url, "google", "Googlebot", "none")
+  expect_identical(
+    seen$urls,
+    c(
+      url, "https://example.com/q/%2e%2e/account/x",
+      "https://example.com/account/x"
+    )
+  )
+  expect_identical(r$url_decision, "allow")
+  expect_true(r$preprocessing_disagreement)
+  expect_identical(r$disagreement_clients, pp_clients("allow", "disallow"))
+})
+
+test_that("whatwg: the legacy adapter carries the decision, not the flag", {
+  engine <- robots_evaluate_text_v1(
+    pp_body, pp_flag_urls[1:3], "Googlebot", "google", "google",
+    url_normalization = "whatwg"
+  )
+  legacy <- as_legacy_robots_decisions_v1(engine)
+  expect_identical(legacy$results$allowed, c(FALSE, TRUE, FALSE))
+  expect_false(any(
+    c("preprocessing_disagreement", "disagreement_clients") %in%
       names(legacy$results)
   ))
+})
+
+test_that("evaluate_url_v1 under whatwg: same fetch, flag on the row", {
+  seen <- new.env(parent = emptyenv())
+  seen$hits <- 0L
+  local_fake_ssrfr(function(req) {
+    seen$hits <- seen$hits + 1L
+    fake_response(200L, body = pp_body)
+  })
+  url <- "http://a/latam/%2e%2e/account/x"
+  new <- robots_evaluate_url_v1(
+    url, "Googlebot", "google", "google", url_normalization = "whatwg"
+  )
+  old <- robots_evaluate_url_v1(url, "Googlebot", "google", "google")
+  expect_identical(seen$hits, 2L)
+  expect_identical(new$evidence$requested_url, old$evidence$requested_url)
+  expect_identical(new$results$matcher_url, "http://a/account/x")
+  expect_identical(
+    c(new$results$url_decision, old$results$url_decision),
+    c("disallow", "allow")
+  )
+  expect_true(new$results$preprocessing_disagreement)
+  expect_true(old$results$preprocessing_disagreement)
 })

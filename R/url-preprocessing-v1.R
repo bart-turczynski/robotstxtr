@@ -11,12 +11,22 @@
 #              fragment dropped. No byte is encoded, decoded or case-folded:
 #              `%2e` is not a dot here. Input that is not a valid RFC 3986
 #              URI is still evaluated; the note says why it is not.
+#   "whatwg"   The WHATWG URL Standard serialization through rurl, with no
+#              cherry-picking: literal and encoded dot segments removed, and
+#              the encoding and host changed as the standard says. The path
+#              and query are taken from rurl's result, with userinfo left
+#              out and the fragment dropped. Input rurl cannot parse is
+#              evaluated as given, with a note.
 #   "none"     The URL as given, byte for byte.
+#
+# Whatever the mode, every row also carries `preprocessing_disagreement`:
+# whether the rfc3986 and whatwg targets decide differently, or whatwg
+# cannot parse the URL (url_disagreement_v1()).
 
 # The `url_normalization` value set, default first. Adding a mode is one
 # entry here and one branch in preprocess_matcher_url_v1().
 engine_url_normalizations_v1 <- function() {
-  c("rfc3986", "none")
+  c("rfc3986", "whatwg", "none")
 }
 
 validate_url_normalization_v1 <- function(url_normalization) {
@@ -34,21 +44,193 @@ validate_url_normalization_v1 <- function(url_normalization) {
   unname(url_normalization)
 }
 
-# One matcher URL and one note per row. NA and empty URLs pass as they are,
-# with no note.
+# One matcher URL and one note per row, under the selected mode, and the
+# rfc3986 and whatwg targets the disagreement flag compares, whatever the
+# mode. `whatwg_failed` marks the rows rurl could not parse. NA and empty
+# URLs pass as they are, with no note, in every mode.
 preprocess_matcher_url_v1 <- function(url, url_normalization) {
-  n <- length(url)
-  note <- rep(NA_character_, n)
-  if (identical(url_normalization, "none")) {
-    return(list(matcher_url = url, note = note))
-  }
-  matcher_url <- url
+  rfc3986 <- rfc3986_matcher_urls_v1(url)
+  whatwg <- whatwg_matcher_urls_v1(url)
+  selected <- switch(
+    url_normalization,
+    rfc3986 = rfc3986,
+    whatwg = whatwg,
+    none = list(url = url, note = rep(NA_character_, length(url)))
+  )
+  list(
+    matcher_url = selected$url, note = selected$note,
+    rfc3986_url = rfc3986$url, whatwg_url = whatwg$url,
+    whatwg_failed = whatwg$failed
+  )
+}
+
+rfc3986_matcher_urls_v1 <- function(url) {
+  out <- url
+  note <- rep(NA_character_, length(url))
   for (i in which(!is.na(url) & nzchar(url))) {
     row <- rfc3986_matcher_url_v1(url[[i]])
-    matcher_url[[i]] <- row$url
+    out[[i]] <- row$url
     note[[i]] <- row$note
   }
-  list(matcher_url = matcher_url, note = note)
+  list(url = out, note = note)
+}
+
+# ---- "whatwg" ---------------------------------------------------------------
+
+# rurl's WHATWG serialization of each URL, NA where it cannot parse one. A
+# latin1 URL is handed over as UTF-8; a "bytes"-marked one has no characters
+# to parse, so it is NA. An error on the vector is retried URL by URL, so one
+# bad URL fails alone.
+whatwg_serialize_v1 <- function(url) {
+  out <- rep(NA_character_, length(url))
+  ok <- Encoding(url) != "bytes"
+  if (!any(ok)) {
+    return(out)
+  }
+  serialize <- function(x) {
+    out <- tryCatch(
+      as.character(rurl::serialize_url(x, standard = "whatwg")),
+      error = function(e) NULL
+    )
+    if (length(out) == length(x)) out else NULL
+  }
+  input <- enc2utf8(url[ok])
+  serialized <- serialize(input)
+  if (is.null(serialized)) {
+    serialized <- vapply(input, function(x) {
+      one <- serialize(x)
+      if (is.null(one)) NA_character_ else one
+    }, "", USE.NAMES = FALSE)
+  }
+  out[ok] <- serialized
+  out
+}
+
+whatwg_matcher_urls_v1 <- function(url) {
+  out <- url
+  note <- rep(NA_character_, length(url))
+  failed <- rep(FALSE, length(url))
+  todo <- which(!is.na(url) & nzchar(url))
+  serialized <- whatwg_serialize_v1(url[todo])
+  for (k in seq_along(todo)) {
+    i <- todo[[k]]
+    if (is.na(serialized[[k]])) {
+      failed[[i]] <- TRUE
+      note[[i]] <- "not a valid WHATWG URL: evaluated as given"
+      next
+    }
+    row <- whatwg_matcher_url_v1(url[[i]], serialized[[k]])
+    out[[i]] <- row$url
+    note[[i]] <- row$note
+  }
+  list(url = out, note = note, failed = failed)
+}
+
+# scheme, "//" and host[:port] when there is an authority, then the path and
+# the query: the URL a backend receives, userinfo and fragment left out.
+url_rebuild_v1 <- function(parts) {
+  host <- if (parts$has_authority) {
+    c(charToRaw("//"), url_host_port_v1(parts$authority))
+  }
+  c(parts$scheme, host, parts$path, parts$query)
+}
+
+# One URL under "whatwg", from rurl's serialization of it: the rebuilt URL
+# and its note. The note compares the rebuilt URL with the input read the
+# same way (userinfo and fragment left out), so it names what the
+# serialization changed apart from those two.
+whatwg_matcher_url_v1 <- function(url, serialized) {
+  input <- charToRaw(url)
+  parts <- url_split_rfc3986_v1(charToRaw(serialized))
+  rebuilt <- url_rebuild_v1(parts)
+  if (identical(rebuilt, input)) {
+    return(list(url = url, note = NA_character_))
+  }
+  given <- url_split_rfc3986_v1(input)
+  userinfo <- given$has_authority &&
+    !identical(url_host_port_v1(given$authority), given$authority)
+  note <- c(
+    if (!identical(rebuilt, url_rebuild_v1(given))) {
+      "WHATWG URL serialization changed the URL"
+    },
+    if (userinfo) "userinfo removed",
+    if (given$fragment) "fragment dropped"
+  )
+  list(url = rawToChar(rebuilt), note = paste(note, collapse = "; "))
+}
+
+# ---- the disagreement flag ---------------------------------------------------
+
+# The client families on each side of the flag (ADR 0002, client survey of
+# 2026-11-19, curl boundary from curl 8.13.0's changelog). Clients that send
+# the URL unchanged are on neither side: the flag compares two forms.
+url_client_families_v1 <- function() {
+  c(
+    rfc3986 = "wget 1.25, curl/libcurl < 8.13.0",
+    whatwg = "Chrome 157, Node 26 fetch, curl/libcurl >= 8.13.0"
+  )
+}
+
+# Whether two character vectors hold the same bytes, element by element; NA
+# equals NA only.
+bytes_equal_v1 <- function(a, b) {
+  vapply(seq_along(a), function(i) {
+    if (is.na(a[[i]]) || is.na(b[[i]])) {
+      return(is.na(a[[i]]) && is.na(b[[i]]))
+    }
+    identical(charToRaw(a[[i]]), charToRaw(b[[i]]))
+  }, logical(1L))
+}
+
+# The decision of `rows` when the matcher reads `target`: the selected pass's
+# decision where the matcher already read that target, else a pass of
+# `decide(rows, urls)` over the rest.
+side_decision_v1 <- function(rows, target, matcher_url, decided, decide) {
+  out <- decided[rows]
+  again <- !bytes_equal_v1(target[rows], matcher_url[rows])
+  if (any(again)) {
+    out[again] <- decide(rows[again], target[rows[again]])
+  }
+  out
+}
+
+# `preprocessing_disagreement` and `disagreement_clients` for every row.
+# The flag is TRUE where whatwg cannot parse the URL, or where the rfc3986
+# and whatwg targets differ bytewise and a matcher decides them differently;
+# a second matcher pass runs only on those differing matcher rows.
+# `url_decision` is the selected pass's; `decide(rows, urls)` returns the
+# url_decision of `rows` when the matcher reads `urls`.
+url_disagreement_v1 <- function(preprocessed, matcher_rows, url_decision,
+                                decide) {
+  failed <- preprocessed$whatwg_failed
+  flag <- failed
+  clients <- rep(NA_character_, length(flag))
+  families <- url_client_families_v1()
+  clients[failed] <- sprintf(
+    "rfc3986: %s; whatwg cannot parse the URL: %s",
+    families[["rfc3986"]], families[["whatwg"]]
+  )
+  differ <- !failed & !bytes_equal_v1(
+    preprocessed$rfc3986_url, preprocessed$whatwg_url
+  )
+  rows <- matcher_rows[differ[matcher_rows]]
+  if (length(rows) == 0L) {
+    return(list(flag = flag, clients = clients))
+  }
+  sides <- lapply(
+    preprocessed[c("rfc3986_url", "whatwg_url")], side_decision_v1,
+    rows = rows, matcher_url = preprocessed$matcher_url,
+    decided = url_decision, decide = decide
+  )
+  apart <- !mapply(identical, sides[[1L]], sides[[2L]], USE.NAMES = FALSE)
+  shown <- function(x) ifelse(is.na(x), "undecided", x)
+  flag[rows[apart]] <- TRUE
+  clients[rows[apart]] <- sprintf(
+    "rfc3986 %s: %s; whatwg %s: %s",
+    shown(sides[[1L]][apart]), families[["rfc3986"]],
+    shown(sides[[2L]][apart]), families[["whatwg"]]
+  )
+  list(flag = flag, clients = clients)
 }
 
 # The URL's bytes as written, and the mark a rebuilt string takes. A latin1

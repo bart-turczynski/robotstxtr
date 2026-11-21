@@ -10,6 +10,14 @@ engine_contract_id_v1 <- function() {
   "robotstxtr.engine-aware/v1"
 }
 
+# 2026-11-21.2: `url_normalization` gains "whatwg" (the WHATWG URL
+# serialization through rurl), the contract publishes the value set
+# (`url_normalizations`), and `results` gains `preprocessing_disagreement`,
+# whether the rfc3986 and whatwg targets decide differently or whatwg cannot
+# parse the URL, and `disagreement_clients`, the client families on each
+# side (ADR 0002, ROBO-bnvdmdjr). No policy revision moved. Both facades
+# share the results schema, so both moved.
+#
 # 2026-11-21.1: both facades take `url_normalization` ("rfc3986", the
 # default, or "none"), and `results` gains `matcher_url`, the URL the
 # matcher read, and `url_preprocessing_note`, the rule that changed it or
@@ -41,7 +49,7 @@ engine_contract_id_v1 <- function() {
 # (ROBO-jbralthm; design/engine-profiles.md section 2). Both facades share the
 # evidence schema, so both revisions moved.
 engine_schema_revision_v1 <- function() {
-  "2026-11-21.1"
+  "2026-11-21.2"
 }
 
 # The engine-aware/v2 facade identity (BI-V2-SCHEMA, spec SS15). Introduced by
@@ -56,7 +64,7 @@ engine_contract_id_v2 <- function() {
 }
 
 engine_schema_revision_v2 <- function() {
-  "2026-11-21.1"
+  "2026-11-21.2"
 }
 
 engine_rulesets_v1 <- function() {
@@ -670,7 +678,10 @@ engine_policy_table_v1 <- function() {
 #' (`matcher_identity`, e.g. library/payload/profile/corpus/evidence/
 #' profile-source for the Yandex backend), status-policy table, and supported
 #' sibling-package ranges for the v1 engine-aware contract. It performs no fetch
-#' or matching.
+#' or matching. The value sets include `safety_levels` and, since schema
+#' revision `2026-11-21.2`, `url_normalizations`, the values
+#' [robots_evaluate_text_v1()] and [robots_evaluate_url_v1()] accept for
+#' `url_normalization`, default first.
 #'
 #' @return A named list of contract metadata with class
 #'   `robots_engine_contract_v1`.
@@ -726,6 +737,7 @@ robots_engine_contract_v1 <- function() {
       robots_policy_rulesets = engine_rulesets_v1(),
       matcher_backends = engine_matchers_v1(),
       safety_levels = engine_safety_levels_v1(),
+      url_normalizations = engine_url_normalizations_v1(),
       policy_table = engine_policy_table_v1(),
       sibling_versions = c(
         sitemapr = ">= 0.0.0.9000, < 0.1.0",
@@ -792,6 +804,7 @@ robots_engine_contract_v2 <- function() {
       robots_policy_rulesets = engine_rulesets_v1(),
       matcher_backends = engine_matchers_v1(),
       safety_levels = engine_safety_levels_v1(),
+      url_normalizations = engine_url_normalizations_v1(),
       policy_table = engine_policy_table_v1(),
       sibling_versions = c(
         sitemapr = ">= 0.0.0.9000, < 0.1.0",
@@ -1684,6 +1697,23 @@ dispatch_matcher_v1 <- function(registry, backend, bodies, urls,
   check_matcher_output_v1(output, length(bodies), backend)
 }
 
+# `url_decision` for rows matched again with other URLs: one adapter call
+# per backend, in row order, as the selected pass in evaluate_rows_v1().
+decide_urls_v1 <- function(registry, backends, bodies, urls, product_tokens,
+                           crawler_profiles) {
+  out <- rep(NA_character_, length(urls))
+  for (backend in unique(backends)) {
+    picked <- backends == backend
+    out[picked] <- dispatch_matcher_v1(
+      registry, backend,
+      bodies = bodies[picked], urls = urls[picked],
+      product_tokens = product_tokens[picked],
+      crawler_profiles = crawler_profiles[picked, , drop = FALSE]
+    )$url_decision
+  }
+  out
+}
+
 policy_limit_v1 <- function(ruleset) {
   out <- rep(NA_integer_, length(ruleset))
   out[ruleset == "google"] <- 512000L
@@ -1861,6 +1891,22 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
     matched_rule_value_raw[rows] <- decided$matched_rule_value_raw
   }
 
+  # The disagreement flag (ROBO-bnvdmdjr, ADR 0002): a second pass reads the
+  # other mode's target, only on matcher rows whose two targets differ.
+  disagreement <- url_disagreement_v1(
+    preprocessed, matcher_rows, url_decision,
+    decide = function(rows, urls) {
+      decide_urls_v1(
+        matcher_registry, matcher_backend[rows],
+        bodies = readable_bodies[source_of[rows]], urls = urls,
+        product_tokens = product_token[rows],
+        crawler_profiles = crawler_profiles[
+          match(rows, matcher_rows), , drop = FALSE
+        ]
+      )
+    }
+  )
+
   # Fail closed: no row may carry a matcher_status outside the published
   # engine-aware/v2 vocabulary, regardless of backend (BI-V2-SCHEMA).
   matcher_status <- validate_matcher_status_v2(matcher_status)
@@ -1911,6 +1957,10 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
     # (ROBO-bnvdmdjr, ADR 0002): `url` as given under "none".
     matcher_url = preprocessed$matcher_url,
     url_preprocessing_note = preprocessed$note,
+    # Whether the rfc3986 and whatwg targets decide differently, or whatwg
+    # cannot parse the URL, and the client families on each side.
+    preprocessing_disagreement = disagreement$flag,
+    disagreement_clients = disagreement$clients,
     stringsAsFactors = FALSE
   )
   # Public list column, unchanged since schema 2026-07-18.2: exactly one
@@ -2021,6 +2071,29 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' [allowed_by_robots_text()] and [allowed_by_robots_url()] read the URL as
 #' given.
 #'
+#' Since schema revision `2026-11-21.2`, `"whatwg"` reads the URL as the
+#' WHATWG URL Standard serializes it (through `rurl::serialize_url()`),
+#' which models browsers and Node `fetch`. It removes literal and encoded
+#' dot segments (`/%2e%2e/` too) and, unlike `"rfc3986"`, changes the
+#' encoding and host as that standard does (a space becomes `%20`, a byte
+#' outside ASCII is percent-encoded, the host is put in lower case and a
+#' default port dropped). Userinfo is left out and the fragment dropped, as
+#' under `"rfc3986"`. A URL it cannot parse, such as `"/a/../b"`, is
+#' evaluated as given, with the note `not a valid WHATWG URL: evaluated as given`; a
+#' changed URL has the note `WHATWG URL serialization changed the URL`,
+#' then `userinfo removed` or `fragment dropped` where those apply.
+#'
+#' In every mode, `preprocessing_disagreement` is `TRUE` when the URL the
+#' matcher reads under `"rfc3986"` and the one it reads under `"whatwg"`
+#' differ and are decided differently (`url_decision`), or when `"whatwg"`
+#' cannot parse the URL; it is `FALSE` otherwise, including for an `NA` or
+#' empty URL and for a row no matcher decided. The second match runs only on
+#' rows whose two URLs differ. `disagreement_clients` is `NA` when the flag
+#' is `FALSE`; otherwise it gives each side's decision and the clients
+#' surveyed to send that form: `wget 1.25, curl/libcurl < 8.13.0` for
+#' `"rfc3986"` and `Chrome 157, Node 26 fetch, curl/libcurl >= 8.13.0` for
+#' `"whatwg"`.
+#'
 #' @param robots_txt A single, non-missing character value containing the
 #'   robots.txt body. A body marked UTF-8 is used as written. An unmarked body
 #'   (as `rawToChar()` gives) is taken as UTF-8 bytes as written when the
@@ -2050,8 +2123,10 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' @param url_normalization How the URL is read before matching, one of:
 #'   `"rfc3986"` (the default) removes dot segments from the path (RFC 3986
 #'   section 5.2.4), leaves userinfo out and drops the fragment, and never
-#'   encodes, decodes or case-folds a byte, so `%2e` is kept; `"none"` hands
-#'   the URL to the matcher as given. See Details.
+#'   encodes, decodes or case-folds a byte, so `%2e` is kept; `"whatwg"`
+#'   reads it as the WHATWG URL Standard serializes it, so `%2e` segments
+#'   are removed and the encoding may change; `"none"` hands the URL to the
+#'   matcher as given. See Details.
 #'
 #' @return A `robots_engine_decisions_v1` object with `results`, neutral
 #'   `evidence`, and `contract` components.
@@ -2135,7 +2210,8 @@ robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
 #'
 #' `url_normalization` decides the URL the matcher reads, as in
 #' [robots_evaluate_text_v1()]; the `/robots.txt` to fetch is built from the
-#' input URL, so the mode never changes what is fetched.
+#' input URL, so the mode never changes what is fetched. Every row carries
+#' `preprocessing_disagreement` and `disagreement_clients`, as there.
 #'
 #' @inheritParams robots_evaluate_text_v1
 #' @inheritParams robots_fetch
@@ -2251,8 +2327,9 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
 #' Its decisions are the v1 result's, so they follow the `url_normalization`
 #' the result was built with: under the default `"rfc3986"`,
 #' `https://example.com/a/../b` is decided as `https://example.com/b`, where
-#' [allowed_by_robots_text()] reads it as given. The `matcher_url` and
-#' `url_preprocessing_note` columns are not carried over.
+#' [allowed_by_robots_text()] reads it as given. The `matcher_url`,
+#' `url_preprocessing_note`, `preprocessing_disagreement` and
+#' `disagreement_clients` columns are not carried over.
 #'
 #' @param x A `robots_engine_decisions_v1` object using the Google policy and
 #'   Google matcher backend for every row.

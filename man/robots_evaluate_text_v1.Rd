@@ -50,8 +50,10 @@ unaccepted selector leaves its rows undecided rather than raising.}
 \item{url_normalization}{How the URL is read before matching, one of:
 \code{"rfc3986"} (the default) removes dot segments from the path (RFC 3986
 section 5.2.4), leaves userinfo out and drops the fragment, and never
-encodes, decodes or case-folds a byte, so \verb{\%2e} is kept; \code{"none"} hands
-the URL to the matcher as given. See Details.}
+encodes, decodes or case-folds a byte, so \verb{\%2e} is kept; \code{"whatwg"}
+reads it as the WHATWG URL Standard serializes it, so \verb{\%2e} segments
+are removed and the encoding may change; \code{"none"} hands the URL to the
+matcher as given. See Details.}
 }
 \value{
 A \code{robots_engine_decisions_v1} object with \code{results}, neutral
@@ -154,6 +156,29 @@ valid URI, that it has no authority, and which rule changed it (or why
 its dot segments were left in place), joined by \code{"; "}.
 \code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}} and \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} read the URL as
 given.
+
+Since schema revision \code{2026-11-21.2}, \code{"whatwg"} reads the URL as the
+WHATWG URL Standard serializes it (through \code{rurl::serialize_url()}),
+which models browsers and Node \code{fetch}. It removes literal and encoded
+dot segments (\verb{/\%2e\%2e/} too) and, unlike \code{"rfc3986"}, changes the
+encoding and host as that standard does (a space becomes \verb{\%20}, a byte
+outside ASCII is percent-encoded, the host is put in lower case and a
+default port dropped). Userinfo is left out and the fragment dropped, as
+under \code{"rfc3986"}. A URL it cannot parse, such as \code{"/a/../b"}, is
+evaluated as given, with the note \verb{not a valid WHATWG URL: evaluated as given}; a
+changed URL has the note \verb{WHATWG URL serialization changed the URL},
+then \verb{userinfo removed} or \verb{fragment dropped} where those apply.
+
+In every mode, \code{preprocessing_disagreement} is \code{TRUE} when the URL the
+matcher reads under \code{"rfc3986"} and the one it reads under \code{"whatwg"}
+differ and are decided differently (\code{url_decision}), or when \code{"whatwg"}
+cannot parse the URL; it is \code{FALSE} otherwise, including for an \code{NA} or
+empty URL and for a row no matcher decided. The second match runs only on
+rows whose two URLs differ. \code{disagreement_clients} is \code{NA} when the flag
+is \code{FALSE}; otherwise it gives each side's decision and the clients
+surveyed to send that form: \verb{wget 1.25, curl/libcurl < 8.13.0} for
+\code{"rfc3986"} and \verb{Chrome 157, Node 26 fetch, curl/libcurl >= 8.13.0} for
+\code{"whatwg"}.
 }
 \examples{
 # A non-Google-named token evaluated through the default Google backend

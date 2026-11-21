@@ -90,8 +90,10 @@ string or any other entry the guard cannot read.}
 \item{url_normalization}{How the URL is read before matching, one of:
 \code{"rfc3986"} (the default) removes dot segments from the path (RFC 3986
 section 5.2.4), leaves userinfo out and drops the fragment, and never
-encodes, decodes or case-folds a byte, so \verb{\%2e} is kept; \code{"none"} hands
-the URL to the matcher as given. See Details.}
+encodes, decodes or case-folds a byte, so \verb{\%2e} is kept; \code{"whatwg"}
+reads it as the WHATWG URL Standard serializes it, so \verb{\%2e} segments
+are removed and the encoding may change; \code{"none"} hands the URL to the
+matcher as given. See Details.}
 }
 \value{
 A \code{robots_engine_decisions_v1} object with \code{results}, neutral
@@ -132,7 +134,8 @@ as \code{design/engine-profiles.md} section 7 sets out.
 
 \code{url_normalization} decides the URL the matcher reads, as in
 \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}; the \verb{/robots.txt} to fetch is built from the
-input URL, so the mode never changes what is fetched.
+input URL, so the mode never changes what is fetched. Every row carries
+\code{preprocessing_disagreement} and \code{disagreement_clients}, as there.
 }
 \examples{
 # A refused origin is decided before any request, so this runs offline. The
