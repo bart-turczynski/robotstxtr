@@ -1,7 +1,7 @@
 # Engine-aware robots evaluation contract v1
 
 - Contract ID: `robotstxtr.engine-aware/v1`
-- Schema revision: `2026-11-12.1`
+- Schema revision: `2026-11-21.1`
 - First package release: `robotstxtr 0.2.0`
 - Normative policy source: [`engine-profiles.md`](engine-profiles.md)
 
@@ -244,6 +244,53 @@ tokens it answers as Google documents those crawlers to select groups. It
 is read from Google's documentation, not observed from the crawlers. The
 legacy functions apply none of it (below).
 
+### The URL the matcher reads (ROBO-bnvdmdjr)
+
+Both facades take `url_normalization`, one value of `"rfc3986"` (the
+default) or `"none"`, validated like `safety_level`
+([ADR 0002](adr/0002-evaluator-url-preprocessing.md)). `evaluate_rows_v1()`
+builds one matcher URL per row from it, above every backend's request-target
+extractor, which stays byte-transparent; `url` keeps the input.
+
+- `"rfc3986"`: the URL is split the RFC 3986 way (Appendix B; the authority
+  ends at the first `/`, `?` or `#`) and rebuilt as the scheme, `//`, the
+  host and port (userinfo left out), the path after RFC 3986 §5.2.4
+  `remove_dot_segments`, and `?query`; the fragment is dropped. Only the
+  literal segments `.` and `..` are dots: no byte is percent-encoded,
+  decoded or case-folded, so `%2e`, `%2E`, `%252e` and `%2F` are kept, as
+  are `//` and the query. A URL with no authority (the text entry point
+  accepts `/a/../b` and `example.com/a/../b`) keeps the bytes before its
+  first `/` and has the dot segments removed from there on. Input that is
+  not a valid RFC 3986 URI is still evaluated, its bytes unchanged apart
+  from the dot segments.
+- `"none"`: the matcher reads the URL as given, byte for byte, as before
+  this revision.
+
+The `results` frame gains two columns between `group_token` and
+`matched_rule_value_raw`, both on every row:
+
+- `matcher_url` (character): the URL handed to the matcher backend (under
+  `"none"`, `url`); `NA` for an `NA` URL. A row no matcher decides still
+  carries the URL it would have read.
+- `url_preprocessing_note` (character): `NA` when the input is a valid URI
+  with an authority and nothing changed; otherwise the parts below, in this
+  order, joined by `"; "`: `not a valid RFC 3986 URI: ` and the classes
+  found (`raw space`, `raw non-ASCII`, `backslash`, `character outside RFC
+  3986` for `` "<>^`{|} `` and controls, `stray %` for a `%` without two hex
+  digits); `no scheme or authority: path read from the first /`; `RFC 3986
+  §5.2.4 removed dot segments` (or `dot segments removed as given` on
+  invalid input); `userinfo removed (RFC 3986 §3.2.1)`; `fragment dropped
+  (RFC 3986 §3.5)`. Always `NA` under `"none"`.
+
+Under `"rfc3986"` the google, bing and yandex backends read the same
+rebuilt URL: `/latam/../account/x` is matched as `/account/x`,
+`/latam/%2e%2e/account/x` as given, and `https://u;v@example.com/x` as
+`https://example.com/x`, which Google no longer reads from its `;`
+(`GetPathParamsQuery()`). The rfc9309 backend is `capability_unavailable`
+whatever the mode. `robots_evaluate_url_v1()` fetches `/robots.txt` from the
+input URL's origin in either mode. Schema revision `2026-11-21.1` (both
+facades) adds the argument and the two columns; no policy revision moves.
+
 RFC 9309 matcher requests return `matcher_status = "capability_unavailable"`
 (reason `matcher_capability_unavailable`; the rfc9309 revision is
 `capability-unavailable-v1`). Bing matcher
@@ -281,7 +328,10 @@ applies to, so for a listed crawler token its legacy frame can differ from
 `Googlebot-Image` with only a `Googlebot` group and a `*` group gets the
 `Googlebot` group from the adapter and `*` from the legacy functions, and
 `AdsBot-Google` on a `*`-only body is allowed by the adapter and obeys `*`
-there. The adapter's frame does not carry `group_token`.
+there. The adapter's frame does not carry `group_token`, `matcher_url` or
+`url_preprocessing_note`, and its decisions follow the `url_normalization`
+the v1 result was built with: under the default, a dot-segment URL can be
+decided differently from the legacy functions, which read it as given.
 
 ### Retry-After on legacy fetch rows (ROBO-cthdyvlk)
 

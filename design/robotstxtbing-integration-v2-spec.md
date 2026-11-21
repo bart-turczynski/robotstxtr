@@ -635,6 +635,14 @@ and the remaining twelve signed off by the owner on 2026-07-24 ("approve").
 | `BI-V2-RELEASE` | Integration completion does not itself authorize tagging, publication, or downstream adoption. | Each requires separate owner authorization. | APPROVED |
 | `BI-V2-GO` | Adopt `robotstxtbing` 0.1.0 as an explicit Bing matcher backend. | Owner-fixed GO decision. | **APPROVED** |
 
+Note on `BI-V2-TARGET` (2026-11-21, ROBO-bnvdmdjr): it still holds at the extractor boundary.
+`bing_extract_request_target()` stays byte-transparent and keeps dot segments. Since schema
+revision `2026-11-21.1` the v1 facades' `url_normalization` (default `"rfc3986"`) rebuilds the URL
+in `evaluate_rows_v1()`, above the extractor, before any backend reads it: dot segments removed
+(RFC 3986 §5.2.4), userinfo left out, the fragment dropped, no byte encoded or decoded. The
+extractor then receives that URL. `url_normalization = "none"` hands it the input as given. See
+[ADR 0002](adr/0002-evaluator-url-preprocessing.md).
+
 ## 20. Deferrals and known follow-ups
 
 - **D2 — stale spec sync (non-blocking).** `robotstxtr`'s copy of
