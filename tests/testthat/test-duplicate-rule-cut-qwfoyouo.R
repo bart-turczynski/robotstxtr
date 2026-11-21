@@ -339,9 +339,11 @@ dc_time_cut <- function(n) {
 
 test_that("cut-only rows cost time linear in the file", {
   skip_on_cran()
+  # Four times the file: linear is about four times the time, quadratic
+  # sixteen.
   small <- dc_time_cut(1000L)
-  large <- dc_time_cut(2000L)
-  expect_lt(large, 3 * max(small, 0.02))
+  large <- dc_time_cut(4000L)
+  expect_lt(large, 6 * max(small, 0.02))
 })
 
 for (locale in readLines(test_path("fixtures", "case-folding-locales.txt"))) {
