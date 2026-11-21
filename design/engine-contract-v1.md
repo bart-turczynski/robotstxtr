@@ -272,8 +272,11 @@ extractor, which stays byte-transparent; `url` keeps the input.
   `?query`; userinfo left out, fragment dropped). Literal and encoded
   (`%2e`, `%2E`) dot segments are removed; `%252e`, `%2F`, `//` and the
   query's dots are kept. Unlike `"rfc3986"` it changes the encoding and the
-  host as the WHATWG URL Standard does. A URL it cannot parse (no scheme,
-  or marked `"bytes"`) is evaluated as given.
+  host as the WHATWG URL Standard does. The URL's bytes are read as UTF-8
+  whatever the locale (a `"latin1"`-marked URL is converted from latin1).
+  A URL with no scheme is resolved as a relative reference against a
+  placeholder origin, and the matcher reads only its path and query. A URL
+  it cannot parse is evaluated as given.
 - `"none"`: the matcher reads the URL as given, byte for byte, as before
   this revision.
 
@@ -298,26 +301,32 @@ The `results` frame gains two columns between `group_token` and
   were left in place is evaluated as given, fragment included. Under
   `"whatwg"`, `NA` when the rebuilt URL is the input byte for byte;
   otherwise `not a valid WHATWG URL: evaluated as given`, or the parts that
-  apply of `WHATWG URL serialization changed the URL`, `userinfo removed`
-  and `fragment dropped`, joined by `"; "`.
+  apply of `no scheme: resolved as a relative reference`, `WHATWG URL
+  serialization changed the URL`, `userinfo removed` and `fragment
+  dropped`, joined by `"; "`.
 
 Schema revision `2026-11-21.2` adds two more columns after
 `url_preprocessing_note`, on every row and in every mode:
 
-- `preprocessing_disagreement` (logical): `TRUE` when `"whatwg"` cannot
-  parse the URL, or when the `"rfc3986"` and `"whatwg"` matcher URLs differ
-  bytewise and the row's matcher decides them differently (`url_decision`);
-  `FALSE` otherwise, including an `NA` or empty URL and a row no matcher
-  decided. A second matcher pass reads the other URL only on matcher rows
-  whose two URLs differ. Under `"rfc3986"` and `"none"`, `NA` for a URL
-  longer than 8192 bytes, which is not compared (`disagreement_clients`:
-  `not compared: URL longer than 8192 bytes`); `"whatwg"` compares any
-  length.
+- `preprocessing_disagreement` (logical): on a row a matcher decides,
+  `TRUE` when `"whatwg"` cannot parse the URL, or when the `"rfc3986"` and
+  `"whatwg"` matcher URLs differ bytewise and the matcher decides them
+  differently (`url_decision`); `FALSE` otherwise. A row no matcher decided
+  (an `NA` or empty URL, `capability_unavailable`, a policy decision) is
+  always `FALSE`. A second matcher pass reads the other URL only on matcher
+  rows whose two URLs differ. Under `"rfc3986"` and `"none"`, `NA` for a
+  matcher row whose URL is longer than 2048 bytes, which is not compared
+  (`disagreement_clients`: `not compared: URL longer than 2048 bytes`);
+  `"whatwg"` compares any length.
 - `disagreement_clients` (character): `NA` when the flag is `FALSE`;
-  otherwise `rfc3986 <decision>: wget 1.25, curl/libcurl < 8.13.0; whatwg
-  <decision>: Chrome 157, Node 26 fetch, curl/libcurl >= 8.13.0`, or
-  `rfc3986: …; whatwg cannot parse the URL: …`. The families are the ADR's
-  client survey, with the curl boundary at 8.13.0.
+  otherwise each side's decision. When the input's path has a dot segment
+  (`.`, `..`, `%2e`, `.%2e`, `%2e.`, `%2e%2e`, either case), it names the
+  client families: `rfc3986 <decision>: wget 1.25, curl/libcurl < 8.13.0;
+  whatwg <decision>: Chrome 157, Node 26 fetch, curl/libcurl >= 8.13.0`, or
+  `rfc3986: …; whatwg cannot parse the URL: …`. Otherwise it says
+  `the forms differ in more than dot segments; no client survey covers
+  this`. The families are the ADR's client survey, with the curl boundary
+  at 8.13.0.
 
 Under `"rfc3986"` the google, bing and yandex backends read the same
 rebuilt URL: `/latam/../account/x` is matched as `/account/x`,

@@ -144,25 +144,33 @@ pin only forms whose output is the same on `rurl` 3.0.1, 3.1.0 and its main bran
 encoded dot segments removed; `%252e`, `%2F`, `//` and dots in the query kept. They do not pin the
 encoding of spaces or non-ASCII, which differs between those versions.
 
-A URL `rurl` cannot parse (it returns `NA`; a URL with no scheme, such as `"/a/../b"`, or one
-marked `"bytes"`) is evaluated as given, with the note `not a valid WHATWG URL: evaluated as
-given`, and sets the disagreement flag. A changed URL has the note
+The URL's bytes are handed to `rurl` as UTF-8 and never read through the session's native
+encoding, so the form does not depend on the locale: a `"latin1"`-marked URL is converted from
+latin1, any other is taken as its bytes, and bytes that are not valid UTF-8 cannot be parsed. A
+URL with no scheme, such as `"/latam/../account/x"`, is resolved against a placeholder origin as a
+browser resolves a relative reference, and the matcher reads only the path and query
+(`/account/x`), with the note `no scheme: resolved as a relative reference` (review round 1). A
+URL `rurl` cannot parse (it returns `NA`) is evaluated as given, with the note
+`not a valid WHATWG URL: evaluated as given`. A changed URL has the note
 `WHATWG URL serialization changed the URL`, then `userinfo removed` or `fragment dropped`.
 
 ### 7. The disagreement flag (part B)
 
 Two more columns after `url_preprocessing_note`, on every row and in every mode:
 
-- `preprocessing_disagreement` (logical): `TRUE` when `"whatwg"` cannot parse the URL ("one mode
-  fails"), or when the `"rfc3986"` and `"whatwg"` matcher URLs differ bytewise and the selected
-  matcher decides them differently (`url_decision`). `FALSE` otherwise: identical targets, targets
-  that differ but decide alike, an `NA` or empty URL, and a row no matcher decided (for example
-  `capability_unavailable`).
+- `preprocessing_disagreement` (logical): on a row a matcher decides, `TRUE` when `"whatwg"`
+  cannot parse the URL ("one mode fails"), or when the `"rfc3986"` and `"whatwg"` matcher URLs
+  differ bytewise and the selected matcher decides them differently (`url_decision`); `FALSE` for
+  identical targets and for targets that differ but decide alike. A row no matcher decided (an
+  `NA` or empty URL, `capability_unavailable`, a policy decision) is always `FALSE`.
 - `disagreement_clients` (character): `NA` when the flag is `FALSE`. Otherwise each side's
-  decision and the client families that send that form, for example
-  `rfc3986 allow: wget 1.25, curl/libcurl < 8.13.0; whatwg disallow: Chrome 157, Node 26 fetch,
-  curl/libcurl >= 8.13.0`, or, when `"whatwg"` fails,
-  `rfc3986: …; whatwg cannot parse the URL: …`.
+  decision. When the input's path has a dot segment (`.`, `..`, `%2e`, `.%2e`, `%2e.` or
+  `%2e%2e`, ASCII case-insensitively), it also names the client families that send each form, for
+  example `rfc3986 allow: wget 1.25, curl/libcurl < 8.13.0; whatwg disallow: Chrome 157, Node 26
+  fetch, curl/libcurl >= 8.13.0`, or, when `"whatwg"` fails,
+  `rfc3986: …; whatwg cannot parse the URL: …`. Otherwise (a raw space, a backslash, non-ASCII)
+  it says `the forms differ in more than dot segments; no client survey covers this`, since the
+  survey and curl's 8.13.0 entry cover dot segments only (review round 1).
 
 The families come from the survey table. The clients that send the URL unchanged (`"none"`) are on
 neither side, since the flag compares two forms; Nutch is left out while its encoded-dot behavior
@@ -171,12 +179,12 @@ is unrecorded.
 The selected mode's pass decides the row. A second matcher pass reads the other mode's URL only
 on matcher rows whose two URLs differ bytewise, so the common case costs one pass; under
 `"none"`, each side whose URL differs from the input is read once. The `"whatwg"` URL is computed
-for every row in every mode, which costs a `rurl` call per URL (about 0.1 ms each on the
+for every row in every mode, with one `rurl` call per distinct URL (about 0.1 ms each on the
 maintainer's machine, and more on a long path with many dot segments).
 
-Under `"rfc3986"` and `"none"`, a URL longer than 8192 bytes is not compared, because `rurl`'s cost
+Under `"rfc3986"` and `"none"`, a URL longer than 2048 bytes is not compared, because `rurl`'s cost
 grows faster than linearly on long dot-heavy paths (about 53 s for 20,000 `/seg/..` pairs): its
-flag is `NA`, `disagreement_clients` is `not compared: URL longer than 8192 bytes`, and no second
+flag is `NA`, `disagreement_clients` is `not compared: URL longer than 2048 bytes`, and no second
 pass runs. `"whatwg"` serializes and compares any length.
 
 The schema revision of both facades moves to `2026-11-21.2`. No policy revision moves.
