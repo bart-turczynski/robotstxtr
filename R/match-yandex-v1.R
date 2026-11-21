@@ -9,7 +9,9 @@
 #
 # BATCH SHAPE. Every matcher adapter has the one batch interface
 # `callable(bodies, urls, product_tokens)` -> a decision frame
-# (ROBO-bukqpjli): evaluate_rows_v1() calls it once with every `yandex` row.
+# (ROBO-bukqpjli): evaluate_rows_v1() calls it once with every `yandex` row,
+# and a second time only for the disagreement flag, with the rows whose two
+# URL forms differ (ADR 0002, ROBO-bnvdmdjr), whose bodies are parsed again.
 # YI4b's hard mandate is parse-once per DISTINCT body:
 # yandex_evaluate_checked_batch() parses each distinct body exactly once and
 # evaluates all rows that select it in a single native call. The batching
@@ -69,7 +71,8 @@ yandex_map_native_v1 <- function(native, url_decision) {
 #'
 #' Package-private engine-aware adapter (YI4c), registered for the `yandex`
 #' backend and called once per evaluation with every `yandex` row
-#' (ROBO-bukqpjli). It runs the YI4a request-target extractor per row, groups
+#' (ROBO-bukqpjli), and again only for the disagreement flag's rows (ADR
+#' 0002). It runs the YI4a request-target extractor per row, groups
 #' rows by distinct body, evaluates them through the checked robotstxtyandex
 #' batch binding (parse-once per distinct body), and maps native columns to the
 #' normative §10/§11 status, reason, error, and exact-byte raw-value contract.

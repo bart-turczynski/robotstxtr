@@ -9,7 +9,9 @@
 # BATCH SHAPE (parse-once per distinct body, BI-V2-DISPATCH).
 # `evaluate_rows_v1()` gathers every `bing` row and invokes this adapter ONCE in
 # batch form, through the one batch interface every matcher adapter has
-# (ROBO-bukqpjli).
+# (ROBO-bukqpjli). The one exception is the disagreement flag (ADR 0002,
+# ROBO-bnvdmdjr): a second batch call reads the other URL form of the rows
+# whose two forms differ, so only their bodies are parsed again.
 # `bing_evaluate_batch()` parses each DISTINCT body exactly once and evaluates
 # every row selecting it in a single native call. The batching (recycling,
 # target bytes, distinct-body grouping, frame assembly) is the shared module in
