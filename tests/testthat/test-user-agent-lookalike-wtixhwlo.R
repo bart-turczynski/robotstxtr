@@ -311,6 +311,25 @@ test_that("a character split by the line buffer is dropped first", {
   ), row$message, fixed = TRUE))
 })
 
+test_that("a long line whose value ends before the buffer keeps its tail", {
+  # A comment or trailing blanks make the line long, but the value ends
+  # well before the buffer: its own E2 80 is invalid UTF-8, not a cut, so
+  # today's handling stays and no look-alike sentence misquotes it.
+  value <- c(charToRaw("User-agent: Bingbоt"), as.raw(c(0xE2, 0x80)))
+  tails <- list(comment = c(charToRaw(" #"), rep(charToRaw("c"), 17000L)),
+                blanks = rep(charToRaw(" "), 17000L))
+  for (name in names(tails)) {
+    body <- c(value, tails[[name]], charToRaw("\nDisallow: /x\n"))
+    x <- robots_validate_text(body)
+    expect_true("line_too_long" %in% x$diagnostics$code, label = name)
+    expect_true("invalid_utf8" %in% x$diagnostics$code, label = name)
+    row <- la_rows(x)
+    expect_identical(nrow(row), 1L, label = name)
+    expect_identical(row$message, la_read_as("Bingb"), label = name)
+    expect_identical(row$severity, "info", label = name)
+  }
+})
+
 # Timing guards (ROBO-dbvmxcfw keeps the validator linear), in the
 # load-robust pattern of test-cut-note-zqyqbudf.R: each check is timed best
 # of five, so one slow run under machine load does not count.

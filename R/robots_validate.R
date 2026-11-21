@@ -1222,7 +1222,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   nonempty_user_agents <- 0L
   # Computed once here: the empty-Disallow note (ROBO-vyystald) reads it in
   # the loop below, and the group checks after it.
-  groups <- validation_groups(parsed)
+  groups <- validation_groups(parsed, raw_lines)
   # Groups not naming `*` whose User-agent lines name at least one crawler
   # (a token Google reads), and whether the file has a `*` group.
   named_groups <- setdiff(groups$agents$group[nzchar(groups$agents$key)],
@@ -1956,16 +1956,18 @@ rsl_license_scope <- function(at, first, names, has_global, local_groups) {
 #   a cut line, where it is the full value folded to ASCII lower case,
 #   written as `#` and hex bytes; ROBO-qwfoyouo) and `value` (the value as
 #   the parser kept it, its bytes unchanged, less a character the line
-#   buffer split; read for look-alike characters, ROBO-wtixhwlo).
+#   buffer split when the value reaches the buffer, which needs `raw_lines`,
+#   the document's lines by number; read for look-alike characters,
+#   ROBO-wtixhwlo).
 # - `rules`: one row per Allow or Disallow inside a group (rules before the
 #   first User-agent are dropped): `group`, `line`, `type` ("allow" or
 #   "disallow"), `value` (canonical, as parsed), `empty` and `key` (type and
 #   value with a trailing `*` run removed, `/` for a value of only `*` or
 #   `/` then only `*`, NA when `empty`).
-validation_groups <- function(parsed) {
+validation_groups <- function(parsed, raw_lines = NULL) {
   kept <- parsed[parsed$type %in% c("user-agent", "allow", "disallow"),
-                 intersect(c("line", "type", "value", "line_too_long"),
-                           names(parsed)), drop = FALSE]
+                 intersect(c("line", "type", "value", "line_too_long",
+                             "missing_colon"), names(parsed)), drop = FALSE]
   is_agent <- kept$type == "user-agent"
   opens <- is_agent & c(TRUE, !is_agent[-length(is_agent)])
   kept$group <- cumsum(opens)
@@ -1998,17 +2000,7 @@ validation_groups <- function(parsed) {
   )
   agents$uncut <- validation_uncut_keys(agent_bytes, agents$key,
                                         agents$cut)
-  # A value past the line buffer can end inside a character; drop that tail
-  # so the cut alone does not make the value invalid UTF-8.
-  long <- agent_rows$line_too_long
-  if (is.null(long)) {
-    long <- logical(nrow(agent_rows))
-  }
-  split <- which(lengths(agent_bytes) > 0L & !is.na(long) & long)
-  agents$value <- as.character(agent_rows$value)
-  agents$value[split] <- vapply(agent_bytes[split], function(bytes) {
-    rawToChar(utf8_drop_cut_tail(bytes))
-  }, "")
+  agents$value <- lookalike_agent_values(agent_rows, agent_bytes, raw_lines)
 
   group_ids <- unique(agents$group)
   groups <- data.frame(
@@ -4857,6 +4849,35 @@ validation_lookalike_code_points <- data.frame(
   ),
   stringsAsFactors = FALSE
 )
+
+# The User-agent values of `agent_rows` (from validation_groups()) as the
+# parser kept them, for lookalike_note(). Where the value itself reaches
+# the 16,663-byte line buffer (rule_raw_value() says so: not when a `#`,
+# a NUL or trailing blanks end it first), the buffer can split its last
+# character, and that tail is dropped so the cut alone does not make the
+# value invalid UTF-8. Without `raw_lines` nothing is dropped.
+lookalike_agent_values <- function(agent_rows, agent_bytes, raw_lines) {
+  values <- as.character(agent_rows$value)
+  long <- agent_rows$line_too_long
+  if (is.null(raw_lines) || is.null(long)) {
+    return(values)
+  }
+  colon <- agent_rows$missing_colon
+  if (is.null(colon)) {
+    colon <- logical(nrow(agent_rows))
+  }
+  for (k in which(lengths(agent_bytes) > 0L & !is.na(long) & long)) {
+    line <- agent_rows$line[[k]]
+    raw <- rule_raw_value(raw_lines[[line]], line == 1L, isTRUE(colon[[k]]))
+    # Trailing blanks the parser trims sit before the buffer's end too.
+    reaches <- isTRUE(attr(raw, "buffer_cut")) && length(raw) > 0L &&
+      !raw[[length(raw)]] %in% as.raw(c(0x20, 0x09, 0x0a:0x0d))
+    if (reaches) {
+      values[[k]] <- rawToChar(utf8_drop_cut_tail(agent_bytes[[k]]))
+    }
+  }
+  values
+}
 
 # The look-alike sentence for one value or key (`text`, as the parser kept
 # it; `noun` names it in the message), or NULL when it holds no look-alike.
