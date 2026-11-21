@@ -307,8 +307,8 @@ pattern for the same crawlers, so it has no effect. Anchored on the
 repeat; the message names the earlier line. When the groups share
 the crawler only because Google's matcher cuts two written User-agent
 values to one token, the message says the repeat is Google's only and
-names the values; the package's Bing and Yandex matchers keep those
-groups apart. \cr
+names the values, and that a matcher comparing the whole value keeps
+those groups apart. \cr
 \code{missing_user_agent} \tab error \tab
 Allow or Disallow rules exist but no line names a non-empty
 User-agent. \cr
@@ -618,10 +618,13 @@ get \code{duplicate_rule}. Groups merge as Google's matcher merges them, so
 repeat that exists only through such a cut (no earlier line with the rule
 sits in a group that shares a whole User-agent value, folded to ASCII
 lower case, with the repeat's group) does not say the rule has no effect:
-its message says the repeat is Google's only, names the written values
-(five at most, then a count) and the token read, and points to the
-\code{user_agent_cut} rows. The package's Bing and Yandex matchers compare the
-whole value and keep those groups apart. When an earlier group with the
+its message says the repeat is Google's only, names the token read and
+the values written for it up to the repeat's group (five at most, always
+one of that group's, then a count), says a matcher comparing the whole
+value keeps the groups apart, and points to the \code{user_agent_cut} rows.
+It names the package's Bing matcher only when the token is a crawler the
+Bing backend evaluates (\code{bingbot}, \code{adidxbot}), and its Yandex matcher
+only for \code{Yandex} or \code{YandexAdditionalBot}. When an earlier group with the
 rule shares a whole value with the repeat's group, as \code{User-agent: Foo}
 beside \code{User-agent: Foo} and \verb{User-agent: 1bot} does, a matcher that
 compares the whole value merges them too, and the row keeps the plain

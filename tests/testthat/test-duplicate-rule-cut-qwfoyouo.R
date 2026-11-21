@@ -29,14 +29,25 @@ test_that("groups merged by a cut draw duplicate_rule rows", {
   expect_identical(d$severity, rep("info", 4L))
 })
 
-# `read_as` is the written values and the token, as the message lists them.
-dc_cut <- function(first_line, read_as, type = "Disallow") {
+# `read_as` is the written values and the token, as the message lists them;
+# `apart` names the engines whose backend evaluates the token, or none.
+dc_apart <- c(
+  none = paste("A matcher that compares the whole User-agent value keeps",
+               "the groups apart"),
+  bing = paste("The package's Bing matcher compares the whole value and",
+               "keeps the groups apart"),
+  yandex = paste("The package's Yandex matcher compares the whole value and",
+                 "keeps the groups apart"),
+  both = paste("The package's Bing and Yandex matchers compare the whole",
+               "value and keep the groups apart")
+)
+
+dc_cut <- function(first_line, read_as, type = "Disallow", apart = "none") {
   sprintf(paste0(
     "This %s repeats line %d only for Google's matcher, which reads %s ",
-    "and merges their groups. The package's Bing and Yandex matchers ",
-    "compare the whole value and keep the groups apart, so there it is not ",
-    "a repeat; see the user_agent_cut rows."
-  ), type, first_line, read_as)
+    "and merges their groups. %s, so there it is not a repeat; see the ",
+    "user_agent_cut rows."
+  ), type, first_line, read_as, dc_apart[[apart]])
 }
 
 test_that("a repeat only through the cut merge says so", {
@@ -232,6 +243,55 @@ test_that("a rule an uncut group already gives is a real duplicate", {
   expect_identical(d$message, c(
     dc_cut(2L, "'foo' and 'Foo bar' as one token, 'foo',"), dc_plain(2L)
   ))
+})
+
+test_that("Bing or Yandex is named only for a crawler its backend evaluates", {
+  # The message's engine claim is checked on the backend it names: with line
+  # 2's rule changed, the later group's rule does not reach that crawler.
+  for (case in list(c("bingbot", "bingbot/2.0", "bing"),
+                    c("AdIdxBot", "adidxbot 1.0", "bing"),
+                    c("Yandex", "Yandex 2.0", "yandex"),
+                    c("YandexAdditionalBot", "YandexAdditionalBot/1",
+                      "yandex"))) {
+    body <- function(first_rule) {
+      dc_lines(paste("User-agent:", case[[1L]]), first_rule, "Disallow: /z",
+               "", paste("User-agent:", case[[2L]]), "Disallow: /a",
+               "Disallow: /q")
+    }
+    d <- dc_rows(body("Disallow: /a"))
+    expect_identical(d$line, 6L, label = case[[2L]])
+    expect_identical(d$message, dc_cut(2L, sprintf(
+      "'%s' and '%s' as one token, '%s',", case[[1L]], case[[2L]], case[[1L]]
+    ), apart = case[[3L]]), label = case[[2L]])
+    for (rule in c("Disallow: /a", "Disallow: /zz")) {
+      x <- robots_evaluate_text_v1(body(rule), "http://e.com/a", case[[1L]],
+                                   case[[3L]], case[[3L]])$results
+      expect_identical(x$matcher_status, "evaluated", label = case[[2L]])
+      expect_identical(x$matched_line,
+                       if (rule == "Disallow: /a") 2L else NA_integer_,
+                       label = case[[2L]])
+    }
+  }
+  # Both engines, when the cut merges a token of each.
+  d <- dc_rows(dc_lines(
+    "User-agent: bingbot", "User-agent: Yandex", "Disallow: /a",
+    "Disallow: /z", "", "User-agent: bingbot/2.0", "User-agent: Yandex 2.0",
+    "Disallow: /a"
+  ))
+  expect_identical(d$message, dc_cut(3L, paste(
+    "'bingbot', 'Yandex', 'bingbot/2.0' and 'Yandex 2.0' as the tokens",
+    "'bingbot' and 'Yandex'"
+  ), apart = "both"))
+  # A crawler neither backend evaluates gets the engine-neutral sentence.
+  for (backend in c("bing", "yandex")) {
+    x <- robots_evaluate_text_v1(dc_cut_shape, "http://e.com/a", "Foo",
+                                 backend, backend)$results
+    expect_false(identical(x$matcher_status, "evaluated"), label = backend)
+  }
+  expect_true(all(endsWith(dc_rows(dc_cut_shape)$message, paste0(
+    dc_apart[["none"]], ", so there it is not a repeat; see the ",
+    "user_agent_cut rows."
+  ))))
 })
 
 test_that("a group sharing a whole value merges for every matcher", {

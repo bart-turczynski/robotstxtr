@@ -123,13 +123,14 @@ test_that("groups naming the same agent merge, as Google does", {
   ))
   expect_identical(d$line, 5L)
   # Only Google's matcher cuts `googlebot/2.1` to `googlebot`, so the row
-  # says the repeat is Google's (ROBO-qwfoyouo).
+  # says the repeat is Google's (ROBO-qwfoyouo). Neither the Bing nor the
+  # Yandex backend evaluates Googlebot, so no engine is named for the rest.
   expect_identical(d$message, paste0(
     "This Disallow repeats line 2 only for Google's matcher, which reads ",
     "'Googlebot' and 'googlebot/2.1' as one token, 'Googlebot', and merges ",
-    "their groups. The package's Bing and Yandex matchers compare the whole ",
-    "value and keep the groups apart, so there it is not a repeat; see the ",
-    "user_agent_cut rows."
+    "their groups. A matcher that compares the whole User-agent value keeps ",
+    "the groups apart, so there it is not a repeat; see the user_agent_cut ",
+    "rows."
   ))
 })
 

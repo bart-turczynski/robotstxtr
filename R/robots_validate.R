@@ -298,8 +298,8 @@ validation_unsupported <- c(
 #'     repeat; the message names the earlier line. When the groups share
 #'     the crawler only because Google's matcher cuts two written User-agent
 #'     values to one token, the message says the repeat is Google's only and
-#'     names the values; the package's Bing and Yandex matchers keep those
-#'     groups apart. \cr
+#'     names the values, and that a matcher comparing the whole value keeps
+#'     those groups apart. \cr
 #'   \code{missing_user_agent} \tab error \tab
 #'     Allow or Disallow rules exist but no line names a non-empty
 #'     User-agent. \cr
@@ -609,10 +609,13 @@ validation_unsupported <- c(
 #' repeat that exists only through such a cut (no earlier line with the rule
 #' sits in a group that shares a whole User-agent value, folded to ASCII
 #' lower case, with the repeat's group) does not say the rule has no effect:
-#' its message says the repeat is Google's only, names the written values
-#' (five at most, then a count) and the token read, and points to the
-#' `user_agent_cut` rows. The package's Bing and Yandex matchers compare the
-#' whole value and keep those groups apart. When an earlier group with the
+#' its message says the repeat is Google's only, names the token read and
+#' the values written for it up to the repeat's group (five at most, always
+#' one of that group's, then a count), says a matcher comparing the whole
+#' value keeps the groups apart, and points to the `user_agent_cut` rows.
+#' It names the package's Bing matcher only when the token is a crawler the
+#' Bing backend evaluates (`bingbot`, `adidxbot`), and its Yandex matcher
+#' only for `Yandex` or `YandexAdditionalBot`. When an earlier group with the
 #' rule shares a whole value with the repeat's group, as `User-agent: Foo`
 #' beside `User-agent: Foo` and `User-agent: 1bot` does, a matcher that
 #' compares the whole value merges them too, and the row keeps the plain
@@ -3734,23 +3737,55 @@ duplicate_rule_cut_only <- function(groups, rules, owner) {
 duplicate_rule_cut_message <- function(agents, rules, owner, first) {
   group <- rules$group[owner]
   wanted <- unique(group)
-  read_as <- duplicate_rule_cut_names(agents, wanted)[match(group, wanted)]
+  parts <- duplicate_rule_cut_names(agents, wanted)
+  at <- match(group, wanted)
   sprintf(paste0(
     "This %s repeats line %d only for Google's matcher, which reads %s ",
-    "and merges their groups. The package's Bing and Yandex matchers ",
-    "compare the whole value and keep the groups apart, so there it is not ",
-    "a repeat; see the user_agent_cut rows."
+    "and merges their groups. %s, so there it is not a repeat; see the ",
+    "user_agent_cut rows."
   ), ifelse(rules$type[owner] == "allow", "Allow", "Disallow"), first,
-  read_as)
+  parts[1L, at], parts[2L, at])
 }
 
-# For each group in `wanted`, the "<values> as <tokens>" part of the message:
-# each token the group names that more than one whole value cuts to in the
-# groups up to and including it (Google merges all of them), its written
-# values in file order (five at most, then a count, always one of the
-# group's own) and the tokens as first written (five at most). Values
-# differing only in ASCII case count once, the first written. The lookups
-# are built once, so the cost is linear in the agent lines (ROBO-dbvmxcfw).
+# The crawlers each bounded backend evaluates, by engine name: its accepted
+# selectors (engine_backend_capability_v1()), folded to ASCII lower case as
+# the backend compares them.
+duplicate_rule_cut_engines <- function() {
+  capability <- engine_backend_capability_v1()
+  lapply(c(Bing = "bing", Yandex = "yandex"), function(backend) {
+    ascii_lower(capability[[backend]]$supported_profiles$accepted_token)
+  })
+}
+
+# Who keeps the merged groups apart, for the tokens Google reads (`keys`).
+# An engine is named only when a token is one of the crawlers its backend
+# evaluates (`engines`, from duplicate_rule_cut_engines()); otherwise the
+# sentence names no engine.
+duplicate_rule_cut_apart <- function(keys, engines) {
+  hit <- vapply(engines, function(accepted) any(keys %in% accepted),
+                logical(1L))
+  engines <- names(engines)[hit]
+  if (length(engines) == 0L) {
+    return(paste("A matcher that compares the whole User-agent value keeps",
+                 "the groups apart"))
+  }
+  if (length(engines) == 1L) {
+    return(sprintf(paste("The package's %s matcher compares the whole value",
+                         "and keeps the groups apart"), engines))
+  }
+  paste("The package's Bing and Yandex matchers compare the whole value and",
+        "keep the groups apart")
+}
+
+# For each group in `wanted`, a column of two message parts. The first is
+# "<values> as <tokens>": each token the group names that more than one
+# whole value cuts to in the groups up to and including it (Google merges
+# all of them), its written values in file order (five at most, then a
+# count, always one of the group's own) and the tokens as first written
+# (five at most). Values differing only in ASCII case count once, the first
+# written. The second is duplicate_rule_cut_apart() for those tokens. The
+# lookups are built once, so the cost is linear in the agent lines
+# (ROBO-dbvmxcfw).
 duplicate_rule_cut_names <- function(agents, wanted, cap = 5L) {
   keep <- !agents$global & nzchar(agents$key)
   key <- agents$key[keep]
@@ -3762,12 +3797,13 @@ duplicate_rule_cut_names <- function(agents, wanted, cap = 5L) {
     token = agents$token[keep], first_of = first_of,
     # Each token's distinct whole values, as agent indexes in line order.
     by_key = split(distinct, factor(key[distinct], unique(key[distinct]))),
-    in_group = split(seq_along(key), agents$group[keep])
+    in_group = split(seq_along(key), agents$group[keep]),
+    engines = duplicate_rule_cut_engines()
   )
   vapply(wanted, function(g) {
     duplicate_rule_cut_group_names(look, look$in_group[[as.character(g)]],
                                    cap)
-  }, "", USE.NAMES = FALSE)
+  }, character(2L), USE.NAMES = FALSE)
 }
 
 duplicate_rule_cut_group_names <- function(look, own, cap) {
@@ -3790,14 +3826,17 @@ duplicate_rule_cut_group_names <- function(look, own, cap) {
   firsts <- vapply(look$by_key[merged], `[[`, 0L, 1L, USE.NAMES = FALSE)
   tokens <- look$token[sort(firsts)]
   quote <- function(x) sprintf("'%s'", ai_training_name(x))
-  paste(
-    joined_and(quote(look$name[shown]), total - length(shown)), "as",
-    if (length(tokens) == 1L) {
-      sprintf("one token, %s,", quote(tokens))
-    } else {
-      paste("the tokens", joined_and(quote(utils::head(tokens, cap)),
-                                     length(tokens) - cap))
-    }
+  c(
+    paste(
+      joined_and(quote(look$name[shown]), total - length(shown)), "as",
+      if (length(tokens) == 1L) {
+        sprintf("one token, %s,", quote(tokens))
+      } else {
+        paste("the tokens", joined_and(quote(utils::head(tokens, cap)),
+                                       length(tokens) - cap))
+      }
+    ),
+    duplicate_rule_cut_apart(merged, look$engines)
   )
 }
 
