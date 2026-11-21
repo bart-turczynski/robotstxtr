@@ -22,8 +22,8 @@
 # Whatever the mode, every row also carries `preprocessing_disagreement`:
 # whether the rfc3986 and whatwg targets decide differently, or whatwg
 # cannot parse the URL, on the rows a matcher decided (url_disagreement_v1());
-# NA under "rfc3986" and "none" for a URL over
-# url_disagreement_max_bytes_v1().
+# NA under "rfc3986" for a URL over url_disagreement_max_bytes_v1(), and NA
+# on every decided row under "none", which computes nothing extra.
 
 # The `url_normalization` value set, default first. Adding a mode is one
 # entry here and one branch in preprocess_matcher_url_v1().
@@ -62,14 +62,22 @@ url_disagreement_not_compared_v1 <- function() {
   )
 }
 
+# The clients note of a decided row under "none", where the flag is never
+# computed: "none" is the old reading, with nothing extra.
+url_disagreement_not_compared_none_v1 <- function() {
+  "not compared under url_normalization = \"none\""
+}
+
 # One matcher URL and one note per row, under the selected mode, and the
 # rfc3986 target the disagreement flag compares. The whatwg form is
-# computed here only under "whatwg", for every row; otherwise
-# url_disagreement_v1() computes it for the rows it compares
-# (`whatwg_url` and `whatwg_failed` are then NULL). NA and empty URLs pass
+# computed here only under "whatwg", for every row; under "rfc3986"
+# url_disagreement_v1() computes it for the rows it compares (`whatwg_url`
+# and `whatwg_failed` are then NULL). Under "none" nothing is computed: the
+# URL is read as given and the flag is not compared. NA and empty URLs pass
 # as they are, with no note, in every mode.
 preprocess_matcher_url_v1 <- function(url, url_normalization) {
-  rfc3986 <- rfc3986_matcher_urls_v1(url)
+  none <- identical(url_normalization, "none")
+  rfc3986 <- if (!none) rfc3986_matcher_urls_v1(url)
   whatwg <- if (identical(url_normalization, "whatwg")) {
     whatwg_matcher_urls_v1(url)
   }
@@ -327,39 +335,59 @@ url_decode_dot_segments_v1 <- function(path) {
   unlist(out, use.names = FALSE)
 }
 
-# A target's parts with the differences no matcher reads apart folded: the
-# scheme and host in ASCII lower case, a default port (80 for http, 443 for
-# https) dropped, an empty path after an authority read as "/". The
-# fragment is never part of a target.
-url_target_key_v1 <- function(url) {
-  parts <- url_split_rfc3986_v1(charToRaw(url))
-  scheme <- ascii_lower_raw_v1(parts$scheme)
-  host <- raw(0)
-  path <- parts$path
-  if (parts$has_authority) {
-    host <- ascii_lower_raw_v1(url_host_port_v1(parts$authority))
-    default <- if (identical(scheme, charToRaw("http:"))) {
-      charToRaw(":80")
-    } else if (identical(scheme, charToRaw("https:"))) {
-      charToRaw(":443")
-    }
-    n <- length(host)
-    k <- length(default)
-    if (k > 0L && n > k && identical(host[(n - k + 1L):n], default)) {
-      host <- host[seq_len(n - k)]
-    }
-    if (length(path) == 0L) {
-      path <- charToRaw("/")
-    }
+# `x` with A-Z folded to a-z, on bytes, so a string that is not valid in
+# the session's encoding is never translated.
+ascii_lower_chr_v1 <- function(x) {
+  for (k in seq_along(LETTERS)) {
+    x <- gsub(LETTERS[[k]], letters[[k]], x, fixed = TRUE, useBytes = TRUE)
   }
-  list(scheme, parts$has_authority, host, path, parts$query)
+  x
+}
+
+# The parts of each target, split in one vectorized call (RFC 3986
+# Appendix B, as url_split_rfc3986_v1() reads it; a target has no
+# fragment), with the differences no matcher reads apart folded: the scheme
+# and host in ASCII lower case, a default port (80 for http, 443 for https)
+# dropped, an empty path after an authority read as "/". A latin1 target is
+# compared in UTF-8, as its twin.
+url_target_keys_v1 <- function(url) {
+  latin <- Encoding(url) == "latin1"
+  url[latin] <- enc2utf8(url[latin])
+  pattern <- "^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\?[^#]*)?"
+  m <- regmatches(url, regexec(pattern, url, useBytes = TRUE))
+  m <- matrix(unlist(m, use.names = FALSE), ncol = 7L, byrow = TRUE)
+  scheme <- ascii_lower_chr_v1(m[, 2L])
+  authority <- nzchar(m[, 4L])
+  host <- ascii_lower_chr_v1(sub("^.*@", "", m[, 5L], useBytes = TRUE))
+  http <- scheme == "http:"
+  host[http] <- sub(":80$", "", host[http], useBytes = TRUE)
+  https <- scheme == "https:"
+  host[https] <- sub(":443$", "", host[https], useBytes = TRUE)
+  path <- m[, 6L]
+  path[authority & !nzchar(path)] <- "/"
+  list(
+    scheme = scheme, authority = authority, host = host, path = path,
+    query = m[, 7L]
+  )
+}
+
+# Whether each pair of targets differs only in what url_target_keys_v1()
+# folds, so no second matcher pass is needed.
+url_targets_alike_v1 <- function(a, b) {
+  if (length(a) == 0L) {
+    return(logical(0))
+  }
+  ka <- url_target_keys_v1(a)
+  kb <- url_target_keys_v1(b)
+  ka$scheme == kb$scheme & ka$authority == kb$authority &
+    ka$host == kb$host & ka$path == kb$path & ka$query == kb$query
 }
 
 # Whether the rfc3986 and whatwg targets differ only through encoded dot
 # segments: the rfc3986 path, its encoded dot segments read as dots and
 # removed (RFC 3986 section 5.2.4), with its query, equals the whatwg path
-# and query, and the two have the same scheme and authority as
-# url_target_key_v1() reads them. Only then do the surveyed client
+# and query, under the same lead (url_target_parts_v1(), as
+# url_lead_key_v1() folds it). Only then do the surveyed client
 # families apply.
 url_encoded_dots_only_v1 <- function(rfc3986, whatwg) {
   r <- url_target_parts_v1(target_utf8_bytes_v1(rfc3986))
@@ -458,10 +486,11 @@ url_compared_whatwg_v1 <- function(preprocessed, rows) {
 
 # `preprocessing_disagreement` and `disagreement_clients` for every row.
 # Only matcher rows the selected pass decided are compared; every other row
-# is FALSE with NA clients. Under "rfc3986" and "none" a compared row over
-# the cap is NA, and its whatwg form is never computed. A compared row is
-# TRUE where whatwg cannot parse the URL, or where the two targets differ
-# in more than url_target_key_v1() folds and the matcher decides them
+# is FALSE with NA clients. Under "none" every decided row is NA and
+# nothing is computed. Under "rfc3986" a decided row over the cap is NA,
+# and its whatwg form is never computed. A compared row is TRUE where
+# whatwg cannot parse the URL, or where the two targets differ in more
+# than url_targets_alike_v1() folds and the matcher decides them
 # differently; a second matcher pass runs only on those rows.
 # `url_decision` is the selected pass's; `decide(rows, urls)` returns the
 # url_decision of `rows` when the matcher reads `urls`.
@@ -471,7 +500,12 @@ url_disagreement_v1 <- function(preprocessed, matcher_rows, url_decision,
   flag <- rep(FALSE, n)
   clients <- rep(NA_character_, n)
   rows <- matcher_rows[!is.na(url_decision[matcher_rows])]
-  if (!identical(preprocessed$url_normalization, "whatwg")) {
+  if (identical(preprocessed$url_normalization, "none")) {
+    flag[rows] <- NA
+    clients[rows] <- url_disagreement_not_compared_none_v1()
+    return(list(flag = flag, clients = clients))
+  }
+  if (identical(preprocessed$url_normalization, "rfc3986")) {
     over <- rows[
       nchar(preprocessed$url[rows], type = "bytes") >
         url_disagreement_max_bytes_v1()
@@ -497,13 +531,8 @@ url_disagreement_v1 <- function(preprocessed, matcher_rows, url_decision,
     )
   }
   ok <- rows[!whatwg$failed[rows]]
-  alike <- vapply(ok, function(i) {
-    identical(
-      url_target_key_v1(preprocessed$rfc3986_url[[i]]),
-      url_target_key_v1(whatwg$url[[i]])
-    )
-  }, logical(1L))
-  cand <- ok[!alike]
+  cand <- ok[!url_targets_alike_v1(preprocessed$rfc3986_url[ok],
+                                   whatwg$url[ok])]
   if (length(cand) == 0L) {
     return(list(flag = flag, clients = clients))
   }

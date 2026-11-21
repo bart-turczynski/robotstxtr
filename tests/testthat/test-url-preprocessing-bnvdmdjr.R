@@ -22,6 +22,9 @@ pp_today <- function(url, backend, token, body = pp_body) {
   pp_eval(url, backend, token, "none", body)
 }
 
+pp_flag_columns <- c("preprocessing_disagreement", "disagreement_clients")
+pp_not_compared_none <- "not compared under url_normalization = \"none\""
+
 pp_engines <- list(
   google = "Googlebot", bing = "bingbot", yandex = "Yandex"
 )
@@ -282,7 +285,11 @@ test_that("an already-normalized URL passes byte-identical, same decision", {
     old <- pp_today(urls, backend, token)
     expect_identical(new$matcher_url, urls, label = backend)
     expect_true(all(is.na(new$url_preprocessing_note)))
-    expect_identical(new[names(old)], old)
+    # "none" never compares the forms, so only the flag columns differ.
+    same <- setdiff(names(old), pp_flag_columns)
+    expect_identical(new[same], old[same])
+    expect_identical(new$preprocessing_disagreement, rep(FALSE, length(urls)))
+    expect_identical(old$preprocessing_disagreement, rep(NA, length(urls)))
   }
 })
 
@@ -727,6 +734,17 @@ pp_count_dispatch <- function(env) {
   )
 }
 
+pp_count_rurl <- function(env) {
+  real <- rurl::serialize_url
+  local_mocked_bindings(
+    serialize_url = function(url, ...) {
+      env$rurl <- c(env$rurl, url)
+      real(url, ...)
+    },
+    .package = "rurl", .env = parent.frame()
+  )
+}
+
 pp_ww_relative <- pp_noauth
 pp_ww_guard <- paste0(
   pp_noauth,
@@ -908,7 +926,11 @@ test_that("whatwg: an unchanged URL passes as given, with no note", {
     old <- pp_today(urls, backend, token)
     expect_identical(new$matcher_url, urls, label = backend)
     expect_true(all(is.na(new$url_preprocessing_note)))
-    expect_identical(new[names(old)], old)
+    # "none" never compares the forms, so only the flag columns differ.
+    same <- setdiff(names(old), pp_flag_columns)
+    expect_identical(new[same], old[same])
+    expect_identical(new$preprocessing_disagreement, rep(FALSE, length(urls)))
+    expect_identical(old$preprocessing_disagreement, rep(NA, length(urls)))
   }
 })
 
@@ -1049,8 +1071,8 @@ test_that("the families are named only when encoded dots alone differ", {
   expect_identical(r$disagreement_clients, pp_unparsed("disallow"))
 })
 
-test_that("the flag marks rows the two forms decide apart, in every mode", {
-  for (mode in engine_url_normalizations_v1()) {
+test_that("the flag marks rows the two forms decide apart", {
+  for (mode in c("rfc3986", "whatwg")) {
     for (backend in names(pp_engines)) {
       r <- pp_eval(pp_flag_urls, backend, pp_engines[[backend]], mode)
       expect_identical(
@@ -1063,6 +1085,30 @@ test_that("the flag marks rows the two forms decide apart, in every mode", {
       )
     }
   }
+})
+
+test_that("none compares nothing: NA on every decided row, no rurl", {
+  seen <- new.env(parent = emptyenv())
+  pp_count_rurl(seen)
+  pp_count_dispatch(seen)
+  for (backend in names(pp_engines)) {
+    seen$urls <- NULL
+    r <- pp_eval(pp_flag_urls, backend, pp_engines[[backend]], "none")
+    decided <- !is.na(r$url_decision)
+    expect_identical(
+      r$preprocessing_disagreement, ifelse(decided, NA, FALSE),
+      label = backend
+    )
+    expect_identical(
+      r$disagreement_clients,
+      ifelse(decided, pp_not_compared_none, NA_character_)
+    )
+    # One selected pass, as before the flag existed.
+    expect_identical(seen$urls, r$matcher_url)
+  }
+  expect_null(seen$rurl)
+  # No rfc3986 target is built either.
+  expect_null(preprocess_matcher_url_v1(pp_flag_urls, "none")$rfc3986_url)
 })
 
 test_that("the flag works the other way round: whatwg allows", {
@@ -1141,15 +1187,9 @@ test_that("the second pass reads each row's own body and crawler profile", {
     "http://b/latam/%2e%2e/account/x", "http://b/q/%2e%2e/z"
   )
   tokens <- c("FooBot", "FooBot", "Googlebot-Image", "FooBot")
-  for (mode in c("rfc3986", "none")) {
-    r <- robots_evaluate_url_v1(
-      urls, tokens, "google", "google", url_normalization = mode
-    )$results
-    expect_identical(r$url_decision, rep("allow", 4L), label = mode)
-    expect_identical(
-      r$preprocessing_disagreement, c(FALSE, TRUE, FALSE, FALSE)
-    )
-  }
+  r <- robots_evaluate_url_v1(urls, tokens, "google", "google")$results
+  expect_identical(r$url_decision, rep("allow", 4L))
+  expect_identical(r$preprocessing_disagreement, c(FALSE, TRUE, FALSE, FALSE))
   # Under whatwg, row 3 reads its parent's group (Allow: /) on body b.
   r <- robots_evaluate_url_v1(
     urls, tokens, "google", "google", url_normalization = "whatwg"
@@ -1179,33 +1219,19 @@ test_that("the second pass runs only on rows whose targets differ", {
   expect_identical(seen$urls, "https://example.com/a/b")
 })
 
-test_that("under none, each differing side is read once", {
+test_that("whatwg reads the rfc3986 side once, only where it differs", {
   seen <- new.env(parent = emptyenv())
   pp_count_dispatch(seen)
   url <- "https://example.com/latam/../q/%2e%2e/account/x"
-  r <- pp_eval(url, "google", "Googlebot", "none")
+  r <- pp_whatwg(url)
   expect_identical(
     seen$urls,
-    c(
-      url, "https://example.com/q/%2e%2e/account/x",
-      "https://example.com/account/x"
-    )
+    c("https://example.com/account/x", "https://example.com/q/%2e%2e/account/x")
   )
-  expect_identical(r$url_decision, "allow")
+  expect_identical(r$url_decision, "disallow")
   expect_true(r$preprocessing_disagreement)
   expect_identical(r$disagreement_clients, pp_clients("allow", "disallow"))
 })
-
-pp_count_rurl <- function(env) {
-  real <- rurl::serialize_url
-  local_mocked_bindings(
-    serialize_url = function(url, ...) {
-      env$rurl <- c(env$rurl, url)
-      real(url, ...)
-    },
-    .package = "rurl", .env = parent.frame()
-  )
-}
 
 test_that("targets that differ in nothing a matcher reads get no second pass", {
   # Scheme and host case, a default port, an empty path, a fragment.
@@ -1227,14 +1253,17 @@ test_that("targets that differ in nothing a matcher reads get no second pass", {
   expect_identical(
     seen$urls, c("https://Example.com/q/%2e%2e/z", "https://example.com/z")
   )
+  # The comparison, vectorized over pairs.
   expect_identical(
-    url_target_key_v1("https://Example.com:8443"),
-    url_target_key_v1("https://example.com:8443/")
+    url_targets_alike_v1(
+      c("https://Example.com:8443", "https://example.com:8443/",
+        "http://u@H:80", "https://h/a?q", "/a/b", "café/a"),
+      c("https://example.com:8443/", "https://example.com/",
+        "http://h/", "https://h/a?Q", "/a/b", "café/a")
+    ),
+    c(TRUE, FALSE, TRUE, FALSE, TRUE, TRUE)
   )
-  expect_false(identical(
-    url_target_key_v1("https://example.com:8443/"),
-    url_target_key_v1("https://example.com/")
-  ))
+  expect_identical(url_targets_alike_v1(character(), character()), logical())
 })
 
 test_that("the whatwg form is computed only for the rows compared", {
@@ -1310,26 +1339,23 @@ test_that("the cap is 2048 bytes of the input URL", {
   expect_identical(nchar(pp_sized(2049L), type = "bytes"), 2049L)
 })
 
-test_that("rfc3986 and none compare 2048 bytes, not 2049, and skip rurl", {
+test_that("rfc3986 compares 2048 bytes, not 2049, and skips rurl", {
   at <- pp_sized(2048L)
   over <- pp_sized(2049L)
-  for (mode in c("rfc3986", "none")) {
-    for (backend in names(pp_engines)) {
-      seen <- new.env(parent = emptyenv())
-      pp_count_rurl(seen)
-      r <- pp_eval(c(at, over), backend, pp_engines[[backend]], mode)
-      expect_identical(
-        r$preprocessing_disagreement, c(TRUE, NA),
-        label = paste(mode, backend)
-      )
-      expect_identical(
-        r$disagreement_clients,
-        c(pp_clients("allow", "disallow"), pp_not_compared)
-      )
-      expect_identical(seen$rurl, at)
-      # The selected decision is untouched by the cap.
-      expect_identical(r$url_decision, c("allow", "allow"))
-    }
+  for (backend in names(pp_engines)) {
+    seen <- new.env(parent = emptyenv())
+    pp_count_rurl(seen)
+    r <- pp_eval(c(at, over), backend, pp_engines[[backend]], "rfc3986")
+    expect_identical(
+      r$preprocessing_disagreement, c(TRUE, NA), label = backend
+    )
+    expect_identical(
+      r$disagreement_clients,
+      c(pp_clients("allow", "disallow"), pp_not_compared)
+    )
+    expect_identical(seen$rurl, at)
+    # The selected decision is untouched by the cap.
+    expect_identical(r$url_decision, c("allow", "allow"))
   }
 })
 
