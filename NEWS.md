@@ -1,6 +1,6 @@
 # robotstxtr (development version)
 
-* Validator: `user_agent_cut` and `unknown_directive` name a look-alike character (a Unicode hyphen, or a Cyrillic or Greek letter) by code point and give the ASCII spelling it resembles (ROBO-wtixhwlo).
+* Validator: `user_agent_cut` and `unknown_directive` name a look-alike character (a Unicode hyphen, Cyrillic or Greek letter) by code point and give its ASCII spelling; such a `user_agent_cut` row warns (ROBO-wtixhwlo).
 
 * Validator: wildcard, joined-group, empty-Disallow and stacked-token rows naming a User-agent value Google's matcher cuts add a sentence pointing to its `user_agent_cut` row (ROBO-zqyqbudf).
 

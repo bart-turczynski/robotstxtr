@@ -51,7 +51,9 @@ la_perplexity <- "User-agent: Perplexity\u2011User"
 test_that("a look-alike cut row keeps today's text as its start", {
   x <- la_text(la_perplexity, "Disallow: /x")
   row <- la_rows(x)
-  expect_identical(row$severity, "info")
+  # No byte compare matches a look-alike value, so the row warns
+  # (maintainer decision, ROBO-wtixhwlo); before it, this row was info.
+  expect_identical(row$severity, "warning")
   expect_true(startsWith(row$message, la_read_as("Perplexity")))
   expect_true(validUTF8(row$message))
   expect_identical(Encoding(row$message), "unknown")
@@ -91,7 +93,7 @@ test_that("other look-alike cuts keep today's text as their start", {
   for (case in cases) {
     row <- la_rows(la_text(case[[1L]], "Disallow: /x"))
     expect_identical(nrow(row), 1L, label = case[[1L]])
-    expect_identical(row$severity, "info", label = case[[1L]])
+    expect_identical(row$severity, "warning", label = case[[1L]])
     expect_true(startsWith(row$message, case[[2L]]), label = case[[1L]])
   }
   x <- la_text("Dis\u0430llow: /a")
@@ -121,6 +123,8 @@ test_that("inputs without a look-alike keep today's text exactly", {
   for (case in cases) {
     row <- la_rows(robots_validate_text(case[[1L]]))
     expect_identical(row$message, case[[2L]], label = case[[1L]])
+    # A cut without a look-alike keeps its severity.
+    expect_identical(row$severity, "info", label = case[[1L]])
   }
   for (body in c("Caf\u00e9: /x\n",
                  "User-agent: a\nDisallow: /x\n\ufeffUser-agent: b\n")) {
@@ -184,7 +188,7 @@ test_that("a cut value names its look-alike and the ASCII spelling", {
   ))
   # Perplexity is no crawler the Bing or Yandex backend evaluates.
   expect_false(grepl("Bing|Yandex", row$message))
-  expect_identical(row$severity, "info")
+  expect_identical(row$severity, "warning")
   expect_false(grepl("[^ -~]", row$message))
 
   row <- la_rows(la_text("User-agent: Perplexity\u2212User", "Disallow: /x"))

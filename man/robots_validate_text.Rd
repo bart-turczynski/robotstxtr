@@ -140,7 +140,9 @@ read is a documented Google crawler token the value did not mean
 (\code{Googlebot Image}, read as \code{Googlebot}); a version suffix
 (\code{Googlebot/2.1}) or a trailing \code{*} is info, as the token
 read is the crawler the value names, and any other token is info, as
-Google's crawlers do not go by it. The Bing and Yandex
+Google's crawlers do not go by it; a value holding a look-alike
+character (below) is a warning whatever the token, as no byte
+compare matches it. The Bing and Yandex
 matchers do not cut the value. A value that is valid UTF-8 and holds
 a look-alike character (a Unicode hyphen or dash such as U+2011,
 U+2212 or U+FF0D, U+FF3F FULLWIDTH LOW LINE, or a Cyrillic or Greek

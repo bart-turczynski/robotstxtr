@@ -131,7 +131,9 @@ validation_unsupported <- c(
 #'     (\code{Googlebot Image}, read as \code{Googlebot}); a version suffix
 #'     (\code{Googlebot/2.1}) or a trailing \code{*} is info, as the token
 #'     read is the crawler the value names, and any other token is info, as
-#'     Google's crawlers do not go by it. The Bing and Yandex
+#'     Google's crawlers do not go by it; a value holding a look-alike
+#'     character (below) is a warning whatever the token, as no byte
+#'     compare matches it. The Bing and Yandex
 #'     matchers do not cut the value. A value that is valid UTF-8 and holds
 #'     a look-alike character (a Unicode hyphen or dash such as U+2011,
 #'     U+2212 or U+FF0D, U+FF3F FULLWIDTH LOW LINE, or a Cyrillic or Greek
@@ -2074,7 +2076,8 @@ validation_google_tokens <- function() {
 # tokens, so the row is a warning only when the token read is a documented
 # Google token and the rest of the value is neither a version suffix (`/2.1`,
 # ` 1.0`) nor a run of `*`: `Googlebot Image` is read as `Googlebot`, and
-# Googlebot follows the group. Every other cut is info (ROBO-txnzyugl, owner
+# Googlebot follows the group. A value holding a look-alike character is a
+# warning too (ROBO-wtixhwlo). Every other cut is info (ROBO-txnzyugl, owner
 # decision 2026-11-18).
 user_agent_cut_rows <- function(agents, has_global, global_groups) {
   agents <- agents[agents$cut, , drop = FALSE]
@@ -2133,6 +2136,9 @@ user_agent_cut_rows <- function(agents, has_global, global_groups) {
   lookalike <- user_agent_lookalike_notes(agents$value)
   message[nzchar(lookalike)] <- paste(message[nzchar(lookalike)],
                                       lookalike[nzchar(lookalike)])
+  # A value holding a look-alike is matched by no byte compare, so its row
+  # is a warning whatever the token (ROBO-wtixhwlo, maintainer decision).
+  warn <- warn | nzchar(lookalike)
   ai_training_rows(agents$line, ifelse(warn, "warning", "info"),
                    "user_agent_cut", "user-agent", message)
 }
