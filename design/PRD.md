@@ -248,8 +248,9 @@ v1 facades only: `robots_evaluate_text_v1()` and `robots_evaluate_url_v1()`
 take `url_normalization`, whose default `"rfc3986"` hands the matcher a URL
 rebuilt with its dot segments removed (RFC 3986 §5.2.4), its userinfo left
 out and its fragment dropped, with no byte encoded, decoded or case-folded;
-the results record it as `matcher_url`. `url_normalization = "none"` keeps
-this section's rules. The legacy functions (`allowed_by_robots_text()`,
+the results record it as `matcher_url`. The opt-in `"whatwg"` hands it the
+URL as `rurl`'s WHATWG serializer writes it, which does change encoding.
+`url_normalization = "none"` keeps this section's rules. The legacy functions (`allowed_by_robots_text()`,
 `allowed_by_robots_url()`) stay bound by this section unchanged.
 
 ### 6.3 Fetch-origin construction

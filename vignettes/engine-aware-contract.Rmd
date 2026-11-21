@@ -82,6 +82,16 @@ y <- robots_evaluate_text_v1(
 y$results[c("matcher_url", "url_decision", "url_preprocessing_note")]
 ```
 
+`url_normalization = "whatwg"` reads the URL as browsers and Node `fetch`
+do (the WHATWG URL Standard, through rurl), which removes `%2e%2e` too and
+may change the encoding. Whatever the mode, `preprocessing_disagreement`
+marks a URL whose two forms decide differently, and `disagreement_clients`
+names the clients surveyed on each side:
+
+```{r}
+y$results[c("preprocessing_disagreement", "disagreement_clients")]
+```
+
 ## Explicit non-decisions
 
 An unavailable matcher returns `capability_unavailable` rather than silently

@@ -3,7 +3,7 @@ status: accepted
 date: 2026-11-21
 accepted: 2026-11-21
 tracking: ROBO-bnvdmdjr
-amended: none
+amended: 2026-11-21 (part B, ROBO-bnvdmdjr: the "whatwg" mode, the disagreement flag and the curl 8.13.0 boundary)
 ---
 
 # ADR 0002: The v1 evaluator removes dot segments before matching
@@ -43,10 +43,15 @@ A localhost client survey plus source and documentation reading:
 | wget 1.25, curl 8.7.1 (the macOS system copy) | removed | sent | `rfc3986` |
 | Chrome 157, Node 26 `fetch`, libcurl 8.14.1 (R curl, httr2), curl 8.23.0 | removed | removed | `whatwg` |
 | Nutch `BasicURLNormalizer` (from source) | removed | not recorded | |
+| curl and libcurl before 8.13.0 (changelog) | removed | sent | `rfc3986` |
+| curl and libcurl 8.13.0 and later (changelog) | removed | removed | `whatwg` |
 
-The curl version where encoded-dot removal began lies between 8.7.1 (keeps them) and 8.14.1
-(removes them). It is not pinned yet. No crawler vendor documents its dot handling, and no crawler
-has been observed on such a URL. Every client form keeps `%252e`, `%2F`, dots in the query and `//`.
+The curl boundary is 8.13.0 (released 2025-04-02). Its changelog lists under Bugfixes "urlapi:
+remove percent encoded dot sequences from the URL path" (<https://curl.se/ch/8.13.0.html>; curl
+issue 16869). curl and libcurl before 8.13.0 send `%2e` segments as given, and 8.13.0 and later
+remove them, which agrees with the survey's 8.7.1 and 8.14.1 rows. The survey versions above are
+kept as recorded on 2026-11-19. No crawler vendor documents its dot handling, and no crawler has
+been observed on such a URL. Every client form keeps `%252e`, `%2F`, dots in the query and `//`.
 
 ## Decision
 
@@ -67,9 +72,11 @@ Both facades take `url_normalization`, length one, validated like `safety_level`
   a local function on the path bytes, not `rurl`: `rurl`'s `rfc3986` verdicts differ between 3.0.1,
   3.1.0 and its main branch (raw non-ASCII), its `"normalized"` form also decodes `%2E` and folds
   escape case, and it returns `NA` on input this ADR still evaluates.
+- `"whatwg"` (part B): the WHATWG URL Standard serialization through `rurl::serialize_url(url,
+  standard = "whatwg")`, opt-in, modeling browsers and Node `fetch`. See section 6.
 - `"none"`: the URL as given, byte for byte, as before.
 
-Part B (below) adds `"whatwg"`.
+The value set is published on the contract objects as `url_normalizations`, default first.
 
 ### 3. Invalid input is evaluated, with the reason recorded
 
@@ -122,12 +129,52 @@ the v1 result's.
 - `robots_evaluate_url_v1()` builds the `/robots.txt` origin from the input URL, so the mode never
   changes what is fetched.
 
-## Part B (to follow)
+### 6. `"whatwg"` (part B)
 
-Part B adds `"whatwg"`: full WHATWG URL serialization through `rurl`, opt-in and documented as
-modeling browser and Node fetchers. It changes encoding by design (spaces and non-ASCII
-percent-encoded, `\` read as `/`), so the "no encoding change" rule binds `"rfc3986"` and `"none"`
-only. Part B also adds the disagreement flag, which marks rows where the `"rfc3986"` and
-`"whatwg"` forms decide differently (encoded dots) or where one mode fails, and names the client
-families on each side, from the survey above. It pins the curl version where `%2e` removal began,
-between 8.7.1 and 8.14.1. Per-crawler defaults wait for live evidence (ROBO-oxfpgdrx).
+`"whatwg"` is the full WHATWG URL serialization through `rurl`, with no cherry-picking. The
+matcher URL is rebuilt from `rurl`'s result the way section 4 rebuilds it: the scheme, `//`, the
+host and port, the path and `?query`, with userinfo left out and the fragment dropped. The parse
+removes literal and encoded (`%2e`, `%2E`, either case, mixed with `.`) dot segments. It changes
+encoding by design (a space becomes `%20`, non-ASCII is percent-encoded, `\` is read as `/` for
+special schemes) and the host (put in lower case, a default port dropped), so the "no encoding change"
+rule of section 2 binds `"rfc3986"` and `"none"` only.
+
+`serialize_url()` exists with this behavior at `rurl` 3.0.1, the floor in `DESCRIPTION`. The tests
+pin only forms whose output is the same on `rurl` 3.0.1, 3.1.0 and its main branch: literal and
+encoded dot segments removed; `%252e`, `%2F`, `//` and dots in the query kept. They do not pin the
+encoding of spaces or non-ASCII, which differs between those versions.
+
+A URL `rurl` cannot parse (it returns `NA`; a URL with no scheme, such as `"/a/../b"`, or one
+marked `"bytes"`) is evaluated as given, with the note `not a valid WHATWG URL: evaluated as
+given`, and sets the disagreement flag. A changed URL has the note
+`WHATWG URL serialization changed the URL`, then `userinfo removed` or `fragment dropped`.
+
+### 7. The disagreement flag (part B)
+
+Two more columns after `url_preprocessing_note`, on every row and in every mode:
+
+- `preprocessing_disagreement` (logical): `TRUE` when `"whatwg"` cannot parse the URL ("one mode
+  fails"), or when the `"rfc3986"` and `"whatwg"` matcher URLs differ bytewise and the selected
+  matcher decides them differently (`url_decision`). `FALSE` otherwise: identical targets, targets
+  that differ but decide alike, an `NA` or empty URL, and a row no matcher decided (for example
+  `capability_unavailable`).
+- `disagreement_clients` (character): `NA` when the flag is `FALSE`. Otherwise each side's
+  decision and the client families that send that form, for example
+  `rfc3986 allow: wget 1.25, curl/libcurl < 8.13.0; whatwg disallow: Chrome 157, Node 26 fetch,
+  curl/libcurl >= 8.13.0`, or, when `"whatwg"` fails,
+  `rfc3986: …; whatwg cannot parse the URL: …`.
+
+The families come from the survey table. The clients that send the URL unchanged (`"none"`) are on
+neither side, since the flag compares two forms; Nutch is left out while its encoded-dot behavior
+is unrecorded.
+
+The selected mode's pass decides the row. A second matcher pass reads the other mode's URL only
+on matcher rows whose two URLs differ bytewise, so the common case costs one pass; under
+`"none"`, each side whose URL differs from the input is read once. The `"whatwg"` URL is computed
+for every row in every mode, which costs a `rurl` call per URL (about 0.1 ms each on the
+maintainer's machine, and more on a long path with many dot segments).
+
+The schema revision of both facades moves to `2026-11-21.2`. No policy revision moves.
+`as_legacy_robots_decisions_v1()` drops both columns.
+
+Per-crawler defaults wait for live evidence (ROBO-oxfpgdrx).
