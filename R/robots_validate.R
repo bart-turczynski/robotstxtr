@@ -283,6 +283,14 @@ validation_unsupported <- c(
 #'   \code{html_body} \tab warning \tab
 #'     The body looks like an HTML page, not a robots.txt; its lines are still
 #'     read and reported one by one. \cr
+#'   \code{xml_body} \tab warning \tab
+#'     The body starts with markup (\code{<}), such as XML, not a robots.txt;
+#'     its lines are still read and reported one by one. \cr
+#'   \code{json_body} \tab warning \tab
+#'     The body looks like a JSON object or array, such as an API error, not a
+#'     robots.txt; its lines are still read and reported one by one. At most
+#'     one of \code{html_body}, \code{xml_body} and \code{json_body} is reported
+#'     per document, in that order of precedence. \cr
 #'   \code{utf16_or_utf32_encoding} \tab warning \tab
 #'     A raw or fetched body is UTF-16 or UTF-32, not UTF-8 (RFC 9309 section
 #'     2.3): it starts with the byte-order mark of that encoding (a UTF-32
@@ -879,6 +887,33 @@ validation_status <- function(diagnostics, validated = TRUE) {
   "valid"
 }
 
+# The message of each body-kind advisory (ROBO-ccfsanhq, ROBO-mgtngbpm), keyed
+# by the kind the content sniffer reads. Each says the lines were read anyway.
+body_kind_messages <- c(
+  html = paste0("The body looks like an HTML page, not a robots.txt; its ",
+                "lines were read as directives anyway."),
+  xml = paste0("The body starts with markup (`<`), such as XML, not a ",
+               "robots.txt; its lines were read as directives anyway."),
+  json = paste0("The body looks like a JSON object or array, such as an API ",
+                "error, not a robots.txt; its lines were read as directives ",
+                "anyway.")
+)
+
+# The body-kind advisory a document draws, or NA (ROBO-mgtngbpm). Both reads of
+# the content sniffer count: the stored bytes, so a body cut mid-line keeps its
+# kind, and the validated bytes, so a NUL or invalid UTF-8 in the partial line a
+# cut drops does not hide it. The first of html, xml and json that either read
+# gives is the advisory, so a document draws at most one. A "binary" read is
+# none of these: a body whose reads are binary draws none, and nul_byte or
+# invalid_utf8 reports it.
+body_kind_advisory <- function(stored_flag, flag) {
+  kinds <- intersect(c("html", "xml", "json"), c(stored_flag, flag))
+  if (length(kinds) == 0L) {
+    return(NA_character_)
+  }
+  kinds[[1L]]
+}
+
 validate_document_bytes <- function(bytes, source_id, source_type,
                                     robots_url = NA_character_,
                                     effective_url = NA_character_,
@@ -1404,20 +1439,21 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       "Document has no non-empty User-agent directive."
     )
   }
-  # A body that looks like an HTML page gets one document-level warning
-  # (ROBO-ccfsanhq), from the fetch row's sniffer (ROBO-nhuirvrd) read on the
-  # stored bytes, as the fetch row reads them, so a page cut mid-line is
-  # still seen, or on the validated bytes, so a NUL or invalid UTF-8 in the
-  # partial line a cut drops does not hide it (ROBO-qquftxcx). Its per-line
-  # rows stay: a real rule inside the page is still enforced. Where the
-  # validated bytes hold the NUL or mostly invalid UTF-8, the flag is
-  # "binary", and nul_byte or invalid_utf8 reports it instead.
-  if (identical(robots_content_flag(stored_bytes), "html") ||
-        identical(robots_content_flag(bytes), "html")) {
+  # A body that is HTML, XML or JSON in place of a robots.txt gets one
+  # document-level warning (ROBO-ccfsanhq, ROBO-mgtngbpm), chosen by
+  # body_kind_advisory() from the fetch row's sniffer (ROBO-nhuirvrd), read on
+  # the stored bytes, so a page cut mid-line is still seen, and on the
+  # validated bytes, so a NUL or invalid UTF-8 in the partial line a cut drops
+  # does not hide it (ROBO-qquftxcx). Its per-line rows stay: a real rule
+  # inside it is still enforced. Where the validated bytes hold the NUL or
+  # mostly invalid UTF-8, the flag is "binary", and nul_byte or invalid_utf8
+  # reports it instead.
+  body_kind <- body_kind_advisory(robots_content_flag(stored_bytes),
+                                  robots_content_flag(bytes))
+  if (!is.na(body_kind)) {
     add_diagnostic(
-      NA_integer_, "warning", "html_body", NA_character_,
-      paste0("The body looks like an HTML page, not a robots.txt; its lines ",
-             "were read as directives anyway.")
+      NA_integer_, "warning", paste0(body_kind, "_body"), NA_character_,
+      body_kind_messages[[body_kind]]
     )
   }
   # A UTF-16 or UTF-32 body (ROBO-cvpkzckn) gets one document-level warning,

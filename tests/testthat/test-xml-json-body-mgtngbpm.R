@@ -2,14 +2,13 @@
 # body is XML or JSON served in place of robots.txt, as html_body says it for
 # HTML (ROBO-ccfsanhq). The kind is read by the content sniffer,
 # robots_content_flag() (ROBO-nhuirvrd), on the stored bytes and on the
-# validated bytes.
+# validated bytes; body_kind_advisory() picks one kind from the two reads.
 #
 # The three matching engines are not relevant here: this is a body-type
 # advisory on the validator's own summary, not a matching decision, and the
 # sniffer does not depend on the engine. Nothing in this file is per engine.
-#
-# This first commit pins today's behavior: none of these bodies draws an
-# xml_body or json_body row yet, and each is still read line by line.
+
+kind_codes <- c("html_body", "xml_body", "json_body")
 
 # The diagnostics of a validation as `code@line`, in emission order.
 row_keys <- function(x) {
@@ -18,6 +17,17 @@ row_keys <- function(x) {
     return(character())
   }
   paste0(d$code, "@", d$line)
+}
+
+# The one body-kind row of a validation, which must be `code`: a warning on no
+# line, with no directive. Returns its message.
+expect_body_kind <- function(x, code, label = code) {
+  d <- x$diagnostics[x$diagnostics$code %in% kind_codes, , drop = FALSE]
+  expect_identical(d$code, code, label = label)
+  expect_identical(d$severity, "warning", label = label)
+  expect_identical(d$line, NA_integer_, label = label)
+  expect_identical(d$directive, NA_character_, label = label)
+  d$message
 }
 
 xml_s3 <- paste0('<?xml version="1.0" encoding="UTF-8"?>\n',
@@ -41,57 +51,66 @@ serve <- function(body, status = 200L, content_type = NULL) {
   }
 }
 
-test_that("ROBO-mgtngbpm pin: an S3-style XML error is read as lines", {
+test_that("ROBO-mgtngbpm: an S3-style XML error draws xml_body", {
+  x <- robots_validate_text(xml_s3)
   expect_identical(robots_content_flag(charToRaw(xml_s3)), "xml")
   expect_identical(
-    row_keys(robots_validate_text(xml_s3)),
-    c("malformed_line@1", "malformed_line@2", "no_rules@NA")
+    row_keys(x),
+    c("malformed_line@1", "malformed_line@2", "xml_body@NA", "no_rules@NA")
   )
+  expect_body_kind(x, "xml_body")
 })
 
-test_that("ROBO-mgtngbpm pin: an Atom feed and an SVG are read as lines", {
+test_that("ROBO-mgtngbpm: an Atom feed and an SVG draw xml_body", {
   expect_identical(robots_content_flag(charToRaw(xml_feed)), "xml")
   expect_identical(
     row_keys(robots_validate_text(xml_feed)),
     c("accepted_missing_colon@1", "unknown_directive@1",
-      "unknown_directive@2", "no_rules@NA")
+      "unknown_directive@2", "xml_body@NA", "no_rules@NA")
   )
   expect_identical(robots_content_flag(charToRaw(svg)), "xml")
-  expect_identical(
-    row_keys(robots_validate_text(svg)),
-    c("unknown_directive@1", "no_rules@NA")
-  )
+  x <- robots_validate_text(svg)
+  expect_identical(row_keys(x), c("unknown_directive@1", "xml_body@NA",
+                                  "no_rules@NA"))
+  expect_body_kind(x, "xml_body")
 })
 
-test_that("ROBO-mgtngbpm pin: a JSON object or array is read as lines", {
+test_that("ROBO-mgtngbpm: a JSON object or array draws json_body", {
+  x <- robots_validate_text(json_obj)
   expect_identical(robots_content_flag(charToRaw(json_obj)), "json")
   expect_identical(
-    row_keys(robots_validate_text(json_obj)),
-    c("unknown_directive@1", "no_rules@NA")
+    row_keys(x),
+    c("unknown_directive@1", "json_body@NA", "no_rules@NA")
+  )
+  expect_body_kind(x, "json_body")
+  expect_identical(
+    row_keys(robots_validate_text('[{"a":1}]\n')),
+    c("unknown_directive@1", "json_body@NA", "no_rules@NA")
   )
   expect_identical(robots_content_flag(charToRaw("[]\n")), "json")
   expect_identical(
     row_keys(robots_validate_text("[]\n")),
-    c("malformed_line@1", "no_rules@NA")
+    c("malformed_line@1", "json_body@NA", "no_rules@NA")
   )
 })
 
-test_that("ROBO-mgtngbpm pin: a rule line in an XML or JSON body is read", {
+test_that("ROBO-mgtngbpm: a rule line in an XML or JSON body is still read", {
   xml_rule <- paste0('<?xml version="1.0"?>\n',
                      "User-agent: *\nDisallow: /x\n")
   x <- robots_validate_text(xml_rule)
   expect_identical(
     row_keys(x),
-    c("accepted_missing_colon@1", "unknown_directive@1")
+    c("accepted_missing_colon@1", "unknown_directive@1", "xml_body@NA")
   )
   expect_identical(x$documents$disallow_directives, 1L)
   json_rule <- '["a",\nUser-agent: *\nDisallow: /x\n]\n'
   y <- robots_validate_text(json_rule)
   expect_identical(robots_content_flag(charToRaw(json_rule)), "json")
   expect_identical(y$documents$disallow_directives, 1L)
+  expect_body_kind(y, "json_body")
 })
 
-test_that("ROBO-mgtngbpm pin: markup in a comment or a rule is no body kind", {
+test_that("ROBO-mgtngbpm: markup in a comment or a rule is no body kind", {
   bodies <- list(
     comment_xml = '# <?xml version="1.0"?>\nUser-agent: *\nDisallow: /\n',
     comment_json = '# {"a":1}\nUser-agent: *\nDisallow: /\n',
@@ -108,25 +127,30 @@ test_that("ROBO-mgtngbpm pin: markup in a comment or a rule is no body kind", {
   expect_identical(row_keys(robots_validate_text(raw())), "no_rules@NA")
 })
 
-test_that("ROBO-mgtngbpm pin: a body cut mid-first-line keeps its kind", {
+test_that("ROBO-mgtngbpm: a body cut mid-first-line keeps its stored kind", {
+  # The validated lines are empty after the cut; the stored bytes still read
+  # as markup or JSON, so the advisory is drawn beside body_truncated.
   local_fake_ssrfr(serve(xml_s3))
-  expect_identical(
-    row_keys(robots_validate_url("https://example.com/", max_bytes = 20L)),
-    "body_truncated@NA"
-  )
+  x <- robots_validate_url("https://example.com/", max_bytes = 20L)
+  expect_identical(row_keys(x), c("xml_body@NA", "body_truncated@NA"))
+  expect_body_kind(x, "xml_body")
   local_fake_ssrfr(serve(json_obj, content_type = "application/json"))
+  y <- robots_validate_url("https://example.com/", max_bytes = 5L)
   expect_identical(
-    row_keys(robots_validate_url("https://example.com/", max_bytes = 5L)),
-    c("body_truncated@NA", "content_type_not_text_plain@NA")
+    row_keys(y),
+    c("json_body@NA", "body_truncated@NA", "content_type_not_text_plain@NA")
   )
+  expect_body_kind(y, "json_body")
 })
 
-test_that("ROBO-mgtngbpm pin: a fetched JSON 200 is read, and errors are not", {
+test_that("ROBO-mgtngbpm: a fetched JSON 200 draws json_body; errors do not", {
   local_fake_ssrfr(serve(json_obj, content_type = "application/json"))
   expect_identical(
     row_keys(robots_validate_url("https://example.com/")),
-    c("unknown_directive@1", "no_rules@NA", "content_type_not_text_plain@NA")
+    c("unknown_directive@1", "json_body@NA", "no_rules@NA",
+      "content_type_not_text_plain@NA")
   )
+  # An unacquired body is not validated, so it draws no advisory.
   local_fake_ssrfr(serve(json_obj, status = 404L,
                          content_type = "application/json"))
   expect_identical(
@@ -141,55 +165,59 @@ test_that("ROBO-mgtngbpm pin: a fetched JSON 200 is read, and errors are not", {
   )
 })
 
-test_that("ROBO-mgtngbpm pin: a BOM, invalid UTF-8 and NUL around JSON", {
+test_that("ROBO-mgtngbpm: a BOM, invalid UTF-8 and NUL around JSON", {
   bom <- c(as.raw(c(0xef, 0xbb, 0xbf)), charToRaw(json_obj))
   expect_identical(robots_content_flag(bom), "json")
   expect_identical(
     row_keys(robots_validate_text(bom)),
-    c("byte_order_mark@1", "unknown_directive@1", "no_rules@NA")
+    c("byte_order_mark@1", "unknown_directive@1", "json_body@NA",
+      "no_rules@NA")
   )
   latin1 <- c(charToRaw('{"error": "caf'), as.raw(0xe9), charToRaw('"}\n'))
   expect_identical(robots_content_flag(latin1), "json")
   expect_identical(
     row_keys(robots_validate_text(latin1)),
-    c("invalid_utf8@1", "unknown_directive@1", "no_rules@NA")
+    c("invalid_utf8@1", "unknown_directive@1", "json_body@NA", "no_rules@NA")
   )
+  # A NUL makes the read binary, and binary draws no advisory.
   with_nul <- c(charToRaw(json_obj), as.raw(0))
   expect_identical(robots_content_flag(with_nul), "binary")
   expect_identical(
     row_keys(robots_validate_text(with_nul)),
     c("nul_byte@2", "unknown_directive@1", "no_rules@NA")
   )
-  # UTF-16 XML: its NUL bytes make the read binary, so no XML kind.
+  # UTF-16 XML: its NUL bytes make the read binary, so no XML kind either.
   utf16 <- c(as.raw(c(0xff, 0xfe)),
              unlist(lapply(utf8ToInt("<?xml?>\n<Error/>\n"), function(ch) {
                as.raw(c(ch %% 256L, ch %/% 256L))
              })))
   expect_identical(robots_content_flag(utf16), "binary")
-  expect_true(
-    "nul_byte" %in% robots_validate_text(utf16)$diagnostics$code
-  )
+  codes <- robots_validate_text(utf16)$diagnostics$code
+  expect_false(any(kind_codes %in% codes))
+  expect_true("nul_byte" %in% codes)
 })
 
-test_that("ROBO-mgtngbpm pin: the stored and validated reads agree on html", {
+test_that("ROBO-mgtngbpm: one kind per document, html first across the reads", {
   # A cut that leaves `<html` whole in the stored bytes but not in the
   # validated lines: the stored read is html, the validated read xml or json.
-  # Today html_body is the only kind drawn.
+  # The stored html wins, so html_body is the one advisory.
   local_fake_ssrfr(serve("<Error>\n<html></html>\n"))
   x <- robots_validate_url("https://example.com/", max_bytes = 13L)
   expect_identical(
     row_keys(x),
     c("malformed_line@1", "html_body@NA", "body_truncated@NA")
   )
+  expect_body_kind(x, "html_body")
   local_fake_ssrfr(serve('{"a":1}\n<html></html>\n'))
   y <- robots_validate_url("https://example.com/", max_bytes = 13L)
   expect_identical(
     row_keys(y),
     c("unknown_directive@1", "html_body@NA", "body_truncated@NA")
   )
+  expect_body_kind(y, "html_body")
 })
 
-test_that("ROBO-mgtngbpm pin: a binary stored read does not hide markup", {
+test_that("ROBO-mgtngbpm: a binary stored read does not hide markup", {
   # The NUL lies in the partial line the cut drops; the readable line is XML.
   body <- c(charToRaw("<Error><Code>x</Code></Error>\n<Message>abc"),
             as.raw(0), charToRaw(strrep("a", 200L)))
@@ -198,16 +226,44 @@ test_that("ROBO-mgtngbpm pin: a binary stored read does not hide markup", {
   x <- robots_validate_url("https://example.com/", max_bytes = 60L)
   expect_identical(
     row_keys(x),
-    c("malformed_line@1", "body_truncated@NA")
+    c("malformed_line@1", "xml_body@NA", "body_truncated@NA")
   )
   expect_false("nul_byte" %in% x$diagnostics$code)
 })
 
-test_that("ROBO-mgtngbpm pin: an HTML page keeps html_body beside its lines", {
+test_that("ROBO-mgtngbpm: an HTML page keeps html_body beside its lines", {
   x <- robots_validate_text("<!DOCTYPE html>\n<html></html>\n")
   expect_identical(
     row_keys(x),
     c("malformed_line@2", "accepted_missing_colon@1", "unknown_directive@1",
       "html_body@NA", "no_rules@NA")
   )
+  expect_body_kind(x, "html_body")
+})
+
+test_that("ROBO-mgtngbpm: body_kind_advisory() prefers html, xml, json", {
+  expect_identical(body_kind_advisory("json", "html"), "html")
+  expect_identical(body_kind_advisory("html", "xml"), "html")
+  expect_identical(body_kind_advisory("xml", "json"), "xml")
+  expect_identical(body_kind_advisory(NA_character_, "json"), "json")
+  expect_identical(body_kind_advisory("binary", "xml"), "xml")
+  expect_identical(body_kind_advisory("binary", "binary"), NA_character_)
+  expect_identical(body_kind_advisory(NA_character_, NA_character_),
+                   NA_character_)
+})
+
+test_that("ROBO-mgtngbpm: each advisory names its kind only", {
+  xml_msg <- expect_body_kind(robots_validate_text(xml_s3), "xml_body")
+  json_msg <- expect_body_kind(robots_validate_text(json_obj), "json_body")
+  expect_match(xml_msg, "starts with markup (`<`), such as XML", fixed = TRUE)
+  expect_match(
+    json_msg,
+    "looks like a JSON object or array, such as an API error",
+    fixed = TRUE
+  )
+  for (msg in c(xml_msg, json_msg)) {
+    expect_match(msg, "read as directives anyway", fixed = TRUE)
+    # The kind is named, never an access decision (the sniffer is no proof).
+    expect_false(grepl("denied|access|forbidden", msg, ignore.case = TRUE))
+  }
 })

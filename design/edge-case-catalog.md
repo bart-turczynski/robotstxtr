@@ -253,6 +253,15 @@ The 500 KiB boundaries are pinned elsewhere (table above).
 The redirect case runs through the ssrfr fake (`helper-fake-ssrfr.R`); its
 fetch-layer values are pinned in the test file, not in the manifest.
 
+Two bodies that are not robots.txt are catalogued here in prose, with no
+fixture (ROBO-mgtngbpm). A JSON API error body such as
+`{"error": "not found"}` draws `json_body` beside its `unknown_directive` and
+`no_rules` rows. An S3-style XML error body, an `<?xml ...?>` declaration and
+then `<Error><Code>AccessDenied</Code>...`, draws `xml_body` beside its
+`malformed_line` rows. In both, the parser reads the lines as it reads any
+body, and the advisory names only the kind: the sniffer cannot tell why a
+server answered, so it never says access was denied.
+
 ### Other
 
 | id | RFC 9309 | Google doc | Matcher | Validator | Surprise |

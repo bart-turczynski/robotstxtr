@@ -292,6 +292,14 @@ User-agent. \cr
 \code{html_body} \tab warning \tab
 The body looks like an HTML page, not a robots.txt; its lines are still
 read and reported one by one. \cr
+\code{xml_body} \tab warning \tab
+The body starts with markup (\code{<}), such as XML, not a robots.txt;
+its lines are still read and reported one by one. \cr
+\code{json_body} \tab warning \tab
+The body looks like a JSON object or array, such as an API error, not a
+robots.txt; its lines are still read and reported one by one. At most
+one of \code{html_body}, \code{xml_body} and \code{json_body} is reported
+per document, in that order of precedence. \cr
 \code{utf16_or_utf32_encoding} \tab warning \tab
 A raw or fetched body is UTF-16 or UTF-32, not UTF-8 (RFC 9309 section
 2.3): it starts with the byte-order mark of that encoding (a UTF-32
