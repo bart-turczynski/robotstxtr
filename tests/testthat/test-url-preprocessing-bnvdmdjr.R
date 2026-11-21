@@ -716,12 +716,21 @@ test_that("whatwg evaluates a URL rurl cannot parse as given", {
   }
 })
 
-pp_ww_relative <- paste0(
-  "no scheme: path from the first / serialized on http://h.invalid"
-)
-pp_ww_wrapped <- paste0(
-  "no scheme: the serialized path starts with //, so the matcher reads it ",
-  "on the placeholder origin http://h.invalid"
+pp_count_dispatch <- function(env) {
+  real <- dispatch_matcher_v1
+  local_mocked_bindings(
+    dispatch_matcher_v1 = function(registry, backend, bodies, urls, ...) {
+      env$urls <- c(env$urls, urls)
+      real(registry, backend, bodies, urls, ...)
+    },
+    .env = parent.frame()
+  )
+}
+
+pp_ww_relative <- pp_noauth
+pp_ww_guard <- paste0(
+  pp_noauth,
+  "; WHATWG serialization left in place: it would start the path with //"
 )
 
 test_that("whatwg reads a URL with no scheme on the placeholder origin", {
@@ -774,40 +783,82 @@ test_that("whatwg keeps a host-like lead before the first /", {
   expect_identical(r$url_preprocessing_note, rep(pp_noslash, 2L))
 })
 
-test_that("whatwg: a serialized path starting with // stays a path", {
+test_that("whatwg never makes an authority a scheme-less input lacks", {
+  # The serialized path would start with //: evaluated as given, as
+  # rfc3986 guards its own removal.
   body <- "User-agent: *\nDisallow: /x\n"
   urls <- c("/a/..//h/x", "/..//h/x", "a/..//h/x")
   r <- pp_whatwg(urls, body = body)
-  expect_identical(r$matcher_url, rep("http://h.invalid//h/x", 3L))
+  expect_identical(r$matcher_url, urls)
   expect_identical(r$url_decision, rep("allow", 3L))
-  expect_identical(r$url_preprocessing_note, rep(pp_ww_wrapped, 3L))
-  # Google reads the wrapper's path, //h/x, as a browser would request it.
-  expect_identical(
-    pp_whatwg(urls, body = "User-agent: *\nDisallow: //h/x\n")$url_decision,
-    rep("disallow", 3L)
-  )
+  expect_identical(r$url_preprocessing_note, rep(pp_ww_guard, 3L))
   d <- pp_eval(urls, "google", "Googlebot", "rfc3986", body)
   expect_identical(d$url_decision, rep("allow", 3L))
   expect_identical(d$preprocessing_disagreement, rep(FALSE, 3L))
+  expect_identical(r$preprocessing_disagreement, rep(FALSE, 3L))
   # An absolute URL keeps its own host.
   a <- pp_whatwg("https://example.com/a/..//h/x", body = body)
   expect_identical(a$matcher_url, "https://example.com//h/x")
   expect_identical(a$url_decision, "allow")
-  # Bing and Yandex evaluate the wrapper, where they refuse the rfc3986 form
-  # (no authority), so whatwg rows are flagged with neutral text.
+  # Bing and Yandex refuse every scheme-less target, in every mode.
   for (backend in c("bing", "yandex")) {
     token <- pp_engines[[backend]]
-    w <- pp_whatwg(urls, backend, token, body)
-    expect_identical(w$url_decision, rep("allow", 3L), label = backend)
-    expect_identical(
-      pp_eval(urls, backend, token, "rfc3986", body)$reason,
-      rep("invalid_request_target", 3L)
-    )
-    expect_identical(w$preprocessing_disagreement, rep(TRUE, 3L))
-    expect_identical(
-      w$disagreement_clients, rep(pp_neutral("undecided", "allow"), 3L)
-    )
+    for (mode in c("rfc3986", "whatwg")) {
+      w <- pp_eval(urls, backend, token, mode, body)
+      expect_identical(
+        w$reason, rep("invalid_request_target", 3L),
+        label = paste(backend, mode)
+      )
+      expect_identical(w$preprocessing_disagreement, rep(FALSE, 3L))
+    }
   }
+})
+
+test_that("whatwg splits a scheme-less URL exactly as rfc3986 does", {
+  body <- "User-agent: *\nDisallow: /x\nDisallow: /*..\n"
+  # An authority with no scheme: host h, path /x, as rfc3986 reads it.
+  urls <- c("//h/x", "//example.com/x/y")
+  for (mode in c("rfc3986", "whatwg")) {
+    r <- pp_eval(urls, "google", "Googlebot", mode, body)
+    expect_identical(r$matcher_url, urls, label = mode)
+    expect_identical(r$url_decision, c("disallow", "disallow"))
+    expect_identical(r$preprocessing_disagreement, c(FALSE, FALSE))
+  }
+  # No path starting with "/": the query is kept as rfc3986 keeps it, and
+  # the fragment is never read.
+  urls <- c("foo?q=/a/../b", "?q=/a/../x", "a#/b/../c")
+  ww <- pp_whatwg(urls, body = body)
+  rfc <- pp_eval(urls, "google", "Googlebot", "rfc3986", body)
+  expect_identical(ww$matcher_url, c("foo?q=/a/../b", "?q=/a/../x", "a"))
+  expect_identical(ww[c("matcher_url", "url_preprocessing_note")],
+                   rfc[c("matcher_url", "url_preprocessing_note")])
+  expect_identical(ww$url_decision, c("disallow", "disallow", "allow"))
+  expect_identical(rfc$preprocessing_disagreement, rep(FALSE, 3L))
+  # Encoded dots after a host-like lead are named with the families.
+  r <- pp_eval("example.com/%2e%2e/account/x", "google", "Googlebot",
+               "rfc3986")
+  expect_identical(r$url_decision, "allow")
+  expect_true(r$preprocessing_disagreement)
+  expect_identical(r$disagreement_clients, pp_clients("allow", "disallow"))
+  expect_identical(
+    pp_whatwg("example.com/%2e%2e/account/x")$matcher_url,
+    "example.com/account/x"
+  )
+})
+
+test_that("a latin1 scheme-less URL reads as its UTF-8 twin", {
+  latin <- "caf\xe9/a"
+  Encoding(latin) <- "latin1"
+  twin <- enc2utf8(latin)
+  ww <- pp_whatwg(c(latin, twin))
+  expect_identical(ww$url_preprocessing_note, rep(pp_noauth, 2L))
+  expect_identical(enc2utf8(ww$matcher_url[[1]]), ww$matcher_url[[2]])
+  seen <- new.env(parent = emptyenv())
+  pp_count_dispatch(seen)
+  r <- pp_eval(c(latin, twin), "google", "Googlebot", "rfc3986")
+  # One selected pass, no second: the two targets are the same.
+  expect_length(seen$urls, 2L)
+  expect_identical(r$preprocessing_disagreement, c(FALSE, FALSE))
 })
 
 test_that("whatwg reads UTF-8 bytes the same in a C locale", {
@@ -1103,16 +1154,6 @@ test_that("the second pass reads each row's own body and crawler profile", {
   expect_identical(r$preprocessing_disagreement, c(FALSE, TRUE, FALSE, FALSE))
 })
 
-pp_count_dispatch <- function(env) {
-  real <- dispatch_matcher_v1
-  local_mocked_bindings(
-    dispatch_matcher_v1 = function(registry, backend, bodies, urls, ...) {
-      env$urls <- c(env$urls, urls)
-      real(registry, backend, bodies, urls, ...)
-    },
-    .env = parent.frame()
-  )
-}
 
 test_that("the second pass runs only on rows whose targets differ", {
   seen <- new.env(parent = emptyenv())
