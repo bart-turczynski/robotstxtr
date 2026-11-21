@@ -11,7 +11,11 @@
 #' If `source_id` is `NULL` and the object holds more than one source, the call
 #' is
 #' ambiguous and raises a package error rather than choosing silently. An
-#' unknown `source_id` is also a package error.
+#' unknown `source_id` is also a package error. A result of
+#' [allowed_by_robots_url()] called with `destination_robots = TRUE` also
+#' holds destination rows: name one by its `source_id` (`destination_1` and
+#' so on, as `results$destination_source_id` gives it) to read its body.
+#' They are never chosen when `source_id` is `NULL`.
 #'
 #' When `raw = FALSE`, the selected body's bytes are rendered to a character
 #' string. Robots.txt bodies may be arbitrary bytes (for example non-UTF-8 or a
@@ -24,8 +28,9 @@
 #'
 #' @param x A `robots_decisions` object.
 #' @param source_id A single non-empty character string naming the source to
-#'   read from `x$robots$source_id`, or `NULL` (the default) to select the only
-#'   source when the object holds exactly one.
+#'   read from `x$robots$source_id` or `x$destinations$source_id`, or `NULL`
+#'   (the default) to select the only `robots` source when the object holds
+#'   exactly one.
 #' @param n A single positive number giving the maximum number of body bytes to
 #'   include in the preview. Defaults to `20`. Use `n = Inf` for the full body.
 #'   Ignored when `raw = TRUE`.
@@ -93,8 +98,14 @@ robots_body <- function(x, source_id = NULL, n = 20, raw = FALSE) {
         "robotstxtr_invalid_source_id"
       )
     }
-    i <- match(source_id, ids)
+    # A destination row (ROBO-ybhwztid) is found by its own source_id.
+    if (is.data.frame(x$destinations) &&
+          source_id %in% x$destinations$source_id) {
+      robots <- x$destinations
+    }
+    i <- match(source_id, robots$source_id)
     if (is.na(i)) {
+      ids <- c(ids, x$destinations$source_id)
       robots_abort(
         sprintf(
           "unknown `source_id` \"%s\"; available: %s.",

@@ -93,6 +93,18 @@
 #'   components, `results` (one row per input URL, in input order) and `robots`
 #'   (one row per fetched source body). Each fetched body is stored once as a
 #'   raw vector in `robots$body`. Large body values never appear in `results`.
+#'   With `destination_robots = TRUE` it also has the `destinations` and
+#'   `destination_map` components of [robots_fetch()] (a destination that
+#'   reuses an origin's result stores a copy of its body in
+#'   `destinations$body`), and `results` gains
+#'   `destination_source_id`, `destination_allowed`,
+#'   `destination_decision_source`, `destination_matched_line`,
+#'   `destination_matched_rule_type` and `destination_matched_rule_value`:
+#'   the input URL, as given, matched against the destination's robots.txt
+#'   by the same rules as the origin columns, and `NA` on a row with no
+#'   destination read. They are the destination's decisions, for the caller
+#'   to weigh: `allowed` and `decision_source` stay those of the file the
+#'   origin reached.
 #'
 #' @examples
 #' # A refused origin is decided before any request, so this runs offline: a
@@ -122,10 +134,13 @@ allowed_by_robots_url <- function(url, user_agent, timeout = 10,
                                   fetch_user_agent = NULL,
                                   ssrf_guard = TRUE,
                                   safety_level = "strict",
-                                  fetch_allow_ranges = character()) {
+                                  fetch_allow_ranges = character(),
+                                  destination_robots = FALSE) {
   # --- Call-level validation / shared fetch controls (PRD 6.6). Complete ALL
   # validation before building the fetch plan so a bad argument aborts the whole
   # call even when no row is fetch-eligible. --------------------------------
+  # destination_robots first, as robots_fetch() checks it (ROBO-ybhwztid).
+  validate_destination_robots(destination_robots)
   validate_url_type(url)
   n <- length(url)
   user_agent <- expand_user_agent(user_agent, n)
@@ -158,7 +173,8 @@ allowed_by_robots_url <- function(url, user_agent, timeout = 10,
     url[elig_idx],
     timeout = timeout, max_bytes = max_bytes_int,
     fetch_user_agent = fetch_user_agent, ssrf_guard = ssrf_guard,
-    safety_level = safety_level, fetch_allow_ranges = fetch_allow_ranges
+    safety_level = safety_level, fetch_allow_ranges = fetch_allow_ranges,
+    destination_robots = destination_robots
   )
   robots <- fetch$robots
 
@@ -195,6 +211,80 @@ allowed_by_robots_url <- function(url, user_agent, timeout = 10,
   error_class_col[invalid_ua] <- "robots_invalid_user_agent"
   error_message_col[invalid_ua] <- "User agent is missing or empty."
 
+  # --- Match each row against its source body (PRD 6.2, 6.6).
+  matched <- match_source_rows(
+    robots, url, user_agent, source_id_col, fetch_outcome_col
+  )
+
+  results <- data.frame(
+    input_id = seq_len(n),
+    url = url,
+    user_agent = user_agent,
+    allowed = matched$allowed,
+    decision_source = matched$decision_source,
+    source_id = source_id_col,
+    robots_url = robots_url_col,
+    http_status = http_status_col,
+    fetch_outcome = fetch_outcome_col,
+    error_stage = error_stage_col,
+    error_class = error_class_col,
+    error_message = error_message_col,
+    matched_line = matched$matched_line,
+    matched_rule_type = matched$matched_rule_type,
+    matched_rule_value = matched$matched_rule_value,
+    stringsAsFactors = FALSE
+  )
+
+  if (!destination_robots) {
+    return(new_robots_decisions(results, robots))
+  }
+  # --- Opt-in destination decisions (ROBO-ybhwztid), in their own columns.
+  results <- cbind(
+    results, destination_decision_columns(fetch, url, user_agent, source_id_col)
+  )
+  decisions <- new_robots_decisions(results, robots)
+  decisions$destinations <- fetch$destinations
+  decisions$destination_map <- fetch$destination_map
+  decisions
+}
+
+# The destination_* columns: each row whose origin was followed up, matched
+# as given against its destination's robots.txt; NA on every other row.
+destination_decision_columns <- function(fetch, url, user_agent,
+                                         source_id_col) {
+  n <- length(url)
+  links <- fetch$destination_map
+  dest_id <- links$destination_source_id[
+    match(source_id_col, links$origin_source_id)
+  ]
+  out <- data.frame(
+    destination_source_id = dest_id,
+    destination_allowed = rep(NA, n),
+    destination_decision_source = rep(NA_character_, n),
+    destination_matched_line = rep(NA_integer_, n),
+    destination_matched_rule_type = rep(NA_character_, n),
+    destination_matched_rule_value = rep(NA_character_, n),
+    stringsAsFactors = FALSE
+  )
+  rows <- which(!is.na(dest_id))
+  dests <- fetch$destinations
+  matched <- match_source_rows(
+    dests, url[rows], user_agent[rows], dest_id[rows],
+    dests$fetch_outcome[match(dest_id[rows], dests$source_id)]
+  )
+  for (col in names(matched)) {
+    out[[paste0("destination_", col)]][rows] <- matched[[col]]
+  }
+  out
+}
+
+# The decision columns of every row: `url` and `user_agent` matched against
+# the body of the `robots` row named by `source_id_col`, under the row's
+# `fetch_outcome_col` (never NA). The one matching path for origin and
+# destination rows (ROBO-ybhwztid).
+match_source_rows <- function(robots, url, user_agent, source_id_col,
+                              fetch_outcome_col) {
+  n <- length(url)
   # --- Decode each fetched source body to the matcher string ONCE (PRD 6.2
   # bridge, mirrors allowed_by_robots_text): `decode_matcher_body()` ends each
   # line at its first NUL byte, as Google's parser does (ROBO-pvqrfvol), and
@@ -297,24 +387,9 @@ allowed_by_robots_url <- function(url, user_agent, timeout = 10,
     matched_rule_value <- normalized$matched_rule_value
   }
 
-  results <- data.frame(
-    input_id = seq_len(n),
-    url = url,
-    user_agent = user_agent,
-    allowed = allowed,
-    decision_source = decision_source,
-    source_id = source_id_col,
-    robots_url = robots_url_col,
-    http_status = http_status_col,
-    fetch_outcome = fetch_outcome_col,
-    error_stage = error_stage_col,
-    error_class = error_class_col,
-    error_message = error_message_col,
-    matched_line = matched_line,
-    matched_rule_type = matched_rule_type,
-    matched_rule_value = matched_rule_value,
-    stringsAsFactors = FALSE
+  list(
+    allowed = allowed, decision_source = decision_source,
+    matched_line = matched_line, matched_rule_type = matched_rule_type,
+    matched_rule_value = matched_rule_value
   )
-
-  new_robots_decisions(results, robots)
 }

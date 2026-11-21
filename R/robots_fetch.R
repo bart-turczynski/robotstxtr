@@ -201,6 +201,40 @@
 #'   entry naming exactly one cloud-metadata endpoint (such as
 #'   `"169.254.169.254/32"`) is a call-level error, as is `NA`, an empty
 #'   string or any other entry the guard cannot read.
+#' @param destination_robots A single logical, `FALSE` by default. `TRUE`
+#'   also reads the redirect destination's own robots.txt when an origin's
+#'   robots.txt request ended on another site; see "Destination robots.txt"
+#'   in [robots_fetch()].
+#'   Any other value is a call-level error, raised before any request.
+#'
+#' @section Destination robots.txt:
+#' A robots.txt request that redirects to another site often lands on an HTML
+#' page, so the origin reads as having no rules. With
+#' `destination_robots = TRUE`, an origin row whose fetch ended with a final
+#' response (an `effective_url` and an `http_status`, whatever the status) on
+#' another registrable domain (the test [robots_validate_url()]'s
+#' `redirect_cross_site` uses), and not on that site's own `/robots.txt`
+#' (whatever its query or fragment), gets a follow-up read of
+#' `scheme://host[:port]/robots.txt` built from `effective_url`, the host's
+#' trailing root dot dropped. It runs through the same acquisition path and
+#' safety policy as every origin (the guard, `safety_level`,
+#' `fetch_allow_ranges`, `timeout`, `max_bytes` and `fetch_user_agent`), so a
+#' destination the guard refuses is reported as `ssrf_blocked` and never
+#' fetched. Each distinct destination robots.txt URL is read once per call,
+#' however many origins land on it. The one reuse is a destination robots.txt
+#' URL the same call also fetched as an origin: that origin's result is used,
+#' with no second request, and copied into its `destinations` row, body
+#' included, so the body is stored there once more. Any other destination is
+#' read fresh, even when an origin's redirect chain passed through that URL.
+#' A destination is never followed up in turn: one whose robots.txt
+#' redirects again is reported as it ended.
+#'
+#' The destination's file never governs the origin: `map` and `robots` are
+#' exactly those of a call without the argument, and the file reached still
+#' decides the origin. The destination's rows are evidence for the caller to
+#' weigh, under `source_type = "redirect_destination"`. With the default
+#' `FALSE` nothing is requested beyond the origins and the result has no
+#' destination component.
 #'
 #' @return An S3 object of class `robots_fetches`: a named list with two
 #'   components, `map` (one row per input URL, in input order) and `robots` (one
@@ -213,7 +247,12 @@
 #'   character `terminal_redirect_reason` and `safety_block_reason`, and the
 #'   list `redirect_hops`, which holds one list per source of the redirects
 #'   met, each a list of `from_url`, `status` and `location_target`; the first
-#'   `redirect_count` of them were followed).
+#'   `redirect_count` of them were followed). With `destination_robots =
+#'   TRUE` it has two more: `destinations`, one row per destination read,
+#'   with the columns of `robots`, `source_type = "redirect_destination"` and
+#'   source IDs `destination_1`, `destination_2`, and so on; and
+#'   `destination_map`, one row per origin followed up, linking its
+#'   `origin_source_id` to its `destination_source_id`.
 #'
 #' @examples
 #' # A refused origin is decided before any request, so this runs offline.
@@ -232,8 +271,11 @@
 robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
                          fetch_user_agent = NULL, ssrf_guard = TRUE,
                          safety_level = "strict",
-                         fetch_allow_ranges = character()) {
+                         fetch_allow_ranges = character(),
+                         destination_robots = FALSE) {
   # --- Call-level input validation / shared fetch controls (PRD 6.6). --------
+  # destination_robots first, in all three entry points (ROBO-ybhwztid).
+  validate_destination_robots(destination_robots)
   validate_url_type(url)
   timeout <- validate_timeout(timeout)
   validate_fetch_user_agent(fetch_user_agent)
@@ -277,46 +319,9 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
   }
 
   # --- robots source table (one row per fetched source). --------------------
-  robots <- data.frame(
-    source_id = source_ids,
-    source_type = rep("fetched", n_src),
-    robots_url = distinct_origins,
-    effective_url = vapply(results, function(r) r$effective_url,
-                           character(1L)),
-    http_status = vapply(results, function(r) r$http_status, integer(1L)),
-    fetch_outcome = vapply(results, function(r) r$fetch_outcome, character(1L)),
-    redirect_count = vapply(results, function(r) r$redirect_count, integer(1L)),
-    body_size = vapply(results, function(r) r$body_size, integer(1L)),
-    timeout = rep(timeout, n_src),
-    max_bytes = rep(max_bytes_int, n_src),
-    error_stage = vapply(results, function(r) r$error_stage, character(1L)),
-    error_class = vapply(results, function(r) r$error_class, character(1L)),
-    error_message = vapply(results, function(r) r$error_message, character(1L)),
-    retry_after = vapply(results, function(r) r$retry_after, character(1L)),
-    retry_after_seconds = vapply(
-      results, function(r) r$retry_after_seconds, numeric(1L)
-    ),
-    content_type = vapply(results, function(r) r$content_type, character(1L)),
-    content_flag = vapply(results, function(r) r$content_flag, character(1L)),
-    # The final response's cache fields, raw (ROBO-zleohwyz).
-    cache_header_frame(results),
-    body_truncated = vapply(
-      results, function(r) r$body_truncated, logical(1L)
-    ),
-    # Why a redirect chain ended, and the guard's refusal code
-    # (ROBO-bsloeclp; design/engine-profiles.md section 2).
-    terminal_redirect_reason = vapply(
-      results, function(r) r$terminal_redirect_reason, character(1L)
-    ),
-    safety_block_reason = vapply(
-      results, function(r) r$safety_block_reason, character(1L)
-    ),
-    stringsAsFactors = FALSE
+  robots <- robots_source_frame(
+    source_ids, "fetched", distinct_origins, results, timeout, max_bytes_int
   )
-  # The redirect hop log, as the v1 evidence keeps it (ROBO-cscdbael).
-  robots$redirect_hops <- lapply(results, function(r) r$redirect_hops)
-  # `body` is a list-of-raw column: each fetched body stored exactly once.
-  robots$body <- lapply(results, function(r) r$body)
 
   # --- Per-input map (one row per input URL, in input order). ---------------
   # Match each eligible input to its source row by origin key; invalid inputs
@@ -358,7 +363,150 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
     stringsAsFactors = FALSE
   )
 
-  new_robots_fetches(map, robots)
+  if (!destination_robots) {
+    return(new_robots_fetches(map, robots))
+  }
+  # --- Opt-in destination reads (ROBO-ybhwztid): never applied to `map` or
+  # `robots`, which stay those of a call without them.
+  followed <- destination_follow_ups(
+    robots, results, timeout, fetch_ua, max_bytes_int, ssrf_guard,
+    safety_level, fetch_allow_ranges
+  )
+  new_robots_fetches(map, robots, followed)
+}
+
+# The destination robots.txt URL of an origin row whose fetch ended with a
+# final response on another site (redirect_site_key(), as the
+# `redirect_cross_site` diagnostic reads it) other than at that site's own
+# /robots.txt; NA otherwise (ROBO-ybhwztid).
+destination_robots_url <- function(robots_url, effective_url, http_status) {
+  if (is.na(effective_url) || is.na(http_status)) {
+    return(NA_character_)
+  }
+  from <- redirect_url_parts(robots_url)
+  to <- redirect_url_parts(effective_url)
+  if (is.null(from) || is.null(to) ||
+        identical(redirect_site_key(from$host), redirect_site_key(to$host))) {
+    return(NA_character_)
+  }
+  if (!is.na(robots_url_key(effective_url))) {
+    return(NA_character_)
+  }
+  destination_origin(effective_url)
+}
+
+# robots_origin() of a URL, its host's trailing root dot dropped: a fully
+# qualified name is the same host (as redirect_url_parts() and ssrfr read
+# it), so `example.net.` keys as `example.net`.
+destination_origin <- function(url) {
+  sub(
+    "^([a-z]+://[^/]*[^./])\\.((:[0-9]+)?/robots\\.txt)$", "\\1\\2",
+    robots_origin(url)
+  )
+}
+
+# The robots.txt URL a request URL stands for, normalized as
+# destination_origin() does it (scheme and host case, IDN host, default
+# port, root dot), when its path is /robots.txt, whatever its query or
+# fragment; NA for any other path.
+robots_url_key <- function(url) {
+  parts <- redirect_url_parts(url)
+  if (is.null(parts) || !identical(parts$path, "/robots.txt")) {
+    return(NA_character_)
+  }
+  destination_origin(url)
+}
+
+# One read per distinct destination robots.txt URL, in first-occurrence
+# order, through acquire_robots() and the call's own policy. A URL the call
+# already fetched as an origin reuses that result and makes no request
+# (PRD 6.5: each robots URL exactly once per call); any other is read
+# fresh, even when an origin's redirect chain passed through it. Destination
+# rows are never followed up in turn. Returns the `destinations` frame and
+# the `destination_map` link frame.
+destination_follow_ups <- function(robots, results, timeout, fetch_ua,
+                                   max_bytes, ssrf_guard, safety_level,
+                                   fetch_allow_ranges) {
+  wanted <- vapply(seq_len(nrow(robots)), function(i) {
+    destination_robots_url(
+      robots$robots_url[[i]], robots$effective_url[[i]],
+      robots$http_status[[i]]
+    )
+  }, character(1L))
+  distinct <- unique(wanted[!is.na(wanted)])
+  ids <- sprintf("destination_%d", seq_along(distinct))
+  read <- lapply(distinct, function(robots_url) {
+    k <- match(robots_url, robots$robots_url)
+    if (!is.na(k)) {
+      return(results[[k]])
+    }
+    acquire_robots(
+      robots_url, timeout, fetch_ua, max_bytes, ssrf_guard, safety_level,
+      fetch_allow_ranges
+    )
+  })
+  linked <- which(!is.na(wanted))
+  list(
+    destinations = robots_source_frame(
+      ids, "redirect_destination", distinct, read, timeout, max_bytes
+    ),
+    destination_map = data.frame(
+      origin_source_id = robots$source_id[linked],
+      destination_source_id = ids[match(wanted[linked], distinct)],
+      stringsAsFactors = FALSE
+    )
+  )
+}
+
+# The `robots` source frame: one row per acquire_robots() result, with
+# `source_ids` and `robots_urls` naming each row and `source_type` the
+# role every row shares. The one column builder for every source frame,
+# so `robots` and `destinations` cannot drift (ROBO-ybhwztid).
+robots_source_frame <- function(source_ids, source_type, robots_urls,
+                                results, timeout, max_bytes) {
+  n_src <- length(results)
+  robots <- data.frame(
+    source_id = source_ids,
+    source_type = rep(source_type, n_src),
+    robots_url = robots_urls,
+    effective_url = vapply(results, function(r) r$effective_url,
+                           character(1L)),
+    http_status = vapply(results, function(r) r$http_status, integer(1L)),
+    fetch_outcome = vapply(results, function(r) r$fetch_outcome, character(1L)),
+    redirect_count = vapply(results, function(r) r$redirect_count, integer(1L)),
+    body_size = vapply(results, function(r) r$body_size, integer(1L)),
+    timeout = rep(timeout, n_src),
+    max_bytes = rep(max_bytes, n_src),
+    error_stage = vapply(results, function(r) r$error_stage, character(1L)),
+    error_class = vapply(results, function(r) r$error_class, character(1L)),
+    error_message = vapply(results, function(r) r$error_message, character(1L)),
+    retry_after = vapply(results, function(r) r$retry_after, character(1L)),
+    retry_after_seconds = vapply(
+      results, function(r) r$retry_after_seconds, numeric(1L)
+    ),
+    content_type = vapply(results, function(r) r$content_type, character(1L)),
+    content_flag = vapply(results, function(r) r$content_flag, character(1L)),
+    # The final response's cache fields, raw (ROBO-zleohwyz).
+    cache_header_frame(results),
+    body_truncated = vapply(
+      results, function(r) r$body_truncated, logical(1L)
+    ),
+    # Why a redirect chain ended, and the guard's refusal code
+    # (ROBO-bsloeclp; design/engine-profiles.md section 2).
+    terminal_redirect_reason = vapply(
+      results, function(r) r$terminal_redirect_reason, character(1L)
+    ),
+    safety_block_reason = vapply(
+      results, function(r) r$safety_block_reason, character(1L)
+    ),
+    stringsAsFactors = FALSE
+  )
+  # The redirect hop log, as the v1 evidence keeps it (ROBO-cscdbael).
+  robots$redirect_hops <- lapply(results, function(r) r$redirect_hops)
+  # `body` is a list-of-raw column: each fetched body stored once per frame;
+  # a `destinations` row reusing an origin's result holds a copy of its body.
+  robots$body <- lapply(results, function(r) r$body)
+  robots
 }
 
 #' Construct a `robots_fetches` object
@@ -370,13 +518,15 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
 #'
 #' @param map A data frame with one row per input URL, in input order.
 #' @param robots A data frame with one row per fetched source.
+#' @param destinations `NULL`, or the list of `destinations` and
+#'   `destination_map` frames an opted-in call adds (ROBO-ybhwztid).
 #'
 #' @return An S3 object of class `robots_fetches`.
 #' @keywords internal
 #' @noRd
-new_robots_fetches <- function(map, robots) {
+new_robots_fetches <- function(map, robots, destinations = NULL) {
   structure(
-    list(map = map, robots = robots),
+    c(list(map = map, robots = robots), destinations),
     class = "robots_fetches",
     package_version = as.character(getNamespaceVersion("robotstxtr"))
   )

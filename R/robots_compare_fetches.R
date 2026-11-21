@@ -5,8 +5,10 @@
 #' responses differ. It is meant for spotting a CDN or firewall that answers
 #' differently by HTTP User-Agent, by origin variant (`http` or `https`, `www`
 #' or the bare host, a port) or over time. The other fetching functions make
-#' one request chain per origin (a request and up to five redirects); this
-#' one may make several, as `variants` asks, up to `max_requests` requests.
+#' one request chain per origin (a request and up to five redirects), plus at
+#' most one per distinct cross-site redirect destination when called with
+#' `destination_robots = TRUE`; this one may make several, as `variants`
+#' asks, up to `max_requests` requests.
 #'
 #' Each variant's `url` is reduced to its robots.txt URL as [robots_fetch()]
 #' reduces it (`scheme://host[:port]/robots.txt`). Scheme, host and port stay

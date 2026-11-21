@@ -11,7 +11,8 @@ robots_fetch(
   fetch_user_agent = NULL,
   ssrf_guard = TRUE,
   safety_level = "strict",
-  fetch_allow_ranges = character()
+  fetch_allow_ranges = character(),
+  destination_robots = FALSE
 )
 }
 \arguments{
@@ -62,6 +63,12 @@ no host bits set. The metadata host names are never reopened, and an
 entry naming exactly one cloud-metadata endpoint (such as
 \code{"169.254.169.254/32"}) is a call-level error, as is \code{NA}, an empty
 string or any other entry the guard cannot read.}
+
+\item{destination_robots}{A single logical, \code{FALSE} by default. \code{TRUE}
+also reads the redirect destination's own robots.txt when an origin's
+robots.txt request ended on another site; see "Destination robots.txt"
+in \code{\link[=robots_fetch]{robots_fetch()}}.
+Any other value is a call-level error, raised before any request.}
 }
 \value{
 An S3 object of class \code{robots_fetches}: a named list with two
@@ -75,7 +82,11 @@ fields as the character \code{cache_control}, \code{age}, \code{date}, \code{exp
 character \code{terminal_redirect_reason} and \code{safety_block_reason}, and the
 list \code{redirect_hops}, which holds one list per source of the redirects
 met, each a list of \code{from_url}, \code{status} and \code{location_target}; the first
-\code{redirect_count} of them were followed).
+\code{redirect_count} of them were followed). With \code{destination_robots = TRUE} it has two more: \code{destinations}, one row per destination read,
+with the columns of \code{robots}, \code{source_type = "redirect_destination"} and
+source IDs \code{destination_1}, \code{destination_2}, and so on; and
+\code{destination_map}, one row per origin followed up, linking its
+\code{origin_source_id} to its \code{destination_source_id}.
 }
 \description{
 Performs the grouped robots.txt fetch stage for one or more target URLs and
@@ -239,6 +250,37 @@ between hops in robotstxtr's own code is not counted, and the system
 resolver cannot be interrupted, so a slow DNS answer is only noticed once
 it returns.
 }
+\section{Destination robots.txt}{
+
+A robots.txt request that redirects to another site often lands on an HTML
+page, so the origin reads as having no rules. With
+\code{destination_robots = TRUE}, an origin row whose fetch ended with a final
+response (an \code{effective_url} and an \code{http_status}, whatever the status) on
+another registrable domain (the test \code{\link[=robots_validate_url]{robots_validate_url()}}'s
+\code{redirect_cross_site} uses), and not on that site's own \verb{/robots.txt}
+(whatever its query or fragment), gets a follow-up read of
+\verb{scheme://host[:port]/robots.txt} built from \code{effective_url}, the host's
+trailing root dot dropped. It runs through the same acquisition path and
+safety policy as every origin (the guard, \code{safety_level},
+\code{fetch_allow_ranges}, \code{timeout}, \code{max_bytes} and \code{fetch_user_agent}), so a
+destination the guard refuses is reported as \code{ssrf_blocked} and never
+fetched. Each distinct destination robots.txt URL is read once per call,
+however many origins land on it. The one reuse is a destination robots.txt
+URL the same call also fetched as an origin: that origin's result is used,
+with no second request, and copied into its \code{destinations} row, body
+included, so the body is stored there once more. Any other destination is
+read fresh, even when an origin's redirect chain passed through that URL.
+A destination is never followed up in turn: one whose robots.txt
+redirects again is reported as it ended.
+
+The destination's file never governs the origin: \code{map} and \code{robots} are
+exactly those of a call without the argument, and the file reached still
+decides the origin. The destination's rows are evidence for the caller to
+weigh, under \code{source_type = "redirect_destination"}. With the default
+\code{FALSE} nothing is requested beyond the origins and the result has no
+destination component.
+}
+
 \examples{
 # A refused origin is decided before any request, so this runs offline.
 # Both URLs share one fetch-origin, which is refused once; the invalid URL

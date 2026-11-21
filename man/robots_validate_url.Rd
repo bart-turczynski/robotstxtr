@@ -11,7 +11,8 @@ robots_validate_url(
   fetch_user_agent = NULL,
   ssrf_guard = TRUE,
   safety_level = "strict",
-  fetch_allow_ranges = character()
+  fetch_allow_ranges = character(),
+  destination_robots = FALSE
 )
 }
 \arguments{
@@ -62,16 +63,29 @@ no host bits set. The metadata host names are never reopened, and an
 entry naming exactly one cloud-metadata endpoint (such as
 \code{"169.254.169.254/32"}) is a call-level error, as is \code{NA}, an empty
 string or any other entry the guard cannot read.}
+
+\item{destination_robots}{A single logical, \code{FALSE} by default. \code{TRUE}
+also reads the redirect destination's own robots.txt when an origin's
+robots.txt request ended on another site; see "Destination robots.txt"
+in \code{\link[=robots_fetch]{robots_fetch()}}.
+Any other value is a call-level error, raised before any request.}
 }
 \value{
 An S3 object of class \code{robots_validations}, containing \code{map} (one row
 per input URL), \code{documents} (one row per distinct fetch source), and
-\code{diagnostics} data frames.
+\code{diagnostics} data frames. With \code{destination_robots = TRUE} it also has
+\code{destination_documents}, \code{destination_diagnostics} (the columns of
+\code{documents} and \code{diagnostics}) and \code{destination_map}.
 }
 \description{
 Uses \code{\link[=robots_fetch]{robots_fetch()}} unchanged, then validates each distinct stored raw body
 exactly once. Shared origins therefore remain shared and no second HTTP path
-or refetch is introduced. Acquisition failures are retained as evidence and
+or refetch is introduced; the one exception is the opt-in
+\code{destination_robots = TRUE}, which reads a cross-site redirect
+destination's own robots.txt as \code{\link[=robots_fetch]{robots_fetch()}} describes and validates
+each destination row apart, so a destination that reuses an origin's
+result has that body validated once more, under its own \code{source_id}.
+Acquisition failures are retained as evidence and
 produce \code{"not_validated"} document rows. A 2xx body over \code{max_bytes} is cut
 at the limit: its first \code{max_bytes} bytes are validated up to their last
 complete line (the partial line after the last line break is not read), as
@@ -132,7 +146,19 @@ host with no registrable domain, is compared whole. RFC 9309 section
 2.3.1.2 and Yandex document applying the file reached to the requested
 host, Google is inferred to, and Bing
 does not document it; when the page reached is HTML, the message says
-the robots.txt is effectively missing. The fetch itself is unchanged.
+the robots.txt is effectively missing. The fetch itself is unchanged,
+unless \code{destination_robots = TRUE} asks for the destination's own
+robots.txt as well.
+
+With \code{destination_robots = TRUE}, each destination robots.txt read (see
+"Destination robots.txt" in \code{\link[=robots_fetch]{robots_fetch()}}) is validated as an origin
+body is, the same redirect and \code{Content-Type} rows included, and reported
+in its own components: \code{destination_documents} and
+\code{destination_diagnostics}, keyed by the destination's \code{source_id}
+(\code{destination_1} and so on), and \code{destination_map}, linking each origin
+followed up to its destination. \code{map}, \code{documents} and \code{diagnostics} stay
+the origin's: a destination's findings never change its origin's
+\code{validation_status}.
 
 After those rows, a fetched body's \code{Content-Type} (the source row's
 \code{content_type}) is checked: \code{content_type_malformed},

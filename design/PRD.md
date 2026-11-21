@@ -350,6 +350,12 @@ Streaming byte-limit enforcement (implementation note for §8, R7):
   and body. Input-invalid rows have no grouping key and remain detached (§6.6).
 - Group by the requested serialized robots URL, not by the final redirect
   destination.
+- The opt-in `destination_robots = TRUE` read of a cross-site redirect
+  destination's `/robots.txt` (ROBO-ybhwztid) keeps this rule: a destination
+  robots URL is read once per call, however many origins land on it, and
+  only one already fetched as an origin in the call is reused, not fetched
+  again; any other is read fresh, even when an origin's redirect chain
+  passed through it.
 - Preserve original input order in results. Fetch groups sequentially in
   first-occurrence order.
 - No persistent cache. No cross-call in-memory cache. No hidden use of HTTP
@@ -464,7 +470,7 @@ Required `robots` columns:
 | Column | Type | Meaning |
 |---|---|---|
 | `source_id` | character | unique, stable within the result object |
-| `source_type` | character | `fetched` or `supplied` |
+| `source_type` | character | `fetched` or `supplied`; `redirect_destination` in the opt-in `destinations` frame (ROBO-ybhwztid) |
 | `robots_url` | character | requested robots URL, or `NA` for supplied text |
 | `effective_url` | character | final response URL, or `NA` |
 | `http_status` | integer | final status, or `NA` |

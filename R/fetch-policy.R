@@ -95,6 +95,22 @@ validate_ssrf_guard <- function(ssrf_guard) {
   invisible(ssrf_guard)
 }
 
+# `destination_robots` must be one non-missing logical value; FALSE, the
+# default, makes no follow-up request (ROBO-ybhwztid).
+validate_destination_robots <- function(destination_robots) {
+  if (!is.logical(destination_robots) || length(destination_robots) != 1L ||
+        is.na(destination_robots)) {
+    robots_abort(
+      paste0(
+        "`destination_robots` must be a single, non-missing logical ",
+        "(`TRUE`/`FALSE`)."
+      ),
+      "robotstxtr_invalid_destination_robots"
+    )
+  }
+  invisible(destination_robots)
+}
+
 # `safety_level` must be one value of engine_safety_levels_v1() (ADR 0001
 # section 1).
 validate_safety_level <- function(safety_level) {

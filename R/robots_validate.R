@@ -730,7 +730,12 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #'
 #' Uses [robots_fetch()] unchanged, then validates each distinct stored raw body
 #' exactly once. Shared origins therefore remain shared and no second HTTP path
-#' or refetch is introduced. Acquisition failures are retained as evidence and
+#' or refetch is introduced; the one exception is the opt-in
+#' `destination_robots = TRUE`, which reads a cross-site redirect
+#' destination's own robots.txt as [robots_fetch()] describes and validates
+#' each destination row apart, so a destination that reuses an origin's
+#' result has that body validated once more, under its own `source_id`.
+#' Acquisition failures are retained as evidence and
 #' produce `"not_validated"` document rows. A 2xx body over `max_bytes` is cut
 #' at the limit: its first `max_bytes` bytes are validated up to their last
 #' complete line (the partial line after the last line break is not read), as
@@ -790,7 +795,19 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' 2.3.1.2 and Yandex document applying the file reached to the requested
 #' host, Google is inferred to, and Bing
 #' does not document it; when the page reached is HTML, the message says
-#' the robots.txt is effectively missing. The fetch itself is unchanged.
+#' the robots.txt is effectively missing. The fetch itself is unchanged,
+#' unless `destination_robots = TRUE` asks for the destination's own
+#' robots.txt as well.
+#'
+#' With `destination_robots = TRUE`, each destination robots.txt read (see
+#' "Destination robots.txt" in [robots_fetch()]) is validated as an origin
+#' body is, the same redirect and `Content-Type` rows included, and reported
+#' in its own components: `destination_documents` and
+#' `destination_diagnostics`, keyed by the destination's `source_id`
+#' (`destination_1` and so on), and `destination_map`, linking each origin
+#' followed up to its destination. `map`, `documents` and `diagnostics` stay
+#' the origin's: a destination's findings never change its origin's
+#' `validation_status`.
 #'
 #' After those rows, a fetched body's `Content-Type` (the source row's
 #' `content_type`) is checked: `content_type_malformed`,
@@ -815,7 +832,9 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #'
 #' @return An S3 object of class `robots_validations`, containing `map` (one row
 #'   per input URL), `documents` (one row per distinct fetch source), and
-#'   `diagnostics` data frames.
+#'   `diagnostics` data frames. With `destination_robots = TRUE` it also has
+#'   `destination_documents`, `destination_diagnostics` (the columns of
+#'   `documents` and `diagnostics`) and `destination_map`.
 #'
 #' @examples
 #' # A refused origin is never fetched, so its document is not validated.
@@ -835,7 +854,10 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 robots_validate_url <- function(url, timeout = 10, max_bytes = 524288L,
                                 fetch_user_agent = NULL, ssrf_guard = TRUE,
                                 safety_level = "strict",
-                                fetch_allow_ranges = character()) {
+                                fetch_allow_ranges = character(),
+                                destination_robots = FALSE) {
+  # destination_robots first, as robots_fetch() checks it (ROBO-ybhwztid).
+  validate_destination_robots(destination_robots)
   safety_level <- validate_safety_level(safety_level)
   fetched <- robots_fetch(
     url = url,
@@ -844,7 +866,8 @@ robots_validate_url <- function(url, timeout = 10, max_bytes = 524288L,
     fetch_user_agent = fetch_user_agent,
     ssrf_guard = ssrf_guard,
     safety_level = safety_level,
-    fetch_allow_ranges = fetch_allow_ranges
+    fetch_allow_ranges = fetch_allow_ranges,
+    destination_robots = destination_robots
   )
   validate_fetched_documents(fetched, safety_level = safety_level)
 }
@@ -895,9 +918,13 @@ validation_body_bytes <- function(robots_txt) {
   text_body_bytes_v1(robots_txt)
 }
 
-new_robots_validations <- function(map, documents, diagnostics) {
+new_robots_validations <- function(map, documents, diagnostics,
+                                   destinations = NULL) {
   structure(
-    list(map = map, documents = documents, diagnostics = diagnostics),
+    c(
+      list(map = map, documents = documents, diagnostics = diagnostics),
+      destinations
+    ),
     class = "robots_validations",
     package_version = as.character(getNamespaceVersion("robotstxtr")),
     validation_profile = robots_validation_profile
@@ -4954,38 +4981,7 @@ validate_fetched_documents <- function(fetched, safety_level = "strict") {
   diagnostics <- list()
   robots <- fetched$robots
   for (i in seq_len(nrow(robots))) {
-    source <- robots[i, , drop = FALSE]
-    body <- robots$body[[i]]
-    if (!is.null(body)) {
-      validated <- validate_document_bytes(
-        bytes = body,
-        source_id = source$source_id,
-        source_type = source$source_type,
-        robots_url = source$robots_url,
-        effective_url = source$effective_url,
-        http_status = source$http_status,
-        fetch_outcome = source$fetch_outcome,
-        max_bytes = source$max_bytes,
-        body_truncated = isTRUE(robots$body_truncated[[i]])
-      )
-      redirect <- redirect_host_diagnostic(source)
-      if (!is.null(redirect)) {
-        validated <- add_document_diagnostic(validated, redirect)
-      }
-      downgrade <- redirect_downgrade_diagnostic(source)
-      if (!is.null(downgrade)) {
-        validated <- add_document_diagnostic(validated, downgrade)
-      }
-      header_rows <- content_type_diagnostics(
-        source$source_id, source$content_type, body,
-        validated$document$encoding_signature
-      )
-      for (header_row in header_rows) {
-        validated <- add_document_diagnostic(validated, header_row)
-      }
-    } else {
-      validated <- unavailable_validation(source, safety_level = safety_level)
-    }
+    validated <- validate_fetched_source(robots, i, safety_level)
     documents[[i]] <- validated$document
     if (nrow(validated$diagnostics) > 0L) {
       diagnostics[[length(diagnostics) + 1L]] <- validated$diagnostics
@@ -5022,7 +5018,79 @@ validate_fetched_documents <- function(fetched, safety_level = "strict") {
   } else {
     do.call(rbind, diagnostics)
   }
-  new_robots_validations(map, document_frame, diagnostic_frame)
+  destinations <- NULL
+  if (!is.null(fetched$destinations)) {
+    destinations <- validate_destination_documents(fetched, safety_level)
+  }
+  new_robots_validations(
+    map, document_frame, diagnostic_frame, destinations
+  )
+}
+
+# The opt-in destination components (ROBO-ybhwztid): each destination row
+# validated by the per-source path origin rows take, kept apart from the
+# origin's documents and diagnostics.
+validate_destination_documents <- function(fetched, safety_level) {
+  rows <- fetched$destinations
+  validated <- lapply(seq_len(nrow(rows)), function(i) {
+    validate_fetched_source(rows, i, safety_level)
+  })
+  documents <- lapply(validated, function(v) v$document)
+  diagnostics <- Filter(
+    function(d) nrow(d) > 0L, lapply(validated, function(v) v$diagnostics)
+  )
+  list(
+    destination_documents = if (length(documents) == 0L) {
+      empty_validation_documents()
+    } else {
+      do.call(rbind, documents)
+    },
+    destination_diagnostics = if (length(diagnostics) == 0L) {
+      empty_validation_diagnostics()
+    } else {
+      do.call(rbind, diagnostics)
+    },
+    destination_map = fetched$destination_map
+  )
+}
+
+# The validated document and its diagnostics for row `i` of a source frame
+# (`robots` or `destinations`): a stored body is validated, then given its
+# redirect and Content-Type rows; a source with no body gets its acquisition
+# row.
+validate_fetched_source <- function(robots, i, safety_level = "strict") {
+  source <- robots[i, , drop = FALSE]
+  body <- robots$body[[i]]
+  if (is.null(body)) {
+    return(unavailable_validation(source, safety_level = safety_level))
+  }
+  validated <- validate_document_bytes(
+    bytes = body,
+    source_id = source$source_id,
+    source_type = source$source_type,
+    robots_url = source$robots_url,
+    effective_url = source$effective_url,
+    http_status = source$http_status,
+    fetch_outcome = source$fetch_outcome,
+    max_bytes = source$max_bytes,
+    body_truncated = isTRUE(robots$body_truncated[[i]])
+  )
+  redirect <- redirect_host_diagnostic(source)
+  if (!is.null(redirect)) {
+    validated <- add_document_diagnostic(validated, redirect)
+  }
+  downgrade <- redirect_downgrade_diagnostic(source)
+  if (!is.null(downgrade)) {
+    validated <- add_document_diagnostic(validated, downgrade)
+  }
+  header_rows <- content_type_diagnostics(
+    source$source_id, source$content_type, body,
+    validated$document$encoding_signature
+  )
+  for (header_row in header_rows) {
+    validated <- add_document_diagnostic(validated, header_row)
+  }
+  validated
 }
 
 unavailable_validation <- function(source, safety_level = "strict") {

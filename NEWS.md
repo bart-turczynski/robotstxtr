@@ -2,6 +2,8 @@
 
 * Validator: wildcard, joined-group, empty-Disallow and stacked-token rows naming a User-agent value Google's matcher cuts add a sentence pointing to its `user_agent_cut` row (ROBO-zqyqbudf).
 
+* Fetch: `robots_fetch()`, `robots_validate_url()` and `allowed_by_robots_url()` take `destination_robots = FALSE`; `TRUE` also reads a cross-site redirect destination's own robots.txt, reported apart, never applied to the origin (ROBO-ybhwztid).
+
 * Validator: a `duplicate_rule` row that repeats a rule only because Google's matcher cuts two User-agent values to one token says so and names the values (ROBO-qwfoyouo).
 
 * Fetch: new `robots_compare_fetches(variants, max_requests)` compares robots.txt responses across chosen URLs, User-Agent headers and repeats under a hard request budget (ROBO-syoccfej).
