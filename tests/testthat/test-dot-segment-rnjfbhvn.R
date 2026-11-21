@@ -149,6 +149,24 @@ test_that("ROBO-rnjfbhvn: the check stays linear (ROBO-dbvmxcfw)", {
   expect_lt(dots, 8 * max(plain, 0.05))
 })
 
+# The helper on one value, 20 calls per run so a cost that grows with the
+# value's length clears the floor; best of five, as ds_time().
+ds_time_value <- function(value) {
+  min(vapply(1:5, function(i) {
+    system.time(for (k in 1:20) rule_dot_segment_diagnostic(value))[[
+      "elapsed"
+    ]]
+  }, 0))
+}
+
+test_that("ROBO-rnjfbhvn: the check is linear in the value's length", {
+  skip_on_cran()
+  # About 4,000 and 16,000 bytes of `/..a`, inside the 16,663-byte buffer.
+  short <- ds_time_value(strrep("/..a", 1000L))
+  long <- ds_time_value(strrep("/..a", 4000L))
+  expect_lt(long, 8 * max(short, 0.05))
+})
+
 # The message's claim and the code table's ADR 0002 clause, on google, bing
 # and yandex alike: the matchers compare the dot segment as written, and the
 # v1 default `url_normalization = "rfc3986"` removes it from the URL. The
