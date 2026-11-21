@@ -157,6 +157,48 @@ test_that("url_normalization is one value from the published set", {
   expect_false("url_normalization" %in% names(formals(allowed_by_robots_url)))
 })
 
+test_that("before whatwg: the frame ends at the URL columns, no flag", {
+  r <- pp_eval(
+    "https://example.com/latam/%2e%2e/account/x", "google", "Googlebot",
+    "rfc3986"
+  )
+  expect_false(any(
+    c("preprocessing_disagreement", "disagreement_clients") %in% names(r)
+  ))
+  expect_identical(
+    names(r)[ncol(r) - 2:0],
+    c("matcher_url", "url_preprocessing_note", "matched_rule_value_raw")
+  )
+  expect_null(robots_engine_contract_v1()$url_normalizations)
+  expect_null(robots_engine_contract_v2()$url_normalizations)
+})
+
+# What rurl's WHATWG serializer does with the forms every client keeps or
+# removes. These hold on rurl 3.0.1, 3.1.0 and main; space and non-ASCII
+# encoding output is left unpinned, since it is not stable across them.
+pp_whatwg_stable <- list(
+  c("https://example.com/latam/../account/x", "https://example.com/account/x"),
+  c("https://example.com/latam/%2e%2e/account/x",
+    "https://example.com/account/x"),
+  c("https://example.com/a/%2E%2E/b", "https://example.com/b"),
+  c("https://example.com/a/.%2E/b", "https://example.com/b"),
+  c("https://example.com/a/%2e./b", "https://example.com/b"),
+  rep("https://example.com/a/%252e%252e/b", 2L),
+  rep("https://example.com/a%2F..%2Fb", 2L),
+  rep("https://example.com//a//b", 2L),
+  rep("https://example.com/a..b/.well-known", 2L),
+  rep("https://example.com/p?x=../y", 2L)
+)
+
+test_that("rurl's WHATWG serializer on the forms the modes are tested on", {
+  urls <- vapply(pp_whatwg_stable, `[[`, "", 1L)
+  expect_identical(
+    unname(rurl::serialize_url(urls, standard = "whatwg")),
+    vapply(pp_whatwg_stable, `[[`, "", 2L)
+  )
+  expect_true(is.na(rurl::serialize_url("/a/../b", standard = "whatwg")))
+})
+
 # ---- "rfc3986": decisions, symmetric on google, bing and yandex -------------
 
 test_that("rfc3986 is the default and moves the literal-dot row only", {
