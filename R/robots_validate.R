@@ -4810,8 +4810,9 @@ mojibake_units <- function(points) {
 # characters a paste turns `-` into; the letters are a closed subset of
 # common Cyrillic and Greek look-alikes, each one that Unicode's
 # confusables.txt (UTS #39) maps to one ASCII letter. It is not the whole
-# of that file, and the list grows only by hand. U+00AD SOFT HYPHEN is invisible (as validation_invisible_code_
-# points has it), so it resembles nothing and is dropped from the spelling.
+# of that file, and the list grows only by hand. U+00AD SOFT HYPHEN is
+# invisible (as validation_invisible_code_points has it), so it resembles
+# nothing and is dropped from the spelling.
 # Latin letters with diacritics are not look-alikes.
 validation_lookalike_code_points <- data.frame(
   point = c(
@@ -4923,20 +4924,27 @@ lookalike_note <- function(text, noun) {
   named <- sprintf("U+%04X %s at byte %d", points[first], table$name[row],
                    offsets[first])
   one <- length(first) == 1L
-  # How the spelling was made: only invisible ones dropped, every other
-  # byte ASCII, or other non-ASCII characters kept as written.
+  # How the spelling was made. The table holds one invisible character, so
+  # only a single look-alike can be all invisible ("without it"). Other
+  # non-ASCII characters are kept as written, and the words say whether a
+  # look-alike was replaced, dropped, or both.
   spelling <- if (all(invisible)) {
-    if (one) "without it" else "without them"
+    "without it"
   } else if (all(charToRaw(spelled) < as.raw(0x80))) {
     "written in ASCII"
+  } else if (one) {
+    "with ASCII in its place"
+  } else if (any(invisible)) {
+    "with ASCII for the look-alikes and the invisible one dropped"
   } else {
-    if (one) "with ASCII in its place" else "with ASCII in their place"
+    "with ASCII in their place"
   }
   held <- if (one) {
     paste0(named, ", which ", if (invisible) "is invisible" else
       sprintf("looks like '%s'", ascii))
   } else {
-    paste0("characters that look like ASCII or are invisible: ",
+    paste0("characters that look like ASCII",
+           if (any(invisible)) " or are invisible", ": ",
            unicode_advisory_list(paste0(named, ifelse(
              invisible, " (invisible)", sprintf(" (looks like '%s')", ascii)
            ))))

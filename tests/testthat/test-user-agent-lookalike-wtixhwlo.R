@@ -226,6 +226,39 @@ test_that("other non-ASCII text is kept escaped in the spelling", {
   )))
 })
 
+test_that("each wording branch for several look-alikes is pinned", {
+  ends <- function(value, held, spelled, how = "written in ASCII") {
+    row <- la_rows(la_text(paste0("User-agent: ", value), "Disallow: /x"))
+    expect_true(endsWith(row$message, la_sentence(held, spelled, how)),
+                label = value)
+  }
+  # Nothing invisible: no "or are invisible".
+  ends("a‐b‑c", paste0(
+    "characters that look like ASCII: U+2010 HYPHEN at byte 2 (looks ",
+    "like '-'), U+2011 NON-BREAKING HYPHEN at byte 6 (looks like '-')"
+  ), "a-b-c")
+  # A soft hyphen beside a hyphen: dropped and replaced, all ASCII after.
+  ends("a­b‑c", paste0(
+    "characters that look like ASCII or are invisible: U+00AD SOFT HYPHEN ",
+    "at byte 2 (invisible), U+2011 NON-BREAKING HYPHEN at byte 5 (looks ",
+    "like '-')"
+  ), "ab-c")
+  # Other non-ASCII text kept: replaced only, then replaced and dropped.
+  ends("a‐b‑cé", paste0(
+    "characters that look like ASCII: U+2010 HYPHEN at byte 2 (looks ",
+    "like '-'), U+2011 NON-BREAKING HYPHEN at byte 6 (looks like '-')"
+  ), "a-b-c\\xC3\\xA9", "with ASCII in their place")
+  ends("a­b‑cé", paste0(
+    "characters that look like ASCII or are invisible: U+00AD SOFT HYPHEN ",
+    "at byte 2 (invisible), U+2011 NON-BREAKING HYPHEN at byte 5 (looks ",
+    "like '-')"
+  ), "ab-c\\xC3\\xA9",
+  "with ASCII for the look-alikes and the invisible one dropped")
+  # One invisible character beside other non-ASCII text.
+  ends("a­bé", "U+00AD SOFT HYPHEN at byte 2, which is invisible",
+       "ab\\xC3\\xA9", "without it")
+})
+
 test_that("a Google token cut by a look-alike still warns", {
   row <- la_rows(la_text("User-agent: Googlebot\u2011Image", "Disallow: /x"))
   expect_identical(row$severity, "warning")
