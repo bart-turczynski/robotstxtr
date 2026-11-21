@@ -457,6 +457,22 @@ test_that("an early end wins even when the byte past the buffer fits", {
   }
 })
 
+test_that("a NUL past the buffer completes no split character", {
+  # A 4-byte lead F0 at the buffer's last byte, then 9F 00 98: the NUL is no
+  # continuation byte, so nothing is dropped and reading it must not fail.
+  head <- c(charToRaw("User-agent: Bingb"), as.raw(c(0xD0, 0xBE)),
+            charToRaw("t"))
+  body <- c(head, rep(charToRaw("a"), 16662L - length(head)),
+            as.raw(c(0xF0, 0x9F, 0x00, 0x98)), charToRaw("zz"),
+            charToRaw("\nDisallow: /x\n"))
+  expect_identical(body[[16663L]], as.raw(0xF0))
+  x <- tryCatch(robots_validate_text(body), error = function(e) e)
+  expect_false(inherits(x, "error"))
+  row <- la_rows(x)
+  expect_identical(row$severity, "info")
+  expect_false(grepl("U+043E", row$message, fixed = TRUE))
+})
+
 test_that("a caller without raw lines reads a long User-agent line", {
   # validation_rule_keys() calls validation_groups() with no raw lines.
   body <- c(charToRaw("User-agent: Foo/"), rep(charToRaw("A"), 20000L),
