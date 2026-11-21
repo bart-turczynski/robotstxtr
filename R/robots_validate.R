@@ -4865,15 +4865,14 @@ lookalike_agent_values <- function(agent_rows, agent_bytes, raw_lines) {
   if (is.null(raw_lines) || is.null(long)) {
     return(values)
   }
-  colon <- agent_rows$missing_colon
-  if (is.null(colon)) {
-    colon <- logical(nrow(agent_rows))
-  }
   for (k in which(lengths(agent_bytes) > 0L & !is.na(long) & long)) {
     line <- agent_rows$line[[k]]
-    raw <- rule_raw_value(raw_lines[[line]], line == 1L, isTRUE(colon[[k]]))
-    # Trailing blanks the parser trims sit before the buffer's end too.
-    reaches <- isTRUE(attr(raw, "buffer_cut")) && length(raw) > 0L &&
+    raw <- rule_raw_value(raw_lines[[line]], line == 1L,
+                          agent_rows$missing_colon[[k]])
+    # Trailing blanks the parser trims sit before the buffer's end too. A
+    # buffer cut leaves the value its non-empty parser bytes, so `raw` has
+    # a last byte.
+    reaches <- isTRUE(attr(raw, "buffer_cut")) &&
       !raw[[length(raw)]] %in% as.raw(c(0x20, 0x09, 0x0a:0x0d))
     if (reaches) {
       values[[k]] <- rawToChar(utf8_drop_cut_tail(agent_bytes[[k]]))

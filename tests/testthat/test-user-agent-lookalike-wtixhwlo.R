@@ -363,6 +363,55 @@ test_that("a long line whose value ends before the buffer keeps its tail", {
   }
 })
 
+# A value cut by the line buffer: `pad` ASCII bytes after the look-alike
+# value, then `tail` and `rest`, as raw bytes (built without literal
+# non-ASCII text).
+la_hyphen <- as.raw(c(0xE2, 0x80, 0x91))
+la_long <- function(lead, last, tail, rest = "B") {
+  # `last`: the line byte the padding ends on.
+  head <- c(charToRaw(lead), la_hyphen, charToRaw("User"))
+  c(head, rep(charToRaw("A"), last - length(head)), tail, charToRaw(rest),
+    charToRaw("\nDisallow: /x\n"))
+}
+
+test_that("a long missing-colon User-agent line is read, not a crash", {
+  # The parser accepts `User-agent Perplexity...` without the colon; the
+  # raw value is then read up to the first blank, which needs the line's
+  # missing_colon flag.
+  body <- la_long("User-agent Perplexity", 16662L, la_hyphen)
+  x <- robots_validate_text(body)
+  expect_true("accepted_missing_colon" %in% x$diagnostics$code)
+  expect_true("line_too_long" %in% x$diagnostics$code)
+  expect_true(grepl(paste0(
+    "The value holds U+2011 NON-BREAKING HYPHEN at byte 11, which looks ",
+    "like '-'; written in ASCII the value is 'Perplexity-UserAAA"
+  ), la_rows(x)$message, fixed = TRUE))
+})
+
+test_that("a `#` right after an invalid tail ends the value early", {
+  # No blank before the `#`: the value as kept ends in its own E2 80, so
+  # the buffer split nothing and the value keeps today's invalid handling.
+  body <- c(charToRaw(paste0("User-agent: Bingb", intToUtf8(0x043E), "t")),
+            as.raw(c(0xE2, 0x80)), charToRaw("#"),
+            rep(charToRaw("c"), 17000L), charToRaw("\nDisallow: /x\n"))
+  x <- robots_validate_text(body)
+  expect_true("line_too_long" %in% x$diagnostics$code)
+  row <- la_rows(x)
+  expect_identical(row$message, la_read_as("Bingb"))
+  expect_identical(row$severity, "info")
+})
+
+test_that("a caller without raw lines reads a long User-agent line", {
+  # validation_rule_keys() calls validation_groups() with no raw lines.
+  body <- c(charToRaw("User-agent: Foo/"), rep(charToRaw("A"), 20000L),
+            charToRaw("\nDisallow: /x\n"))
+  parsed <- as.data.frame(robotstxtr_validation_parse_(body),
+                          stringsAsFactors = FALSE)
+  expect_no_error(validation_rule_keys(parsed))
+  groups <- validation_groups(parsed)
+  expect_identical(groups$agents$value, parsed$value[[1L]])
+})
+
 # Timing guards (ROBO-dbvmxcfw keeps the validator linear), in the
 # load-robust pattern of test-cut-note-zqyqbudf.R: each check is timed best
 # of five, so one slow run under machine load does not count.
