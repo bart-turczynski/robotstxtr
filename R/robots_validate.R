@@ -4874,11 +4874,41 @@ lookalike_agent_values <- function(agent_rows, agent_bytes, raw_lines) {
     # a last byte.
     reaches <- isTRUE(attr(raw, "buffer_cut")) &&
       !raw[[length(raw)]] %in% as.raw(c(0x20, 0x09, 0x0a:0x0d))
-    if (reaches) {
+    if (reaches && lookalike_split_completes(agent_bytes[[k]],
+                                             raw_lines[[line]], line == 1L)) {
       values[[k]] <- rawToChar(utf8_drop_cut_tail(agent_bytes[[k]]))
     }
   }
   values
+}
+
+# Whether the incomplete UTF-8 tail of a value that reaches the line buffer
+# (`bytes`) is a character the buffer split: the line's bytes just past the
+# buffer (`line_bytes`, after the byte-order mark Parse() skips on line 1)
+# complete it as valid UTF-8. A lone lead byte followed by ASCII is invalid
+# as written and keeps today's handling.
+lookalike_split_completes <- function(bytes, line_bytes, first_line) {
+  kept <- length(utf8_drop_cut_tail(bytes))
+  dropped <- length(bytes) - kept
+  if (dropped == 0L) {
+    return(FALSE)
+  }
+  tail <- bytes[(kept + 1L):length(bytes)]
+  lead <- as.integer(tail[[1L]])
+  need <- if (lead >= 0xF0L) 4L else if (lead >= 0xE0L) 3L else 2L
+  skip <- 0L
+  if (first_line) {
+    while (skip < min(3L, length(line_bytes)) &&
+             line_bytes[[skip + 1L]] == validation_bom[[skip + 1L]]) {
+      skip <- skip + 1L
+    }
+  }
+  at <- skip + validation_line_bytes + seq_len(need - dropped)
+  if (max(at) > length(line_bytes)) {
+    return(FALSE)
+  }
+  after <- line_bytes[at]
+  all(after != as.raw(0x00)) && validUTF8(rawToChar(c(tail, after)))
 }
 
 # The look-alike sentence for one value or key (`text`, as the parser kept

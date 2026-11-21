@@ -388,6 +388,38 @@ test_that("a long missing-colon User-agent line is read, not a crash", {
   ), la_rows(x)$message, fixed = TRUE))
 })
 
+test_that("only bytes the buffer really split are dropped", {
+  la_note <- paste0(
+    "The value holds U+2011 NON-BREAKING HYPHEN at byte 11, which looks ",
+    "like '-'; written in ASCII the value is 'Perplexity-UserAAA"
+  )
+  # A U+2011 split one or two bytes into it: the bytes after the buffer
+  # complete it, so the tail is dropped and the earlier U+2011 is named.
+  for (last in c(16662L, 16661L)) {
+    x <- robots_validate_text(la_long("User-agent: Perplexity", last,
+                                      la_hyphen))
+    expect_true(grepl(la_note, la_rows(x)$message, fixed = TRUE),
+                label = last)
+    expect_identical(la_rows(x)$severity, "warning", label = last)
+  }
+  # On line 1 the buffer counts from after a byte-order mark.
+  bom <- as.raw(c(0xEF, 0xBB, 0xBF))
+  x <- robots_validate_text(c(bom, la_long("User-agent: Perplexity", 16662L,
+                                           la_hyphen)))
+  expect_true(grepl(la_note, la_rows(x)$message, fixed = TRUE))
+  # A lone E2 at the buffer's last byte, followed by ASCII: invalid UTF-8 as
+  # written, so today's handling stays (the reviewer's la_inv_at_buf).
+  x <- robots_validate_text(la_long("User-agent: Perplexity", 16662L,
+                                    as.raw(0xE2), "ZZZ"))
+  expect_true("invalid_utf8" %in% x$diagnostics$code)
+  expect_identical(la_rows(x)$message, la_read_as("Perplexity"))
+  expect_identical(la_rows(x)$severity, "info")
+  # The same E2 80 with a third byte that is no continuation byte.
+  x <- robots_validate_text(la_long("User-agent: Perplexity", 16661L,
+                                    as.raw(c(0xE2, 0x80)), "ZZ"))
+  expect_identical(la_rows(x)$message, la_read_as("Perplexity"))
+})
+
 test_that("a `#` right after an invalid tail ends the value early", {
   # No blank before the `#`: the value as kept ends in its own E2 80, so
   # the buffer split nothing and the value keeps today's invalid handling.
