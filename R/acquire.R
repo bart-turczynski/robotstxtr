@@ -420,7 +420,8 @@ acquire_observed_bytes <- function(observed) {
 # flag reads the kept prefix.
 # Retry-After comes from this response only, never from a redirect before it
 # (ROBO-cthdyvlk; RFC 9110 section 10.2.3). So does Content-Type, as
-# received; the content flag reads the stored body only (ROBO-nhuirvrd).
+# received; the content flag reads the stored body only (ROBO-nhuirvrd). So do
+# the cache fields of cache_header_fields, raw and unparsed (ROBO-zleohwyz).
 acquire_final_result <- function(response, status, url, redirect_count,
                                  redirect_hops) {
   retry_after <- acquire_header(response, "retry-after")
@@ -448,6 +449,10 @@ acquire_final_result <- function(response, status, url, redirect_count,
     retry_after = retry_after,
     retry_after_seconds = retry_after_seconds,
     content_type = acquire_header(response, "content-type"),
-    content_flag = robots_content_flag(body)
+    content_flag = robots_content_flag(body),
+    cache_headers = vapply(
+      cache_header_fields, acquire_header, character(1L),
+      response = response
+    )
   )
 }

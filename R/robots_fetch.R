@@ -273,6 +273,8 @@ robots_fetch <- function(url, timeout = 10, max_bytes = 524288L,
     ),
     content_type = vapply(results, function(r) r$content_type, character(1L)),
     content_flag = vapply(results, function(r) r$content_flag, character(1L)),
+    # The final response's cache fields, raw (ROBO-zleohwyz).
+    cache_header_frame(results),
     body_truncated = vapply(
       results, function(r) r$body_truncated, logical(1L)
     ),
