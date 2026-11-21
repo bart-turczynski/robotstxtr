@@ -170,7 +170,7 @@ evaluated as given, with the note
 \verb{WHATWG URL serialization changed the URL}, then \verb{userinfo removed} or
 \verb{fragment dropped} where those apply. \code{"whatwg"} serializes a URL of any
 length, and its cost grows faster than linearly on a long path with many
-dot segments (rurl's serializer).
+dot segments (in \code{rurl::serialize_url()}).
 
 In every mode, \code{preprocessing_disagreement} is \code{TRUE} when the URL the
 matcher reads under \code{"rfc3986"} and the one it reads under \code{"whatwg"}

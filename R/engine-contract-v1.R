@@ -2084,7 +2084,7 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' `WHATWG URL serialization changed the URL`, then `userinfo removed` or
 #' `fragment dropped` where those apply. `"whatwg"` serializes a URL of any
 #' length, and its cost grows faster than linearly on a long path with many
-#' dot segments (rurl's serializer).
+#' dot segments (in `rurl::serialize_url()`).
 #'
 #' In every mode, `preprocessing_disagreement` is `TRUE` when the URL the
 #' matcher reads under `"rfc3986"` and the one it reads under `"whatwg"`
