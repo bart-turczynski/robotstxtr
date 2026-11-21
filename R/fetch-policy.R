@@ -594,3 +594,114 @@ http_date_epoch <- function(year, month_day, hms) {
   }
   as.double(date) * 86400 + sum(hms * c(3600, 60, 1))
 }
+
+# --- robots_compare_fetches() inputs (ROBO-syoccfej) -------------------------
+
+# `max_requests` must be one non-missing, finite, POSITIVE, WHOLE-NUMBER value
+# no greater than `.Machine$integer.max`, as validate_max_bytes() checks
+# `max_bytes`. It has no default: the budget is always the caller's.
+validate_max_requests <- function(max_requests) {
+  if (missing(max_requests) || !is.numeric(max_requests) ||
+        length(max_requests) != 1L || is.na(max_requests) ||
+        !is.finite(max_requests) || max_requests <= 0 ||
+        max_requests != trunc(max_requests) ||
+        max_requests > .Machine$integer.max) {
+    robots_abort(
+      paste(
+        "`max_requests` must be a single, positive, finite, whole-number",
+        "value no greater than `.Machine$integer.max`."
+      ),
+      "robotstxtr_invalid_max_requests"
+    )
+  }
+  as.integer(max_requests)
+}
+
+invalid_variants <- function(detail) {
+  robots_abort(
+    paste(
+      "`variants` must be a character vector of URLs or a data frame with a",
+      "character `url` column.", detail
+    ),
+    "robotstxtr_invalid_variants"
+  )
+}
+
+# A character column of `variants`, or `default` when it is absent. A factor
+# is read as its labels; a column of only NA (logical) as character NA.
+variants_character <- function(x, name, default) {
+  if (is.null(x)) {
+    return(default)
+  }
+  if (is.factor(x) || (is.logical(x) && all(is.na(x)))) {
+    x <- as.character(x)
+  }
+  if (!is.character(x)) {
+    invalid_variants(sprintf("Column `%s` is not character.", name))
+  }
+  unname(x)
+}
+
+# Each non-NA `fetch_user_agent` is checked as robots_fetch() checks its own.
+variants_user_agents <- function(agents) {
+  for (i in which(!is.na(agents))) {
+    tryCatch(
+      validate_fetch_user_agent(agents[[i]]),
+      robotstxtr_invalid_fetch_user_agent = function(e) {
+        robots_abort(
+          sprintf(
+            "`variants$fetch_user_agent` row %d: %s", i, conditionMessage(e)
+          ),
+          "robotstxtr_invalid_fetch_user_agent"
+        )
+      }
+    )
+  }
+  agents
+}
+
+# `repeats`, absent (1 each) or whole numbers of at least 1.
+variants_repeats <- function(repeats, n) {
+  if (is.null(repeats)) {
+    return(rep(1L, n))
+  }
+  if (!is.numeric(repeats) || anyNA(repeats) || any(!is.finite(repeats)) ||
+        any(repeats < 1) || any(repeats != trunc(repeats)) ||
+        any(repeats > .Machine$integer.max)) {
+    invalid_variants(
+      "Column `repeats` must hold whole numbers of at least 1, with no NA."
+    )
+  }
+  as.integer(repeats)
+}
+
+# `variants` as a plain data frame of `url`, `fetch_user_agent` (NA: the
+# package agent), `label` (NA or absent: `variant_<i>`) and `repeats`
+# (absent: 1). A character vector is `data.frame(url = variants)`. Every check
+# runs before any request.
+validate_variants <- function(variants) {
+  if (is.character(variants) && is.null(dim(variants))) {
+    variants <- data.frame(url = unname(variants), stringsAsFactors = FALSE)
+  }
+  if (!is.data.frame(variants)) {
+    invalid_variants("It is neither.")
+  }
+  if (!"url" %in% names(variants)) {
+    invalid_variants("It has no `url` column.")
+  }
+  n <- nrow(variants)
+  default_label <- sprintf("variant_%d", seq_len(n))
+  url <- variants_character(variants$url, "url", NULL)
+  agents <- variants_character(
+    variants$fetch_user_agent, "fetch_user_agent", rep(NA_character_, n)
+  )
+  label <- variants_character(variants$label, "label", default_label)
+  label[is.na(label)] <- default_label[is.na(label)]
+  data.frame(
+    url = url,
+    fetch_user_agent = variants_user_agents(agents),
+    label = label,
+    repeats = variants_repeats(variants$repeats, n),
+    stringsAsFactors = FALSE
+  )
+}

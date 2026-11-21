@@ -2,10 +2,10 @@
 # review's candidate 4, ROBO-tlvrxtvb).
 #
 # This module is the only caller of ssrfr. robots_fetch(),
-# robots_validate_url(), allowed_by_robots_url() and robots_evaluate_url_v1()
-# all reach it through acquire_robots(), which returns the
-# make_source_result() shape the rest of the package reads. It owns four
-# things:
+# robots_validate_url(), allowed_by_robots_url(), robots_evaluate_url_v1()
+# and robots_compare_fetches() all reach it through acquire_robots(), which
+# returns the make_source_result() shape the rest of the package reads. It
+# owns four things:
 #
 # 1. The policy: one ssrf_policy() per origin, built by acquire_policy().
 # 2. The hop loop: prepare, fetch, then robotstxtr's own redirect rules (a
@@ -17,6 +17,10 @@
 #    ssrf_vocabulary("reason_codes") and ssrf_vocabulary("causes") in full, so
 #    a code ssrfr adds fails a test instead of falling through.
 # 4. ssrfr's misuse errors, which become a robotstxtr error class.
+#
+# An optional request budget (robots_compare_fetches()'s `max_requests`,
+# ROBO-syoccfej) is checked before every fetch, redirect hops included, by
+# acquire_fetch_budgeted(). Without one, every caller behaves as before.
 #
 # ssrfr resolves a name once and pins the connection to the validated
 # addresses, so the guard covers what is dialed, not only what is spelled.
@@ -34,6 +38,24 @@ acquire_prepare_hop <- function(url, policy, request = NULL, from = NULL) {
 
 acquire_fetch <- function(binding) {
   ssrfr::ssrf_fetch(binding)
+}
+
+# One fetch under an optional request budget: an environment whose
+# `remaining` counts the requests left, shared by every chain of one audit
+# call. It is checked and decremented before the request, so the budget bounds
+# every outbound request. An exhausted budget makes no request and returns an
+# outcome of class `robotstxtr_budget_exhausted`, which
+# acquire_outcome_result() turns into the audit-only `budget_exhausted`.
+acquire_fetch_budgeted <- function(binding, budget = NULL) {
+  if (!is.null(budget)) {
+    if (budget$remaining < 1L) {
+      return(structure(list(hop = binding$hop),
+        class = "robotstxtr_budget_exhausted"
+      ))
+    }
+    budget$remaining <- budget$remaining - 1L
+  }
+  acquire_call(acquire_fetch(binding))
 }
 
 # Run one ssrfr call, turning a misuse error (class `ssrfr_error`) into a
@@ -222,6 +244,13 @@ acquire_failure_result <- function(x, binding, redirect_count, redirect_hops,
 # being fetched, NULL when the outcome came from preparing a hop.
 acquire_outcome_result <- function(x, binding, redirect_count, redirect_hops,
                                    max_bytes, redirect = NULL) {
+  if (inherits(x, "robotstxtr_budget_exhausted")) {
+    return(make_source_result(
+      "budget_exhausted", NULL, NULL, redirect_count, NULL,
+      "The request budget (`max_requests`) ran out before this request.",
+      redirect_hops = redirect_hops
+    ))
+  }
   if (inherits(x, "ssrfr_refusal")) {
     if (identical(x$code, "redirect-limit")) {
       redirect <- list(
@@ -297,10 +326,11 @@ acquire_loop_result <- function(location, status, redirect_count,
 # Fetch one robots URL and return a source result (make_source_result()).
 # Grouping is by the requested URL (PRD 6.5): the caller keys on `robots_url`,
 # not on where the redirects lead. `max_bytes` is the validated integer limit
-# on decoded body bytes.
+# on decoded body bytes. `budget` is NULL (no request budget) or the
+# environment acquire_fetch_budgeted() reads.
 acquire_robots <- function(robots_url, timeout, fetch_ua, max_bytes,
                            ssrf_guard = TRUE, safety_level = "strict",
-                           fetch_allow_ranges = character()) {
+                           fetch_allow_ranges = character(), budget = NULL) {
   policy <- acquire_policy(
     timeout, fetch_ua, max_bytes, ssrf_guard, safety_level, fetch_allow_ranges
   )
@@ -318,7 +348,7 @@ acquire_robots <- function(robots_url, timeout, fetch_ua, max_bytes,
   }
 
   repeat {
-    response <- acquire_call(acquire_fetch(binding))
+    response <- acquire_fetch_budgeted(binding, budget)
     if (!inherits(response, "ssrfr_response")) {
       return(acquire_outcome_result(
         response, binding, redirect_count, redirect_hops, max_bytes

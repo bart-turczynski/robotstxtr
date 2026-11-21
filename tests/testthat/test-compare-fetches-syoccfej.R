@@ -119,3 +119,360 @@ test_that("the published fetch_outcome set is pinned", {
     "body_too_large", "input_invalid"
   ))
 })
+
+# --- robots_compare_fetches() ------------------------------------------------
+#
+# Symmetry rule: not testable per engine. The audit computes no allow or
+# disallow decision and reads no rule, so there is nothing for the google,
+# bing and yandex profiles of robots_evaluate_text_v1() to differ on.
+
+# A clock that ticks one second per call from a fixed epoch, reset per call
+# of the returned installer, so two runs see the same times.
+local_ticking_now <- function(env = parent.frame()) {
+  clock <- new.env(parent = emptyenv())
+  clock$t <- 1800000000
+  testthat::local_mocked_bindings(
+    acquire_now = function() {
+      clock$t <- clock$t + 1
+      clock$t
+    },
+    .package = "robotstxtr", .env = env
+  )
+  clock
+}
+
+# A handler that answers each call with the next of `handlers`, the last one
+# repeating: models a server whose answer changes over time.
+in_turn <- function(...) {
+  handlers <- list(...)
+  state <- new.env(parent = emptyenv())
+  state$i <- 0L
+  function(req) {
+    state$i <- min(state$i + 1L, length(handlers))
+    handlers[[state$i]](req)
+  }
+}
+
+test_that("max_requests counts every redirect hop", {
+  rec <- new_recorder()
+  local_fake_ssrfr(mock_router(chain_routes(), recorder = rec))
+
+  x <- robots_compare_fetches("http://a/", max_requests = 2)
+  obs <- x$observations
+
+  expect_identical(rec$urls, c("http://a/robots.txt", "http://b/robots.txt"))
+  expect_identical(obs$observation_status, "budget_exhausted")
+  expect_identical(obs$fetch_outcome, "budget_exhausted")
+  expect_identical(obs$redirect_count, 2L)
+  expect_length(obs$redirect_hops[[1]], 2L)
+  expect_null(obs$body[[1]])
+  expect_identical(attr(x, "requests_made"), 2L)
+
+  rec2 <- new_recorder()
+  local_fake_ssrfr(mock_router(chain_routes(), recorder = rec2))
+  y <- robots_compare_fetches("http://a/", max_requests = 3)
+  expect_length(rec2$urls, 3L)
+  expect_identical(y$observations$observation_status, "response")
+  expect_identical(y$observations$fetch_outcome, "fetched")
+  expect_identical(y$observations$effective_url, "http://c/robots.txt")
+  expect_identical(attr(y, "requests_made"), 3L)
+})
+
+test_that("repeats run in round-robin passes and a cut leaves not_requested", {
+  rec <- new_recorder()
+  local_fake_ssrfr(mock_router(list(
+    "http://a/robots.txt" = ok_body("a"),
+    "http://b/robots.txt" = ok_body("b")
+  ), recorder = rec))
+
+  x <- robots_compare_fetches(
+    data.frame(url = c("http://a/", "http://b/"), repeats = c(2, 2)),
+    max_requests = 3
+  )
+  obs <- x$observations
+
+  expect_identical(rec$urls, c(
+    "http://a/robots.txt", "http://b/robots.txt", "http://a/robots.txt"
+  ))
+  expect_identical(obs$observation_id, 1:4)
+  expect_identical(obs$variant_id, c(1L, 2L, 1L, 2L))
+  expect_identical(obs$repeat_index, c(1L, 1L, 2L, 2L))
+  expect_identical(obs$label, c(
+    "variant_1", "variant_2", "variant_1", "variant_2"
+  ))
+  expect_identical(obs$observation_status, c(
+    "response", "response", "response", "not_requested"
+  ))
+  expect_true(is.na(obs$fetch_outcome[[4]]))
+  expect_true(is.na(obs$fetched_at[[4]]))
+  expect_identical(obs$body_label, c("body_1", "body_2", "body_1", NA))
+})
+
+test_that("a refused target spends no budget; a redirect to one spends one", {
+  rec <- new_recorder()
+  local_fake_ssrfr(mock_router(list(
+    "http://a/robots.txt" = ok_body()
+  ), recorder = rec))
+
+  x <- robots_compare_fetches(
+    c("http://127.0.0.1/", "http://a/"), max_requests = 1
+  )
+  expect_identical(rec$urls, "http://a/robots.txt")
+  expect_identical(x$observations$observation_status, c("refused", "response"))
+  expect_identical(x$observations$fetch_outcome, c("ssrf_blocked", "fetched"))
+  expect_identical(x$observations$safety_block_reason[[1]], "loopback")
+  expect_identical(attr(x, "requests_made"), 1L)
+
+  rec2 <- new_recorder()
+  local_fake_ssrfr(mock_router(list(
+    "http://a/robots.txt" = redirect_to("http://127.0.0.1/robots.txt")
+  ), recorder = rec2))
+  y <- robots_compare_fetches("http://a/", max_requests = 5)
+  expect_identical(rec2$urls, "http://a/robots.txt")
+  expect_identical(y$observations$observation_status, "refused")
+  expect_identical(attr(y, "requests_made"), 1L)
+})
+
+test_that("bodies share a label only when byte for byte identical", {
+  local_fake_ssrfr(mock_router(list(
+    "http://a/robots.txt" = ok_body("user-agent: *\ndisallow: /x"),
+    "http://b/robots.txt" = ok_body("user-agent: *\ndisallow: /x"),
+    "http://c/robots.txt" = ok_body("user-agent: *\ndisallow: /y"),
+    "http://d/robots.txt" = raw_body(raw(0)),
+    "http://e/robots.txt" = raw_body(raw(0)),
+    "http://f/robots.txt" = raw_body(as.raw(c(0x00, 0xff, 0x41))),
+    "http://g/robots.txt" = raw_body(as.raw(c(0x00, 0xfe, 0x41))),
+    "http://h/robots.txt" = status_resp(404L)
+  )))
+
+  x <- robots_compare_fetches(
+    paste0("http://", letters[1:8], "/"), max_requests = 8
+  )
+  expect_identical(x$observations$body_label, c(
+    "body_1", "body_1", "body_2", "body_3", "body_3", "body_4", "body_5", NA
+  ))
+  expect_identical(x$observations$body[[6]], as.raw(c(0x00, 0xff, 0x41)))
+  cmp <- x$comparison
+  expect_identical(cmp$n_distinct[cmp$field == "body_label"], 6L)
+})
+
+test_that("a truncated body never shares a label, even with its own bytes", {
+  local_fake_ssrfr(mock_router(list(
+    "http://a/robots.txt" = ok_body("abcdefgh"),
+    "http://b/robots.txt" = ok_body("abcde"),
+    "http://c/robots.txt" = ok_body("abcdefgh")
+  )))
+
+  x <- robots_compare_fetches(
+    c("http://a/", "http://b/", "http://c/"), max_requests = 3,
+    max_bytes = 5
+  )
+  obs <- x$observations
+  expect_identical(obs$body_truncated, c(TRUE, FALSE, TRUE))
+  expect_identical(obs$body[[1]], obs$body[[2]])
+  expect_identical(obs$body_label, c("body_1", "body_2", "body_3"))
+})
+
+test_that("each variant sends its own User-Agent; NA sends the package's", {
+  rec <- new_recorder()
+  local_fake_ssrfr(mock_router(list(
+    "http://a/robots.txt" = function(req) {
+      if (identical(req$user_agent, "AuditBot/1.0")) {
+        status_resp(403L)(req)
+      } else {
+        ok_body()(req)
+      }
+    }
+  ), recorder = rec))
+
+  x <- robots_compare_fetches(
+    data.frame(
+      url = c("http://a/", "http://a/"),
+      fetch_user_agent = c(NA, "AuditBot/1.0"),
+      label = c("package", "custom")
+    ),
+    max_requests = 2
+  )
+  obs <- x$observations
+  expect_identical(rec$agents, c(package_fetch_user_agent(), "AuditBot/1.0"))
+  expect_identical(obs$http_user_agent, rec$agents)
+  expect_identical(obs$label, c("package", "custom"))
+  expect_identical(obs$http_status, c(200L, 403L))
+  expect_identical(obs$observation_status, c("response", "response"))
+  cmp <- x$comparison
+  expect_identical(cmp$n_distinct[cmp$field == "http_status"], 2L)
+  expect_identical(cmp$values[[which(cmp$field == "http_status")]],
+                   c(200L, 403L))
+})
+
+test_that("scheme and host variants keep their own robots scope", {
+  local_fake_ssrfr(mock_router(list(
+    "http://a/robots.txt" = ok_body(),
+    "https://a/robots.txt" = ok_body(),
+    "http://www.a/robots.txt" = function(req) fake_failure("timeout")
+  )))
+
+  x <- robots_compare_fetches(
+    c("http://a/x", "https://a/y", "http://www.a/z"), max_requests = 3
+  )
+  obs <- x$observations
+  expect_identical(obs$robots_url, c(
+    "http://a/robots.txt", "https://a/robots.txt", "http://www.a/robots.txt"
+  ))
+  expect_identical(obs$url, c("http://a/x", "https://a/y", "http://www.a/z"))
+  expect_identical(obs$observation_status, c(
+    "response", "response", "acquisition_failure"
+  ))
+  expect_identical(obs$fetch_outcome[[3]], "timeout")
+  expect_identical(obs$transport_error_kind[[3]], "timeout")
+  expect_identical(obs$body_label, c("body_1", "body_1", NA))
+})
+
+test_that("a body that changes over time differs between repeats", {
+  local_fake_ssrfr(mock_router(list(
+    "http://a/robots.txt" = in_turn(ok_body("one"), ok_body("two"))
+  )))
+  x <- robots_compare_fetches(
+    data.frame(url = "http://a/", repeats = 3), max_requests = 3
+  )
+  expect_identical(x$observations$body_label, c("body_1", "body_2", "body_2"))
+})
+
+test_that("cache headers are carried raw and never compared", {
+  local_fake_ssrfr(mock_router(list(
+    "http://a/robots.txt" = in_turn(
+      function(req) {
+        fake_response(200L, headers = list(Date = "d1", Age = "1"), body = "x")
+      },
+      function(req) {
+        fake_response(200L, headers = list(Date = "d2", Age = "2"), body = "x")
+      }
+    )
+  )))
+  x <- robots_compare_fetches(
+    data.frame(url = "http://a/", repeats = 2), max_requests = 2
+  )
+  expect_identical(x$observations$date, c("d1", "d2"))
+  expect_identical(x$observations$age, c("1", "2"))
+  expect_true(all(is.na(x$observations$etag)))
+  expect_false(any(names(cache_header_fields) %in% x$comparison$field))
+  expect_identical(x$comparison$field, c(
+    "fetch_outcome", "http_status", "effective_url", "redirect_count",
+    "terminal_redirect_reason", "body_label", "body_size", "content_type",
+    "content_flag"
+  ))
+  expect_true(all(x$comparison$n_distinct == 1L))
+})
+
+test_that("an invalid URL is input_invalid and makes no request", {
+  rec <- new_recorder()
+  local_fake_ssrfr(mock_router(list(), recorder = rec))
+  x <- robots_compare_fetches(
+    data.frame(url = c("not-a-url", NA), repeats = c(2, 1)), max_requests = 1
+  )
+  expect_length(rec$urls, 0L)
+  expect_identical(x$observations$observation_status, rep("input_invalid", 3))
+  expect_identical(x$observations$fetch_outcome, rep("input_invalid", 3))
+  expect_true(all(is.na(x$observations$robots_url)))
+  expect_identical(attr(x, "requests_made"), 0L)
+  expect_true(all(x$comparison$n_distinct == 0L))
+})
+
+test_that("empty variants return an empty report with no request", {
+  rec <- new_recorder()
+  local_fake_ssrfr(mock_router(list(), recorder = rec))
+  for (v in list(character(), data.frame(url = character()))) {
+    x <- robots_compare_fetches(v, max_requests = 1)
+    expect_s3_class(x, "robots_fetch_comparison")
+    expect_identical(nrow(x$observations), 0L)
+    expect_identical(attr(x, "requests_made"), 0L)
+    expect_output(print(x), "0 observations of 0 variants")
+  }
+  expect_length(rec$urls, 0L)
+})
+
+test_that("bad arguments are call errors before any request", {
+  rec <- new_recorder()
+  local_fake_ssrfr(mock_router(list(), recorder = rec))
+  bad_max <- list(0, 1.5, NA, c(1, 2), "1", Inf, -1)
+  for (m in bad_max) {
+    expect_error(
+      robots_compare_fetches("http://a/", max_requests = m),
+      class = "robotstxtr_invalid_max_requests"
+    )
+  }
+  expect_error(
+    robots_compare_fetches("http://a/"),
+    class = "robotstxtr_invalid_max_requests"
+  )
+  bad_variants <- list(
+    data.frame(link = "http://a/"),
+    data.frame(url = "http://a/", repeats = 0),
+    data.frame(url = "http://a/", repeats = 1.5),
+    data.frame(url = "http://a/", repeats = NA_real_),
+    data.frame(url = 1),
+    list(url = "http://a/"),
+    1
+  )
+  for (v in bad_variants) {
+    expect_error(
+      robots_compare_fetches(v, max_requests = 1),
+      class = "robotstxtr_invalid_variants"
+    )
+  }
+  for (ua in c("bad\nagent", " edge", "")) {
+    expect_error(
+      robots_compare_fetches(
+        data.frame(url = c("http://a/", "http://a/"),
+                   fetch_user_agent = c(NA, ua)),
+        max_requests = 2
+      ),
+      class = "robotstxtr_invalid_fetch_user_agent"
+    )
+  }
+  expect_error(
+    robots_compare_fetches("http://a/", 1, safety_level = "loose"),
+    class = "robotstxtr_invalid_safety_level"
+  )
+  expect_length(rec$urls, 0L)
+})
+
+test_that("two runs on the same mocks give identical reports", {
+  run <- function() {
+    local_ticking_now()
+    local_fake_ssrfr(mock_router(list(
+      "http://a/robots.txt" = in_turn(ok_body("one"), ok_body("two")),
+      "http://b/robots.txt" = status_resp(503L)
+    )))
+    robots_compare_fetches(
+      data.frame(url = c("http://a/", "http://b/"), repeats = c(2, 1)),
+      max_requests = 5
+    )
+  }
+  first <- run()
+  second <- run()
+  expect_identical(first, second)
+  expect_identical(
+    as.double(first$observations$fetched_at), c(1800000001, 1800000002,
+                                                 1800000003)
+  )
+  expect_identical(attr(first$observations$fetched_at, "tzone"), "UTC")
+})
+
+test_that("print shows the header, statuses and differing fields", {
+  local_fake_ssrfr(mock_router(list(
+    "http://a/robots.txt" = ok_body("a"),
+    "http://b/robots.txt" = ok_body("b")
+  )))
+  x <- robots_compare_fetches(
+    data.frame(url = c("http://a/", "http://b/"), repeats = c(2, 1)),
+    max_requests = 2
+  )
+  out <- capture.output(res <- print(x))
+  expect_identical(res, x)
+  expect_match(out[[1]], "3 observations of 2 variants, 2 of 2 requests",
+               fixed = TRUE)
+  expect_match(out[[2]], "response 2, not_requested 1", fixed = TRUE)
+  expect_match(out[[3]], "body_label (2)", fixed = TRUE)
+  expect_false(any(grepl("user-agent", out, fixed = TRUE)))
+})
