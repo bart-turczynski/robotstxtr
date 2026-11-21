@@ -620,3 +620,28 @@ test_that("ROBO-ybhwztid: an empty call has empty destination frames", {
   v <- robots_validate_url(character(), destination_robots = TRUE)
   expect_identical(nrow(v$destination_documents), 0L)
 })
+
+# --- Review round 1 ---------------------------------------------------------
+
+test_that("ROBO-ybhwztid: a robots.txt reached with a query is final too", {
+  # The path decides, not the whole URL: the query and fragment are ignored.
+  routes <- list(
+    "http://example.com/robots.txt" =
+      dest_moved("http://example.net/robots.txt?x=1"),
+    "http://example.net/robots.txt?x=1" = dest_page(dest_rules_body)
+  )
+  run <- dest_fetch(routes)
+  expect_identical(run$urls, c(
+    "http://example.com/robots.txt", "http://example.net/robots.txt?x=1"
+  ))
+  expect_identical(nrow(run$opted$destinations), 0L)
+  expect_identical(nrow(run$opted$destination_map), 0L)
+  expect_identical(
+    robots_url_key("http://example.net/robots.txt#f"),
+    "http://example.net/robots.txt"
+  )
+  expect_identical(
+    robots_url_key("http://example.net/Robots.txt"), NA_character_
+  )
+  expect_identical(robots_url_key("http://example.net/"), NA_character_)
+})

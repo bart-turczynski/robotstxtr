@@ -383,11 +383,21 @@ destination_robots_url <- function(robots_url, effective_url, http_status) {
         identical(redirect_site_key(from$host), redirect_site_key(to$host))) {
     return(NA_character_)
   }
-  destination <- robots_origin(effective_url)
-  if (is.na(destination) || identical(destination, effective_url)) {
+  if (!is.na(robots_url_key(effective_url))) {
     return(NA_character_)
   }
-  destination
+  robots_origin(effective_url)
+}
+
+# The robots.txt URL a request URL stands for, normalized as robots_origin()
+# does it (scheme and host case, IDN host, default port), when its path is
+# /robots.txt, whatever its query or fragment; NA for any other path.
+robots_url_key <- function(url) {
+  parts <- redirect_url_parts(url)
+  if (is.null(parts) || !identical(parts$path, "/robots.txt")) {
+    return(NA_character_)
+  }
+  robots_origin(url)
 }
 
 # One read per distinct destination robots.txt URL, in first-occurrence
