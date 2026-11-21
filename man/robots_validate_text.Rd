@@ -304,7 +304,11 @@ Disallow line; the message names the Allow line. \cr
 \code{duplicate_rule} \tab info \tab
 An Allow or Disallow repeats an earlier rule of the same type and
 pattern for the same crawlers, so it has no effect. Anchored on the
-repeat; the message names the earlier line. \cr
+repeat; the message names the earlier line. When the groups share
+the crawler only because Google's matcher cuts two written User-agent
+values to one token, the message says the repeat is Google's only and
+names the values; the package's Bing and Yandex matchers keep those
+groups apart. \cr
 \code{missing_user_agent} \tab error \tab
 Allow or Disallow rules exist but no line names a non-empty
 User-agent. \cr
@@ -609,7 +613,16 @@ from a line in the same group that writes the escape in upper case is the
 same rule. It is reported as \code{rule_lowercase_escape_twin} instead, and it
 neither gets a \code{duplicate_rule} row nor counts as the earlier rule of
 one. In other groups, such a line keeps \code{rule_lowercase_escape} and may
-get \code{duplicate_rule}.
+get \code{duplicate_rule}. Groups merge as Google's matcher merges them, so
+\verb{Foo web spider} and \verb{Foo blog}, both read as \code{Foo}, share their rules. A
+repeat that exists only through such a cut (the rule is no repeat when
+each whole value, folded to ASCII lower case, names its own crawler) does
+not say the rule has no effect: its message says the repeat is Google's
+only, names the written values (five at most, then a count) and the
+token read, and points to the \code{user_agent_cut} rows. The package's Bing
+and Yandex matchers compare the whole value and keep those groups apart.
+A rule that a group naming the same whole value already gives keeps the
+plain message.
 
 On a document holding a NUL byte, \code{wildcard_rules_not_inherited},
 \code{disallow_tied_by_allow}, \code{duplicate_rule} and the AI-training codes

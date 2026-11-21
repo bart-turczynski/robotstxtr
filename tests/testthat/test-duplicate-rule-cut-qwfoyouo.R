@@ -29,9 +29,131 @@ test_that("groups merged by a cut draw duplicate_rule rows", {
   expect_identical(d$severity, rep("info", 4L))
 })
 
-test_that("the cut merge draws today's plain duplicate_rule text", {
+# `read_as` is the written values and the token, as the message lists them.
+dc_cut <- function(first_line, read_as, type = "Disallow") {
+  sprintf(paste0(
+    "This %s repeats line %d only for Google's matcher, which reads %s ",
+    "and merges their groups. The package's Bing and Yandex matchers ",
+    "compare the whole value and keep the groups apart, so there it is not ",
+    "a repeat; see the user_agent_cut rows."
+  ), type, first_line, read_as)
+}
+
+test_that("a repeat only through the cut merge says so", {
   d <- dc_rows(dc_cut_shape)
-  expect_identical(d$message, dc_plain(c(2L, 3L, 2L, 3L)))
+  two <- "'Foo web spider' and 'Foo blog' as one token, 'Foo',"
+  three <- paste("'Foo web spider', 'Foo blog' and 'Foo News Spider' as",
+                 "one token, 'Foo',")
+  expect_identical(d$message, c(dc_cut(2L, two), dc_cut(3L, two),
+                                dc_cut(2L, three), dc_cut(3L, three)))
+  for (message in d$message) {
+    expect_no_match(message, "no effect|delete|remove")
+    expect_match(message, "^[ -~]*$")
+  }
+})
+
+test_that("an Allow names its own directive", {
+  d <- dc_rows(dc_lines(
+    "User-agent: Foo/1.0", "Allow: /a", "Disallow: /", "",
+    "User-agent: Foo/2.0", "Allow: /a", "Disallow: /"
+  ))
+  read_as <- "'Foo/1.0' and 'Foo/2.0' as one token, 'Foo',"
+  expect_identical(d$line, c(6L, 7L))
+  expect_identical(d$message, c(dc_cut(2L, read_as, "Allow"),
+                                dc_cut(3L, read_as)))
+})
+
+test_that("at most five written values are named, then a count", {
+  d <- dc_rows(dc_lines(
+    sprintf("User-agent: Foo %d\nDisallow: /a\nDisallow: /b\n", 1:7)
+  ))
+  last <- d[d$line == max(d$line), , drop = FALSE]
+  expect_identical(last$message, dc_cut(
+    3L, paste("'Foo 1', 'Foo 2', 'Foo 3', 'Foo 4', 'Foo 5' and 2 more as",
+              "one token, 'Foo',")
+  ))
+  five <- d[d$line == 19L, , drop = FALSE]
+  expect_identical(five$message, dc_cut(
+    3L, paste("'Foo 1', 'Foo 2', 'Foo 3', 'Foo 4' and 'Foo 5' as",
+              "one token, 'Foo',")
+  ))
+})
+
+test_that("only the values of a token the cut merges are named", {
+  # `Bar` names one whole value in both groups, so only `Foo` merges by a
+  # cut; both tokens are named when both do.
+  d <- dc_rows(dc_lines(
+    "User-agent: Foo a", "User-agent: Bar", "Disallow: /a", "Disallow: /z",
+    "", "User-agent: Foo b", "User-agent: Bar", "Disallow: /a"
+  ))
+  expect_identical(d$message,
+                   dc_cut(3L, "'Foo a' and 'Foo b' as one token, 'Foo',"))
+  d <- dc_rows(dc_lines(
+    "User-agent: Foo a", "User-agent: Bar a", "Disallow: /a", "Disallow: /z",
+    "", "User-agent: Foo b", "User-agent: Bar b", "Disallow: /a"
+  ))
+  expect_identical(d$message, dc_cut(3L, paste(
+    "'Foo a', 'Bar a', 'Foo b' and 'Bar b' as the tokens 'Foo' and 'Bar'"
+  )))
+})
+
+test_that("a written value is named as raw_text renders it", {
+  body <- c(charToRaw("User-agent: Foo"), as.raw(0xe9),
+            charToRaw("\nDisallow: /a\nDisallow: /z\n\nUser-agent: Foo bar\n"),
+            charToRaw("Disallow: /a\n"))
+  d <- dc_rows(body)
+  expect_identical(d$line, 6L)
+  expect_identical(d$message,
+                   dc_cut(2L, "'Foo\\xE9' and 'Foo bar' as one token, 'Foo',"))
+  # A value written as the text `\xE9` is another value than the byte.
+  body <- c(charToRaw("User-agent: Foo"), as.raw(0xe9),
+            charToRaw("\nDisallow: /a\nDisallow: /z\n\n"),
+            charToRaw("User-agent: Foo\\xE9\nDisallow: /a\n"))
+  expect_identical(dc_rows(body)$message,
+                   dc_cut(2L, "'Foo\\xE9' and 'Foo\\xE9' as one token, 'Foo',"))
+  # Values differing only in ASCII case are one value, named as first written.
+  d <- dc_rows(dc_lines(
+    "User-agent: Foo a", "Disallow: /a", "Disallow: /z", "",
+    "User-agent: FOO A", "User-agent: Foo b", "Disallow: /a", "Disallow: /y",
+    "", "User-agent: Foo a", "User-agent: Foo b", "Disallow: /a"
+  ))
+  expect_identical(d$line, c(7L, 12L))
+  expect_identical(d$message[[1L]],
+                   dc_cut(2L, "'Foo a' and 'Foo b' as one token, 'Foo',"))
+  expect_identical(d$message[[2L]], dc_plain(2L))
+})
+
+test_that("a NUL in the file keeps Google's reading note", {
+  body <- c(charToRaw(dc_cut_shape), as.raw(0), charToRaw("x\n"))
+  d <- dc_rows(body)
+  expect_identical(d$line, c(6L, 7L, 10L, 11L))
+  expect_true(all(endsWith(d$message, paste0(
+    "see the user_agent_cut rows. This is Google's reading, which ends each ",
+    "line at its first NUL; Bing and Yandex read the NUL as an ordinary byte."
+  ))))
+})
+
+test_that("a body cut at max_bytes is still checked", {
+  body <- charToRaw(paste0(dc_cut_shape, "Disallow: /later-",
+                           strrep("x", 200L), "\n"))
+  n <- length(charToRaw(dc_cut_shape)) + 10L
+  x <- validate_document_bytes(body[seq_len(n)], "s", "supplied",
+                               max_bytes = n, body_truncated = TRUE)
+  d <- x$diagnostics[x$diagnostics$code == "duplicate_rule", , drop = FALSE]
+  expect_identical(d$line, c(6L, 7L, 10L, 11L))
+  expect_match(d$message, "^This Disallow repeats line [23] only")
+})
+
+test_that("a large file of cut agents names every repeat", {
+  rules <- sprintf("Disallow: /r%d", seq_len(20L))
+  body <- dc_lines(unlist(lapply(seq_len(50L), function(i) {
+    c(sprintf("User-agent: Foo %d", i), rules, "")
+  })))
+  d <- dc_rows(body)
+  expect_identical(nrow(d), 49L * 20L)
+  expect_match(d$message, "^This Disallow repeats line ")
+  expect_identical(sum(grepl("and 45 more as one token, 'Foo',", d$message,
+                             fixed = TRUE)), 20L)
 })
 
 test_that("the user_agent_cut rows do not depend on the repeated rules", {
@@ -76,7 +198,9 @@ test_that("a rule an uncut group already gives is a real duplicate", {
     "Disallow: /a", "Disallow: /z", "", "User-agent: foo", "Disallow: /a"
   ))
   expect_identical(d$line, c(5L, 9L))
-  expect_identical(d$message[[2L]], dc_plain(2L))
+  expect_identical(d$message, c(
+    dc_cut(2L, "'foo' and 'Foo bar' as one token, 'foo',"), dc_plain(2L)
+  ))
 })
 
 # The matchers, unchanged by this ticket. Each probe file has a second group
@@ -122,3 +246,24 @@ test_that("the Bing and Yandex matchers keep those groups apart", {
   x <- dc_probe("Yandex", "Yandex 2.0", "Yandex 2.0", "yandex")
   expect_identical(x$matcher_status, rep("not_evaluated", 2L))
 })
+
+for (locale in readLines(test_path("fixtures", "case-folding-locales.txt"))) {
+  test_that(paste("whole values compare the same under", locale), {
+    old <- Sys.getlocale("LC_CTYPE")
+    on.exit(Sys.setlocale("LC_CTYPE", old), add = TRUE)
+    set <- suppressWarnings(Sys.setlocale("LC_CTYPE", locale))
+    skip_if_not(identical(set, locale), paste(locale, "is not available"))
+    same <- dc_rows(dc_lines(
+      "User-agent: ID-Bot i", "Disallow: /x", "", "User-agent: id-bot I",
+      "Disallow: /x"
+    ))
+    expect_identical(same$message, dc_plain(2L))
+    apart <- dc_rows(dc_lines(
+      "User-agent: ID-Bot i", "Disallow: /x", "", "User-agent: id-bot j",
+      "Disallow: /x"
+    ))
+    expect_identical(apart$message, dc_cut(
+      2L, "'ID-Bot i' and 'id-bot j' as one token, 'ID-Bot',"
+    ))
+  })
+}

@@ -295,7 +295,11 @@ validation_unsupported <- c(
 #'   \code{duplicate_rule} \tab info \tab
 #'     An Allow or Disallow repeats an earlier rule of the same type and
 #'     pattern for the same crawlers, so it has no effect. Anchored on the
-#'     repeat; the message names the earlier line. \cr
+#'     repeat; the message names the earlier line. When the groups share
+#'     the crawler only because Google's matcher cuts two written User-agent
+#'     values to one token, the message says the repeat is Google's only and
+#'     names the values; the package's Bing and Yandex matchers keep those
+#'     groups apart. \cr
 #'   \code{missing_user_agent} \tab error \tab
 #'     Allow or Disallow rules exist but no line names a non-empty
 #'     User-agent. \cr
@@ -600,7 +604,16 @@ validation_unsupported <- c(
 #' same rule. It is reported as `rule_lowercase_escape_twin` instead, and it
 #' neither gets a `duplicate_rule` row nor counts as the earlier rule of
 #' one. In other groups, such a line keeps `rule_lowercase_escape` and may
-#' get `duplicate_rule`.
+#' get `duplicate_rule`. Groups merge as Google's matcher merges them, so
+#' `Foo web spider` and `Foo blog`, both read as `Foo`, share their rules. A
+#' repeat that exists only through such a cut (the rule is no repeat when
+#' each whole value, folded to ASCII lower case, names its own crawler) does
+#' not say the rule has no effect: its message says the repeat is Google's
+#' only, names the written values (five at most, then a count) and the
+#' token read, and points to the `user_agent_cut` rows. The package's Bing
+#' and Yandex matchers compare the whole value and keep those groups apart.
+#' A rule that a group naming the same whole value already gives keeps the
+#' plain message.
 #'
 #' On a document holding a NUL byte, `wildcard_rules_not_inherited`,
 #' `disallow_tied_by_allow`, `duplicate_rule` and the AI-training codes
@@ -1870,7 +1883,10 @@ rsl_license_scope <- function(at, first, names, has_global, local_groups) {
 #   value the token does not spell whole: the matcher reads less than was
 #   written, or nothing; ROBO-zvhrayhx) and `name` (the value as written,
 #   ASCII-safe as `raw_text` renders it, for messages that name the agent:
-#   the cut token is Google's reading only, ROBO-txnzyugl).
+#   the cut token is Google's reading only, ROBO-txnzyugl) and `uncut` (the
+#   merge key of a matcher that compares the whole value: `key`, except on
+#   a cut line Google reads a token from, where it is the full value folded
+#   to ASCII lower case, written as `#` and hex bytes; ROBO-qwfoyouo).
 # - `rules`: one row per Allow or Disallow inside a group (rules before the
 #   first User-agent are dropped): `group`, `line`, `type` ("allow" or
 #   "disallow"), `value` (canonical, as parsed), `empty` and `key` (type and
@@ -1909,6 +1925,8 @@ validation_groups <- function(parsed) {
     name = vapply(agent_bytes, render_validation_line, ""),
     stringsAsFactors = FALSE
   )
+  agents$uncut <- validation_uncut_keys(agent_bytes, agents$key,
+                                        agents$cut)
 
   group_ids <- unique(agents$group)
   groups <- data.frame(
@@ -1937,6 +1955,23 @@ validation_groups <- function(parsed) {
     stringsAsFactors = FALSE
   )
   list(groups = groups, agents = agents, rules = rules)
+}
+
+# The merge key of each User-agent line for a matcher that compares the
+# whole value (ROBO-qwfoyouo): `key` where Google's matcher reads the value
+# whole or reads no token, else the full value with ASCII upper case folded,
+# as `#` and hex bytes. The hex form is exact for any byte, where `name`
+# renders the text `\xE9` and the byte 0xE9 alike, and `#` keeps it apart
+# from every token key.
+validation_uncut_keys <- function(agent_bytes, key, cut) {
+  uncut <- key
+  folded <- cut & nzchar(key)
+  uncut[folded] <- vapply(agent_bytes[folded], function(bytes) {
+    upper <- bytes >= as.raw(0x41) & bytes <= as.raw(0x5a)
+    bytes[upper] <- as.raw(as.integer(bytes[upper]) + 32L)
+    paste0("#", paste(as.character(bytes), collapse = ""))
+  }, "")
+  uncut
 }
 
 # The robots.txt tokens Google documents for its crawlers
@@ -3566,14 +3601,15 @@ tied_disallow_diagnostics <- function(groups) {
 }
 
 # The crawler tokens of the groups the rule checks merge over (ROBO-fdhmlvwm,
-# ROBO-xexjgecr): `*` for a global User-agent line, the merge key otherwise;
-# a line naming no token is dropped, and a `*` token never stands for a named
-# one. Returns a function that crosses a vector of rule group ids with the
-# token classes of each group, as list(owner, class): `owner` indexes the
-# input (ascending, so rows keep its order) and `class` is the token class.
-validation_token_expander <- function(groups) {
+# ROBO-xexjgecr): `*` for a global User-agent line, the merge key otherwise
+# (`key`, Google's by default; ROBO-qwfoyouo passes `agents$uncut`); a line
+# naming no token is dropped, and a `*` token never stands for a named one.
+# Returns a function that crosses a vector of rule group ids with the token
+# classes of each group, as list(owner, class): `owner` indexes the input
+# (ascending, so rows keep its order) and `class` is the token class.
+validation_token_expander <- function(groups, key = groups$agents$key) {
   agents <- groups$agents
-  token <- ifelse(agents$global, "*", agents$key)
+  token <- ifelse(agents$global, "*", key)
   group <- agents$group[nzchar(token)]
   token <- token[nzchar(token)]
   # Tokens named by the same set of groups are interchangeable here, so one
@@ -3610,8 +3646,11 @@ validation_token_expander <- function(groups) {
 # nor count as the earlier rule. Returns a data frame of `line`, `type` and
 # `message`, in line order; the message names the smallest line among each
 # token's first identical rule.
+# A row is a repeat only through a cut when the same check on the merge keys
+# of a matcher that compares the whole value (`agents$uncut`) finds none:
+# Google's matcher merged the groups of values it cuts to one token, and the
+# message says so instead of calling the rule a no-op (ROBO-qwfoyouo).
 duplicate_rule_diagnostics <- function(groups, skip = integer()) {
-  expand <- validation_token_expander(groups)
   rules <- groups$rules
   # Any rule line, empty or not, ends its group. A group's only rule line
   # keeps the next User-agent line from joining it, so it is not reported
@@ -3622,6 +3661,31 @@ duplicate_rule_diagnostics <- function(groups, skip = integer()) {
     rules$line < max(groups$agents$line, -Inf)
   rules <- rules[substr(rules$value, 1L, 1L) %in% c("/", "*") &
                    !rules$line %in% skip, , drop = FALSE]
+  found <- duplicate_rule_repeats(rules, validation_token_expander(groups))
+  owner <- found$owner
+  first <- found$first
+
+  type <- rules$type[owner]
+  message <- sprintf(
+    "Rule has no effect: line %d already has the same %s.",
+    first, ifelse(type == "allow", "Allow", "Disallow")
+  )
+  cut_only <- duplicate_rule_cut_only(groups, rules, owner)
+  if (any(cut_only)) {
+    message[cut_only] <- duplicate_rule_cut_message(
+      groups$agents, rules, owner[cut_only], first[cut_only]
+    )
+  }
+  data.frame(
+    line = rules$line[owner], type = type, message = message,
+    stringsAsFactors = FALSE
+  )
+}
+
+# The repeats among `rules` for the token classes `expand` gives, as
+# list(owner, first): `owner` indexes `rules` (ascending) and `first` is the
+# smallest line among each token's first identical rule.
+duplicate_rule_repeats <- function(rules, expand) {
   by_rule <- expand(rules$group)
   owner <- by_rule$owner
   key <- paste(by_rule$class, rules$type[owner], rules$value[owner],
@@ -3636,18 +3700,69 @@ duplicate_rule_diagnostics <- function(groups, skip = integer()) {
   owner <- owner[order_by]
   first <- first[order_by]
   keep <- !duplicated(owner)
-  owner <- owner[keep]
-  first <- first[keep]
+  list(owner = owner[keep], first = first[keep])
+}
 
-  type <- rules$type[owner]
-  message <- sprintf(
-    "Rule has no effect: line %d already has the same %s.",
-    first, ifelse(type == "allow", "Allow", "Disallow")
+# Which repeats in `owner` (indexes of `rules`) are repeats only for Google's
+# matcher: under the whole-value keys they are none. A rule an uncut group
+# already gives stays a repeat there, so it keeps the plain text.
+duplicate_rule_cut_only <- function(groups, rules, owner) {
+  agents <- groups$agents
+  if (length(owner) == 0L || all(agents$uncut == agents$key)) {
+    return(logical(length(owner)))
+  }
+  whole <- duplicate_rule_repeats(
+    rules, validation_token_expander(groups, agents$uncut)
   )
-  data.frame(
-    line = rules$line[owner], type = type, message = message,
-    stringsAsFactors = FALSE
-  )
+  !owner %in% whole$owner
+}
+
+# The message of a repeat that exists only because Google's matcher cuts
+# written User-agent values to one token and merges their groups. It names
+# the written values, in the repeat's group and the earlier groups holding
+# the rule, of each token they share that more than one whole value cuts to
+# (five at most, then a count), and the tokens read (five at most).
+duplicate_rule_cut_message <- function(agents, rules, owner, first,
+                                       cap = 5L) {
+  keep <- !agents$global & nzchar(agents$key)
+  group <- agents$group[keep]
+  key <- agents$key[keep]
+  pair <- paste(key, agents$uncut[keep], sep = "\n")
+  name <- agents$name[keep]
+  token <- agents$token[keep]
+  rule_key <- paste(rules$type, rules$value, sep = "\n")
+  holders <- split(seq_len(nrow(rules)), rule_key)
+  quote <- function(x) sprintf("'%s'", ai_training_name(x))
+  read_as <- vapply(owner, function(o) {
+    held <- holders[[rule_key[[o]]]]
+    held <- held[rules$line[held] <= rules$line[[o]]]
+    near <- which(group %in% rules$group[held])
+    near <- near[key[near] %in% key[near[group[near] == rules$group[[o]]]]]
+    # A token more than one whole value cuts to is a merge through a cut.
+    # Values differing only in ASCII case count once, the first written.
+    distinct <- near[!duplicated(pair[near])]
+    merged <- unique(key[distinct][duplicated(key[distinct])])
+    distinct <- distinct[key[distinct] %in% merged]
+    written <- name[distinct]
+    tokens <- token[distinct][!duplicated(key[distinct])]
+    paste(
+      joined_and(quote(utils::head(written, cap)), length(written) - cap),
+      "as",
+      if (length(tokens) == 1L) {
+        sprintf("one token, %s,", quote(tokens))
+      } else {
+        paste("the tokens", joined_and(quote(utils::head(tokens, cap)),
+                                       length(tokens) - cap))
+      }
+    )
+  }, "")
+  sprintf(paste0(
+    "This %s repeats line %d only for Google's matcher, which reads %s ",
+    "and merges their groups. The package's Bing and Yandex matchers ",
+    "compare the whole value and keep the groups apart, so there it is not ",
+    "a repeat; see the user_agent_cut rows."
+  ), ifelse(rules$type[owner] == "allow", "Allow", "Disallow"), first,
+  read_as)
 }
 
 wildcard_inheritance_message <- function(tokens, one_group, missing,

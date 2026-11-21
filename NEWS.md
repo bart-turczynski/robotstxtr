@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* Validator: a `duplicate_rule` row that repeats a rule only because Google's matcher cuts two User-agent values to one token says so and names the values (ROBO-qwfoyouo).
+
 * Fetch: new `robots_compare_fetches(variants, max_requests)` compares robots.txt responses across chosen URLs, User-Agent headers and repeats under a hard request budget (ROBO-syoccfej).
 
 * Validator: a `License:` line gets `rsl_license_directive` (info; warning unless an absolute URI) stating its scope, and counts in `unsupported_directives`, no longer `unknown_directives` (RSL 1.0 §4.4) (ROBO-ahqpndzq).
