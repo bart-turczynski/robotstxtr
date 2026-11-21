@@ -4893,18 +4893,17 @@ lookalike_agent_values <- function(agent_rows, agent_bytes, raw_lines) {
 # compare; the sentence quotes it rendered as render_validation_line()
 # does. One pass over the text's bytes and code points.
 lookalike_note <- function(text, noun) {
-  if (identical(Encoding(text), "bytes")) {
-    return(NULL)
-  }
   bytes <- charToRaw(text)
+  # A speed path only: ASCII text holds no look-alike, and most values are
+  # ASCII.
   if (length(bytes) == 0L || all(as.integer(bytes) < 0x80L)) {
     return(NULL)
   }
-  text <- rawToChar(bytes)
-  if (!validUTF8(text)) {
-    return(NULL)
-  }
-  points <- utf8ToInt(text)
+  # utf8ToInt() reads the bytes as written (rawToChar() drops any mark) and
+  # gives a single NA for text that is not valid UTF-8, which matches no
+  # table row, so such text, a bytes-marked key among it, returns NULL
+  # below.
+  points <- utf8ToInt(rawToChar(bytes))
   table <- validation_lookalike_code_points
   at <- match(points, table$point)
   hit <- which(!is.na(at))
