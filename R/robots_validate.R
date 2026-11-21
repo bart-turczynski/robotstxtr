@@ -288,12 +288,19 @@ validation_unsupported <- c(
 #'     its lines are still read and reported one by one. A body that opens
 #'     with a markup comment (\code{<!--}) is treated as a robots.txt that
 #'     starts with a comment, so it draws no \code{xml_body}; the comment line
-#'     keeps its own \code{malformed_line} row. \cr
+#'     keeps its own \code{malformed_line} row. Only the first 4,096 bytes are
+#'     sniffed. A body whose reads are binary (a NUL byte, or mostly invalid
+#'     UTF-8, in those bytes) draws neither \code{xml_body} nor
+#'     \code{json_body}; a body cut at \code{max_bytes} is also sniffed on its
+#'     stored bytes: binary bytes in the cut-off part alone do not hide markup
+#'     or JSON in the readable lines. \cr
 #'   \code{json_body} \tab warning \tab
 #'     The body looks like a JSON object or array, such as an API error, not a
-#'     robots.txt; its lines are still read and reported one by one. At most
-#'     one of \code{html_body}, \code{xml_body} and \code{json_body} is reported
-#'     per document, in that order of precedence. \cr
+#'     robots.txt; its lines are still read and reported one by one. Only the
+#'     first 4,096 bytes are sniffed, and a binary read draws neither
+#'     \code{json_body} nor \code{xml_body}, as described for \code{xml_body}.
+#'     At most one of \code{html_body}, \code{xml_body} and \code{json_body} is
+#'     reported per document, in that order of precedence. \cr
 #'   \code{utf16_or_utf32_encoding} \tab warning \tab
 #'     A raw or fetched body is UTF-16 or UTF-32, not UTF-8 (RFC 9309 section
 #'     2.3): it starts with the byte-order mark of that encoding (a UTF-32

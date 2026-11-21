@@ -274,7 +274,7 @@ test_that("ROBO-mgtngbpm: a comment-led body draws no xml_body", {
   expect_false("xml_body" %in% robots_validate_text(bom)$diagnostics$code)
 })
 
-test_that("ROBO-mgtngbpm: a comment lead is read from the sniffer window only", {
+test_that("ROBO-mgtngbpm: a comment lead is read from the sniffer window", {
   # The lead is looked for in the first 4,096 bytes, as the sniffer reads them.
   # A NUL past that window leaves the read "xml", and the lead check must not
   # hand the whole body to rawToChar(), which errors on an embedded NUL. The
@@ -301,6 +301,29 @@ test_that("ROBO-mgtngbpm: a comment lead is found as the sniffer finds it", {
                    if (sniffed) "xml" else NA_character_)
   expect_identical(body_opens_with_comment(nbsp), sniffed)
   expect_false("xml_body" %in% robots_validate_text(nbsp)$diagnostics$code)
+})
+
+test_that("ROBO-mgtngbpm: binary reads draw no JSON kind; window 4,096", {
+  # A binary read (mostly invalid UTF-8 in the first 4,096 bytes) draws neither
+  # kind: the JSON-looking lines are not read as JSON, and invalid_utf8 reports
+  # the bytes instead.
+  latin1_json <- c(charToRaw('{"a":"'), rep(as.raw(0xe9), 20L),
+                   charToRaw('"}\n'))
+  expect_identical(robots_content_flag(latin1_json), "binary")
+  x <- robots_validate_text(latin1_json)
+  expect_false(any(kind_codes %in% x$diagnostics$code))
+  expect_true("invalid_utf8" %in% x$diagnostics$code)
+  # The sniffer reads only the first 4,096 bytes: a NUL past them does not make
+  # the JSON read binary, so json_body stands beside nul_byte.
+  far_nul <- c(charToRaw('{"a":1}\n'), charToRaw(strrep("a", 5000L)),
+               as.raw(0), charToRaw("\n"))
+  expect_identical(robots_content_flag(far_nul), "json")
+  y <- robots_validate_text(far_nul)
+  expect_identical(
+    row_keys(y),
+    c("nul_byte@2", "malformed_line@2", "unknown_directive@1", "json_body@NA",
+      "no_rules@NA")
+  )
 })
 
 test_that("ROBO-mgtngbpm: body_kind_advisory() prefers html, xml, json", {
