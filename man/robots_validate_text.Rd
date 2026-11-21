@@ -304,7 +304,11 @@ Disallow line; the message names the Allow line. \cr
 \code{duplicate_rule} \tab info \tab
 An Allow or Disallow repeats an earlier rule of the same type and
 pattern for the same crawlers, so it has no effect. Anchored on the
-repeat; the message names the earlier line. \cr
+repeat; the message names the earlier line. When the groups share
+the crawler only because Google's matcher cuts two written User-agent
+values to one token, the message says the repeat is Google's only and
+names the values, and that a matcher comparing the whole value keeps
+those groups apart. \cr
 \code{missing_user_agent} \tab error \tab
 Allow or Disallow rules exist but no line names a non-empty
 User-agent. \cr
@@ -609,7 +613,23 @@ from a line in the same group that writes the escape in upper case is the
 same rule. It is reported as \code{rule_lowercase_escape_twin} instead, and it
 neither gets a \code{duplicate_rule} row nor counts as the earlier rule of
 one. In other groups, such a line keeps \code{rule_lowercase_escape} and may
-get \code{duplicate_rule}.
+get \code{duplicate_rule}. Groups merge as Google's matcher merges them, so
+\verb{Foo web spider} and \verb{Foo blog}, both read as \code{Foo}, share their rules. A
+repeat that exists only through such a cut (no earlier line with the rule
+sits in a group that shares a whole User-agent value, folded to ASCII
+lower case, with the repeat's group) does not say the rule has no effect:
+its message says the repeat is Google's only, names the tokens read (five
+at most, then a count) and the values written for them up to the
+repeat's group (five at most, one of that group's for each token named,
+then a count), says a matcher comparing the whole
+value keeps the groups apart, and points to the \code{user_agent_cut} rows.
+It names the package's Bing matcher only when the token is a crawler the
+Bing backend evaluates (\code{bingbot}, \code{adidxbot}), and its Yandex matcher
+only for \code{Yandex} or \code{YandexAdditionalBot}. When an earlier group with the
+rule shares a whole value with the repeat's group, as \code{User-agent: Foo}
+beside \code{User-agent: Foo} and \verb{User-agent: 1bot} does, a matcher that
+compares the whole value merges them too, and the row keeps the plain
+message.
 
 On a document holding a NUL byte, \code{wildcard_rules_not_inherited},
 \code{disallow_tied_by_allow}, \code{duplicate_rule} and the AI-training codes
