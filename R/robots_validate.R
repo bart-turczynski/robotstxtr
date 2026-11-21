@@ -180,15 +180,15 @@ validation_unsupported <- c(
 #'     gets no \code{duplicate_rule} row. Not reported for a line holding a
 #'     NUL byte. \cr
 #'   \code{rule_replacement_character} \tab info \tab
-#'     Only with \code{unicode_advisories = TRUE}: a pattern holds U+FFFD, the
+#'     A pattern holds U+FFFD, the
 #'     replacement character a decoder writes for bytes it could not read.
 #'     One per rule line. \cr
 #'   \code{rule_invisible_character} \tab info \tab
-#'     Only with \code{unicode_advisories = TRUE}: a pattern holds an
+#'     A pattern holds an
 #'     invisible or formatting character, such as U+200B or U+2066. One per
 #'     rule line, naming up to ten. \cr
 #'   \code{rule_possible_mojibake} \tab info \tab
-#'     Only with \code{unicode_advisories = TRUE}: a pattern holds two or
+#'     A pattern holds two or
 #'     more sequences that read like UTF-8 decoded as Latin-1 and encoded
 #'     again. One per rule line, naming up to ten. \cr
 #'   \code{empty_sitemap_value} \tab warning \tab
@@ -558,13 +558,13 @@ validation_unsupported <- c(
 #' sits in a comment. `user_agent_cut` runs too; its message already names
 #' Google's matcher.
 #'
-#' `unicode_advisories = TRUE` adds three info codes for text that may have
+#' The validator adds three info codes for text that may have
 #' been damaged on its way into the file. They are advisories, not validity
 #' findings: they change no status, no parse and no match, and each message
 #' says the character may be meant. Some damage is already visible without
 #' them: mixed UTF-8 and Latin-1 bytes are usually malformed UTF-8, which
 #' `invalid_utf8` reports. Text that is valid UTF-8 can neither prove nor
-#' disprove corruption, so the opt-in reads only a closed set of indicators
+#' disprove corruption, so the check reads only a closed set of indicators
 #' in the raw value of an active Allow or Disallow line, as the parser reads
 #' it (cut at the first `#`, at a NUL and at the line buffer):
 #' `rule_replacement_character` for U+FFFD; `rule_invisible_character` for
@@ -592,17 +592,11 @@ validation_unsupported <- c(
 #' gets at most 100 such rows; the last one counts the rest. Only the
 #' Latin-1 mojibake pattern is read: a Windows-1252 decoding, NFC or NFD
 #' normalization and the intended original text are out of scope, and
-#' nothing is repaired. The result's `unicode_advisories` attribute holds
-#' the value of the argument, so an empty set of rows from a run with it
-#' on can be told apart from a run with it off.
+#' nothing is repaired.
 #'
 #' @param robots_txt A single non-missing character string or a raw vector.
 #' @param source_id A single non-empty character string identifying the supplied
 #'   document. Defaults to `"supplied"`.
-#' @param unicode_advisories A single `TRUE` or `FALSE`. `TRUE` adds the info
-#'   codes `rule_replacement_character`, `rule_invisible_character` and
-#'   `rule_possible_mojibake` (see Details). Defaults to `FALSE`, which leaves
-#'   the result unchanged.
 #'
 #' @return An S3 object of class `robots_validations`, containing `map`,
 #'   `documents`, and `diagnostics` data frames.
@@ -622,18 +616,15 @@ validation_unsupported <- c(
 #' @seealso [robots_validate_url()] to fetch and validate, [robots_fetch()] for
 #'   acquisition evidence, and [allowed_by_robots_text()] for URL decisions.
 #' @export
-robots_validate_text <- function(robots_txt, source_id = "supplied",
-                                 unicode_advisories = FALSE) {
+robots_validate_text <- function(robots_txt, source_id = "supplied") {
   validate_source_id(source_id)
-  validate_unicode_advisories(unicode_advisories)
   bytes <- validation_body_bytes(robots_txt)
   validated <- validate_document_bytes(
     bytes = bytes,
     source_id = source_id,
     source_type = "supplied",
     fetch_outcome = "supplied",
-    raw_input = is.raw(robots_txt),
-    unicode_advisories = unicode_advisories
+    raw_input = is.raw(robots_txt)
   )
   map <- validation_map_row(
     input_id = 1L,
@@ -647,8 +638,7 @@ robots_validate_text <- function(robots_txt, source_id = "supplied",
     error_message = NA_character_,
     validation_status = validated$document$validation_status
   )
-  new_robots_validations(map, validated$document, validated$diagnostics,
-                         unicode_advisories = unicode_advisories)
+  new_robots_validations(map, validated$document, validated$diagnostics)
 }
 
 #' Fetch and validate robots.txt documents for URLs
@@ -732,15 +722,11 @@ robots_validate_text <- function(robots_txt, source_id = "supplied",
 #' separate question. It also does not infer webmaster intent or check whether
 #' declared remote sitemaps exist.
 #'
-#' With `unicode_advisories = TRUE`, each validated body is also read for
-#' the info codes [robots_validate_text()] describes; their rows come before
-#' the redirect and `Content-Type` rows.
+#' Each validated body is also read for the info codes
+#' [robots_validate_text()] describes; their rows come before the redirect and
+#' `Content-Type` rows.
 #'
 #' @inheritParams robots_fetch
-#' @param unicode_advisories A single `TRUE` or `FALSE`. `TRUE` adds the info
-#'   codes `rule_replacement_character`, `rule_invisible_character` and
-#'   `rule_possible_mojibake` (see [robots_validate_text()]). Defaults to
-#'   `FALSE`, which leaves the result unchanged.
 #'
 #' @return An S3 object of class `robots_validations`, containing `map` (one row
 #'   per input URL), `documents` (one row per distinct fetch source), and
@@ -764,9 +750,7 @@ robots_validate_text <- function(robots_txt, source_id = "supplied",
 robots_validate_url <- function(url, timeout = 10, max_bytes = 524288L,
                                 fetch_user_agent = NULL, ssrf_guard = TRUE,
                                 safety_level = "strict",
-                                fetch_allow_ranges = character(),
-                                unicode_advisories = FALSE) {
-  validate_unicode_advisories(unicode_advisories)
+                                fetch_allow_ranges = character()) {
   safety_level <- validate_safety_level(safety_level)
   fetched <- robots_fetch(
     url = url,
@@ -777,8 +761,7 @@ robots_validate_url <- function(url, timeout = 10, max_bytes = 524288L,
     safety_level = safety_level,
     fetch_allow_ranges = fetch_allow_ranges
   )
-  validate_fetched_documents(fetched, safety_level = safety_level,
-                             unicode_advisories = unicode_advisories)
+  validate_fetched_documents(fetched, safety_level = safety_level)
 }
 
 #' Print a robots.txt validation result
@@ -827,14 +810,12 @@ validation_body_bytes <- function(robots_txt) {
   text_body_bytes_v1(robots_txt)
 }
 
-new_robots_validations <- function(map, documents, diagnostics,
-                                   unicode_advisories = FALSE) {
+new_robots_validations <- function(map, documents, diagnostics) {
   structure(
     list(map = map, documents = documents, diagnostics = diagnostics),
     class = "robots_validations",
     package_version = as.character(getNamespaceVersion("robotstxtr")),
-    validation_profile = robots_validation_profile,
-    unicode_advisories = unicode_advisories
+    validation_profile = robots_validation_profile
   )
 }
 
@@ -905,8 +886,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
                                     fetch_outcome = "supplied",
                                     max_bytes = NA_integer_,
                                     body_truncated = FALSE,
-                                    raw_input = TRUE,
-                                    unicode_advisories = FALSE) {
+                                    raw_input = TRUE) {
   # A 2xx body cut at max_bytes (RFC 9309 section 2.5, ROBO-ldpahknv) is
   # validated up to its last complete line: the partial line after it is not
   # the site's. `byte_size` stays the stored size; the file's real end was
@@ -1261,10 +1241,9 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         )
       }
     }
-    # Opt-in info advisories on the raw value (ROBO-qxcwxtbm), capped per
-    # document; the last row kept is noted with the count left out.
-    if (unicode_advisories && type %in% c("allow", "disallow") &&
-          nzchar(value)) {
+    # Info advisories on the raw value (ROBO-qxcwxtbm), capped per document;
+    # the last row kept is noted with the count left out.
+    if (type %in% c("allow", "disallow") && nzchar(value)) {
       for (found in rule_unicode_advisories(
         rule_raw_value(raw_lines[[line]], line == 1L,
                        parsed$missing_colon[[i]])
@@ -4030,7 +4009,7 @@ rule_lowercase_escape_twin_message <- function(escapes, twin) {
   )
 }
 
-# Opt-in Unicode advisories (ROBO-qxcwxtbm). The set is closed and defined
+# Unicode advisories (ROBO-qxcwxtbm). The set is closed and defined
 # from Unicode properties, not from any engine's character list: U+FFFD; the
 # invisible or format characters below (soft hyphen, zero-width and
 # directional marks, bidi embeddings and isolates, word joiner and invisible
@@ -4391,8 +4370,7 @@ render_validation_line <- function(bytes) {
   }, character(1L)), collapse = "")
 }
 
-validate_fetched_documents <- function(fetched, safety_level = "strict",
-                                       unicode_advisories = FALSE) {
+validate_fetched_documents <- function(fetched, safety_level = "strict") {
   documents <- list()
   diagnostics <- list()
   robots <- fetched$robots
@@ -4409,8 +4387,7 @@ validate_fetched_documents <- function(fetched, safety_level = "strict",
         http_status = source$http_status,
         fetch_outcome = source$fetch_outcome,
         max_bytes = source$max_bytes,
-        body_truncated = isTRUE(robots$body_truncated[[i]]),
-        unicode_advisories = unicode_advisories
+        body_truncated = isTRUE(robots$body_truncated[[i]])
       )
       redirect <- redirect_host_diagnostic(source)
       if (!is.null(redirect)) {
@@ -4466,8 +4443,7 @@ validate_fetched_documents <- function(fetched, safety_level = "strict",
   } else {
     do.call(rbind, diagnostics)
   }
-  new_robots_validations(map, document_frame, diagnostic_frame,
-                         unicode_advisories = unicode_advisories)
+  new_robots_validations(map, document_frame, diagnostic_frame)
 }
 
 unavailable_validation <- function(source, safety_level = "strict") {

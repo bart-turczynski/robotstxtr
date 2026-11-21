@@ -14,7 +14,7 @@
 
 * Suggests `testthat (>= 3.3.0)`: the tests use `local_mocked_s3_method()` (ROBO-obxdzade).
 
-* Validator: `unicode_advisories = TRUE` in `robots_validate_text()` and `robots_validate_url()` adds info rows for U+FFFD, invisible characters and possible mojibake in Allow and Disallow values; the default is unchanged (ROBO-qxcwxtbm).
+* Validator: `robots_validate_text()` and `robots_validate_url()` add info rows for U+FFFD, invisible characters and possible mojibake in Allow and Disallow values (ROBO-qxcwxtbm).
 
 * Validator: `robots_validate_url()` warns on the Content-Type of a fetched robots.txt: `content_type_malformed`, `content_type_not_text_plain`, `content_type_charset_unsupported`, and `content_type_charset_conflict` for `us-ascii` over non-ASCII bytes; a missing header adds nothing (ROBO-plkpmoll).
 

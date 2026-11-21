@@ -44,19 +44,6 @@ validate_source_id <- function(source_id) {
   invisible(source_id)
 }
 
-# `unicode_advisories` must be one non-missing logical (ROBO-qxcwxtbm).
-validate_unicode_advisories <- function(unicode_advisories) {
-  if (!is.logical(unicode_advisories) || length(unicode_advisories) != 1L ||
-        is.na(unicode_advisories)) {
-    robots_abort(
-      paste0("`unicode_advisories` must be a single, non-missing logical ",
-             "(`TRUE`/`FALSE`)."),
-      "robotstxtr_invalid_unicode_advisories"
-    )
-  }
-  invisible(unicode_advisories)
-}
-
 # `url` must be a character vector; length zero is allowed. Wrong type is a
 # call-level error (no silent coercion).
 validate_url_type <- function(url) {

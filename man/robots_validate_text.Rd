@@ -4,22 +4,13 @@
 \alias{robots_validate_text}
 \title{Validate a supplied robots.txt document}
 \usage{
-robots_validate_text(
-  robots_txt,
-  source_id = "supplied",
-  unicode_advisories = FALSE
-)
+robots_validate_text(robots_txt, source_id = "supplied")
 }
 \arguments{
 \item{robots_txt}{A single non-missing character string or a raw vector.}
 
 \item{source_id}{A single non-empty character string identifying the supplied
 document. Defaults to \code{"supplied"}.}
-
-\item{unicode_advisories}{A single \code{TRUE} or \code{FALSE}. \code{TRUE} adds the info
-codes \code{rule_replacement_character}, \code{rule_invisible_character} and
-\code{rule_possible_mojibake} (see Details). Defaults to \code{FALSE}, which leaves
-the result unchanged.}
 }
 \value{
 An S3 object of class \code{robots_validations}, containing \code{map},
@@ -198,15 +189,15 @@ pattern as written. The message names the twin's line, and the line
 gets no \code{duplicate_rule} row. Not reported for a line holding a
 NUL byte. \cr
 \code{rule_replacement_character} \tab info \tab
-Only with \code{unicode_advisories = TRUE}: a pattern holds U+FFFD, the
+A pattern holds U+FFFD, the
 replacement character a decoder writes for bytes it could not read.
 One per rule line. \cr
 \code{rule_invisible_character} \tab info \tab
-Only with \code{unicode_advisories = TRUE}: a pattern holds an
+A pattern holds an
 invisible or formatting character, such as U+200B or U+2066. One per
 rule line, naming up to ten. \cr
 \code{rule_possible_mojibake} \tab info \tab
-Only with \code{unicode_advisories = TRUE}: a pattern holds two or
+A pattern holds two or
 more sequences that read like UTF-8 decoded as Latin-1 and encoded
 again. One per rule line, naming up to ten. \cr
 \code{empty_sitemap_value} \tab warning \tab
@@ -576,13 +567,13 @@ byte, so each such message says it is Google's reading, unless every NUL
 sits in a comment. \code{user_agent_cut} runs too; its message already names
 Google's matcher.
 
-\code{unicode_advisories = TRUE} adds three info codes for text that may have
+The validator adds three info codes for text that may have
 been damaged on its way into the file. They are advisories, not validity
 findings: they change no status, no parse and no match, and each message
 says the character may be meant. Some damage is already visible without
 them: mixed UTF-8 and Latin-1 bytes are usually malformed UTF-8, which
 \code{invalid_utf8} reports. Text that is valid UTF-8 can neither prove nor
-disprove corruption, so the opt-in reads only a closed set of indicators
+disprove corruption, so the check reads only a closed set of indicators
 in the raw value of an active Allow or Disallow line, as the parser reads
 it (cut at the first \verb{#}, at a NUL and at the line buffer):
 \code{rule_replacement_character} for U+FFFD; \code{rule_invisible_character} for
@@ -610,9 +601,7 @@ value is left to \code{rule_missing_leading_slash}, which names it. A document
 gets at most 100 such rows; the last one counts the rest. Only the
 Latin-1 mojibake pattern is read: a Windows-1252 decoding, NFC or NFD
 normalization and the intended original text are out of scope, and
-nothing is repaired. The result's \code{unicode_advisories} attribute holds
-the value of the argument, so an empty set of rows from a run with it
-on can be told apart from a run with it off.
+nothing is repaired.
 }
 
 \examples{
