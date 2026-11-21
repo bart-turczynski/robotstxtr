@@ -1,5 +1,7 @@
 # robotstxtr (development version)
 
+* Fetch: `robots` rows keep the final response's raw `Cache-Control`, `Age`, `Date`, `Expires`, `ETag`, `Last-Modified` and `Vary` as character columns; `NA` absent, `""` empty (ROBO-zleohwyz).
+
 * Validator: new `allow_reopens_wildcard_disallow` (warning; info for `Allow: /` grants) when a named group's Allow reopens a path `User-agent: *` disallows (RFC 9309 §2.2.1) (ROBO-cufxicmz).
 
 * Validator: new `wildcard_disallows_not_inherited` (warning; info for `Allow: /` grants) when a named group drops `User-agent: *` Disallows that block a path the group allows (RFC 9309 §2.2.1) (ROBO-pbwijkdq).

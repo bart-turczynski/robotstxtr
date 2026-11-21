@@ -69,11 +69,13 @@ components, \code{map} (one row per input URL, in input order) and \code{robots}
 row per fetched source, with the fetched body stored once as a raw vector
 in \code{robots$body}, and the final response's \code{Retry-After} as the character
 \code{retry_after} and the double \code{retry_after_seconds}, its \code{Content-Type} as
-the character \code{content_type}, the character \code{content_flag}, the logical
-\code{body_truncated}, the character \code{terminal_redirect_reason} and
-\code{safety_block_reason}, and the list \code{redirect_hops}, which holds one list
-per source of the redirects met, each a list of \code{from_url}, \code{status} and
-\code{location_target}; the first \code{redirect_count} of them were followed).
+the character \code{content_type}, the character \code{content_flag}, its cache
+fields as the character \code{cache_control}, \code{age}, \code{date}, \code{expires},
+\code{etag}, \code{last_modified} and \code{vary}, the logical \code{body_truncated}, the
+character \code{terminal_redirect_reason} and \code{safety_block_reason}, and the
+list \code{redirect_hops}, which holds one list per source of the redirects
+met, each a list of \code{from_url}, \code{status} and \code{location_target}; the first
+\code{redirect_count} of them were followed).
 }
 \description{
 Performs the grouped robots.txt fetch stage for one or more target URLs and
@@ -192,6 +194,29 @@ anywhere), \code{"xml"} (any other body starting with \code{<}, such as a feed o
 XML error), \code{"json"} (the body starts with a JSON object or array), or \code{NA}.
 The flag comes from the body alone, never from \code{content_type}, and changes
 nothing: the body is matched as it is either way.
+
+To help explain why a robots.txt change seems not to have been picked up,
+each source row also keeps seven cache fields of the final response,
+unparsed and exactly as \pkg{ssrfr} delivers them: \code{cache_control}
+(\code{Cache-Control}), \code{age} (\code{Age}), \code{date} (\code{Date}), \code{expires} (\code{Expires}),
+\code{etag} (\code{ETag}), \code{last_modified} (\code{Last-Modified}) and \code{vary} (\code{Vary}).
+Several fields of one name are joined with \code{", "}. \code{NA} means the field is
+not available: the final response did not send it, or the fetch ended
+without a usable final response (the same cases as \code{Retry-After} above,
+a 4xx or 5xx over \code{max_bytes} included). \code{""} means the field was sent
+with an empty value. Only the final response counts, never a redirect
+before it. Nothing is derived from them: no age, freshness or expiry is
+computed, and a malformed value is kept as it is. As a rough guide,
+\code{Cache-Control} (such as \code{max-age}), \code{Expires}, \code{Date} and \code{Age} describe
+how long a cache may reuse this response; \code{ETag} and \code{Last-Modified} are
+validators a cache may use to ask whether its copy is still current; and
+\code{Vary} names the request fields a cache may key its copy on. They describe
+this response only: they do not show what any crawler has cached, when it
+fetched robots.txt last or when it will fetch it again, and a crawler may
+apply them differently or not at all (Google documents that it may use
+\code{Cache-Control} to set how long it caches robots.txt). The fetch itself
+is never conditional and nothing is cached between calls. The validation
+functions do not report these fields; read them from \code{robots_fetch()}.
 
 Each source row also says why a redirect chain ended without a final
 response, as \code{terminal_redirect_reason}: \code{"over_budget"} (a sixth

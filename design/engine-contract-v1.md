@@ -257,7 +257,7 @@ application policy and is never reported as Bing.
 
 The existing `allowed_by_robots_text()`, `allowed_by_robots_url()`,
 `robots_fetch()`, and `robots_body()` remain unchanged, apart from the additive
-Retry-After and Content-Type columns below and one default:
+Retry-After, Content-Type and cache-header columns below and one default:
 `allowed_by_robots_url()`'s `max_bytes` is 512,000 bytes, Google's window, no
 longer 524,288 (ROBO-uwveumyp; "A robots.txt over `max_bytes`" below). That
 changes results only on a response whose decoded body is 512,001 to 524,288
@@ -315,11 +315,14 @@ always write `NA`. The v1/v2 `evidence` frame and the `robots_validate_url()`
 `documents` frame (which copies named fetch fields, not the row) are
 unchanged, so the engine schema revision does not move.
 
-Decision: keep `Retry-After` only, not a generic list of the final response's
-headers. A header list would publish ssrfr's header representation as
-robotstxtr API and carry fields no caller acts on. Each header a caller needs
-gets its own typed column: `Content-Type` and its content flags are the
-follow-up ROBO-nhuirvrd.
+Decision: no generic list of the final response's headers. A header list
+would publish ssrfr's header representation as robotstxtr API and carry
+fields no caller acts on. Each header a caller needs gets its own typed
+column: `Content-Type` and its content flags are the follow-up
+ROBO-nhuirvrd, and seven cache fields the follow-up ROBO-zleohwyz ("Cache
+headers on legacy fetch rows" below). This first read "keep `Retry-After`
+only"; the maintainer amended it on 2026-11-21 to admit the cache fields,
+each still a named, typed column chosen on purpose, never a header dump.
 
 ### Content-Type and the content flag on legacy fetch rows (ROBO-nhuirvrd)
 
@@ -394,6 +397,48 @@ Decisions:
   value rather than a new column, and a caller filters on `!is.na()`.
 - Plain-text error pages ("404 Not Found" served with a 200) are not
   detected: no cheap test separates them from a short robots.txt.
+
+### Cache headers on legacy fetch rows (ROBO-zleohwyz)
+
+Every `robots_decisions$robots` and `robots_fetches$robots` frame gains seven
+character columns, between `content_flag` and `body_truncated`, in this
+order, under the same "final response" rule and the same legacy-schema scope
+as Retry-After above. Each is the final response's field value, unparsed, as
+ssrfr delivers it, several fields of one name joined with `", "`:
+
+| column | field |
+|---|---|
+| `cache_control` | `Cache-Control` |
+| `age` | `Age` |
+| `date` | `Date` |
+| `expires` | `Expires` |
+| `etag` | `ETag` |
+| `last_modified` | `Last-Modified` |
+| `vary` | `Vary` |
+
+`NA` means "not available": the final response did not send the field, or
+the fetch ended without a usable final response (the Retry-After cases above,
+a 4xx or 5xx over `max_bytes` included). `""` means the field was sent with
+an empty value. Any status, not only 2xx; a redirect's fields never count.
+`robots_fetch()` and `allowed_by_robots_url()` fill them;
+`allowed_by_robots_text()` and `as_legacy_robots_decisions_v1()` always
+write `NA`. One internal table, `cache_header_fields` in
+`R/fetch-policy.R`, names the fields for the reader and for every frame
+builder.
+
+Decisions:
+
+- Raw values only. No age, freshness lifetime or expiry is computed, and a
+  malformed value is kept as it is; the explanation of what each field
+  means lives in the `robots_fetch()` help. `Date` still feeds
+  `retry_after_seconds`, unchanged.
+- The columns describe this response only. They do not show what any
+  crawler has cached or when it will refetch, and absent validators do not
+  make a robots.txt invalid.
+- The fetch stays non-conditional (no `If-None-Match` or
+  `If-Modified-Since`) and nothing is cached between calls.
+- The v1/v2 `evidence` frame and the `robots_validate_url()` `documents`
+  frame are unchanged, so the engine schema revision does not move.
 
 ### A robots.txt over `max_bytes` (ROBO-ldpahknv)
 
@@ -474,8 +519,9 @@ Decisions:
   512,000-byte window (ROBO-phfbpfiy), this reading of the cut and the
   crawler-token layer (ROBO-fbbmvbob, "Google crawler tokens" above).
 - Every legacy `robots` frame gains a logical `body_truncated` column,
-  between `content_flag` and `body`, under the one-schema rule of the
-  Retry-After and Content-Type columns above: `robots_fetch()` and
+  between the cache-header columns (ROBO-zleohwyz, after `content_flag`)
+  and `body`, under the one-schema rule of the Retry-After and Content-Type
+  columns above: `robots_fetch()` and
   `allowed_by_robots_url()` fill it from the fetch, `allowed_by_robots_text()`
   writes `FALSE` (the caller supplied the whole text), and
   `as_legacy_robots_decisions_v1()` copies the v1 evidence's `body_truncated`.

@@ -116,6 +116,29 @@
 #' The flag comes from the body alone, never from `content_type`, and changes
 #' nothing: the body is matched as it is either way.
 #'
+#' To help explain why a robots.txt change seems not to have been picked up,
+#' each source row also keeps seven cache fields of the final response,
+#' unparsed and exactly as \pkg{ssrfr} delivers them: `cache_control`
+#' (`Cache-Control`), `age` (`Age`), `date` (`Date`), `expires` (`Expires`),
+#' `etag` (`ETag`), `last_modified` (`Last-Modified`) and `vary` (`Vary`).
+#' Several fields of one name are joined with `", "`. `NA` means the field is
+#' not available: the final response did not send it, or the fetch ended
+#' without a usable final response (the same cases as `Retry-After` above,
+#' a 4xx or 5xx over `max_bytes` included). `""` means the field was sent
+#' with an empty value. Only the final response counts, never a redirect
+#' before it. Nothing is derived from them: no age, freshness or expiry is
+#' computed, and a malformed value is kept as it is. As a rough guide,
+#' `Cache-Control` (such as `max-age`), `Expires`, `Date` and `Age` describe
+#' how long a cache may reuse this response; `ETag` and `Last-Modified` are
+#' validators a cache may use to ask whether its copy is still current; and
+#' `Vary` names the request fields a cache may key its copy on. They describe
+#' this response only: they do not show what any crawler has cached, when it
+#' fetched robots.txt last or when it will fetch it again, and a crawler may
+#' apply them differently or not at all (Google documents that it may use
+#' `Cache-Control` to set how long it caches robots.txt). The fetch itself
+#' is never conditional and nothing is cached between calls. The validation
+#' functions do not report these fields; read them from `robots_fetch()`.
+#'
 #' Each source row also says why a redirect chain ended without a final
 #' response, as `terminal_redirect_reason`: `"over_budget"` (a sixth
 #' redirect), `"no_location"` (a 3xx that names no target: not a 301, 302,
@@ -184,11 +207,13 @@
 #'   row per fetched source, with the fetched body stored once as a raw vector
 #'   in `robots$body`, and the final response's `Retry-After` as the character
 #'   `retry_after` and the double `retry_after_seconds`, its `Content-Type` as
-#'   the character `content_type`, the character `content_flag`, the logical
-#'   `body_truncated`, the character `terminal_redirect_reason` and
-#'   `safety_block_reason`, and the list `redirect_hops`, which holds one list
-#'   per source of the redirects met, each a list of `from_url`, `status` and
-#'   `location_target`; the first `redirect_count` of them were followed).
+#'   the character `content_type`, the character `content_flag`, its cache
+#'   fields as the character `cache_control`, `age`, `date`, `expires`,
+#'   `etag`, `last_modified` and `vary`, the logical `body_truncated`, the
+#'   character `terminal_redirect_reason` and `safety_block_reason`, and the
+#'   list `redirect_hops`, which holds one list per source of the redirects
+#'   met, each a list of `from_url`, `status` and `location_target`; the first
+#'   `redirect_count` of them were followed).
 #'
 #' @examples
 #' # A refused origin is decided before any request, so this runs offline.
