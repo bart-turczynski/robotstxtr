@@ -755,3 +755,26 @@ test_that("ROBO-ybhwztid: a bad destination_robots is the first error", {
   }
   expect_identical(log$urls, character())
 })
+
+test_that("ROBO-ybhwztid: rows with no destination get typed NA columns", {
+  log <- dest_log()
+  local_fake_ssrfr(dest_router(dest_routes(), log))
+  # No eligible row: nothing is fetched, nothing is followed up.
+  d <- allowed_by_robots_url(
+    dest_inputs, c("", NA), destination_robots = TRUE
+  )
+  expect_identical(log$urls, character())
+  r <- d$results
+  expect_identical(r$destination_source_id, rep(NA_character_, 2L))
+  expect_identical(r$destination_allowed, c(NA, NA))
+  expect_identical(r$destination_decision_source, rep(NA_character_, 2L))
+  expect_identical(r$destination_matched_line, rep(NA_integer_, 2L))
+  expect_identical(r$destination_matched_rule_type, rep(NA_character_, 2L))
+  expect_identical(r$destination_matched_rule_value, rep(NA_character_, 2L))
+  # A row whose user agent is invalid stays detached beside one followed up.
+  d <- allowed_by_robots_url(
+    dest_inputs, c("my-bot", ""), destination_robots = TRUE
+  )
+  expect_identical(d$results$destination_source_id, c("destination_1", NA))
+  expect_identical(d$results$destination_allowed, c(TRUE, NA))
+})

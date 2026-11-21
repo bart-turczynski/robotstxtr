@@ -267,9 +267,6 @@ destination_decision_columns <- function(fetch, url, user_agent,
     stringsAsFactors = FALSE
   )
   rows <- which(!is.na(dest_id))
-  if (length(rows) == 0L) {
-    return(out)
-  }
   dests <- fetch$destinations
   matched <- match_source_rows(
     dests, url[rows], user_agent[rows], dest_id[rows],
