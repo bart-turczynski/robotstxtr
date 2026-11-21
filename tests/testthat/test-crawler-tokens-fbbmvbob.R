@@ -83,7 +83,7 @@ test_that("the contract publishes the table and the moved revisions", {
     cap <- contract$matcher_capability
     expect_identical(cap$google$crawler_tokens, google_crawler_tokens_v1())
     expect_identical(cap$google$token_policy, "arbitrary_valid")
-    expect_identical(contract$schema_revision, "2026-11-21.1")
+    expect_identical(contract$schema_revision, "2026-11-21.2")
     expect_identical(
       contract$policy_revisions[["google"]], "google-robots-policy-2026-11-12"
     )
@@ -333,15 +333,19 @@ test_that("the legacy adapter carries the crawler answer, not group_token", {
 
 test_that("group_token follows error_message, before the URL columns", {
   # Schema 2026-11-21.1 put matcher_url and url_preprocessing_note between
-  # group_token and matched_rule_value_raw (ROBO-bnvdmdjr).
+  # group_token and matched_rule_value_raw, and 2026-11-21.2 the
+  # disagreement flag and its clients after them (ROBO-bnvdmdjr).
   r <- ct_eval(ct_star_only, "https://x.com/page", "Googlebot-Image")
   k <- match("group_token", names(r))
   expect_identical(names(r)[k - 1L], "error_message")
   expect_identical(
-    names(r)[k + 1:3],
-    c("matcher_url", "url_preprocessing_note", "matched_rule_value_raw")
+    names(r)[k + 1:5],
+    c(
+      "matcher_url", "url_preprocessing_note", "preprocessing_disagreement",
+      "disagreement_clients", "matched_rule_value_raw"
+    )
   )
-  expect_identical(k + 3L, ncol(r))
+  expect_identical(k + 5L, ncol(r))
 })
 
 test_that("the window applies before the layer", {

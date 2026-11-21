@@ -451,7 +451,9 @@ matching. Documented intent: as class 20. Verdict: library deviation.
 robotstxtr's v1 facades now answer as `rs` and `js` do by default: since
 schema revision `2026-11-21.1` they remove dot segments from the URL
 (`url_normalization = "rfc3986"`, RFC 3986 §5.2.4) and match `/a/b`, which
-`Disallow: /a/./b` does not match, so v1 allows. The rule is not normalized.
+`Disallow: /a/./b` does not match, so v1 allows. `url_normalization =
+"whatwg"` (schema revision `2026-11-21.2`) matches `/a/b` too. The rule is
+not normalized.
 With `url_normalization = "none"` v1 disallows, as the reference and the
 legacy functions do, and the recorded answers above are taken that way
 ([ADR 0002](adr/0002-evaluator-url-preprocessing.md), ROBO-bnvdmdjr).

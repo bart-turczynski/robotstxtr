@@ -21,7 +21,10 @@ the separately inspectable vendored-matcher identity fields
 (\code{matcher_identity}, e.g. library/payload/profile/corpus/evidence/
 profile-source for the Yandex backend), status-policy table, and supported
 sibling-package ranges for the v1 engine-aware contract. It performs no fetch
-or matching.
+or matching. The value sets include \code{safety_levels} and, since schema
+revision \code{2026-11-21.2}, \code{url_normalizations}, the values
+\code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}} and \code{\link[=robots_evaluate_url_v1]{robots_evaluate_url_v1()}} accept for
+\code{url_normalization}, default first.
 }
 \examples{
 # A plain offline accessor: it opens no socket and matches nothing.

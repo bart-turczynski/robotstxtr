@@ -45,8 +45,9 @@ not carried over.
 Its decisions are the v1 result's, so they follow the \code{url_normalization}
 the result was built with: under the default \code{"rfc3986"},
 \verb{https://example.com/a/../b} is decided as \verb{https://example.com/b}, where
-\code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}} reads it as given. The \code{matcher_url} and
-\code{url_preprocessing_note} columns are not carried over.
+\code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}} reads it as given. The \code{matcher_url},
+\code{url_preprocessing_note}, \code{preprocessing_disagreement} and
+\code{disagreement_clients} columns are not carried over.
 }
 \examples{
 # Build a v1 engine result offline, then adapt it for a legacy consumer.

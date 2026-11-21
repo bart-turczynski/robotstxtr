@@ -50,8 +50,10 @@ unaccepted selector leaves its rows undecided rather than raising.}
 \item{url_normalization}{How the URL is read before matching, one of:
 \code{"rfc3986"} (the default) removes dot segments from the path (RFC 3986
 section 5.2.4), leaves userinfo out and drops the fragment, and never
-encodes, decodes or case-folds a byte, so \verb{\%2e} is kept; \code{"none"} hands
-the URL to the matcher as given. See Details.}
+encodes, decodes or case-folds a byte, so \verb{\%2e} is kept; \code{"whatwg"}
+reads it as the WHATWG URL Standard serializes it, so \verb{\%2e} segments
+are removed and the encoding may change; \code{"none"} hands the URL to the
+matcher as given. See Details.}
 }
 \value{
 A \code{robots_engine_decisions_v1} object with \code{results}, neutral
@@ -154,6 +156,63 @@ valid URI, that it has no authority, and which rule changed it (or why
 its dot segments were left in place), joined by \code{"; "}.
 \code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}} and \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} read the URL as
 given.
+
+Since schema revision \code{2026-11-21.2}, \code{"whatwg"} reads the URL as the
+WHATWG URL Standard serializes it (through \code{rurl::serialize_url()}),
+which models browsers and Node \code{fetch}. It removes literal and encoded
+dot segments (\verb{/\%2e\%2e/} too) and, unlike \code{"rfc3986"}, changes the
+encoding and host as that standard does (a space becomes \verb{\%20}, a byte
+outside ASCII is percent-encoded, the host is put in lower case and a
+default port dropped). Userinfo is left out and the fragment dropped, as
+under \code{"rfc3986"}. The URL's bytes are read as UTF-8 whatever the
+session's locale (a \code{"latin1"}-marked URL is converted from latin1). A
+URL with no scheme, such as \code{"/a/../b"}, \code{"example.com/a/./b"} or
+\code{"//h/a/../x"}, is split exactly as under \code{"rfc3986"}: only its path, when
+that starts with \code{/}, is serialized (on the placeholder origin
+\verb{http://h.invalid}, with its query), and the serialized path and query
+follow the same lead \code{"rfc3986"} keeps (\code{"/b"}, \code{"example.com/a/b"},
+\code{"//h/x"}). Any other scheme-less URL is read as under \code{"rfc3986"}, and
+one whose serialized path would start with \verb{//} after a lead with no
+authority (\code{"/a/..//h/x"}) is evaluated as given. A URL it cannot parse is
+evaluated as given, with the note
+\verb{not a valid WHATWG URL: evaluated as given}; a changed URL has the note
+\verb{WHATWG URL serialization changed the URL}, then \verb{userinfo removed} or
+\verb{fragment dropped} where those apply. \code{"whatwg"} serializes a URL of any
+length, and its cost grows faster than linearly on a long path with many
+dot segments (in \code{rurl::serialize_url()}).
+
+Under \code{"rfc3986"} and \code{"whatwg"}, \code{preprocessing_disagreement} compares
+the URL the matcher reads under \code{"rfc3986"} with the one it reads under
+\code{"whatwg"}, on the rows the matcher decided (\code{url_decision} not \code{NA}).
+Under \code{"rfc3986"} the \code{"whatwg"} form is computed only for those rows;
+under \code{"whatwg"} it is the URL the matcher reads, so it is computed for
+every non-empty row. Comparing with the WHATWG form makes the default
+\code{"rfc3986"} cost about 3 to 10 times the old preprocessing; \code{"none"} is
+unchanged. Under \code{"none"} the flag is never computed: a decided row is
+\code{NA}, with \code{disagreement_clients}
+\verb{not compared under url_normalization = "none"}, and nothing beyond the
+old reading runs. It is \code{TRUE} when the two differ and
+are decided differently, or when \code{"whatwg"} cannot parse the URL, and
+\code{FALSE} otherwise. Any other row (an \code{NA} or empty URL, an empty token,
+\code{capability_unavailable}, a policy decision, a token or target the
+backend refuses) is always \code{FALSE}, with \code{NA} \code{disagreement_clients}.
+The second match runs only on rows whose two URLs differ in more than
+the scheme or host case, a default port, an empty path against \code{/}, or
+the fragment. \code{disagreement_clients} is \code{NA} when the flag is \code{FALSE};
+otherwise it gives each side's decision. When the two forms differ only
+through encoded dot segments (\verb{\%2e}, \verb{.\%2e}, \verb{\%2e.} or \verb{\%2e\%2e} as a
+whole segment, either case), it also names the clients surveyed to
+handle dot segments that way:
+\verb{dot segments as in: wget 1.25, curl/libcurl < 8.13.0} for \code{"rfc3986"}
+and \verb{dot segments as in: Chrome 157, Node 26 fetch, curl/libcurl >= 8.13.0} for \code{"whatwg"}. Otherwise it says the forms differ in more than
+dot segments and that no client survey covers this, or, when \code{"whatwg"}
+cannot parse the URL, gives the \code{"rfc3986"} decision and says so. Under
+\code{"rfc3986"}, a decided row
+whose URL is longer than 2048 bytes is not compared: the \code{"whatwg"} form
+is not computed, no second match runs, \code{preprocessing_disagreement} is
+\code{NA} and \code{disagreement_clients} is
+\verb{not compared: URL longer than 2048 bytes}. Under \code{"whatwg"} every length
+is compared.
 }
 \examples{
 # A non-Google-named token evaluated through the default Google backend

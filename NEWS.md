@@ -12,6 +12,8 @@
 
 * Validator: `robots_validate_text()` and `robots_validate_url()` note a User-agent line that repeats a name in its own group, ignoring case, as info `user_agent_duplicate_in_group` (RFC 9309 §2.2.1) (ROBO-wnuttuit).
 
+* `robots_evaluate_text_v1()` and `robots_evaluate_url_v1()` accept `url_normalization = "whatwg"` and flag rows whose RFC 3986 and WHATWG forms decide differently, naming the clients on each side (ROBO-bnvdmdjr).
+
 * Fetch: `robots` rows keep the final response's raw `Cache-Control`, `Age`, `Date`, `Expires`, `ETag`, `Last-Modified` and `Vary` as character columns; `NA` absent, `""` empty (ROBO-zleohwyz).
 
 * Validator: `robots_validate_text()` and `robots_validate_url()` warn `xml_body` or `json_body` when a body starts with markup or looks like JSON, its lines still read as directives (ROBO-mgtngbpm).

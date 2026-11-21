@@ -11,12 +11,25 @@
 #              fragment dropped. No byte is encoded, decoded or case-folded:
 #              `%2e` is not a dot here. Input that is not a valid RFC 3986
 #              URI is still evaluated; the note says why it is not.
+#   "whatwg"   The WHATWG URL Standard serialization through rurl, with no
+#              cherry-picking: literal and encoded dot segments removed, and
+#              the encoding and host changed as the standard says. The path
+#              and query are taken from rurl's result, with userinfo left
+#              out and the fragment dropped. Input rurl cannot parse is
+#              evaluated as given, with a note.
 #   "none"     The URL as given, byte for byte.
+#
+# Whatever the mode, every row also carries `preprocessing_disagreement`:
+# whether the rfc3986 and whatwg targets decide differently, or whatwg
+# cannot parse the URL, on the rows a matcher decided (url_disagreement_v1());
+# NA under "rfc3986" for a URL over url_disagreement_max_bytes_v1(), and NA
+# on every decided row under "none", which computes nothing extra.
 
-# The `url_normalization` value set, default first. Adding a mode is one
-# entry here and one branch in preprocess_matcher_url_v1().
+# The `url_normalization` value set, default first. Adding a mode means an
+# entry here, a branch in preprocess_matcher_url_v1(), and a decision in
+# url_disagreement_v1() on whether, and how, that mode is compared.
 engine_url_normalizations_v1 <- function() {
-  c("rfc3986", "none")
+  c("rfc3986", "whatwg", "none")
 }
 
 validate_url_normalization_v1 <- function(url_normalization) {
@@ -34,21 +47,516 @@ validate_url_normalization_v1 <- function(url_normalization) {
   unname(url_normalization)
 }
 
-# One matcher URL and one note per row. NA and empty URLs pass as they are,
-# with no note.
+# The longest input URL, in bytes, whose whatwg form the disagreement flag
+# computes under "rfc3986" ("none" computes no flag). rurl's WHATWG
+# serializer grows faster than linearly on a long path with many dot
+# segments (about 53 seconds for 20,000 "/seg/.." pairs, and a tenth of a
+# second for a 2,040-byte one), and "rfc3986" did not ask for it. A longer
+# URL is not compared: its flag is NA. "whatwg" itself serializes any
+# length.
+url_disagreement_max_bytes_v1 <- function() {
+  2048L
+}
+
+url_disagreement_not_compared_v1 <- function() {
+  sprintf(
+    "not compared: URL longer than %d bytes", url_disagreement_max_bytes_v1()
+  )
+}
+
+# The clients note of a decided row under "none", where the flag is never
+# computed: "none" is the old reading, with nothing extra.
+url_disagreement_not_compared_none_v1 <- function() {
+  "not compared under url_normalization = \"none\""
+}
+
+# One matcher URL and one note per row, under the selected mode, and the
+# rfc3986 target the disagreement flag compares. The whatwg form is
+# computed here only under "whatwg", for every row; under "rfc3986"
+# url_disagreement_v1() computes it for the rows it compares (`whatwg_url`
+# and `whatwg_failed` are then NULL). Under "none" nothing is computed: the
+# URL is read as given and the flag is not compared. NA and empty URLs pass
+# as they are, with no note, in every mode.
 preprocess_matcher_url_v1 <- function(url, url_normalization) {
-  n <- length(url)
-  note <- rep(NA_character_, n)
-  if (identical(url_normalization, "none")) {
-    return(list(matcher_url = url, note = note))
+  none <- identical(url_normalization, "none")
+  rfc3986 <- if (!none) rfc3986_matcher_urls_v1(url)
+  whatwg <- if (identical(url_normalization, "whatwg")) {
+    whatwg_matcher_urls_v1(url)
   }
-  matcher_url <- url
+  selected <- switch(
+    url_normalization,
+    rfc3986 = rfc3986,
+    whatwg = whatwg,
+    none = list(url = url, note = rep(NA_character_, length(url)))
+  )
+  list(
+    url = url, url_normalization = url_normalization,
+    matcher_url = selected$url, note = selected$note,
+    rfc3986_url = rfc3986$url, whatwg_url = whatwg$url,
+    whatwg_failed = whatwg$failed
+  )
+}
+
+rfc3986_matcher_urls_v1 <- function(url) {
+  out <- url
+  note <- rep(NA_character_, length(url))
   for (i in which(!is.na(url) & nzchar(url))) {
     row <- rfc3986_matcher_url_v1(url[[i]])
-    matcher_url[[i]] <- row$url
+    out[[i]] <- row$url
     note[[i]] <- row$note
   }
-  list(matcher_url = matcher_url, note = note)
+  list(url = out, note = note)
+}
+
+# ---- "whatwg" ---------------------------------------------------------------
+
+# The URL as UTF-8 for rurl, never read through the native encoding: a
+# latin1-marked string is converted from latin1, and any other string is
+# taken as the bytes it holds (rurl reads them as UTF-8 whatever their
+# mark). Bytes that are not valid UTF-8 give NA, which rurl cannot parse
+# either (rurl would otherwise read them as U+FFFD).
+url_utf8_for_rurl_v1 <- function(url) {
+  latin <- Encoding(url) == "latin1"
+  out <- url
+  out[latin] <- enc2utf8(url[latin])
+  as_bytes <- which(!latin)
+  out[as_bytes[!validUTF8(url[as_bytes])]] <- NA_character_
+  out
+}
+
+# `f(x)` once over the distinct values of `x`, NA where it gives none. When
+# the vector call errors or returns the wrong length, each value is tried
+# on its own, so one bad URL fails alone.
+rurl_each_v1 <- function(x, f) {
+  call <- function(v) {
+    out <- tryCatch(as.character(f(v)), error = function(e) NULL)
+    if (length(out) == length(v)) out else NULL
+  }
+  distinct <- unique(x[!is.na(x)])
+  done <- call(distinct)
+  if (is.null(done)) {
+    done <- vapply(distinct, function(v) {
+      one <- call(v)
+      if (is.null(one)) NA_character_ else one
+    }, "", USE.NAMES = FALSE)
+  }
+  done[match(x, distinct)]
+}
+
+# The placeholder origin a URL with no scheme is serialized on: the path
+# and query "rfc3986" splits from it are appended to this string (never
+# resolved, so a path starting with "//" stays a path).
+whatwg_placeholder_origin_v1 <- function() {
+  "http://h.invalid"
+}
+
+# rurl's WHATWG serialization of each URL, NA where it cannot parse one.
+whatwg_serialize_v1 <- function(url) {
+  input <- url_utf8_for_rurl_v1(url)
+  out <- rep(NA_character_, length(url))
+  ok <- which(!is.na(input))
+  out[ok] <- rurl_each_v1(input[ok], function(v) {
+    rurl::serialize_url(v, standard = "whatwg")
+  })
+  out
+}
+
+# A URL with no scheme, split exactly as "rfc3986" splits it
+# (url_target_parts_v1()). NULL when that path does not start with "/" (it
+# is then read as "rfc3986" reads it); else the split of its UTF-8 bytes
+# (the delimiters are ASCII, so it splits where the input does), and the
+# placeholder URL to serialize. A URL that is not valid UTF-8, its lead
+# included, has no placeholder URL (NA) and so fails, as rurl fails on any
+# other such URL.
+whatwg_schemeless_input_v1 <- function(url) {
+  input <- url_bytes_v1(url)
+  target <- url_target_parts_v1(input$bytes)
+  if (length(target$path) == 0L || target$path[[1L]] != as.raw(0x2f)) {
+    return(NULL)
+  }
+  utf8 <- url_utf8_for_rurl_v1(url)
+  if (is.na(utf8)) {
+    return(list(target = target, wrapped = NA_character_))
+  }
+  target <- url_target_parts_v1(charToRaw(utf8))
+  tail <- string_with_mark_v1(c(target$path, target$query), "UTF-8")
+  list(
+    target = target, encoding = "UTF-8",
+    wrapped = paste0(whatwg_placeholder_origin_v1(), tail)
+  )
+}
+
+whatwg_matcher_urls_v1 <- function(url) {
+  out <- url
+  note <- rep(NA_character_, length(url))
+  failed <- rep(FALSE, length(url))
+  todo <- which(!is.na(url) & nzchar(url))
+  # No scheme as url_split_rfc3986_v1() reads one: no ":" after at least
+  # one byte and before the first "/", "?" or "#".
+  relative <- !grepl("^[^:/?#]+:", url[todo], useBytes = TRUE)
+  rel <- vector("list", length(todo))
+  input <- url[todo]
+  for (k in which(relative)) {
+    rel[k] <- list(whatwg_schemeless_input_v1(input[[k]]))
+    if (!is.null(rel[[k]])) {
+      input[[k]] <- rel[[k]]$wrapped
+    }
+  }
+  serialized <- whatwg_serialize_v1(input)
+  for (k in seq_along(todo)) {
+    i <- todo[[k]]
+    row <- if (relative[[k]] && is.null(rel[[k]])) {
+      rfc3986_matcher_url_v1(url[[i]])
+    } else if (is.na(serialized[[k]])) {
+      failed[[i]] <- TRUE
+      list(url = url[[i]], note = "not a valid WHATWG URL: evaluated as given")
+    } else if (relative[[k]]) {
+      whatwg_schemeless_matcher_url_v1(url[[i]], serialized[[k]], rel[[k]])
+    } else {
+      whatwg_matcher_url_v1(url[[i]], serialized[[k]])
+    }
+    out[[i]] <- row$url
+    note[[i]] <- row$note
+  }
+  list(url = out, note = note, failed = failed)
+}
+
+# One URL with no scheme under "whatwg": the lead "rfc3986" keeps, then the
+# serialized path and query; the fragment is dropped as "rfc3986" drops it.
+# A serialized path that starts with "//" where the input path did not, after
+# a lead with no authority, would read as an authority the input lacks, so
+# the input is evaluated as given, as "rfc3986" guards its own removal. A
+# path that already started with "//" is serialized as usual.
+whatwg_schemeless_matcher_url_v1 <- function(url, serialized, rel) {
+  parts <- url_split_rfc3986_v1(charToRaw(serialized))
+  target <- rel$target
+  no_authority <- if (identical(target$no_authority, "slash")) {
+    "no authority: path read from the first /"
+  }
+  created <- path_starts_with_slashes_v1(parts$path) &&
+    !path_starts_with_slashes_v1(target$path)
+  if (!target$has_authority && created) {
+    return(list(url = url, note = paste(c(
+      no_authority,
+      "WHATWG serialization left in place: it would start the path with //"
+    ), collapse = "; ")))
+  }
+  rebuilt <- c(target$lead, parts$path, parts$query)
+  note <- c(
+    no_authority,
+    if (target$userinfo) "userinfo removed",
+    if (!identical(rebuilt, c(target$lead, target$path, target$query))) {
+      "WHATWG URL serialization changed the URL"
+    },
+    if (target$fragment) "fragment dropped"
+  )
+  joined <- paste(note, collapse = "; ")
+  list(
+    url = string_with_mark_v1(rebuilt, rel$encoding),
+    note = if (length(note) == 0L) NA_character_ else joined
+  )
+}
+
+# scheme, "//" and host[:port] when there is an authority, then the path and
+# the query: the URL a backend receives, userinfo and fragment left out.
+url_rebuild_v1 <- function(parts) {
+  host <- if (parts$has_authority) {
+    c(charToRaw("//"), url_host_port_v1(parts$authority))
+  }
+  c(parts$scheme, host, parts$path, parts$query)
+}
+
+# One URL under "whatwg", from rurl's serialization of it: the rebuilt URL
+# and its note. The note compares the rebuilt URL with the input read the
+# same way (userinfo and fragment left out), so it names what the
+# serialization changed apart from those two.
+whatwg_matcher_url_v1 <- function(url, serialized) {
+  input <- charToRaw(url)
+  parts <- url_split_rfc3986_v1(charToRaw(serialized))
+  rebuilt <- url_rebuild_v1(parts)
+  if (identical(rebuilt, input)) {
+    return(list(url = url, note = NA_character_))
+  }
+  given <- url_split_rfc3986_v1(input)
+  userinfo <- given$has_authority &&
+    !identical(url_host_port_v1(given$authority), given$authority)
+  note <- c(
+    if (!identical(rebuilt, url_rebuild_v1(given))) {
+      "WHATWG URL serialization changed the URL"
+    },
+    if (userinfo) "userinfo removed",
+    if (given$fragment) "fragment dropped"
+  )
+  list(url = rawToChar(rebuilt), note = paste(note, collapse = "; "))
+}
+
+# ---- the disagreement flag ---------------------------------------------------
+
+# The client families on each side of the flag (ADR 0002, client survey of
+# 2026-11-19, curl boundary from curl 8.13.0's changelog). Clients that send
+# the URL unchanged are on neither side: the flag compares two forms.
+url_client_families_v1 <- function() {
+  c(
+    rfc3986 = "wget 1.25, curl/libcurl < 8.13.0",
+    whatwg = "Chrome 157, Node 26 fetch, curl/libcurl >= 8.13.0"
+  )
+}
+
+# Whether two character vectors (no NA) hold the same bytes, element by
+# element.
+bytes_equal_v1 <- function(a, b) {
+  vapply(seq_along(a), function(i) {
+    identical(charToRaw(a[[i]]), charToRaw(b[[i]]))
+  }, logical(1L))
+}
+
+# `bytes` with A-Z folded to a-z.
+ascii_lower_raw_v1 <- function(bytes) {
+  upper <- bytes >= as.raw(0x41) & bytes <= as.raw(0x5a)
+  bytes[upper] <- as.raw(as.integer(bytes[upper]) + 32L)
+  bytes
+}
+
+# `path` with each complete segment that is, ASCII case folded, "%2e" read
+# as "." and ".%2e", "%2e." or "%2e%2e" read as "..". A segment holding an
+# encoded dot among other bytes ("a%2eb") stays as it is.
+url_decode_dot_segments_v1 <- function(path) {
+  edges <- c(0L, which(path == as.raw(0x2f)), length(path) + 1L)
+  out <- vector("list", 2L * (length(edges) - 1L))
+  for (k in seq_len(length(edges) - 1L)) {
+    from <- edges[[k]] + 1L
+    to <- edges[[k + 1L]] - 1L
+    segment <- if (to >= from) path[from:to] else raw(0)
+    if (length(segment) >= 3L && length(segment) <= 6L) {
+      key <- rawToChar(ascii_lower_raw_v1(segment))
+      if (identical(key, "%2e")) {
+        segment <- charToRaw(".")
+      } else if (key %in% c(".%2e", "%2e.", "%2e%2e")) {
+        segment <- charToRaw("..")
+      }
+    }
+    out[[2L * k - 1L]] <- if (k > 1L) as.raw(0x2f)
+    out[[2L * k]] <- segment
+  }
+  unlist(out, use.names = FALSE)
+}
+
+# `x` with A-Z folded to a-z, on bytes, so a string that is not valid in
+# the session's encoding is never translated.
+ascii_lower_chr_v1 <- function(x) {
+  for (k in seq_along(LETTERS)) {
+    x <- gsub(LETTERS[[k]], letters[[k]], x, fixed = TRUE, useBytes = TRUE)
+  }
+  x
+}
+
+# The parts of each target, split in one vectorized call (RFC 3986
+# Appendix B, as url_split_rfc3986_v1() reads it; a target has no
+# fragment), with the differences no matcher reads apart folded: the scheme
+# and host in ASCII lower case, a default port (80 for http, 443 for https)
+# dropped, an empty path after an authority read as "/". A latin1 target is
+# compared in UTF-8, as its twin.
+url_target_keys_v1 <- function(url) {
+  latin <- Encoding(url) == "latin1"
+  url[latin] <- enc2utf8(url[latin])
+  pattern <- "^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\?[^#]*)?"
+  m <- regmatches(url, regexec(pattern, url, useBytes = TRUE))
+  m <- matrix(unlist(m, use.names = FALSE), ncol = 7L, byrow = TRUE)
+  scheme <- ascii_lower_chr_v1(m[, 2L])
+  authority <- nzchar(m[, 4L])
+  host <- ascii_lower_chr_v1(sub("^.*@", "", m[, 5L], useBytes = TRUE))
+  http <- scheme == "http:"
+  host[http] <- sub(":80$", "", host[http], useBytes = TRUE)
+  https <- scheme == "https:"
+  host[https] <- sub(":443$", "", host[https], useBytes = TRUE)
+  path <- m[, 6L]
+  path[authority & !nzchar(path)] <- "/"
+  list(
+    scheme = scheme, authority = authority, host = host, path = path,
+    query = m[, 7L]
+  )
+}
+
+# Whether each pair of targets differs only in what url_target_keys_v1()
+# folds, so no second matcher pass is needed.
+url_targets_alike_v1 <- function(a, b) {
+  if (length(a) == 0L) {
+    return(logical(0))
+  }
+  ka <- url_target_keys_v1(a)
+  kb <- url_target_keys_v1(b)
+  ka$scheme == kb$scheme & ka$authority == kb$authority &
+    ka$host == kb$host & ka$path == kb$path & ka$query == kb$query
+}
+
+# Whether the two forms differ only through encoded dot segments: the
+# INPUT's path, its complete encoded dot segments read as dots, then run
+# through the rfc3986 removal (RFC 3986 section 5.2.4), with its query,
+# equals the whatwg path and query, under the same lead
+# (url_target_parts_v1(), as url_lead_key_v1() folds it). The input, not
+# the rfc3986 target: that has already had its literal dots removed, so
+# "/latam/%2e/../x" would lose the "%2e" a browser reads as a dot. Only
+# then do the surveyed client families apply.
+url_encoded_dots_only_v1 <- function(input, whatwg) {
+  r <- url_target_parts_v1(target_utf8_bytes_v1(input))
+  w <- url_target_parts_v1(target_utf8_bytes_v1(whatwg))
+  path <- remove_dot_segments_v1(url_decode_dot_segments_v1(r$path))
+  identical(c(path, r$query), c(w$path, w$query)) &&
+    identical(url_lead_key_v1(r), url_lead_key_v1(w))
+}
+
+# A target's bytes in UTF-8: a latin1-marked target is converted, any other
+# is taken as it is, so a latin1 URL and its UTF-8 twin compare alike.
+target_utf8_bytes_v1 <- function(url) {
+  charToRaw(if (identical(Encoding(url), "latin1")) enc2utf8(url) else url)
+}
+
+# The lead of url_target_parts_v1() with the differences no matcher reads
+# apart folded: ASCII lower case, and a default port (80 for http, 443 for
+# https) dropped after an authority.
+url_lead_key_v1 <- function(target) {
+  lead <- ascii_lower_raw_v1(target$lead)
+  scheme <- ascii_lower_raw_v1(target$scheme)
+  default <- if (!target$has_authority) {
+    NULL
+  } else if (identical(scheme, charToRaw("http:"))) {
+    charToRaw(":80")
+  } else if (identical(scheme, charToRaw("https:"))) {
+    charToRaw(":443")
+  }
+  n <- length(lead)
+  k <- length(default)
+  if (k > 0L && n > k && identical(lead[(n - k + 1L):n], default)) {
+    lead <- lead[seq_len(n - k)]
+  }
+  lead
+}
+
+# `disagreement_clients` for flagged rows: each side's decision, and the
+# client families when the two forms differ only through encoded dot
+# segments (`named`); otherwise a neutral text. `failed` rows have no
+# whatwg decision and are never named.
+url_disagreement_text_v1 <- function(rfc3986, whatwg, failed, named) {
+  families <- url_client_families_v1()
+  shown <- function(x) ifelse(is.na(x), "undecided", x)
+  left <- paste("rfc3986", shown(rfc3986))
+  failed <- rep_len(failed, length(left))
+  named <- rep_len(named, length(left))
+  right <- ifelse(
+    failed, "whatwg cannot parse the URL", paste("whatwg", shown(whatwg))
+  )
+  out <- sprintf(
+    paste0(
+      "%s; %s: the forms differ in more than dot segments; no client ",
+      "survey covers this"
+    ),
+    left, right
+  )
+  out[failed] <- sprintf(
+    "%s; %s; no client survey covers this", left[failed], right[failed]
+  )
+  out[named] <- sprintf(
+    "%s (dot segments as in: %s); %s (dot segments as in: %s)",
+    left[named], families[["rfc3986"]], right[named], families[["whatwg"]]
+  )
+  out
+}
+
+# The decision of `rows` when the matcher reads `target`: the selected pass's
+# decision where the matcher already read that target, else a pass of
+# `decide(rows, urls)` over the rest.
+side_decision_v1 <- function(rows, target, matcher_url, decided, decide) {
+  out <- decided[rows]
+  again <- !bytes_equal_v1(target[rows], matcher_url[rows])
+  if (any(again)) {
+    out[again] <- decide(rows[again], target[rows[again]])
+  }
+  out
+}
+
+# The whatwg targets of `rows` (full-length vectors, NA elsewhere) and
+# which of them rurl cannot parse: taken from the selected pass under
+# "whatwg", computed here for those rows only otherwise.
+url_compared_whatwg_v1 <- function(preprocessed, rows) {
+  n <- length(preprocessed$url)
+  url <- rep(NA_character_, n)
+  failed <- rep(FALSE, n)
+  if (is.null(preprocessed$whatwg_url)) {
+    computed <- whatwg_matcher_urls_v1(preprocessed$url[rows])
+    url[rows] <- computed$url
+    failed[rows] <- computed$failed
+  } else {
+    url[rows] <- preprocessed$whatwg_url[rows]
+    failed[rows] <- preprocessed$whatwg_failed[rows]
+  }
+  list(url = url, failed = failed)
+}
+
+# `preprocessing_disagreement` and `disagreement_clients` for every row.
+# Only matcher rows the selected pass decided are compared; every other row
+# is FALSE with NA clients. Under "none" every decided row is NA and
+# nothing is computed. Under "rfc3986" a decided row over the cap is NA,
+# and its whatwg form is never computed. A compared row is TRUE where
+# whatwg cannot parse the URL, or where the two targets differ in more
+# than url_targets_alike_v1() folds and the matcher decides them
+# differently; a second matcher pass runs only on those rows.
+# `url_decision` is the selected pass's; `decide(rows, urls)` returns the
+# url_decision of `rows` when the matcher reads `urls`.
+url_disagreement_v1 <- function(preprocessed, matcher_rows, url_decision,
+                                decide) {
+  n <- length(preprocessed$url)
+  flag <- rep(FALSE, n)
+  clients <- rep(NA_character_, n)
+  rows <- matcher_rows[!is.na(url_decision[matcher_rows])]
+  if (identical(preprocessed$url_normalization, "none")) {
+    flag[rows] <- NA
+    clients[rows] <- url_disagreement_not_compared_none_v1()
+    return(list(flag = flag, clients = clients))
+  }
+  if (identical(preprocessed$url_normalization, "rfc3986")) {
+    over <- rows[
+      nchar(preprocessed$url[rows], type = "bytes") >
+        url_disagreement_max_bytes_v1()
+    ]
+    flag[over] <- NA
+    clients[over] <- url_disagreement_not_compared_v1()
+    rows <- setdiff(rows, over)
+  }
+  if (length(rows) == 0L) {
+    return(list(flag = flag, clients = clients))
+  }
+  whatwg <- url_compared_whatwg_v1(preprocessed, rows)
+  side <- function(at, target) {
+    side_decision_v1(
+      at, target, preprocessed$matcher_url, url_decision, decide
+    )
+  }
+  bad <- rows[whatwg$failed[rows]]
+  if (length(bad) > 0L) {
+    flag[bad] <- TRUE
+    clients[bad] <- url_disagreement_text_v1(
+      side(bad, preprocessed$rfc3986_url), NA_character_, TRUE, FALSE
+    )
+  }
+  ok <- rows[!whatwg$failed[rows]]
+  cand <- ok[!url_targets_alike_v1(preprocessed$rfc3986_url[ok],
+                                   whatwg$url[ok])]
+  if (length(cand) == 0L) {
+    return(list(flag = flag, clients = clients))
+  }
+  rfc3986 <- side(cand, preprocessed$rfc3986_url)
+  other <- side(cand, whatwg$url)
+  apart <- !mapply(identical, rfc3986, other, USE.NAMES = FALSE)
+  hit <- cand[apart]
+  named <- mapply(
+    url_encoded_dots_only_v1, preprocessed$url[hit], whatwg$url[hit],
+    USE.NAMES = FALSE
+  )
+  flag[hit] <- TRUE
+  clients[hit] <- url_disagreement_text_v1(
+    rfc3986[apart], other[apart], FALSE, as.logical(named)
+  )
+  list(flag = flag, clients = clients)
 }
 
 # The URL's bytes as written, and the mark a rebuilt string takes. A latin1
@@ -251,48 +759,76 @@ url_path_after_first_slash_v1 <- function(path) {
   )
 }
 
-# One URL under "rfc3986": the rebuilt URL and its note.
-rfc3986_matcher_url_v1 <- function(url) {
-  input <- url_bytes_v1(url)
-  parts <- url_split_rfc3986_v1(input$bytes)
+# The target a backend reads, split the way "rfc3986" splits it, which
+# "whatwg" reuses for a URL with no scheme: `lead` (the scheme, then "//"
+# and host[:port] when there is an authority, else the bytes before the
+# path's first "/"), `path` (the path the backend reads), `query` (with its
+# "?"), whether userinfo or a fragment was dropped, and `no_authority`
+# ("slash", "none" or NA, as url_preprocessing_note_v1() takes it).
+url_target_parts_v1 <- function(bytes) {
+  parts <- url_split_rfc3986_v1(bytes)
   userinfo <- FALSE
   no_authority <- NA_character_
   if (parts$has_authority) {
     host <- url_host_port_v1(parts$authority)
     userinfo <- !identical(host, parts$authority)
     lead <- c(parts$scheme, charToRaw("//"), host)
-    before <- parts$path
+    path <- parts$path
   } else {
     # No authority (the text entry point accepts "/a/../b" and
     # "example.com/a"): the path the backend reads starts at the first "/".
     split <- url_path_after_first_slash_v1(parts$path)
     lead <- c(parts$scheme, split$lead)
-    before <- split$rest
+    path <- split$rest
     no_authority <- split$no_authority
   }
-  path <- remove_dot_segments_v1(before)
-  dots <- if (identical(path, before)) NA_character_ else "removed"
-  rebuilt <- c(lead, path, parts$query)
-  if (!parts$has_authority && identical(dots, "removed") &&
-        length(path) >= 2L && identical(path[1:2], charToRaw("//"))) {
+  list(
+    scheme = parts$scheme, has_authority = parts$has_authority, lead = lead,
+    path = path, query = parts$query, userinfo = userinfo,
+    fragment = parts$fragment, no_authority = no_authority
+  )
+}
+
+# Whether `path` starts with "//", which after a lead with no authority
+# would read as one.
+path_starts_with_slashes_v1 <- function(path) {
+  length(path) >= 2L && identical(path[1:2], charToRaw("//"))
+}
+
+# `bytes` as a string with the mark `encoding` ("unknown" leaves it
+# unmarked).
+string_with_mark_v1 <- function(bytes, encoding) {
+  out <- rawToChar(bytes)
+  if (!identical(encoding, "unknown")) {
+    Encoding(out) <- encoding
+  }
+  out
+}
+
+# One URL under "rfc3986": the rebuilt URL and its note.
+rfc3986_matcher_url_v1 <- function(url) {
+  input <- url_bytes_v1(url)
+  target <- url_target_parts_v1(input$bytes)
+  path <- remove_dot_segments_v1(target$path)
+  dots <- if (identical(path, target$path)) NA_character_ else "removed"
+  rebuilt <- c(target$lead, path, target$query)
+  fragment <- target$fragment
+  if (!target$has_authority && identical(dots, "removed") &&
+        path_starts_with_slashes_v1(path)) {
     # Removing the dots would turn the path into an authority that the
     # input does not have ("/a/..//h/x" -> "//h/x"): keep the input.
     dots <- "kept"
     rebuilt <- input$bytes
-    parts$fragment <- FALSE
+    fragment <- FALSE
   }
   note <- url_preprocessing_note_v1(
     invalid = rfc3986_invalid_classes_v1(input$bytes),
-    no_authority = no_authority,
+    no_authority = target$no_authority,
     dots = dots,
-    userinfo = userinfo,
-    fragment = parts$fragment
+    userinfo = target$userinfo,
+    fragment = fragment
   )
   # The rebuilt bytes take the input's mark, so an unchanged URL comes back
   # with its bytes and its mark.
-  out <- rawToChar(rebuilt)
-  if (!identical(input$encoding, "unknown")) {
-    Encoding(out) <- input$encoding
-  }
-  list(url = out, note = note)
+  list(url = string_with_mark_v1(rebuilt, input$encoding), note = note)
 }

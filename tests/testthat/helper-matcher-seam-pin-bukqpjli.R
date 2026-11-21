@@ -201,13 +201,16 @@ seam_cases <- function() {
   c(cases, synthesized)
 }
 
-# The results columns schema 2026-11-21.1 added (ROBO-bnvdmdjr). The pinned
-# digests predate them, so the digest leaves them out. The cases above pass
-# `url_normalization = "none"`, so the matcher reads each URL as given, as
-# it did when the digests were taken, and every other column and row must
-# still match them byte for byte. The results frame carries no schema
-# revision, so there is none to hold.
-seam_new_columns <- c("matcher_url", "url_preprocessing_note")
+# The results columns schemas 2026-11-21.1 and 2026-11-21.2 added
+# (ROBO-bnvdmdjr). The pinned digests predate them, so the digest leaves
+# them out. The cases above pass `url_normalization = "none"`, so the
+# matcher reads each URL as given, as it did when the digests were taken,
+# and every other column and row must still match them byte for byte. The
+# results frame carries no schema revision, so there is none to hold.
+seam_new_columns <- c(
+  "matcher_url", "url_preprocessing_note", "preprocessing_disagreement",
+  "disagreement_clients"
+)
 
 seam_pin_compute <- function() {
   cases <- seam_cases()

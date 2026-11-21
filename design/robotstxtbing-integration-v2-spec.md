@@ -245,7 +245,10 @@ once in batch form, and the per-row `match_backend_v1` guard that today rejects
 row-dispatching `yandex` MUST be extended to also reject row-dispatching `bing`
 as an internal invariant violation. (Superseded by ROBO-bukqpjli: that guard
 and `match_backend_v1` are gone, and every backend is a batch adapter behind
-one interface; see design/engine-contract-v1.md.)
+one interface; see design/engine-contract-v1.md.) Exception (2026-11-21,
+ROBO-bnvdmdjr, ADR 0002 §7): the disagreement flag invokes the adapter a
+second time in batch form, only with the rows whose `"rfc3986"` and
+`"whatwg"` targets differ, and so only for their bodies.
 
 The explicit-dispatch refactor already landed for Yandex; no new Google-only
 dispatch slice is required. Bing MUST remain `capability_unavailable` until its
@@ -640,7 +643,9 @@ Note on `BI-V2-TARGET` (2026-11-21, ROBO-bnvdmdjr): it still holds at the extrac
 revision `2026-11-21.1` the v1 facades' `url_normalization` (default `"rfc3986"`) rebuilds the URL
 in `evaluate_rows_v1()`, above the extractor, before any backend reads it: dot segments removed
 (RFC 3986 §5.2.4), userinfo left out, the fragment dropped, no byte encoded or decoded. The
-extractor then receives that URL. `url_normalization = "none"` hands it the input as given. See
+extractor then receives that URL. The opt-in `"whatwg"` (schema revision `2026-11-21.2`) hands it
+the URL rebuilt from `rurl`'s WHATWG serialization instead, above the extractor as well.
+`url_normalization = "none"` hands it the input as given. See
 [ADR 0002](adr/0002-evaluator-url-preprocessing.md).
 
 ## 20. Deferrals and known follow-ups

@@ -1,7 +1,7 @@
 # Engine-aware robots evaluation contract v1
 
 - Contract ID: `robotstxtr.engine-aware/v1`
-- Schema revision: `2026-11-21.1`
+- Schema revision: `2026-11-21.2`
 - First package release: `robotstxtr 0.2.0`
 - Normative policy source: [`engine-profiles.md`](engine-profiles.md)
 
@@ -247,8 +247,10 @@ legacy functions apply none of it (below).
 ### The URL the matcher reads (ROBO-bnvdmdjr)
 
 Both facades take `url_normalization`, one value of `"rfc3986"` (the
-default) or `"none"`, validated like `safety_level`
-([ADR 0002](adr/0002-evaluator-url-preprocessing.md)). `evaluate_rows_v1()`
+default), `"whatwg"` (since `2026-11-21.2`) or `"none"`, validated like
+`safety_level` ([ADR 0002](adr/0002-evaluator-url-preprocessing.md)). The
+contract publishes the value set as `url_normalizations`, default first.
+`evaluate_rows_v1()`
 builds one matcher URL per row from it, above every backend's request-target
 extractor, which stays byte-transparent; `url` keeps the input.
 
@@ -265,6 +267,20 @@ extractor, which stays byte-transparent; `url` keeps the input.
   `h`): then the URL is evaluated as given. Input that is not a valid RFC
   3986 URI is still evaluated, its bytes unchanged apart from the dot
   segments.
+- `"whatwg"`: the URL as `rurl::serialize_url(url, standard = "whatwg")`
+  writes it, rebuilt the same way (scheme, `//`, host and port, path,
+  `?query`; userinfo left out, fragment dropped). Literal and encoded
+  (`%2e`, `%2E`) dot segments are removed; `%252e`, `%2F`, `//` and the
+  query's dots are kept. Unlike `"rfc3986"` it changes the encoding and the
+  host as the WHATWG URL Standard does. The URL's bytes are read as UTF-8
+  whatever the locale (a `"latin1"`-marked URL is converted from latin1).
+  A URL with no scheme is split exactly as under `"rfc3986"`: only its
+  path, when that starts with `/`, is serialized (`http://h.invalid` plus
+  the path and query, never resolved), and the serialized path and query
+  follow the same lead, an authority or the bytes before the first `/`.
+  Any other scheme-less URL is read as under `"rfc3986"`, and one whose
+  serialized path would start with `//` after a lead with no authority is
+  evaluated as given. A URL it cannot parse is evaluated as given.
 - `"none"`: the matcher reads the URL as given, byte for byte, as before
   this revision.
 
@@ -286,7 +302,48 @@ The `results` frame gains two columns between `group_token` and
   invalid input), or `dot segments left in place: removing them would start
   the path with // (RFC 3986 §5.2.4)`; `userinfo removed (RFC 3986
   §3.2.1)`; `fragment dropped (RFC 3986 §3.5)`. A URL whose dot segments
-  were left in place is evaluated as given, fragment included.
+  were left in place is evaluated as given, fragment included. Under
+  `"whatwg"`, `NA` when the rebuilt URL is the input byte for byte;
+  otherwise `not a valid WHATWG URL: evaluated as given`, or the parts that
+  apply of `no authority: path read from the first /`, `WHATWG URL
+  serialization changed the URL` (or, when the serialized path would start
+  with `//`, `WHATWG serialization left in place: it would start the path
+  with //`), `userinfo removed` and `fragment dropped`, joined by `"; "`. A
+  scheme-less URL whose path does not start with `/` has the `"rfc3986"`
+  note.
+
+Schema revision `2026-11-21.2` adds two more columns after
+`url_preprocessing_note`, on every row and in every mode. Under `"none"`
+they are never computed: a decided row has the flag `NA` and the clients
+note `not compared under url_normalization = "none"`, and no `rurl` call
+or second pass runs. The rest describes `"rfc3986"` and `"whatwg"`:
+
+- `preprocessing_disagreement` (logical): on a row the matcher decided
+  (`url_decision` not `NA`), `TRUE` when `"whatwg"` cannot parse the URL,
+  or when the `"rfc3986"` and `"whatwg"` matcher URLs differ and the
+  matcher decides them differently; `FALSE` otherwise. Any other row (an
+  `NA` or empty URL, an empty token, `capability_unavailable`, a policy
+  decision, a refused token or target) is always `FALSE`, and its
+  `"whatwg"` form is not computed under the other modes. A second matcher
+  pass reads the other URL only on rows whose two URLs differ in more than
+  the scheme or host case, a default port, an empty path against `/`, or
+  the fragment. That second pass is the one exception to each batch
+  adapter being invoked once per evaluation: a second batch call with only
+  those rows. Under `"rfc3986"`, `NA` for a decided row
+  whose URL is longer than 2048 bytes, which is not compared
+  (`disagreement_clients`: `not compared: URL longer than 2048 bytes`);
+  `"whatwg"` compares any length.
+- `disagreement_clients` (character): `NA` when the flag is `FALSE`;
+  otherwise each side's decision. When the two forms differ only through
+  encoded dot segments (whole `%2e`, `.%2e`, `%2e.` or `%2e%2e` segments,
+  either case), it names the client families for dot segments only:
+  `rfc3986 <decision> (dot segments as in: wget 1.25, curl/libcurl <
+  8.13.0); whatwg <decision> (dot segments as in: Chrome 157, Node 26
+  fetch, curl/libcurl >= 8.13.0)`. Otherwise it says `the forms differ in
+  more than dot segments; no client survey covers this`, or, when
+  `"whatwg"` cannot parse the URL, `rfc3986 <decision>; whatwg cannot parse
+  the URL; no client survey covers this`. The families are the ADR's
+  client survey, with the curl boundary at 8.13.0.
 
 Under `"rfc3986"` the google, bing and yandex backends read the same
 rebuilt URL: `/latam/../account/x` is matched as `/account/x`,
@@ -294,8 +351,10 @@ rebuilt URL: `/latam/../account/x` is matched as `/account/x`,
 `https://example.com/x`, which Google no longer reads from its `;`
 (`GetPathParamsQuery()`). The rfc9309 backend is `capability_unavailable`
 whatever the mode. `robots_evaluate_url_v1()` fetches `/robots.txt` from the
-input URL's origin in either mode. Schema revision `2026-11-21.1` (both
-facades) adds the argument and the two columns; no policy revision moves.
+input URL's origin in every mode. Schema revision `2026-11-21.1` (both
+facades) adds the argument and the first two columns, and `2026-11-21.2`
+the `"whatwg"` mode, `url_normalizations` and the flag columns; no policy
+revision moves.
 
 RFC 9309 matcher requests return `matcher_status = "capability_unavailable"`
 (reason `matcher_capability_unavailable`; the rfc9309 revision is
@@ -334,8 +393,9 @@ applies to, so for a listed crawler token its legacy frame can differ from
 `Googlebot-Image` with only a `Googlebot` group and a `*` group gets the
 `Googlebot` group from the adapter and `*` from the legacy functions, and
 `AdsBot-Google` on a `*`-only body is allowed by the adapter and obeys `*`
-there. The adapter's frame does not carry `group_token`, `matcher_url` or
-`url_preprocessing_note`, and its decisions follow the `url_normalization`
+there. The adapter's frame does not carry `group_token`, `matcher_url`,
+`url_preprocessing_note`, `preprocessing_disagreement` or
+`disagreement_clients`, and its decisions follow the `url_normalization`
 the v1 result was built with: under the default, a dot-segment URL can be
 decided differently from the legacy functions, which read it as given.
 
@@ -660,7 +720,10 @@ Backend dispatch and revision/capability metadata live together in
 entry alone, never on a backend's name (ROBO-bukqpjli): it collects the rows
 that need a matcher, calls each backend's adapter once with all of its rows,
 and scatters the decision frame back. Google, Yandex and Bing all sit behind
-the same interface.
+the same interface. The one exception is the disagreement flag (ADR 0002,
+ROBO-bnvdmdjr): under `"rfc3986"` and `"whatwg"` it calls an adapter a
+second time, with only the rows whose two URL forms differ, reading the
+other form.
 
 A **matcher adapter** is `callable(bodies, urls, product_tokens)`: a list of
 raw bodies and two character vectors, one element per row. It returns a
@@ -694,8 +757,9 @@ each distinct body once, cut to Google's 512,000-byte window, and the line
 collector reads each body that has a matched row once more; row for row it
 gives what its reference row matcher `match_google_v1()` gives, and its
 `matched_rule_value_raw` is `NULL`. A row with a parent token runs a second
-matcher on its body's one parse, so a body is still parsed once; the row
-matcher runs each token on its own parse.
+matcher on its body's one parse, so a body is still parsed once per adapter
+call; the row matcher runs each token on its own parse. The disagreement
+flag's second call parses again only the bodies of its rows.
 
 To add a backend without changing the core result schema:
 
