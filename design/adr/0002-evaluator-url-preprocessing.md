@@ -86,19 +86,24 @@ Under `"rfc3986"` the URL is split the RFC 3986 way (Appendix B; the authority e
 `GetPathParamsQuery()`, and Google reads `https://u;v@example.com/x` as `/x`. Under `"none"` the
 URL passes byte-identical.
 
-A URL with no scheme or authority, which the text entry point accepts (`"/a/../b"`,
+A URL with no authority, which the text entry point accepts (`"/a/../b"`,
 `"example.com/a/../b"`), keeps the bytes before its first `/`, and §5.2.4 is applied from that `/`
-on, the path the backend reads. The note says so. Bing and Yandex refuse such a target in either
-mode, as before.
+on, the path the backend reads. The note says so. If the result would start the path with `//`,
+removing the dots would create an authority the input does not have (`"/a/..//evil.com/x"` would
+become `"//evil.com/x"`, and `"https:/q/..//h2/a/x"` would become `"https://h2/a/x"`), so the URL
+is evaluated as given and the note says why (review round 1). Bing and Yandex refuse a target with
+no authority in either mode, as before.
 
 ### 5. The result columns
 
 Two columns after `group_token`, on every row:
 
 - `matcher_url`: the URL the matcher read (`url` under `"none"`).
-- `url_preprocessing_note`: `NA` when the input is a valid URI with an authority and nothing
-  changed; otherwise the rule cited, for example `RFC 3986 §5.2.4 removed dot segments` or
-  `not a valid RFC 3986 URI: raw space; dot segments removed as given`.
+- `url_preprocessing_note`: `NA` under `"none"`, and under `"rfc3986"` when the input is a
+  valid RFC 3986 URI with an authority and the preprocessing changed nothing; otherwise the
+  rule cited, for example `RFC 3986 §5.2.4 removed dot segments`,
+  `not a valid RFC 3986 URI: raw space; dot segments removed as given` or
+  `no authority: path read from the first /`. The full list is in the contract text.
 
 The schema revision of both facades moves to `2026-11-21.1`. No policy revision moves.
 `as_legacy_robots_decisions_v1()` drops both columns, as it drops `group_token`; its decisions are

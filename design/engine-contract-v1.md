@@ -260,9 +260,11 @@ extractor, which stays byte-transparent; `url` keeps the input.
   decoded or case-folded, so `%2e`, `%2E`, `%252e` and `%2F` are kept, as
   are `//` and the query. A URL with no authority (the text entry point
   accepts `/a/../b` and `example.com/a/../b`) keeps the bytes before its
-  first `/` and has the dot segments removed from there on. Input that is
-  not a valid RFC 3986 URI is still evaluated, its bytes unchanged apart
-  from the dot segments.
+  first `/` and has the dot segments removed from there on, unless the
+  result would start the path with `//` (`/a/..//h/x` would read as the host
+  `h`): then the URL is evaluated as given. Input that is not a valid RFC
+  3986 URI is still evaluated, its bytes unchanged apart from the dot
+  segments.
 - `"none"`: the matcher reads the URL as given, byte for byte, as before
   this revision.
 
@@ -272,15 +274,19 @@ The `results` frame gains two columns between `group_token` and
 - `matcher_url` (character): the URL handed to the matcher backend (under
   `"none"`, `url`); `NA` for an `NA` URL. A row no matcher decides still
   carries the URL it would have read.
-- `url_preprocessing_note` (character): `NA` when the input is a valid URI
-  with an authority and nothing changed; otherwise the parts below, in this
-  order, joined by `"; "`: `not a valid RFC 3986 URI: ` and the classes
-  found (`raw space`, `raw non-ASCII`, `backslash`, `character outside RFC
-  3986` for `` "<>^`{|} `` and controls, `stray %` for a `%` without two hex
-  digits); `no scheme or authority: path read from the first /`; `RFC 3986
+- `url_preprocessing_note` (character): always `NA` under `"none"`. Under
+  `"rfc3986"`, `NA` when the input is a valid RFC 3986 URI with an
+  authority and the preprocessing changed nothing; otherwise the parts
+  below that apply, in this order, joined by `"; "`: `not a valid RFC 3986
+  URI: ` and the classes found (`raw space`, `raw non-ASCII`, `backslash`,
+  `character outside RFC 3986` for `` "<>^`{|} `` and controls, `stray %`
+  for a `%` without two hex digits); `no authority: path read from the
+  first /`, or `no authority and no /: evaluated as given`; `RFC 3986
   §5.2.4 removed dot segments` (or `dot segments removed as given` on
-  invalid input); `userinfo removed (RFC 3986 §3.2.1)`; `fragment dropped
-  (RFC 3986 §3.5)`. Always `NA` under `"none"`.
+  invalid input), or `dot segments left in place: removing them would start
+  the path with // (RFC 3986 §5.2.4)`; `userinfo removed (RFC 3986
+  §3.2.1)`; `fragment dropped (RFC 3986 §3.5)`. A URL whose dot segments
+  were left in place is evaluated as given, fragment included.
 
 Under `"rfc3986"` the google, bing and yandex backends read the same
 rebuilt URL: `/latam/../account/x` is matched as `/account/x`,
