@@ -129,8 +129,9 @@ validation_unsupported <- c(
 #'     (\code{Googlebot/2.1}) or a trailing \code{*} is info, as the token
 #'     read is the crawler the value names, and any other token is info, as
 #'     Google's crawlers do not go by it. The Bing and Yandex
-#'     matchers do not cut the value, and every other code names the agent
-#'     as written. \cr
+#'     matchers do not cut the value. Every other code names the agent as
+#'     written, and a code that names a cut value adds a sentence pointing
+#'     to this row; \code{duplicate_rule} names the token read. \cr
 #'   \code{rule_without_user_agent} \tab error \tab
 #'     An Allow or Disallow in no group a non-empty User-agent opened: before
 #'     any, or after an empty User-agent that follows a rule. \cr
@@ -495,6 +496,13 @@ validation_unsupported <- c(
 #' reopened by an every-path Allow (`Disallow: /` with `Allow: /`), the group
 #' grants everything on purpose, so the row is info.
 #'
+#' The three wildcard codes name each crawler by its value as written. When
+#' Google's matcher cuts that value (`Peer39_Crawler`, read as `Peer`), the
+#' message adds a sentence naming the cut values and their lines, five at
+#' most, and pointing to their `user_agent_cut` rows: on Google's matcher a
+#' crawler going by the full value does not match the group the row names.
+#' A merged row names only its cut values there.
+#'
 #' The `ai_training_` codes follow
 #' draft-kelley-aipref-training-preference-signal-00 (dated 2026-10-30), an
 #' Internet-Draft: a `User-agent: __usage_ai-training` group states an
@@ -548,7 +556,10 @@ validation_unsupported <- c(
 #' group; moving a Sitemap out of the run is offered only to agents meant to
 #' share them, since it makes the User-agent lines adjacent. Each message
 #' names at most five earlier agents and three directive lines, and counts
-#' the rest. On a document
+#' the rest. An agent whose value Google's matcher cuts (`Foo Bar`, read as
+#' `Foo`) is named as written, and the message adds a sentence pointing to
+#' its `user_agent_cut` row, as `ai_training_token_stacked` does for the
+#' crawler it names. On a document
 #' holding a NUL byte the check follows Google's reading, as the other group
 #' checks do.
 #'
@@ -560,7 +571,9 @@ validation_unsupported <- c(
 #' line, draws nothing but still counts for later groups. The warning fires
 #' within one group too, where the engines split the same way. An every-path
 #' Allow beside `Disallow: /` is no split (every engine allows) and draws
-#' neither.
+#' neither. A cut line draws no `user_agent_repeated_group` row; an
+#' `empty_disallow_with_full_block` row naming a cut value adds the sentence
+#' pointing to its `user_agent_cut` row, as the wildcard codes do.
 #'
 #' For `user_agent_duplicate_in_group`, a User-agent line that repeats a name
 #' already in its own group, in any case (`*` included), is reported on the
@@ -2266,6 +2279,12 @@ ai_training_stacked_rows <- function(agents, parsed, family, class) {
            paste("Bing's parser ends the group at the directive line",
                  "between the two."))
   )
+  # A crawler whose value Google's matcher cuts (ROBO-zqyqbudf); `*` and
+  # another policy token are no such crawler.
+  cut <- which(!star & agents$cut[other] & !family[other])
+  message[cut] <- paste0(message[cut], vapply(cut, function(j) {
+    cut_agent_note(agents$name[[other[[j]]]], agents$line[[other[[j]]]])
+  }, ""))
   ai_training_rows(agents$line[token_rows], rep("warning", length(token_rows)),
                    rep("ai_training_token_stacked", length(token_rows)),
                    rep("user-agent", length(token_rows)), message)
@@ -2395,6 +2414,9 @@ joined_user_agent_diagnostics <- function(groups, parsed, cap = 5L) {
   family <- ai_training_kind(agents)$family
   names_crawler <- (agents$global | nzchar(agents$key)) & !family
   id <- ifelse(agents$global, "*", agents$key)
+  # The line of each crawler whose value Google's matcher cuts, for the
+  # sentence a row naming it adds (ROBO-zqyqbudf); NA otherwise.
+  agents$cut_line <- ifelse(agents$cut & !family, agents$line, NA_integer_)
 
   last_line <- max(parsed$line, agents$line)
   is_directive <- logical(last_line)
@@ -2700,9 +2722,13 @@ empty_disallow_full_block_diagnostics <- function(groups, cap = 5L) {
     group = agents$group[keep],
     stringsAsFactors = FALSE
   )
-  # Every value written for a crawler, as written (ROBO-txnzyugl).
-  written <- written_agent_names(pair$id, agents$name[keep],
-                                 agents$cut[keep])
+  # Every value written for a crawler, as written (ROBO-txnzyugl), and the
+  # line of each cut one, NA for an uncut one (ROBO-zqyqbudf).
+  kept_name <- agents$name[keep]
+  kept_line <- ifelse(agents$cut, agents$line, NA_integer_)[keep]
+  named <- written_agent_rows(pair$id, kept_name, agents$cut[keep])
+  written <- lapply(named, function(i) kept_name[i])
+  cut_lines <- lapply(named, function(i) kept_line[i])
   pair <- pair[!duplicated(paste(pair$id, pair$group, sep = "\n")), ,
                drop = FALSE]
   if (nrow(pair) == 0L) {
@@ -2737,6 +2763,10 @@ empty_disallow_full_block_diagnostics <- function(groups, cap = 5L) {
     names <- unlist(lapply(ids, function(id) {
       if (id == "*") "*" else ai_training_name(written[[id]])
     }), use.names = FALSE)
+    note <- cut_agent_note(
+      unlist(written[ids[ids != "*"]], use.names = FALSE),
+      unlist(cut_lines[ids[ids != "*"]], use.names = FALSE)
+    )
     global_only <- identical(names, "*")
     several <- global_only || length(names) > 1L
     crawlers <- if (global_only) {
@@ -2788,7 +2818,7 @@ empty_disallow_full_block_diagnostics <- function(groups, cap = 5L) {
                 if (several) "their" else "its", joined_rule_lines(lines))
       }
     }
-    sprintf(
+    paste0(sprintf(
       paste0("`Disallow: %s` (line %d) blocks every path for %s, and the ",
              "empty `Disallow:` on %s %s. Google and Bing ignore an empty ",
              "`Disallow:` and block every path; Yandex reads it as %s. If ",
@@ -2799,7 +2829,7 @@ empty_disallow_full_block_diagnostics <- function(groups, cap = 5L) {
       at, crawlers, joined_rule_lines(empties), reach, yandex,
       if (several) "these crawlers are" else paste(names[[1L]], "is"),
       advice(roots), if (several) "they are" else "it is", advice(empties)
-    )
+    ), note)
   }, "")
   data.frame(line = as.integer(names(sets)), message = unname(message),
              stringsAsFactors = FALSE)
@@ -2873,6 +2903,9 @@ joined_user_agent_row <- function(kind, agents, i, group_start, earlier, more,
       block_text, yandex, short, if (plural) "they are all" else "both are",
       short, if (plural) "their" else "its", cur
     )
+    named_rows <- c(i, earlier)
+    message <- paste0(message, cut_agent_note(agents$name[named_rows],
+                                              agents$cut_line[named_rows]))
     return(list(line = cur, severity = "info",
                 code = "user_agent_joined_across_blank", message = message))
   }
@@ -2957,6 +2990,10 @@ joined_user_agent_row <- function(kind, agents, i, group_start, earlier, more,
     rule_text, gainers, crawlers(i), block_text, engines, gainers, ticks,
     if (plural) "were" else "was", fix
   )
+  # The message names the opener as well, which may also be in `earlier`.
+  named_rows <- unique(c(i, group_start, earlier))
+  message <- paste0(message, cut_agent_note(agents$name[named_rows],
+                                            agents$cut_line[named_rows]))
   list(line = cur, severity = "warning",
        code = "user_agent_joined_across_directive", message = message)
 }
@@ -3002,21 +3039,29 @@ wildcard_inheritance_diagnostics <- function(groups) {
   allow_all <- (rules$type == "disallow" & rules$empty) |
     (!rules$empty & every_path)
 
-  # Every value written for a crawler, as written (ROBO-txnzyugl).
-  written <- written_agent_names(agents$key, agents$name, agents$cut)
+  # Every value written for a crawler, as written (ROBO-txnzyugl), and the
+  # line of each cut one, NA for an uncut one (ROBO-zqyqbudf). Both are in
+  # the order of `keys`, so a crawler reads its own by position.
+  keys <- unique(agents$key)
+  named <- written_agent_rows(agents$key, agents$name, agents$cut)
+  written <- lapply(named, function(i) agents$name[i])
+  cut_line <- ifelse(agents$cut, agents$line, NA_integer_)
+  cut_lines <- lapply(named, function(i) cut_line[i])
   # Crawlers that ignore `*` whether or not a group names them
   # (ROBO-fbbmvbob): a named group loosens nothing for them.
   table <- google_crawler_tokens_v1()
   exempt_keys <- ascii_lower(
     table$crawler_token[table$group_selection == "exact_only"]
   )
-  losers <- lapply(unique(agents$key), function(key) {
+  losers <- lapply(seq_along(keys), function(k) {
+    key <- keys[[k]]
     agent_groups <- unique(agents$group[agents$key == key])
     in_effect <- rules$group %in% agent_groups
     judged <- in_effect & !no_op
     root_block <- in_effect & !is.na(rules$key) & rules$key == "disallow /"
     list(
-      names = written[[key]],
+      names = written[[k]],
+      cut_lines = cut_lines[[k]],
       groups = agent_groups,
       first_group = min(agent_groups),
       one_group = length(agent_groups) == 1L,
@@ -3400,10 +3445,10 @@ wildcard_disallow_rows <- function(losers, lost, global, groups) {
       severity = if (members[[1L]]$grant) "info" else "warning",
       agents = tokens, missing = global$line[lost[[i[[1L]]]]],
       owned = wildcard_group_line(groups, members[[1L]]$first_group),
-      message = wildcard_disallows_message(
+      message = paste0(wildcard_disallows_message(
         tokens, all(vapply(members, `[[`, TRUE, "one_group")),
         global[lost[[i[[1L]]]], , drop = FALSE], members[[1L]]$allow_only
-      )
+      ), wildcard_cut_note(members))
     )
   })
 }
@@ -3446,9 +3491,9 @@ wildcard_reopen_rows <- function(losers, reopened, groups) {
         "warning",
       agents = tokens, missing = found$star_line,
       owned = line,
-      message = wildcard_reopen_message(
+      message = paste0(wildcard_reopen_message(
         tokens, all(vapply(members, `[[`, TRUE, "one_group")), found
-      )
+      ), wildcard_cut_note(members))
     )
   })
 }
@@ -3492,11 +3537,11 @@ wildcard_inheritance_rows <- function(losers, lost, global, groups) {
       # report), not only the anchor's.
       owned = vapply(sort(unique(first)), wildcard_group_line, 0L,
                      groups = groups),
-      message = wildcard_inheritance_message(
+      message = paste0(wildcard_inheritance_message(
         tokens, all(vapply(members, `[[`, TRUE, "one_group")), missing,
         full_block = members[[1L]]$full_block, exempt = members[[1L]]$exempt,
         labels = labels
-      )
+      ), wildcard_cut_note(members))
     )
   })
 }
@@ -3535,14 +3580,56 @@ wildcard_group_labels <- function(members, first, groups, cap = 5L) {
 # are left out. Values differing only in ASCII case count once, the first
 # written.
 written_agent_names <- function(id, name, cut) {
+  lapply(written_agent_rows(id, name, cut), function(i) name[i])
+}
+
+# The rows written_agent_names() names, as a list of indexes in the same
+# order: so a caller can read each named value's line and `cut` flag too
+# (ROBO-zqyqbudf).
+written_agent_rows <- function(id, name, cut) {
   rows <- split(seq_along(id), factor(id, unique(id)))
   lapply(rows, function(i) {
     if (!all(cut[i])) {
       i <- i[!cut[i]]
     }
-    x <- name[i]
-    x[!duplicated(ascii_lower(x))]
+    i[!duplicated(ascii_lower(name[i]))]
   })
+}
+
+# The sentence a row that names agents adds for those whose value Google's
+# matcher cuts (ROBO-zqyqbudf): it reads only a product token from the value
+# and takes the agent to be that token, which the line's user_agent_cut row
+# states. `names` are the values as written and `lines` their lines, NA for
+# a value the row names that is not cut; "" when none is. Five values at
+# most, in line order, then a count. It speaks of Google's reading only: the
+# Bing and Yandex backends evaluate only their own crawlers' tokens.
+cut_agent_note <- function(names, lines, cap = 5L) {
+  cut <- which(!is.na(lines))
+  if (length(cut) == 0L) {
+    return("")
+  }
+  cut <- cut[order(lines[cut])]
+  shown <- cut[seq_len(min(cap, length(cut)))]
+  several <- length(cut) > 1L
+  sprintf(
+    paste0(" Google's matcher reads only a product token from %s and takes ",
+           "%s to be %s; see the user_agent_cut %s."),
+    joined_and(sprintf("`%s` (line %d)", ai_training_name(names[shown]),
+                       lines[shown]), length(cut) - length(shown)),
+    if (several) "each agent" else "the agent",
+    if (several) "its token" else "that token",
+    if (several) "rows" else "row"
+  )
+}
+
+# cut_agent_note() for the crawlers of a wildcard row, as
+# wildcard_inheritance_diagnostics() gives them: each member's `names` and
+# their `cut_lines`.
+wildcard_cut_note <- function(members) {
+  cut_agent_note(
+    unlist(lapply(members, `[[`, "names"), use.names = FALSE),
+    unlist(lapply(members, `[[`, "cut_lines"), use.names = FALSE)
+  )
 }
 
 # Allow wins a tie in priority (src/robots.cc, RobotsMatcher::disallow() uses

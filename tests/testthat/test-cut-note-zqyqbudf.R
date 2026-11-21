@@ -1,14 +1,34 @@
 # ROBO-zqyqbudf: Google's matcher reads only a product token from a cut
 # User-agent value (ROBO-zvhrayhx), and rows that name such a value as an
-# agent name it as written (ROBO-txnzyugl). These pins fix today's text of
-# each row that names a cut value, and of uncut controls. Fixtures are
-# synthetic.
+# agent name it as written (ROBO-txnzyugl). Each such row keeps that text
+# (`cn_*_today`) and adds one sentence: Google's matcher reads only a product
+# token from the values, which are named as written with their lines, and the
+# user_agent_cut rows say what follows. Uncut controls keep today's text.
+# Fixtures are synthetic.
 
 cn_lines <- function(...) paste0(paste(c(...), collapse = "\n"), "\n")
 
 cn_rows <- function(body, code) {
   d <- robots_validate_text(body)$diagnostics
   d[d$code == code, , drop = FALSE]
+}
+
+# The added sentence, for values given as "`Value` (line N)", with `more`
+# values left out.
+cn_note <- function(values, more = 0L) {
+  several <- length(values) + more > 1L
+  if (more > 0L) {
+    values <- c(values, sprintf("%d more", more))
+  }
+  k <- length(values)
+  listed <- if (k == 1L) values else
+    paste(toString(values[-k]), "and", values[[k]])
+  sprintf(paste0(" Google's matcher reads only a product token from %s and ",
+                 "takes %s; see the user_agent_cut %s."),
+          listed,
+          if (several) "each agent to be its token" else
+            "the agent to be that token",
+          if (several) "rows" else "row")
 }
 
 # `*` Disallows /a; Peer39_Crawler (line 4) and Peer42 (line 7) are both read
@@ -34,7 +54,9 @@ cn_peer_today <- paste(
 test_that("wildcard_disallows_not_inherited names cut values as written", {
   d <- cn_rows(cn_peer, "wildcard_disallows_not_inherited")
   expect_identical(d$line, 4L)
-  expect_identical(d$message, cn_peer_today)
+  expect_identical(d$message, paste0(
+    cn_peer_today, cn_note(c("`Peer39_Crawler` (line 4)", "`Peer42` (line 7)"))
+  ))
 })
 
 # A merged info row: a cut agent (line 4) and an uncut one (line 7).
@@ -59,7 +81,10 @@ cn_merged_today <- paste(
 test_that("a merged wildcard_rules_not_inherited row names both groups", {
   d <- cn_rows(cn_merged, "wildcard_rules_not_inherited")
   expect_identical(d$line, 4L)
-  expect_identical(d$message, cn_merged_today)
+  # Only the cut agent of the merged row is named in the sentence.
+  expect_identical(d$message, paste0(
+    cn_merged_today, cn_note("`Peer39_Crawler` (line 4)")
+  ))
 })
 
 cn_reopen <- cn_lines(
@@ -81,7 +106,8 @@ cn_reopen_today <- paste(
 test_that("allow_reopens_wildcard_disallow names a cut value as written", {
   d <- cn_rows(cn_reopen, "allow_reopens_wildcard_disallow")
   expect_identical(d$line, 4L)
-  expect_identical(d$message, cn_reopen_today)
+  expect_identical(d$message, paste0(cn_reopen_today,
+                                     cn_note("`GPT.Bot` (line 4)")))
 })
 
 cn_blank <- cn_lines("User-agent: Foo Bar", "", "User-agent: Baz",
@@ -101,7 +127,8 @@ cn_blank_today <- paste(
 test_that("user_agent_joined_across_blank names a cut value as written", {
   d <- cn_rows(cn_blank, "user_agent_joined_across_blank")
   expect_identical(d$line, 3L)
-  expect_identical(d$message, cn_blank_today)
+  expect_identical(d$message, paste0(cn_blank_today,
+                                     cn_note("`Foo Bar` (line 1)")))
 })
 
 cn_directive <- cn_lines("User-agent: Foo Bar", "Crawl-delay: 1",
@@ -122,7 +149,8 @@ cn_directive_today <- paste(
 test_that("user_agent_joined_across_directive names a cut value as written", {
   d <- cn_rows(cn_directive, "user_agent_joined_across_directive")
   expect_identical(d$line, 3L)
-  expect_identical(d$message, cn_directive_today)
+  expect_identical(d$message, paste0(cn_directive_today,
+                                     cn_note("`Foo Bar` (line 1)")))
 })
 
 cn_empty <- cn_lines("User-agent: Spinn3r", "Disallow:", "Disallow: /")
@@ -138,7 +166,8 @@ cn_empty_today <- paste(
 test_that("empty_disallow_with_full_block names a cut value as written", {
   d <- cn_rows(cn_empty, "empty_disallow_with_full_block")
   expect_identical(d$line, 3L)
-  expect_identical(d$message, cn_empty_today)
+  expect_identical(d$message, paste0(cn_empty_today,
+                                     cn_note("`Spinn3r` (line 1)")))
 })
 
 cn_stacked <- cn_lines("User-agent: Foo Bar", "Crawl-delay: 1",
@@ -156,7 +185,8 @@ cn_stacked_today <- paste(
 test_that("ai_training_token_stacked names a cut value as written", {
   d <- cn_rows(cn_stacked, "ai_training_token_stacked")
   expect_identical(d$line, 3L)
-  expect_identical(d$message, cn_stacked_today)
+  expect_identical(d$message, paste0(cn_stacked_today,
+                                     cn_note("`Foo Bar` (line 1)")))
 })
 
 # Uncut controls: their text must not change.
@@ -247,4 +277,218 @@ test_that("on Google a cut value is read as its token", {
                                  "Peer39_Crawler", backend, backend)$results
     expect_false(identical(x$matcher_status, "evaluated"), label = backend)
   }
+})
+
+test_that("the sentence names five values at most, then a count", {
+  body <- cn_lines("User-agent: *", "Disallow: /a", "",
+                   sprintf("User-agent: Peer%d\nDisallow: /b\n", 1:7))
+  d <- cn_rows(body, "wildcard_disallows_not_inherited")
+  expect_identical(d$line, 4L)
+  shown <- sprintf("`Peer%d` (line %d)", 1:5, seq(4L, 16L, by = 3L))
+  expect_true(endsWith(d$message, cn_note(shown, more = 2L)))
+})
+
+test_that("a joined row names its cut opener and earlier agents", {
+  # Peer39_Crawler opens the group (line 1); Zork.Bot and Spinbot join it;
+  # Baz (line 5) joins across the Crawl-delay and gets the warning naming
+  # all three.
+  body <- cn_lines("User-agent: Peer39_Crawler", "User-agent: Zork.Bot",
+                   "User-agent: Spinbot", "Crawl-delay: 1",
+                   "User-agent: Baz", "Disallow: /")
+  d <- cn_rows(body, "user_agent_joined_across_directive")
+  expect_identical(d$line, 5L)
+  expect_true(endsWith(d$message, cn_note(c("`Peer39_Crawler` (line 1)",
+                                            "`Zork.Bot` (line 2)"))))
+})
+
+test_that("the sentence comes before the NUL note", {
+  bytes <- charToRaw(cn_peer)
+  at <- grepRaw("Disallow: /a", bytes) + nchar("Disallow: /a") - 1L
+  body <- c(bytes[seq_len(at)], as.raw(0), charToRaw("x"),
+            bytes[-seq_len(at)])
+  d <- robots_validate_text(body)$diagnostics
+  d <- d[d$code == "wildcard_disallows_not_inherited", , drop = FALSE]
+  expect_identical(d$message, paste0(
+    cn_peer_today,
+    cn_note(c("`Peer39_Crawler` (line 4)", "`Peer42` (line 7)")),
+    " This is Google's reading, which ends each line at its first NUL; ",
+    "Bing and Yandex read the NUL as an ordinary byte."
+  ))
+})
+
+test_that("a cut value with invalid UTF-8 is named as rendered", {
+  body <- c(charToRaw("User-agent: *\nDisallow: /a\n\nUser-agent: Peer"),
+            as.raw(0xe9), charToRaw("x\nDisallow: /b\n"))
+  d <- robots_validate_text(body)$diagnostics
+  d <- d[d$code == "wildcard_disallows_not_inherited", , drop = FALSE]
+  expect_length(d$message, 1L)
+  expect_match(d$message, "^[ -~]*$")
+  expect_true(endsWith(d$message, cn_note("`Peer\\xE9x` (line 4)")))
+})
+
+test_that("a value naming no token draws no wildcard row to annotate", {
+  # `*bot` reads no token, so Google names no crawler and the line is left
+  # out of the wildcard check.
+  body <- cn_lines("User-agent: *", "Disallow: /a", "", "User-agent: *bot",
+                   "Disallow: /b")
+  d <- robots_validate_text(body)$diagnostics
+  expect_false(any(grepl("^wildcard_", d$code)))
+  expect_false(any(grepl("product token from", d$message, fixed = TRUE)))
+})
+
+test_that("a body cut at max_bytes still annotates joined and stacked rows", {
+  body <- charToRaw(paste0(cn_lines(
+    "User-agent: Foo.Bot", "Crawl-delay: 1", "User-agent: Baz",
+    "Disallow: /", "", "User-agent: Spinn3r", "Crawl-delay: 1",
+    "User-agent: __usage_ai-training", "Disallow: /"
+  ), "Disallow: /more"))
+  d <- validate_document_bytes(body, "s", "supplied",
+                               body_truncated = TRUE)$diagnostics
+  joined <- d[d$code == "user_agent_joined_across_directive", ]
+  stacked <- d[d$code == "ai_training_token_stacked", ]
+  expect_true(endsWith(joined$message, cn_note("`Foo.Bot` (line 1)")))
+  expect_true(endsWith(stacked$message, cn_note("`Spinn3r` (line 6)")))
+  expect_false(any(grepl("^wildcard_|^empty_disallow", d$code)))
+})
+
+test_that("a cut policy token is not named as an agent", {
+  # The opener is the policy token, which Google reads as
+  # `__usage_ai-training`; it is no crawler, so no sentence names it.
+  d <- cn_rows(cn_lines("User-agent: __usage_ai-training/1.0",
+                        "User-agent: Spinbot", "Crawl-delay: 1",
+                        "User-agent: Baz", "Disallow: /"),
+               "user_agent_joined_across_directive")
+  expect_length(d$message, 1L)
+  expect_no_match(d$message, "product token from", fixed = TRUE)
+})
+
+# A cut-heavy file: every row family that names an agent, on values whose
+# tokens (`Peer`, `Zork`, `Spinn`, `GPT`) are never a word of the written
+# value.
+cn_heavy <- cn_lines(
+  "User-agent: *", "Disallow: /a", "Allow: /x", "",
+  "User-agent: Peer39_Crawler", "Crawl-delay: 1", "User-agent: Baz",
+  "Disallow: /b", "",
+  "User-agent: Peer42", "", "User-agent: Qux", "Disallow: /c", "",
+  "User-agent: Zork.Bot", "Disallow:", "Disallow: /", "",
+  "User-agent: Spinn3r", "Crawl-delay: 1",
+  "User-agent: __usage_ai-training", "Disallow: /", "",
+  "User-agent: Peer7", "Disallow: /b", "", "User-agent: GPT.Bot",
+  "Disallow: /a", "Allow: /a/b"
+)
+
+cn_named_codes <- c(
+  "wildcard_disallows_not_inherited", "allow_reopens_wildcard_disallow",
+  "wildcard_rules_not_inherited", "user_agent_joined_across_directive",
+  "user_agent_joined_across_blank", "empty_disallow_with_full_block",
+  "ai_training_token_stacked"
+)
+
+test_that("no row but user_agent_cut names a cut token as an agent", {
+  d <- robots_validate_text(cn_heavy)$diagnostics
+  expect_true(all(cn_named_codes %in% d$code))
+  # The token as a word of its own: not `Zork.Bot`, which is the value. A
+  # quoted token (duplicate_rule's `as one token, 'Peer'`) names it as a
+  # token, and the quote keeps it out of the pattern.
+  for (token in c("Peer", "Zork", "Spinn", "GPT")) {
+    word <- sprintf("(^|[ (`*])%s([ ,;:)`]|[.]( |$)|$)", token)
+    hit <- grepl(word, d$message) & d$code != "user_agent_cut"
+    expect_false(any(hit), label = paste(token, toString(d$code[hit])))
+  }
+  # A row naming a cut value ends with the sentence; one naming none (Qux
+  # alone) has none.
+  family <- d[d$code %in% cn_named_codes, , drop = FALSE]
+  cut <- grepl("Peer39_Crawler|Peer42|Peer7|Zork[.]Bot|Spinn3r|GPT[.]Bot",
+               family$message)
+  expect_false(all(cut))
+  expect_identical(grepl("see the user_agent_cut rows?\\.$", family$message),
+                   cut)
+})
+
+# A builder timed on its own, best of three (ROBO-dbvmxcfw keeps the
+# validator linear).
+cn_time <- function(body, check) {
+  parsed <- as.data.frame(robotstxtr_validation_parse_(charToRaw(body)),
+                          stringsAsFactors = FALSE)
+  groups <- validation_groups(parsed)
+  min(vapply(1:3, function(i) {
+    system.time(check(groups, parsed))[["elapsed"]]
+  }, 0))
+}
+
+# Letter-only tokens: Ta, Tb, ..., Tba, ...
+cn_letters <- function(n) {
+  paste0("T", chartr("0123456789", "abcdefghij", seq_len(n)))
+}
+
+# Each shape at `n`: `n` groups of cut agents, every row of the family
+# carrying the sentence.
+cn_shapes <- list(
+  # One merged wildcard row naming `n` cut values of one token.
+  wildcard = list(
+    body = function(n) {
+      cn_lines("User-agent: *", "Disallow: /a", "Allow: /x",
+               sprintf("User-agent: Peer%d\nDisallow: /b", seq_len(n)))
+    },
+    check = function(groups, parsed) wildcard_inheritance_diagnostics(groups)
+  ),
+  # `n` joined warnings, each naming a cut opener.
+  joined = list(
+    body = function(n) {
+      tokens <- cn_letters(n)
+      cn_lines(sprintf(
+        "User-agent: %s 1\nCrawl-delay: 1\nUser-agent: U%s\nDisallow: /",
+        tokens, tokens
+      ))
+    },
+    check = function(groups, parsed) {
+      joined_user_agent_diagnostics(groups, parsed)
+    }
+  ),
+  # One empty_disallow_with_full_block row naming `n` cut values.
+  empty = list(
+    body = function(n) {
+      cn_lines(sprintf("User-agent: Peer%d\nDisallow:\nDisallow: /",
+                       seq_len(n)))
+    },
+    check = function(groups, parsed) {
+      empty_disallow_full_block_diagnostics(groups)
+    }
+  ),
+  # `n` stacked policy tokens, each beside a cut crawler.
+  stacked = list(
+    body = function(n) {
+      cn_lines(sprintf(paste0("User-agent: %s 1\nCrawl-delay: 1\n",
+                              "User-agent: __usage_ai-training\nDisallow: /"),
+                       cn_letters(n)))
+    },
+    check = function(groups, parsed) ai_training_diagnostics(groups, parsed)
+  )
+)
+
+for (shape in names(cn_shapes)) {
+  test_that(paste("the sentence costs time linear in the file:", shape), {
+    skip_on_cran()
+    # Four times the file: linear is about four times the time, quadratic
+    # sixteen.
+    x <- cn_shapes[[shape]]
+    small <- cn_time(x$body(1000L), x$check)
+    large <- cn_time(x$body(4000L), x$check)
+    expect_lt(large, 6 * max(small, 0.02))
+  })
+}
+
+test_that("the sentence adds little to many wildcard rows", {
+  skip_on_cran()
+  # The wildcard check over `n` distinct crawlers was not linear before the
+  # sentence (each crawler scans the agent and rule lines), so the
+  # sentence's share is timed instead: the same rows with and without it.
+  body <- cn_lines("User-agent: *", "Disallow: /a", "Allow: /x",
+                   sprintf("User-agent: %s 1\nDisallow: /b",
+                           cn_letters(2000L)))
+  check <- function(groups, parsed) wildcard_inheritance_diagnostics(groups)
+  with_note <- cn_time(body, check)
+  local_mocked_bindings(cut_agent_note = function(...) "")
+  without <- cn_time(body, check)
+  expect_lt(with_note, 1.5 * without + 0.05)
 })

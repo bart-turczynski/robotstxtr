@@ -138,8 +138,9 @@ read is a documented Google crawler token the value did not mean
 (\code{Googlebot/2.1}) or a trailing \code{*} is info, as the token
 read is the crawler the value names, and any other token is info, as
 Google's crawlers do not go by it. The Bing and Yandex
-matchers do not cut the value, and every other code names the agent
-as written. \cr
+matchers do not cut the value. Every other code names the agent as
+written, and a code that names a cut value adds a sentence pointing
+to this row; \code{duplicate_rule} names the token read. \cr
 \code{rule_without_user_agent} \tab error \tab
 An Allow or Disallow in no group a non-empty User-agent opened: before
 any, or after an empty User-agent that follows a rule. \cr
@@ -504,6 +505,13 @@ shows is skipped. A \code{*} Disallow the crawler loses outright is
 reopened by an every-path Allow (\verb{Disallow: /} with \verb{Allow: /}), the group
 grants everything on purpose, so the row is info.
 
+The three wildcard codes name each crawler by its value as written. When
+Google's matcher cuts that value (\code{Peer39_Crawler}, read as \code{Peer}), the
+message adds a sentence naming the cut values and their lines, five at
+most, and pointing to their \code{user_agent_cut} rows: on Google's matcher a
+crawler going by the full value does not match the group the row names.
+A merged row names only its cut values there.
+
 The \code{ai_training_} codes follow
 draft-kelley-aipref-training-preference-signal-00 (dated 2026-10-30), an
 Internet-Draft: a \verb{User-agent: __usage_ai-training} group states an
@@ -557,7 +565,10 @@ to get the rules, the message suggests an empty \verb{Disallow:} ending their
 group; moving a Sitemap out of the run is offered only to agents meant to
 share them, since it makes the User-agent lines adjacent. Each message
 names at most five earlier agents and three directive lines, and counts
-the rest. On a document
+the rest. An agent whose value Google's matcher cuts (\verb{Foo Bar}, read as
+\code{Foo}) is named as written, and the message adds a sentence pointing to
+its \code{user_agent_cut} row, as \code{ai_training_token_stacked} does for the
+crawler it names. On a document
 holding a NUL byte the check follows Google's reading, as the other group
 checks do.
 
@@ -569,7 +580,9 @@ crawler, and a line a \verb{user_agent_joined_*}, \code{user_agent_cut} or
 line, draws nothing but still counts for later groups. The warning fires
 within one group too, where the engines split the same way. An every-path
 Allow beside \verb{Disallow: /} is no split (every engine allows) and draws
-neither.
+neither. A cut line draws no \code{user_agent_repeated_group} row; an
+\code{empty_disallow_with_full_block} row naming a cut value adds the sentence
+pointing to its \code{user_agent_cut} row, as the wildcard codes do.
 
 For \code{user_agent_duplicate_in_group}, a User-agent line that repeats a name
 already in its own group, in any case (\code{*} included), is reported on the
