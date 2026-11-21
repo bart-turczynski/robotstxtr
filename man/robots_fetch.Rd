@@ -257,22 +257,21 @@ page, so the origin reads as having no rules. With
 \code{destination_robots = TRUE}, an origin row whose fetch ended with a final
 response (an \code{effective_url} and an \code{http_status}, whatever the status) on
 another registrable domain (the test \code{\link[=robots_validate_url]{robots_validate_url()}}'s
-\code{redirect_cross_site} uses), and not on that site's own \verb{/robots.txt},
-gets a follow-up read of \verb{scheme://host[:port]/robots.txt} built from
-\code{effective_url}. It runs through the same acquisition path and safety
-policy as every origin (the guard, \code{safety_level}, \code{fetch_allow_ranges},
-\code{timeout}, \code{max_bytes} and \code{fetch_user_agent}), so a destination the guard
-refuses is reported as \code{ssrf_blocked} and never fetched. Each distinct
-destination robots.txt URL is read at most once per call, however many
-origins land on it, and one the call already requested is reused without
-a second request: an origin's result when it was fetched as an origin, or
-the rest of an origin's chain (the same final response, with the
-redirects from there) when that chain passed through it. A robots.txt
-path counts whatever its query or fragment. A reused result is copied
-into its \code{destinations} row, body included, so each destination row
-stands on its own and that body is stored there once more. A destination
-is never followed up in
-turn: one whose robots.txt redirects again is reported as it ended.
+\code{redirect_cross_site} uses), and not on that site's own \verb{/robots.txt}
+(whatever its query or fragment), gets a follow-up read of
+\verb{scheme://host[:port]/robots.txt} built from \code{effective_url}, the host's
+trailing root dot dropped. It runs through the same acquisition path and
+safety policy as every origin (the guard, \code{safety_level},
+\code{fetch_allow_ranges}, \code{timeout}, \code{max_bytes} and \code{fetch_user_agent}), so a
+destination the guard refuses is reported as \code{ssrf_blocked} and never
+fetched. Each distinct destination robots.txt URL is read once per call,
+however many origins land on it. The one reuse is a destination robots.txt
+URL the same call also fetched as an origin: that origin's result is used,
+with no second request, and copied into its \code{destinations} row, body
+included, so the body is stored there once more. Any other destination is
+read fresh, even when an origin's redirect chain passed through that URL.
+A destination is never followed up in turn: one whose robots.txt
+redirects again is reported as it ended.
 
 The destination's file never governs the origin: \code{map} and \code{robots} are
 exactly those of a call without the argument, and the file reached still

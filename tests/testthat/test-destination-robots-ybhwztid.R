@@ -646,9 +646,9 @@ test_that("ROBO-ybhwztid: a robots.txt reached with a query is final too", {
   expect_identical(robots_url_key("http://example.net/"), NA_character_)
 })
 
-test_that("ROBO-ybhwztid: a destination the origin's chain passed is reused", {
+test_that("ROBO-ybhwztid: a robots.txt a chain passed is read fresh", {
   # example.com/robots.txt -> example.net/robots.txt -> example.net/ (HTML):
-  # example.net/robots.txt was already requested, so it is not asked again.
+  # the destination's robots.txt is requested again, on its own chain.
   routes <- list(
     "http://example.com/robots.txt" =
       dest_moved("http://example.net/robots.txt"),
@@ -662,6 +662,7 @@ test_that("ROBO-ybhwztid: a destination the origin's chain passed is reused", {
   run <- dest_fetch(routes)
   expect_identical(run$urls, c(
     "http://example.com/robots.txt", "http://example.net/robots.txt",
+    "http://example.net/", "http://example.net/robots.txt",
     "http://example.net/"
   ))
   origin <- run$opted$robots
@@ -669,31 +670,77 @@ test_that("ROBO-ybhwztid: a destination the origin's chain passed is reused", {
   expect_identical(origin$redirect_count, 2L)
   dest <- run$opted$destinations
   expect_identical(dest$robots_url, "http://example.net/robots.txt")
-  for (col in c("effective_url", "http_status", "fetch_outcome",
-                "content_flag", "body")) {
-    expect_identical(dest[[col]], origin[[col]], label = col)
-  }
-  # The rest of the chain from that hop: one redirect, logged from there.
+  expect_identical(dest$effective_url, "http://example.net/")
+  expect_identical(dest$content_flag, "html")
   expect_identical(dest$redirect_count, 1L)
   expect_identical(
     vapply(dest$redirect_hops[[1L]], function(h) h$from_url, character(1L)),
     "http://example.net/robots.txt"
   )
   expect_identical(run$opted$destination_map$origin_source_id, "robots_1")
-  expect_identical(
-    run$opted$destination_map$destination_source_id, "destination_1"
+})
+
+test_that("ROBO-ybhwztid: a robots.txt hop with a query is not the file", {
+  # query_hop: the chain passed example.net/robots.txt?x=1, which is not
+  # example.net/robots.txt; the real file serves rules and is read.
+  routes <- list(
+    "http://example.com/robots.txt" =
+      dest_moved("http://example.net/robots.txt?x=1"),
+    "http://example.net/robots.txt?x=1" = dest_moved("http://example.net/home"),
+    "http://example.net/home" = dest_page(dest_html_body(), "text/html"),
+    "http://example.net/robots.txt" = dest_page(dest_rules_body)
   )
-  # An origin chain that passed a different path is no reuse.
-  expect_null(chain_from_hop(
-    list(
-      redirect_count = 2L,
-      redirect_hops = list(
-        list(from_url = "http://example.com/robots.txt"),
-        list(from_url = "http://example.net/robots.txt.bak")
-      )
-    ),
-    "http://example.net/robots.txt"
+  run <- dest_fetch(routes)
+  expect_identical(run$urls, c(
+    "http://example.com/robots.txt", "http://example.net/robots.txt?x=1",
+    "http://example.net/home", "http://example.net/robots.txt"
   ))
+  dest <- run$opted$destinations
+  expect_identical(dest$fetch_outcome, "fetched")
+  expect_identical(dest$effective_url, "http://example.net/robots.txt")
+  expect_identical(dest$redirect_count, 0L)
+  expect_identical(dest$body[[1L]], charToRaw(dest_rules_body))
+
+  # query_then_exact: the chain passed both, ?x=1 then the bare file, which
+  # moved to the HTML page; the destination is read fresh and moves again.
+  routes <- list(
+    "http://example.com/robots.txt" =
+      dest_moved("http://example.net/robots.txt?x=1"),
+    "http://example.net/robots.txt?x=1" =
+      dest_moved("http://example.net/robots.txt"),
+    "http://example.net/robots.txt" = dest_moved("http://example.net/home"),
+    "http://example.net/home" = dest_page(dest_html_body(), "text/html")
+  )
+  run <- dest_fetch(routes)
+  expect_identical(run$urls, c(
+    "http://example.com/robots.txt", "http://example.net/robots.txt?x=1",
+    "http://example.net/robots.txt", "http://example.net/home",
+    "http://example.net/robots.txt", "http://example.net/home"
+  ))
+  dest <- run$opted$destinations
+  expect_identical(dest$effective_url, "http://example.net/home")
+  expect_identical(dest$redirect_count, 1L)
+  expect_identical(dest$content_flag, "html")
+})
+
+test_that("ROBO-ybhwztid: a host's root dot is dropped from its key", {
+  from <- "http://example.com/robots.txt"
+  expect_identical(
+    destination_robots_url(from, "http://example.net./home", 200L),
+    "http://example.net/robots.txt"
+  )
+  expect_identical(
+    destination_robots_url(from, "http://example.net.:8080/home", 200L),
+    "http://example.net:8080/robots.txt"
+  )
+  expect_identical(
+    robots_url_key("http://example.net./robots.txt?x=1"),
+    "http://example.net/robots.txt"
+  )
+  expect_identical(
+    destination_robots_url(from, "http://example.net./robots.txt", 200L),
+    NA_character_
+  )
 })
 
 test_that("ROBO-ybhwztid: a reused body is copied and validated once more", {
