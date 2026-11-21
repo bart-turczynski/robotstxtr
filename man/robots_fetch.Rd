@@ -264,8 +264,12 @@ policy as every origin (the guard, \code{safety_level}, \code{fetch_allow_ranges
 \code{timeout}, \code{max_bytes} and \code{fetch_user_agent}), so a destination the guard
 refuses is reported as \code{ssrf_blocked} and never fetched. Each distinct
 destination robots.txt URL is read at most once per call, however many
-origins land on it, and one the call already fetched as an origin is
-reused without a second request. A destination is never followed up in
+origins land on it, and one the call already requested is reused without
+a second request: an origin's result when it was fetched as an origin, or
+the rest of an origin's chain (the same final response, with the
+redirects from there) when that chain passed through it. A robots.txt
+path counts whatever its query or fragment. A destination is never
+followed up in
 turn: one whose robots.txt redirects again is reported as it ended.
 
 The destination's file never governs the origin: \code{map} and \code{robots} are

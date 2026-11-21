@@ -220,8 +220,12 @@
 #' `timeout`, `max_bytes` and `fetch_user_agent`), so a destination the guard
 #' refuses is reported as `ssrf_blocked` and never fetched. Each distinct
 #' destination robots.txt URL is read at most once per call, however many
-#' origins land on it, and one the call already fetched as an origin is
-#' reused without a second request. A destination is never followed up in
+#' origins land on it, and one the call already requested is reused without
+#' a second request: an origin's result when it was fetched as an origin, or
+#' the rest of an origin's chain (the same final response, with the
+#' redirects from there) when that chain passed through it. A robots.txt
+#' path counts whatever its query or fragment. A destination is never
+#' followed up in
 #' turn: one whose robots.txt redirects again is reported as it ended.
 #'
 #' The destination's file never governs the origin: `map` and `robots` are
@@ -389,6 +393,26 @@ destination_robots_url <- function(robots_url, effective_url, http_status) {
   robots_origin(effective_url)
 }
 
+# An origin's acquire_robots() result seen from a later hop of its own
+# chain: when a followed hop after the first requested `robots_url` (by
+# robots_url_key()), the same final response with the hop log and redirect
+# count from that hop on; NULL when no such hop was requested.
+chain_from_hop <- function(result, robots_url) {
+  hops <- result$redirect_hops
+  count <- result$redirect_count
+  if (length(hops) == 0L || is.na(count) || count < 2L) {
+    return(NULL)
+  }
+  for (j in seq.int(2L, min(count, length(hops)))) {
+    if (identical(robots_url_key(hops[[j]]$from_url), robots_url)) {
+      result$redirect_hops <- hops[j:length(hops)]
+      result$redirect_count <- count - (j - 1L)
+      return(result)
+    }
+  }
+  NULL
+}
+
 # The robots.txt URL a request URL stands for, normalized as robots_origin()
 # does it (scheme and host case, IDN host, default port), when its path is
 # /robots.txt, whatever its query or fragment; NA for any other path.
@@ -402,9 +426,11 @@ robots_url_key <- function(url) {
 
 # One read per distinct destination robots.txt URL, in first-occurrence
 # order, through acquire_robots() and the call's own policy. A URL the call
-# already fetched as an origin reuses that result (PRD 6.5: each robots URL
-# exactly once per call). Destination rows are never followed up in turn.
-# Returns the `destinations` frame and the `destination_map` link frame.
+# already requested makes no request (PRD 6.5: each robots URL exactly once
+# per call): one fetched as an origin reuses that result, and one an origin's
+# chain passed through reuses the rest of that chain (chain_from_hop()).
+# Destination rows are never followed up in turn. Returns the
+# `destinations` frame and the `destination_map` link frame.
 destination_follow_ups <- function(robots, results, timeout, fetch_ua,
                                    max_bytes, ssrf_guard, safety_level,
                                    fetch_allow_ranges) {
@@ -420,6 +446,12 @@ destination_follow_ups <- function(robots, results, timeout, fetch_ua,
     k <- match(robots_url, robots$robots_url)
     if (!is.na(k)) {
       return(results[[k]])
+    }
+    for (k in which(wanted == robots_url)) {
+      rest <- chain_from_hop(results[[k]], robots_url)
+      if (!is.null(rest)) {
+        return(rest)
+      }
     }
     acquire_robots(
       robots_url, timeout, fetch_ua, max_bytes, ssrf_guard, safety_level,

@@ -645,3 +645,53 @@ test_that("ROBO-ybhwztid: a robots.txt reached with a query is final too", {
   )
   expect_identical(robots_url_key("http://example.net/"), NA_character_)
 })
+
+test_that("ROBO-ybhwztid: a destination the origin's chain passed is reused", {
+  # example.com/robots.txt -> example.net/robots.txt -> example.net/ (HTML):
+  # example.net/robots.txt was already requested, so it is not asked again.
+  routes <- list(
+    "http://example.com/robots.txt" =
+      dest_moved("http://example.net/robots.txt"),
+    "http://example.net/robots.txt" = function(req) {
+      fake_response(
+        302L, url = req$url, headers = list(Location = "http://example.net/")
+      )
+    },
+    "http://example.net/" = dest_page(dest_html_body(), "text/html")
+  )
+  run <- dest_fetch(routes)
+  expect_identical(run$urls, c(
+    "http://example.com/robots.txt", "http://example.net/robots.txt",
+    "http://example.net/"
+  ))
+  origin <- run$opted$robots
+  expect_identical(origin, run$default$robots)
+  expect_identical(origin$redirect_count, 2L)
+  dest <- run$opted$destinations
+  expect_identical(dest$robots_url, "http://example.net/robots.txt")
+  for (col in c("effective_url", "http_status", "fetch_outcome",
+                "content_flag", "body")) {
+    expect_identical(dest[[col]], origin[[col]], label = col)
+  }
+  # The rest of the chain from that hop: one redirect, logged from there.
+  expect_identical(dest$redirect_count, 1L)
+  expect_identical(
+    vapply(dest$redirect_hops[[1L]], function(h) h$from_url, character(1L)),
+    "http://example.net/robots.txt"
+  )
+  expect_identical(run$opted$destination_map$origin_source_id, "robots_1")
+  expect_identical(
+    run$opted$destination_map$destination_source_id, "destination_1"
+  )
+  # An origin chain that passed a different path is no reuse.
+  expect_null(chain_from_hop(
+    list(
+      redirect_count = 2L,
+      redirect_hops = list(
+        list(from_url = "http://example.com/robots.txt"),
+        list(from_url = "http://example.net/robots.txt.bak")
+      )
+    ),
+    "http://example.net/robots.txt"
+  ))
+})
