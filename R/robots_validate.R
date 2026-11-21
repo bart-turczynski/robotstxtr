@@ -286,8 +286,9 @@ validation_unsupported <- c(
 #'   \code{xml_body} \tab warning \tab
 #'     The body starts with markup (\code{<}), such as XML, not a robots.txt;
 #'     its lines are still read and reported one by one. A body that opens
-#'     with a markup comment (\code{<!--}) is a robots.txt with a comment
-#'     first, so it draws none. \cr
+#'     with a markup comment (\code{<!--}) is treated as a robots.txt that
+#'     starts with a comment, so it draws no \code{xml_body}; the comment line
+#'     keeps its own \code{malformed_line} row. \cr
 #'   \code{json_body} \tab warning \tab
 #'     The body looks like a JSON object or array, such as an API error, not a
 #'     robots.txt; its lines are still read and reported one by one. At most
