@@ -1,0 +1,157 @@
+# Blind-reader pilot
+
+Tooling for ROBO-nvgtqdlu: a small model reads real robots.txt files with
+no access to robotstxtr, answers three fixed questions per file, and each
+answer is set beside robotstxtr's own reading of the same file so a person
+can look for what the package misses. The method and the classification
+vocabulary are in the parent epic, ROBO-gqkhoogt.
+
+Every input and output is private (the corpus privacy rule, ROBO-qbxsydcf):
+corpus files, host names, the sample list, rendered prompts, answers and
+score tables live in the private store, never in git or the tracker. Each
+script refuses an output directory inside a git work tree, or one that
+already exists. A finding goes into the repository only as a synthetic
+`example.com` reproduction.
+
+## Files
+
+- `prompt.md`: the prompt one reader gets, between its `PROMPT START` and
+  `PROMPT END` markers, with the RFC 9309 passages and the answer format. A
+  stage-1 change to the prompt is a diff of this file.
+- `sample.R`: draws the seeded sample and writes one file per body.
+- `render.R`: fills the prompt for each sampled file.
+- `score.R`: checks each answer's format and compares it with the package.
+- `common.R`: shared helpers; it reuses `dev/corpus/harness.R`.
+- `selftest.R`: the tools' own check, on synthetic data only (below).
+
+## Self-test
+
+```sh
+Rscript dev/blind-reader/selftest.R
+```
+
+It builds a tiny synthetic corpus (`.example` hosts, plus records the pool
+must skip: a 404, a missing body, a body that is not raw bytes, a file that
+is not a record) and a synthetic answer set in a temporary directory outside
+any git work tree, runs `sample.R` and `score.R` on them, and exits 1 when
+any check fails: `score.R` accepts well-formed answers and rejects each
+malformed class with its own code; no host an `--exclude` source names
+reaches the sample; the same seed reproduces the sample list and another
+seed does not. Run it after changing any script here.
+
+## Steps
+
+Below, `<store>` is the pilot's directory in the private store, and
+`<corpus>` the snapshot's host directories (one directory per host, each
+with a `robots.rds`, as `dev/corpus/README.md` describes).
+
+1. Draw the sample. `--exclude` takes an earlier private sample, repeated
+   once per source: an `.rds` with a `host` column, a text report whose
+   `--- ` header lines name the host in their fourth field, a plain list of
+   hosts, or a directory whose file and directory names name hosts.
+
+   ```sh
+   Rscript dev/blind-reader/sample.R --corpus <corpus> \
+     --out <store>/sample --seed <seed> --n 100 \
+     --exclude <earlier sample> [--exclude ...]
+   ```
+
+   It draws `--pool` host directories (default 2,000) at random, keeps the
+   status-200 bodies that are not empty, not over `--max-bytes` (default
+   32,768, so the prompt stays small) and not a duplicate of another body,
+   and runs the package on each: `robots_validate_text()` for the
+   diagnostic codes, and the Google backend against the Bing and Yandex
+   backends (on `bingbot` and `Yandex`) over the harness's rule paths and
+   fixed probes for the disagreement classes. Half of `--n` is drawn from
+   the bodies with no diagnostic; the other half round-robin over every
+   `diag:<code>` and `disagree:<pair>:<reason>><reason>` stratum, one body
+   per stratum per round. Each file's token is one its user-agent lines
+   name (else `Googlebot`, `bingbot` or `Yandex`), and its path comes from
+   a rule holding `*`, `$` or `%` where there is one, sometimes with one
+   more character so an end anchor is tested.
+
+   It adds anchors from `tests/testthat/fixtures/edge-cases/manifest.csv`:
+   every row where the RFC 9309 decision and Google's differ, and
+   `--anchors-silent` (default 3) rows where the RFC is silent. They are
+   synthetic and show which way the reader leans.
+
+   Ids `br-001` ... are in random order; the first `--stage1` (default 20),
+   plus every anchor (`an-01` ...), make stage 1. The output holds
+   `files/<id>.bin` (the stored bytes, NULs included), `manifest.tsv` and
+   `sample.rds` (the sample list), `pool.rds` (the pool's readings) and
+   `record.rds` (seed, arguments, exclusion and pool counts, the package's
+   git state).
+
+2. Check the seed reproduces the list, which the ticket's verification
+   asks for. The list depends on the package's readings and on the corpus
+   as well as on the seed, so a rerun is `SAME` only on the same package
+   commit and the same corpus: check out the package at the `git_sha` that
+   `<store>/sample/record.rds` records (`$package$git_sha`), with no
+   uncommitted changes, and run step 1 again with the same arguments, into
+   another directory, adding `--verify <store>/sample` (and `--pkg <that
+   tree>` if it is not the tree holding the script). It prints `SAME` and
+   exits 0 when both the sample list and the package commit match, or
+   `DIFFERENT` (naming a commit mismatch) and exits 1. `record.rds` also
+   counts, per `--exclude` source, the corpus hosts it named; a source that
+   names none is warned about at run time.
+
+3. Render the stage-1 prompts:
+
+   ```sh
+   Rscript dev/blind-reader/render.R --sample <store>/sample \
+     --out <store>/prompts/stage1 --stage stage1
+   ```
+
+   Each `<id>.txt` is the whole prompt for one file, and the directory
+   keeps a copy of the `prompt.md` it was rendered from. A backslash in
+   the file appears as `\\`, and bytes that cannot be shown as text
+   (controls, invalid UTF-8, and the bytes of a byte order mark, a C1
+   control, U+2028 or U+2029) as `\xHH`; encoding questions are answered
+   from the bytes, by `pool.rds` and the validator, not by the reader.
+
+4. Read. For each prompt, spawn one subagent on model `haiku` whose whole
+   input is that file's text, and save its reply, unedited, as
+   `<store>/answers/stage1/<id>.txt`. The reader must have no tools, so it
+   cannot run robotstxtr or fetch anything and stays blind: spawn it from an
+   agent definition that grants no tools. Where that is not possible, the
+   prompt already forbids tool use; check each transcript for tool calls
+   and record which reads had any. Record the model alias and, where the
+   transcript shows it, the resolved model id, in
+   `<store>/answers/stage1/run-meta.txt`. No API calls and no keys.
+
+5. Score:
+
+   ```sh
+   Rscript dev/blind-reader/score.R --sample <store>/sample \
+     --answers <store>/answers/stage1 --out <store>/score/stage1 \
+     --stage stage1
+   ```
+
+   An answer passes the format check only when it is exactly the format in
+   `prompt.md`: a `decision:` line with one of `allow`, `disallow`,
+   `unspecified` or `cannot_tell`, an em dash and a `§` section; one to
+   three `issue:` lines (`L<n> "<quote>" — <at most 15 words>`) or
+   `issue: none`; a `surprise:` line of at most 15 words; no other lines,
+   no blank line, no fence, no NUL byte, LF line ends. A missing file fails
+   as `missing`; a broken answer never stops the others being scored.
+   `score.tsv`
+   has one row per answer: the format result, the reader's decision and
+   section, the google, bing and yandex readings (`n/a` where a bounded
+   backend does not take the token), the catalog's RFC 9309 decision on an
+   anchor, the validator's lines and codes, and `read_reasons`, why the row
+   needs a person (`format`, `google_differs`, `rfc_differs`,
+   `issue_unflagged`, `misquote`, `surprise`). `issues.tsv` has one row per
+   issue line: whether the quote matches the file's line and which
+   validator codes that line has.
+
+6. Tune. Read every stage-1 answer beside its score row, change
+   `prompt.md` (commit the change; the reasons go in the tracker,
+   corpus-free), then render, read and score stage 2 the same way with
+   `--stage stage2` and `.../stage2` directories.
+
+7. Classify each candidate in one line on the epic, resolved against the
+   RFC text or observed engine behavior before it is called a finding.
+
+The RFC 9309 passages in `prompt.md` are quoted word for word from the RFC;
+only the sentence on the case of record names is not RFC 9309 text, and the
+prompt says so.
