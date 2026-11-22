@@ -321,3 +321,17 @@ test_that("resolve_matcher_profile keeps returning unbounded rows", {
   expect_identical(r$robots_product_token, "Googlebot/2.1")
   expect_true(is.na(r$profile_id))
 })
+
+test_that("the legacy adapter carries the refusal; the legacy path answers", {
+  v1 <- robots_evaluate_text_v1(
+    pt_body, rep("https://example.com/g", 2L), c("Googlebot/2.1", "Googlebot"),
+    "google", "google"
+  )
+  legacy <- as_legacy_robots_decisions_v1(v1)$results
+  expect_identical(legacy$allowed, c(NA, FALSE))
+  expect_identical(legacy$decision_source[[1L]], "input_unknown")
+  direct <- allowed_by_robots_text(
+    pt_body, "https://example.com/g", "Googlebot/2.1"
+  )$results
+  expect_true(direct$allowed)
+})

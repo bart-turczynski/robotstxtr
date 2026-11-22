@@ -2500,6 +2500,12 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
 #' `*` group is allowed here and obeys `*` there. The `group_token` column is
 #' not carried over.
 #'
+#' A row the v1 facade refused because its token is not an RFC 9309
+#' `identifier` (such as `Googlebot/2.1`; see [robots_evaluate_text_v1()])
+#' converts to `allowed = NA` with `decision_source = "input_unknown"`,
+#' while [allowed_by_robots_text()] and [allowed_by_robots_url()] still
+#' match that token as given and answer.
+#'
 #' Its decisions are the v1 result's, so they follow the `url_normalization`
 #' the result was built with: under the default `"rfc3986"`,
 #' `https://example.com/a/../b` is decided as `https://example.com/b`, where
