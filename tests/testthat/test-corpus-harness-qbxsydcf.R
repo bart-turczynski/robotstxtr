@@ -151,6 +151,16 @@ test_that("synthetic size bodies straddle the 512,000-byte boundary", {
   expect_named(h$size_variants(body_of("short")), "full")
 })
 
+test_that("the combos offer `*` on google, which the facade refuses", {
+  # PIN (ROBO-mtmkpwuf): today the grid keeps `*` on the google backend,
+  # where every such row is refused as input and decides nothing.
+  h <- load_harness()
+  out <- h$evaluation_combos(robots_engine_contract_v1(),
+                             robots_resolve_matcher_profile_v1)
+  g <- out$combos[out$combos$backend == "google", , drop = FALSE]
+  expect_true("*" %in% g$token)
+})
+
 test_that("the narrow grid keeps each backend's first named token", {
   h <- load_harness()
   combos <- data.frame(
