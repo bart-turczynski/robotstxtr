@@ -4761,6 +4761,7 @@ slash_read_plan <- function(expand, cand_group, live_group, budget) {
   }
   cost <- cumsum(per) + cumsum(held_at)
   n <- sum(cost <= budget)
+  # A perf filter only: a class no candidate taken needs is never read.
   taken <- pair_first <= n
   by_group <- split(pairs$class[taken],
                     factor(pairs$owner[taken], seq_along(wanted)))
@@ -4870,6 +4871,8 @@ slash_pairs_upto <- function(near, far, paths, last) {
                     use.names = FALSE)
   far_row <- as.integer(far_row)
   far_rule <- rep(far$rule, lens)
+  # A perf filter only: a rule whose head the path does not start with
+  # cannot match it, so keeping it would change no decision.
   keep <- startsWith(paths[far_row], rep(far$head, lens))
   list(row = c(near_row, far_row[keep]), rule = c(near_rule, far_rule[keep]))
 }
@@ -4911,6 +4914,8 @@ slash_head_hits <- function(rule, rule_class, head, paths, class) {
   key <- paste(rule_class, head, sep = "\n")
   by_key <- split(rule, factor(key, unique(key)))
   sizes <- sort(unique(nchar(head, "bytes")))
+  # A perf filter only: a head longer than the path is no prefix of it, so
+  # looking it up too would find nothing.
   n <- findInterval(nchar(paths, "bytes"), sizes)
   row <- rep(seq_along(paths), n)
   size <- sizes[sequence(n)]
@@ -4947,6 +4952,8 @@ slash_gram_index <- function(paths, class, sizes) {
   })
   row <- unlist(lapply(parts, `[[`, "row"), use.names = FALSE)
   key <- unlist(lapply(parts, `[[`, "key"), use.names = FALSE)
+  # A perf filter only: a run a path holds twice would list the row twice,
+  # and the duplicate witness line would change no decision.
   keep <- !duplicated(paste(row, key, sep = "\n"))
   split(row[keep], factor(key[keep], unique(key[keep])))
 }
