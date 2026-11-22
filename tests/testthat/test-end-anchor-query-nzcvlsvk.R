@@ -680,3 +680,20 @@ test_that("ROBO-nzcvlsvk: a NUL-cut twin silences nothing", {
   expect_identical(d$code, c("nul_byte", "rule_cut_by_nul", ea_code))
   expect_identical(d$message[[3L]], paste0(ea_one_message(2L, "/a"), ea_nul))
 })
+
+# Another rule that matches the filler bytes of the first control or
+# witness: `/x/` the control `/x/edit`, `/*x=` the witness `/a?x=1`.
+ea_filler <- list(
+  path = "User-agent: %s\nDisallow: /*/edit$\nDisallow: /x/\n",
+  query = "User-agent: %s\nDisallow: /a$\nDisallow: /*x=\n"
+)
+
+# `Disallow: /x/` alone also blocks `/x/` and not `/x` (ROBO-roypaoox).
+ea_filler_today <- list(path = "rule_slash_split", query = character(0))
+
+test_that("ROBO-nzcvlsvk: today a rule matching the filler silences the row", {
+  for (name in names(ea_filler)) {
+    body <- gsub("%s", "Foo", ea_filler[[name]], fixed = TRUE)
+    expect_identical(ea_codes(body), ea_filler_today[[name]], label = name)
+  }
+})
