@@ -209,7 +209,8 @@ validation_unsupported <- c(
 #'     \code{\%name\%} placeholder, read as written in the file, gets that
 #'     message with the placeholder named, whatever the hex digits: Google
 #'     and Bing upper-case a name led by an escape, so \code{\%date\%} matches
-#'     \code{\%DAte\%} there and \code{\%date\%} on Yandex. A
+#'     \code{\%DAte\%} there and \code{\%date\%} on Yandex. A name of only
+#'     two hex digits, as in \code{\%A9\%}, is an escape and no placeholder. A
 #'     \code{\%}, or \code{\%} and one hex digit, at the pattern's end or
 #'     before a \code{*} matches any escape it begins, which may be meant,
 #'     and gets its own message; the matchers compare the digit's case, so a
@@ -4585,8 +4586,11 @@ rule_written_value <- function(line_bytes, first_line, missing_colon) {
 
 # A `%name%` template placeholder, read on the value as written. A closing
 # `%` followed by two hex digits starts an escape (`/%x%41`), so it closes
-# no placeholder.
-validation_placeholder_pattern <- "%[A-Za-z_][A-Za-z0-9_]*%(?![0-9A-Fa-f]{2})"
+# no placeholder. A name of exactly two hex digits is an escape followed by
+# a stray `%` (`%A9%` in `/caf%C3%A9%`), so it is no placeholder either.
+validation_placeholder_pattern <- paste0(
+  "%(?![0-9A-Fa-f]{2}%)[A-Za-z_][A-Za-z0-9_]*%(?![0-9A-Fa-f]{2})"
+)
 
 # The first `%name%` placeholder in `written` (raw bytes), or NULL. The name
 # cannot cross a `%`, so each try ends at the next `%` and the scan stays

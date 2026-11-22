@@ -130,11 +130,13 @@ ip_stray <- list(
   "/a%4*" = list(ip_new, ip_b("'%4*'")),
   "*%*" = list(ip_new, ip_b("'%*'")),
   "/a%*b%" = list(ip_new, ip_b("'%*b', '%'")),
-  # Shaped like a placeholder, so named, though `%cd` is an escape.
-  "/ab%cd%" = list(
-    c(ip_new, "rule_lowercase_escape"),
-    ip_ph_upper("'%'", "%cd%", "%cd", "%CD%")
-  )
+  # A name of exactly two hex digits is an escape and a stray `%`, no
+  # placeholder: the class comes from the stray `%` alone.
+  "/ab%cd%" = list(c(ip_new, "rule_lowercase_escape"), ip_b("'%'")),
+  "/caf%C3%A9%" = list(ip_new, ip_b("'%'")),
+  "/%E2%82%AC%*" = list(ip_new, ip_b("'%*'")),
+  "/a%DE%zz" = list(ip_new, ip_a("'%zz'")),
+  "/x%Bb%*" = list(c(ip_new, "rule_lowercase_escape"), ip_b("'%*'"))
 )
 
 # Shapes with no stray `%`, each with the codes it got before the check.
@@ -295,10 +297,8 @@ test_that("ROBO-rswdwrnp: the placeholder wording", {
       label = name
     )
   }
-  expect_identical(
-    ip_message(ip_rows("/%ab%zz")),
-    ip_ph_upper("'%zz'", "%ab%", "%ab", "%AB%")
-  )
+  # A name of exactly two hex digits is an escape, not a placeholder.
+  expect_identical(ip_message(ip_rows("/%ab%zz")), ip_a("'%zz'"))
   # A closing `%` that starts a valid escape closes no placeholder.
   expect_identical(ip_message(ip_rows("/%x%41")), ip_a("'%x%'"))
   expect_identical(ip_message(ip_rows("/%x%41%y%")),
@@ -503,5 +503,9 @@ test_that("ROBO-rswdwrnp: a class (b) `%` matches every escape it begins", {
     r <- ip_eval("/a%25", c("/a%25", "/a%20b"), backend)
     expect_identical(r$url_decision, c("disallow", "allow"),
                      label = paste(backend, "/a%25"))
+    # An escape then a final `%` is class (b), not a placeholder.
+    r <- ip_eval("/caf%C3%A9%", "/caf%C3%A9%20x", backend)
+    expect_identical(r$url_decision, "disallow",
+                     label = paste(backend, "/caf%C3%A9%"))
   }
 })

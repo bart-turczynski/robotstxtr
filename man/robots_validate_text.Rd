@@ -218,7 +218,8 @@ only URLs that carry the raw \code{\%}. A value holding a
 \code{\%name\%} placeholder, read as written in the file, gets that
 message with the placeholder named, whatever the hex digits: Google
 and Bing upper-case a name led by an escape, so \code{\%date\%} matches
-\code{\%DAte\%} there and \code{\%date\%} on Yandex. A
+\code{\%DAte\%} there and \code{\%date\%} on Yandex. A name of only
+two hex digits, as in \code{\%A9\%}, is an escape and no placeholder. A
 \code{\%}, or \code{\%} and one hex digit, at the pattern's end or
 before a \code{*} matches any escape it begins, which may be meant,
 and gets its own message; the matchers compare the digit's case, so a
