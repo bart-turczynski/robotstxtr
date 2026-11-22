@@ -31,7 +31,7 @@ ds_misses <- list(
   "/v1.$" = character(0),
   "/a./b?x" = character(0),
   "/.well-known/" = character(0),
-  "/?q=/../z" = character(0),
+  "/?q=/../z" = "rule_query_parameter_position",
   "/*/../x" = character(0),
   "*/./b" = character(0),
   "/a/..$x" = "rule_inner_dollar",
