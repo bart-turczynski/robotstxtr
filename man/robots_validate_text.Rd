@@ -210,6 +210,26 @@ as one after a NUL or in a comment, is not reported. \cr
 A pattern percent-escapes an unreserved character, such as \code{\%7E}
 for \code{~}. Google matches only the escape, never the character,
 though RFC 9309 section 2.2.2 decodes it. One per rule line. \cr
+\code{rule_invalid_percent_escape} \tab warning \tab
+A pattern holds a \code{\%} that starts no two-hex-digit escape. The
+package's Google, Bing and Yandex matchers compare it as written, and
+a URL writes a literal \code{\%} as \code{\%25}, so the rule matches
+only URLs that carry the raw \code{\%}. A value holding a
+\code{\%name\%} placeholder, read as written in the file, gets that
+message with the placeholder named, whatever the hex digits: Google
+and Bing upper-case a name led by an escape, so \code{\%date\%} matches
+\code{\%DAte\%} there and \code{\%date\%} on Yandex. A name of only
+two hex digits, as in \code{\%A9\%}, is an escape and no placeholder. A
+\code{\%}, or \code{\%} and one hex digit, at the pattern's end or
+before a \code{*} matches any escape it begins, which may be meant,
+and gets its own message; the matchers compare the digit's case, so a
+lower-case digit matches only lower-case escapes, which RFC 3986
+section 2.1 advises against. When a NUL cuts the value, the message
+says that Google ends the rule there while Bing and Yandex read the
+NUL as a byte of the rule. One per rule line, naming up to ten
+\code{\%} with the two bytes after each, quoted as written in the
+file; a control or non-ASCII byte, or a single quote, is shown by its
+hex code. \cr
 \code{rule_lowercase_escape} \tab warning \tab
 A pattern holds a lower-case percent-escape, such as \code{\%3c}.
 Google upper-cases the escape in a pattern but not in the URL, so a URL

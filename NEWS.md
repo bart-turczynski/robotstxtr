@@ -1,5 +1,6 @@
 # robotstxtr (development version)
 
+* Validator: new `rule_invalid_percent_escape` warning for a rule `%` that starts no two-hex-digit escape, such as an unfilled `%name%` placeholder; a literal `%` is written `%25` (RFC 3986 §2.1) (ROBO-rswdwrnp).
 * Validator: new `rule_dot_segment` warning for an Allow or Disallow pattern with a `.` or `..` path segment, which many URL parsers remove before requesting (RFC 3986 §5.2.4) (ROBO-rnjfbhvn).
 
 * Validator: `user_agent_cut` and `unknown_directive` name a look-alike character (a Unicode hyphen, Cyrillic or Greek letter) by code point and give its ASCII spelling; such a `user_agent_cut` row warns (ROBO-wtixhwlo).

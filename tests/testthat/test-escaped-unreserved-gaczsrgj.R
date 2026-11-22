@@ -17,10 +17,11 @@ eu_flagged <- c(
 )
 
 # Reserved or non-ASCII escapes, an escaped '%' before "7E", and text that is
-# no escape at all.
+# no escape at all. A `%` that starts no escape, such as `/%7` or `/%zz`, gets
+# rule_invalid_percent_escape (test-invalid-percent-escape-rswdwrnp.R).
 eu_clean <- c(
-  "/~joe", "/%2F", "/%25", "/%3C", "/%20", "/%E2%80%8B", "/%257E", "/%7",
-  "/%zz", "/*.pdf$"
+  "/~joe", "/%2F", "/%25", "/%3C", "/%20", "/%E2%80%8B", "/%257E",
+  "/*.pdf$"
 )
 
 test_that("an escaped unreserved character is one rule_escaped_unreserved", {
