@@ -918,12 +918,11 @@ expand_product_token_v1 <- function(token, n) {
 }
 
 # The RFC 9309 identifier rule (section 2.2.1, ROBO-mtmkpwuf) as a
-# PCRE class: the letters are listed, not ranged, since outside the C
-# locale a range such as `A-Z` can match more than ASCII. The patterns run
-# with `useBytes = TRUE`, so a latin1-marked or invalid UTF-8 token is read
-# byte by byte, with no warning, and a byte outside ASCII never matches.
+# PCRE class. The patterns run with `useBytes = TRUE`, so a latin1-marked or
+# invalid UTF-8 token is read byte by byte, with no warning, and a byte
+# outside ASCII never matches.
 product_token_class_v1 <- function() {
-  "[ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_-]"
+  "[A-Za-z_-]"
 }
 
 # The backends whose capability entry publishes `product_token_grammar`:
@@ -939,7 +938,7 @@ product_token_grammar_backends_v1 <- function() {
 # not `$`, so a trailing line feed is not read as the end.
 product_token_in_grammar_v1 <- function(token) {
   pattern <- paste0("\\A", product_token_class_v1(), "+\\z")
-  !is.na(token) & grepl(pattern, token, perl = TRUE, useBytes = TRUE)
+  grepl(pattern, token, perl = TRUE, useBytes = TRUE)
 }
 
 # The facades' token screen, one vectorized pass: a token is valid when it
@@ -960,9 +959,6 @@ product_token_valid_v1 <- function(token, backend) {
 product_token_error_message_v1 <- function(token) {
   out <- rep("Robots product token is missing or empty.", length(token))
   present <- !is.na(token) & nzchar(token)
-  if (!any(present)) {
-    return(out)
-  }
   hint <- sub(
     paste0("(?s)\\A(", product_token_class_v1(), "*).*\\z"), "\\1",
     token[present], perl = TRUE, useBytes = TRUE
