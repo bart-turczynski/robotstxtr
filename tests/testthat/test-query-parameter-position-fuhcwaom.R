@@ -432,6 +432,38 @@ qp_fillers <- list(
   "/*2?a=" = "/x2?c=3&a="
 )
 
+# A twin a NUL cuts is Google's reading only: Google reads `/*&q=`, while
+# Bing and Yandex read the NUL and the byte after it as part of the rule,
+# which then misses the later position. So it is no twin.
+test_that("ROBO-fuhcwaom: a twin cut by a NUL keeps the row", {
+  body <- c(charToRaw("User-agent: *\nDisallow: /*?q=\nDisallow: /*&q="),
+            as.raw(0), charToRaw("z\n"))
+  d <- qp_diag(body)
+  expect_identical(d$code, c("nul_byte", "rule_cut_by_nul", qp_code))
+  expect_identical(d$line, c(3L, 3L, 2L))
+  expect_identical(d$message[[3L]], paste0(
+    qp_message("q", "/x?a=1&q="),
+    " This is Google's reading, which ends each line at its first NUL; ",
+    "Bing and Yandex read the NUL as an ordinary byte."
+  ))
+  text <- rawToChar(body[body != as.raw(0)])
+  expect_identical(qp_lines(sub("&q=z", "&q=", text, fixed = TRUE)),
+                   integer(0))
+  # The evaluator takes text, so the raw body goes to each matcher, as in
+  # test-validator-nul-reading-xuusttbp.R.
+  url <- "https://example.com/x?a=1&q=1"
+  expect_identical(match_google_v1(body, url, "Googlebot")$url_decision,
+                   "disallow")
+  expect_identical(match_bing_v1(list(body), url, "bingbot")$url_decision,
+                   "allow")
+  expect_identical(match_yandex_v1(list(body), url, "Yandex")$url_decision,
+                   "allow")
+  # A NUL in the twin's comment cuts nothing: the row stays silent.
+  body <- c(charToRaw("User-agent: *\nDisallow: /*?q=\nDisallow: /*&q= #"),
+            as.raw(0), charToRaw("\n"))
+  expect_identical(qp_lines(body), integer(0))
+})
+
 test_that("ROBO-fuhcwaom: the example misses the `&` rule beside it", {
   for (value in names(qp_fillers)) {
     example <- qp_fillers[[value]]

@@ -709,7 +709,9 @@ validation_unsupported <- c(
 #' written `&` when a `*` stands right before that `?` (`/*?page=` beside
 #' `/*&page=`). Without that `*`, the `&` rule needs `&` right after the
 #' text before it (`/search&page=` misses `/search?a=1&page=1` on all three
-#' matchers), so it is no twin and the row stays. The message says only
+#' matchers), so it is no twin and the row stays. Nor is a rule that gets
+#' `rule_cut_by_nul`: the NUL cuts it on Google's reading only, and the
+#' rule Bing and Yandex read still misses the URL. The message says only
 #' what the rule may miss, with its example, and suggests no rewrite.
 #' Groups merge here on the whole User-agent value, folded to ASCII lower
 #' case, so a twin only Google's cut merge supplies
@@ -1719,9 +1721,15 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # A query-parameter rule that misses the parameter in a later position
   # (ROBO-fuhcwaom). An `&` twin past a cut could silence it, so a cut body
   # is skipped; a lower-case-escape twin is left out, as above.
+  # A twin cut by a NUL is Google's reading only: Bing and Yandex read
+  # another rule, which still misses the URL, so it silences nothing.
   if (!body_truncated) {
+    nul_rules <- groups$rules$line[nul_counts[groups$rules$line] > 0L &
+                                     !groups$rules$empty]
+    nul_cut <- nul_rules[vapply(raw_lines[nul_rules], rule_cut_by_nul,
+                                logical(1L))]
     found <- query_parameter_position_diagnostics(
-      groups, skip = which(!is.na(escape_twin))
+      groups, skip = which(!is.na(escape_twin)), nul_cut = nul_cut
     )
     if (nrow(found) > 0L) {
       add_chunk(
@@ -4150,12 +4158,14 @@ duplicate_rule_cut_group_names <- function(look, own, cap) {
 # the row, and a group no crawler class reads gets none
 # (query_parameter_kept()). The message shows the example path
 # of query_parameter_paths(). Lines in `skip` (lower-case-escape twins,
-# ROBO-nvzzjubl) get no row. Returns a data frame of `line`, `type` and
-# `message`, in line order.
-query_parameter_position_diagnostics <- function(groups, skip = integer()) {
+# ROBO-nvzzjubl) get no row, and lines in `nul_cut` (rule_cut_by_nul) are
+# no twin. Returns a data frame of `line`, `type` and `message`, in line
+# order.
+query_parameter_position_diagnostics <- function(groups, skip = integer(),
+                                                 nul_cut = integer()) {
   rules <- groups$rules
   at <- query_parameter_candidates(rules, skip)
-  at <- at[query_parameter_kept(groups, at)]
+  at <- at[query_parameter_kept(groups, at, nul_cut)]
   paths <- query_parameter_paths(rules$value[at])
   data.frame(
     line = rules$line[at], type = rules$type[at],
@@ -4198,14 +4208,17 @@ query_parameter_candidates <- function(rules, skip) {
 # written `&` when a `*` already stands right before that `?` (`/*&sort=`
 # for `/*?sort=`). Without that `*`, the `&` form needs `&` right after the
 # text before it (`/search&page=` misses `/search?a=1&page=1`), so it is
-# no twin. A group naming no class has no crawler that reads the rule, so
-# it gets no row.
-query_parameter_kept <- function(groups, at) {
+# no twin, and nor is a line in `nul_cut`: a NUL cut its value on Google's
+# reading only, so Bing and Yandex read another rule. A group naming no
+# class has no crawler that reads the rule, so it gets no row.
+query_parameter_kept <- function(groups, at, nul_cut = integer()) {
   rules <- groups$rules
   value <- rules$value[at]
   expand <- validation_token_expander(groups, groups$agents$uncut)
   held <- expand(rules$group)
-  have <- paste(held$class, rules$type[held$owner], rules$value[held$owner],
+  usable <- !rules$line[held$owner] %in% nul_cut
+  owner <- held$owner[usable]
+  have <- paste(held$class[usable], rules$type[owner], rules$value[owner],
                 sep = "\n")
   q <- regexpr("?", value, fixed = TRUE, useBytes = TRUE)
   star <- substr(value, q - 1L, q - 1L) == "*"

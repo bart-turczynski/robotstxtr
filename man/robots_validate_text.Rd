@@ -718,7 +718,9 @@ that \verb{?} written \verb{*&} (\verb{/search?page=} beside \verb{/search*&page
 written \code{&} when a \code{*} stands right before that \verb{?} (\verb{/*?page=} beside
 \verb{/*&page=}). Without that \code{*}, the \code{&} rule needs \code{&} right after the
 text before it (\verb{/search&page=} misses \verb{/search?a=1&page=1} on all three
-matchers), so it is no twin and the row stays. The message says only
+matchers), so it is no twin and the row stays. Nor is a rule that gets
+\code{rule_cut_by_nul}: the NUL cuts it on Google's reading only, and the
+rule Bing and Yandex read still misses the URL. The message says only
 what the rule may miss, with its example, and suggests no rewrite.
 Groups merge here on the whole User-agent value, folded to ASCII lower
 case, so a twin only Google's cut merge supplies
