@@ -350,6 +350,24 @@ test_that("ROBO-rswdwrnp: a `%` the parser never reads as a rule is silent", {
   )
 })
 
+test_that("ROBO-rswdwrnp: an empty or all-blank value is no written value", {
+  for (line in c("Disallow:", "Disallow:   ", "Disallow:\t \x0b")) {
+    expect_identical(
+      rule_written_value(charToRaw(line), FALSE, FALSE), raw(0L),
+      label = line
+    )
+  }
+  # The trailing blanks go; the value keeps its bytes up to the last one.
+  expect_identical(
+    rule_written_value(charToRaw("Disallow: /a% \t"), FALSE, FALSE),
+    charToRaw(" /a%")
+  )
+  expect_identical(
+    robots_validate_text("User-agent: *\nDisallow:   \n")$diagnostics$code,
+    robots_validate_text("User-agent: *\nDisallow:\n")$diagnostics$code
+  )
+})
+
 # A rule line whose value a NUL cuts: `pre`, a NUL, then `post`.
 ip_nul_body <- function(pre, post) {
   ip_body("User-agent: *\nDisallow: ", pre, as.raw(0), paste0(post, "\n"))

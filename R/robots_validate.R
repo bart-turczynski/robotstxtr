@@ -4580,15 +4580,17 @@ rule_invalid_percent_escape_diagnostic <- function(written, nul_cut = FALSE) {
 }
 
 # The value of an Allow or Disallow line as written in the file: the raw
-# value (rule_raw_value()) with the edges the parser trims removed
-# (StripWhitespaceSlowly() and AsciiIsSpace(), src/robots.cc).
+# value (rule_raw_value()) with the trailing blanks the parser trims removed
+# (StripWhitespaceSlowly() and AsciiIsSpace(), src/robots.cc), so a final
+# `%` stays final. Leading blanks are kept: no `%` check reads them, as a
+# context starts at its `%` and a placeholder at its own.
 rule_written_value <- function(line_bytes, first_line, missing_colon) {
   bytes <- rule_raw_value(line_bytes, first_line, missing_colon)
   keep <- which(!bytes %in% as.raw(c(0x20, 0x09, 0x0a, 0x0b, 0x0c, 0x0d)))
   if (length(keep) == 0L) {
     return(raw(0L))
   }
-  bytes[keep[[1L]]:keep[[length(keep)]]]
+  bytes[seq_len(keep[[length(keep)]])]
 }
 
 # A `%name%` template placeholder, read on the value as written. A closing
@@ -4668,8 +4670,8 @@ rule_invalid_percent_escape_message <- function(bytes, stray, open, nul_cut) {
   placeholder <- rule_written_placeholder(bytes)
   if (open && is.null(placeholder)) {
     # The matchers compare a cut-short escape's digit case by case.
-    lower <- any(bytes[pmin(stray + 1L, n)] %in% charToRaw("abcdef") &
-                   stray < n)
+    # A final `%` reads itself here, which is no hex digit.
+    lower <- any(bytes[pmin(stray + 1L, n)] %in% charToRaw("abcdef"))
     return(paste0(
       "Pattern holds ", listed, ": '%' cut short by a '*' or by the ",
       "pattern's end.", rule_percent_open_sentence(nul_cut),
