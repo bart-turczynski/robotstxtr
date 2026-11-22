@@ -5306,9 +5306,10 @@ slash_open_message <- function(value, line, cap) {
 # rule of the class takes part, so a second rule that blocks the witness
 # or an Allow that wins the control silences it. The decisions are Google's
 # matcher's, read by witness_pair_readings() within `budget`
-# (slash_budget()) in line order, the later pairs on what the first left;
-# a candidate past it gets no row, and the stop counts are the first
-# pair's. One row
+# (slash_budget()) in line order, the later pairs on what the first left
+# (end_anchor_reads()). Candidates count as checked up to the first one
+# whose reading did not finish within it; that one and every later one get
+# no row, and the stop counts say so. One row
 # per set of crawler classes, on the first User-agent line the check reads
 # of the group holding the earliest one (slash_open_rows()). A cut body is
 # not checked: a later Disallow could block the witness. Returns
@@ -5327,27 +5328,12 @@ end_anchor_diagnostics <- function(groups, written = NULL, budget = NULL) {
   if (is.null(budget)) {
     budget <- slash_budget(rules, at)
   }
-  fill <- end_anchor_fillers()
-  pair <- rep(NA_integer_, length(at))
-  todo <- seq_along(at)
-  checked <- NULL
-  for (k in seq_along(fill$path)) {
-    control <- end_anchor_controls(rules$value[at[todo]], fill$path[[k]])
-    read <- witness_pair_readings(groups, at[todo], control,
-                                  paste0(control, fill$query[[k]]), "short",
-                                  written, budget)
-    budget <- budget - read$spent
-    if (k == 1L) {
-      checked <- read$checked
-    }
-    pair[todo[read$ok]] <- k
-    # The next pair reads only the candidates this one read and left.
-    done <- seq_len(read$checked)
-    todo <- todo[done][!read$ok[done]]
-    if (length(todo) == 0L) {
-      break
-    }
-  }
+  read <- end_anchor_reads(groups, at, written, budget)
+  # Candidates count as checked in line order up to the first one whose
+  # reading did not finish; a row past it would contradict the stop row.
+  checked <- match(FALSE, read$finished, nomatch = length(at) + 1L) - 1L
+  pair <- read$pair
+  pair[seq_along(pair) > checked] <- NA_integer_
   hit <- which(!is.na(pair))
   hit_line <- rules$line[at[hit]]
   message <- function(value, line, cap) {
@@ -5356,6 +5342,45 @@ end_anchor_diagnostics <- function(groups, written = NULL, budget = NULL) {
   out <- slash_open_rows(groups, at[hit], message = message)
   attr(out, "stopped") <- slash_stop(rules, at, checked)
   out
+}
+
+# The filler-pair readings of the candidates `at`, sharing `budget`: each
+# pair reads, in line order, the candidates every earlier pair read and
+# left unreported. Returns list(pair, finished): `pair`, the first pair
+# that passed (NA when none did), and `finished`, whether the candidate's
+# reading is done, as it is once a pair passes or every pair has read it.
+# A candidate some pair did not reach within the budget is not finished.
+end_anchor_reads <- function(groups, at, written, budget) {
+  fill <- end_anchor_fillers()
+  rules <- groups$rules
+  pair <- rep(NA_integer_, length(at))
+  finished <- rep(FALSE, length(at))
+  todo <- seq_along(at)
+  for (k in seq_along(fill$path)) {
+    control <- end_anchor_controls(rules$value[at[todo]], fill$path[[k]])
+    read <- witness_pair_readings(groups, at[todo], control,
+                                  paste0(control, fill$query[[k]]), "short",
+                                  written, budget)
+    budget <- budget - read$spent
+    pair[todo[read$ok]] <- k
+    finished[todo[read$ok]] <- TRUE
+    # The next pair reads only the candidates this one read and left. A
+    # candidate this pair did not reach would not fit the next one either,
+    # which pays at least the same plan on less budget, so the cut also
+    # keeps a candidate from being reported on a later pair alone.
+    done <- seq_len(read$checked)
+    todo <- todo[done][!read$ok[done]]
+    # A perf shortcut only: with no candidate left, a later pair reads
+    # nothing.
+    if (length(todo) == 0L) {
+      break
+    }
+  }
+  # What the last pair read and left: every pair has read it.
+  if (k == length(fill$path)) {
+    finished[todo] <- TRUE
+  }
+  list(pair = pair, finished = finished)
 }
 
 # The filler pairs, in the order tried: the byte each `*` of the control is

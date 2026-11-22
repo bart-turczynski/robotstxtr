@@ -805,3 +805,48 @@ test_that("ROBO-nzcvlsvk: a rule matching the filler gets the next pair", {
     )
   }
 })
+
+# `n` crawlers named in one group of `n` candidates whose `x` and `y`
+# witnesses another rule blocks, each crawler with a group of its own: the
+# first pair reads every candidate within the budget, and the later pairs
+# run short of it.
+ea_classes3 <- function(n) {
+  k <- seq_len(n)
+  paste0(paste0("User-agent: bot", k, "\n", collapse = ""),
+         paste0("Disallow: /d", k, "$\n", collapse = ""),
+         "Disallow: /*x=\nDisallow: /*y=\n\n",
+         paste0("User-agent: bot", k, "\nDisallow: /z", k, "\n",
+                collapse = "\n"))
+}
+
+test_that("ROBO-nzcvlsvk: retries that run out of budget get the stop row", {
+  groups <- ea_groups(ea_classes3(60L))
+  found <- end_anchor_diagnostics(groups)
+  # A candidate whose later pairs did not finish is not checked: no row,
+  # and the stop row counts it.
+  expect_identical(nrow(found), 0L)
+  expect_identical(attr(found, "stopped"), ea_stopped(60L, 0L, "/d1$"))
+  d <- ea_diag(ea_classes3(60L))
+  expect_identical(sum(d$code == "rule_check_stopped"), 1L)
+  expect_false(ea_code %in% d$code)
+  # With room for every pair, the file reads whole: one row, no stop.
+  found <- end_anchor_diagnostics(groups, budget = Inf)
+  expect_identical(nrow(found), 1L)
+  expect_null(attr(found, "stopped"))
+  expect_match(found$message, "but not '/d1?z=3'", fixed = TRUE)
+  # Rows stop at the first unfinished candidate: `/b$` passes on the first
+  # pair, but `/a$` needs the second, which the budget cuts, so `/b$` is
+  # counted skipped too and every candidate has a row or a count.
+  groups <- ea_groups(paste0("User-agent: Foo\nDisallow: /a$\nDisallow: /b$\n",
+                             "Disallow: /*a?x=\n"))
+  for (budget in c(8, 12)) {
+    found <- end_anchor_diagnostics(groups, budget = budget)
+    expect_identical(attr(found, "stopped"), ea_stopped(2L, 0L, "/a$"))
+    expect_identical(nrow(found), 0L)
+  }
+  found <- end_anchor_diagnostics(groups, budget = 13)
+  expect_null(attr(found, "stopped"))
+  expect_identical(found$message, ea_list_message(paste0(
+    ea_blocks(2L, "/a", "?y=2"), " and ", ea_blocks(3L, "/b")
+  )))
+})
