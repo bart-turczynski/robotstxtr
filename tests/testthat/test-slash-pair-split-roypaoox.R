@@ -1041,6 +1041,28 @@ test_that("ROBO-roypaoox: a check that stops says so, with its counts", {
   }
 })
 
+test_that("ROBO-roypaoox: the split's checked count on each budget branch", {
+  # `/a/` (line 4) is read once per class, A and B: 2 rows, and its plan
+  # pays A's 2 rules and B's 3, so 7; its two bodies hold 2 lines each, so
+  # 4 to read. `/b/` (line 9) is 1 row for C plus C's 6 rules: 7 more.
+  groups <- sp_groups(paste0(
+    "User-agent: A\nUser-agent: B\nDisallow: /\nAllow: /a/\n\n",
+    "User-agent: B\nDisallow: /z\n\n",
+    "User-agent: C\nAllow: /b/\n",
+    paste0("Disallow: /y", 1:5, "\n", collapse = "")
+  ))
+  # 11: the plan takes `/a/` only (7, not 14), and its 4 body lines fit,
+  # so every row built is read but the plan cut `/b/`: 1 checked.
+  found <- slash_split_diagnostics(groups, budget = 11)
+  expect_identical(found$line, 4L)
+  expect_identical(attr(found, "stopped"), sp_stopped(2L, 1L, "/b/"))
+  # 8: the plan takes `/a/` (7), but no body line fits in the 1 left, so
+  # not even the first candidate's rows are read: 0 checked.
+  found <- slash_split_diagnostics(groups, budget = 8)
+  expect_identical(found$line, integer(0))
+  expect_identical(attr(found, "stopped"), sp_stopped(2L, 0L, "/a/"))
+})
+
 test_that("ROBO-roypaoox: a file too large for the checks gets the rows", {
   d <- sp_diag(sp_shape("classes", 250L))
   stop <- d[d$code == "rule_slash_check_stopped", , drop = FALSE]
