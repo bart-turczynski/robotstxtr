@@ -4495,8 +4495,8 @@ rule_escaped_unreserved_diagnostic <- function(value) {
 # reach into the query, so a value led by `*` is skipped. A hit is `.` or
 # `..` after a `/`, followed by `/`, by `?` or by a `$` that is the value's
 # last byte; an unbounded end (`/a/.` matches `/a/.well-known`) and an escaped
-# `%2E` are not hits. One grepl with a single quantifier keeps the cost
-# linear (ROBO-dbvmxcfw). Returns a finding or NULL.
+# `%2E` are not hits. One grepl, anchored and with no nested quantifiers,
+# keeps the cost linear (ROBO-dbvmxcfw). Returns a finding or NULL.
 rule_dot_segment_diagnostic <- function(value) {
   # A value not led by `/` is rule_missing_leading_slash's: it never matches.
   if (!startsWith(value, "/") ||
