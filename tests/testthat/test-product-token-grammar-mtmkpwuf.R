@@ -167,13 +167,24 @@ test_that("latin1 and invalid UTF-8 tokens are refused with no warning", {
   tokens <- c(latin1, bad, marked)
   expect_no_warning(r <- pt_text(tokens))
   pt_expect_refused(r)
+  # One at a time too: a bytes-marked element puts a whole vector in bytes
+  # mode, so only an unmarked invalid token alone shows a screen that reads
+  # characters instead of bytes.
+  for (token in tokens) {
+    expect_no_warning(one <- pt_text(token))
+    pt_expect_refused(one)
+  }
   expect_true(all(validUTF8(r$error_message)))
   expect_match(r$error_message, "leading valid part is \"G\",", fixed = TRUE)
 })
 
 test_that("the grammar does not widen with the collation locale", {
   withr::local_locale(c(LC_COLLATE = "en_US.UTF-8"))
-  r <- pt_text(c("Gooģlebot", rawToChar(as.raw(c(0x47, 0xff)))))
+  expect_no_warning(
+    r <- pt_text(c("Gooģlebot", rawToChar(as.raw(c(0x47, 0xff)))))
+  )
+  pt_expect_refused(r)
+  expect_no_warning(r <- pt_text(rawToChar(as.raw(c(0x47, 0xff)))))
   pt_expect_refused(r)
   expect_identical(pt_text("Googlebot")$matcher_status, "evaluated")
 })
