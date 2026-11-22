@@ -27,8 +27,11 @@ sp_redirect <- paste0(" A server redirect between the two URLs changes what ",
 sp_pair_message <- function(type, earlier, other, this) {
   bare <- if (endsWith(this, "/")) other else this
   slash <- if (endsWith(this, "/")) this else other
+  if (!is.character(earlier)) {
+    earlier <- paste("line", earlier)
+  }
   sprintf(paste0(
-    "The %s on line %d has '%s' and this one '%s': '%s' also matches every ",
+    "The %s on %s has '%s' and this one '%s': '%s' also matches every ",
     "path '%s' matches, and also '%s' itself and the paths that go on from ",
     "it without a '/' (RFC 9309 section 2.2.2)."
   ), type, earlier, other, this, bare, slash, bare)
@@ -370,6 +373,15 @@ test_that("ROBO-roypaoox: only the first line of a type and value is read", {
                    sp_blocked_message("/g/", "/g", 2L))
   d <- sp_rows("User-agent: *\nDisallow: /x/\nDisallow: /x/\n", sp_split)
   expect_identical(d$message, sp_open_message(2L, "/x/", "/x"))
+  # Each class has the other form on its own line: both are named.
+  d <- sp_rows(paste0("User-agent: A\nDisallow: /x\n\nUser-agent: B\n",
+                      "Disallow: /x\n\nUser-agent: A\nUser-agent: B\n",
+                      "Disallow: /x/\n"), sp_pair)
+  expect_identical(d$line, 9L)
+  expect_identical(d$message, paste0(
+    sp_pair_message("Disallow", "lines 2 and 5", "/x", "/x/"),
+    " This holds for every crawler the group names: 'A' and 'B'."
+  ))
   # The pair names the earliest line of the other form.
   d <- sp_rows(paste0("User-agent: *\nDisallow: /x\nDisallow: /x\n",
                       "Disallow: /x/\n"), sp_pair)

@@ -4454,8 +4454,8 @@ slash_every <- function(owner, ok) {
 # A literal Allow or Disallow `P` and `P/` of the same type for the same
 # crawlers (ROBO-roypaoox). `P` also matches every path `P/` matches (RFC
 # 9309 section 2.2.2), and the bare URL `P` and paths that go on without
-# `/` too. The row sits on the later line and names the earlier one, the
-# smallest among each class's first line of the other form; it is reported
+# `/` too. The row sits on the later line and names each class's first line
+# of the other form (every distinct one, joined_rule_lines()); it is reported
 # only when, for every crawler class its group names, the line is the first
 # of its type and value and the other form sits on an earlier line. Groups
 # merge on the whole User-agent value (`agents$uncut`), so a pair that only
@@ -4479,7 +4479,11 @@ slash_pair_diagnostics <- function(groups) {
                                sep = "\n"), key)]
   ok <- slash_first(rules, at, rows) & !is.na(other) & other < line[o]
   hit <- sort(slash_every(o, ok))
-  earlier <- vapply(split(other[o %in% hit], o[o %in% hit]), min, 0L)
+  # Each class names its own first line of the other form; where classes
+  # differ, every such line is named, so the claim holds for each crawler.
+  earlier <- vapply(split(other[o %in% hit], o[o %in% hit]), function(x) {
+    joined_rule_lines(sort(unique(x)))
+  }, "")
   at <- at[hit]
   slash_rows(
     rules$type[at],
@@ -4514,7 +4518,7 @@ slash_pair_message <- function(type, value, earlier) {
   this <- ifelse(slash, shown$slash, shown$bare)
   other <- ifelse(slash, shown$bare, shown$slash)
   sprintf(paste0(
-    "The %s on line %d has '%s' and this one '%s': '%s' also matches every ",
+    "The %s on %s has '%s' and this one '%s': '%s' also matches every ",
     "path '%s' matches, and also '%s' itself and the paths that go on from ",
     "it without a '/' (RFC 9309 section 2.2.2)."
   ), ifelse(type == "allow", "Allow", "Disallow"), earlier, other, this,
