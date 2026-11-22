@@ -513,6 +513,22 @@ test_that("ROBO-jdnluzbb: a trailing root dot is the same origin", {
   )
 })
 
+test_that("ROBO-jdnluzbb: a non-ASCII host names no origin", {
+  # robots_origin() does not fold the case of a non-ASCII host, and shows
+  # it in punycode, so such a value gets no origin sentence, even for
+  # another host. Bytes written as escapes keep this file ASCII.
+  upper <- paste0("https://B", intToUtf8(0xDC), "CHER.example/a")
+  lower <- paste0("https://b", intToUtf8(0xFC), "cher.example/p")
+  expect_identical(fu_served(upper, target = lower), fu_new("/a"))
+  expect_identical(fu_served(upper), fu_new("/a"))
+  # An ASCII value against a non-ASCII robots URL is still compared.
+  expect_identical(
+    fu_served("https://e.example/a", target = lower),
+    fu_new("/a", origin = fu_origin("https://xn--bcher-kva.example",
+                                    "https://e.example"))
+  )
+})
+
 test_that("ROBO-jdnluzbb: supplied text names no origin", {
   expect_identical(fu_message(fu_rows("https://other.example/a")),
                    fu_new("/a"))

@@ -4667,7 +4667,7 @@ rule_full_url_message <- function(written, robots_url = NA_character_,
     },
     if (wide) " Non-ASCII bytes written as upper-case %XX escapes.",
     rule_full_url_scope(suggestion),
-    rule_full_url_origin(origin, robots_url)
+    rule_full_url_origin(origin, robots_url, split$authority)
   )
 }
 
@@ -4753,10 +4753,13 @@ rule_full_url_scope <- function(suggestion) {
 
 # A sentence when the value's origin (scheme, host, effective port) is not
 # the robots.txt's; `origin` is destination_origin() of the value. Both drop
-# a trailing root dot from the host.
-rule_full_url_origin <- function(origin, robots_url) {
+# a trailing root dot from the host. An authority holding a non-ASCII byte
+# gets no sentence: robots_origin() does not fold the case of a non-ASCII
+# host, and would show it in punycode, not as written.
+rule_full_url_origin <- function(origin, robots_url, authority = raw(0L)) {
   served <- destination_origin(robots_url)
-  if (is.na(served) || identical(served, origin)) {
+  if (is.na(served) || identical(served, origin) ||
+        any(as.integer(authority) >= 0x80L)) {
     return(NULL)
   }
   strip <- function(key) sub("/robots[.]txt$", "", key)
