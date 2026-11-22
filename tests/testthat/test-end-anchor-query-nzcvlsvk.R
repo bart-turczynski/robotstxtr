@@ -668,14 +668,53 @@ test_that("ROBO-nzcvlsvk: a value escaped past the buffer keeps its row", {
   # Elided with each escape whole (query_parameter_cap()).
   shown <- paste0("/", strrep("%C3%A9", 5L), "%C3...")
   expect_identical(d$message, ea_one_message(2L, shown))
+})
+
+# The witness line Google's parser reads as it reads the file line: the key
+# up to Google's key boundary, as written, and the value as the parser cuts
+# it (NUL, `#`, line buffer).
+ea_written <- function(lines, missing_colon) {
+  slash_written_rules(lines, rep(2L, length(lines)), missing_colon,
+                      rep(FALSE, length(lines)))
+}
+
+test_that("ROBO-nzcvlsvk: a witness line reads as its file line", {
+  tab <- intToUtf8(9L)
   expect_identical(
-    slash_written_rules(lapply(c("Disallow: /a$", "  disalow :/b", "Allow /c",
-                                 "Disallow:\t/d # e"), charToRaw)),
-    c("Disallow:/a$", "disalow:/b", "Allow:/c", "Disallow:/d # e")
+    ea_written(lapply(c("Disallow: /a$", "  disalow :/b", "Allow /c",
+                        paste0("Disallow:", tab, "/d # e"),
+                        "Disallow foo: /a?"), charToRaw),
+               c(FALSE, FALSE, TRUE, FALSE, FALSE)),
+    c("Disallow: /a$", "disalow :/b", "Allow:/c",
+      paste0("Disallow:", tab, "/d "), "Disallow foo: /a?")
   )
-  expect_identical(slash_written_rules(list(c(charToRaw("Disallow: /a"),
-                                              as.raw(0), charToRaw("z")))),
-                   "Disallow:/a")
+  expect_identical(ea_written(list(c(charToRaw("Disallow: /a"), as.raw(0),
+                                     charToRaw("z"))), FALSE),
+                   "Disallow: /a")
+  # (a) A key with an inner space is still a Disallow (Google reads the key
+  # up to the `:`), so `/a?` blocks the witness: no row.
+  expect_identical(
+    ea_codes("User-agent: Foo\nDisallow: /a$\nDisallow foo: /a?\n"),
+    "accepted_directive_prefix"
+  )
+  # (b) The same for a slash split: `Allow foo: /p/` opens `/p/`.
+  expect_false("rule_slash_split" %in%
+                 ea_codes("User-agent: Foo\nDisallow: /p/\nAllow foo: /p/\n"))
+  # (c) Such a key on the candidate keeps its row.
+  expect_identical(ea_codes("User-agent: Foo\nDisallow foo: /a$\n"),
+                   c("accepted_directive_prefix", ea_code))
+  # (d) A padded line the buffer cuts right after `/a?`: Google reads
+  # `/a?`, which blocks the witness, so no row.
+  pad <- strrep(" ", 16663L - nchar("Disallow:") - nchar("/a?"))
+  d <- ea_diag(paste0("User-agent: Foo\nDisallow: /a$\nDisallow:", pad,
+                      "/a?", strrep("q", 50L), "\n"))
+  expect_false(ea_code %in% d$code)
+  # (e) A padded Allow the buffer cuts after `/p/` opens `/p/` under
+  # `Disallow: /p`: the split row stays.
+  pad <- strrep(" ", 16663L - nchar("Disallow:") - nchar("/p/"))
+  d <- ea_diag(paste0("User-agent: Foo\nDisallow: /p\nAllow:", pad, "   /p/",
+                      strrep("q", 50L), "\n"))
+  expect_identical(d$line[d$code == "rule_slash_split"], 3L)
 })
 
 # A twin a NUL cuts: Google reads `Disallow: /a?`, which blocks the

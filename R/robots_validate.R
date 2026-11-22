@@ -1856,7 +1856,11 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # rule differently (ROBO-roypaoox). A later Allow could change a decision,
   # so a cut body is skipped.
   if (!body_truncated) {
-    written <- slash_written_rules(raw_lines[groups$rules$line])
+    rule_line <- groups$rules$line
+    written <- slash_written_rules(
+      raw_lines[rule_line], rule_line,
+      parsed$missing_colon[match(rule_line, parsed$line)], groups$rules$empty
+    )
     found <- slash_split_diagnostics(groups, written = written)
     if (nrow(found) > 0L) {
       add_chunk(
@@ -4543,37 +4547,41 @@ slash_written_keys <- function(raw_lines) {
   }, "", USE.NAMES = FALSE)
 }
 
-# Each rule line as a witness line: its key as written
-# (slash_written_keys()), `:`, and the bytes after the key's separator (the
-# spaces, tabs and one `:` after it) as written, up to the first NUL, where
-# Google's parser ends the line. The value keeps its written bytes, not its
-# canonical escapes, so a witness line is never longer than the line it
-# copies and a rule written near Google's line buffer stays whole; Google's
-# matcher escapes the pattern as it does the file's.
-slash_written_rules <- function(raw_lines) {
+# Each rule line (`raw_lines`, file lines `lines`, the parser's
+# `missing_colon` and `empty` flags) as a witness line that Google's parser
+# reads as it reads the file line: the key as written up to Google's key
+# boundary (the first `:`, or, with no colon, the first space or tab,
+# slash_written_keys()), `:`, and the value bytes as the parser reads them
+# (rule_raw_value(): cut at the first NUL, `#` and the 16,663-byte line
+# buffer). So `Disallow foo: /a?` keeps its key `Disallow foo`, and a padded
+# line keeps only the value the buffer leaves. The value keeps its written
+# bytes, not its canonical escapes, and the line is never longer than the
+# part of the file line the parser reads, so the buffer cuts nothing more;
+# Google's matcher escapes the pattern as it does the file's. An empty rule
+# decides nothing and is never read, so it keeps its key alone.
+slash_written_rules <- function(raw_lines, lines, missing_colon, empty) {
   keys <- slash_written_keys(raw_lines)
   vapply(seq_along(raw_lines), function(i) {
-    bytes <- raw_lines[[i]]
-    bytes <- bytes[seq_len(match(as.raw(0), bytes,
-                                 nomatch = length(bytes) + 1L) - 1L)]
-    lead <- match(TRUE, !bytes %in% as.raw(c(0x20, 0x09)), nomatch = 1L)
-    rest <- slash_drop(bytes, lead - 1L + nchar(keys[[i]], "bytes"))
-    paste0(keys[[i]], ":", rawToChar(slash_after_separator(rest)))
+    if (empty[[i]]) {
+      return(paste0(keys[[i]], ":"))
+    }
+    value <- rule_raw_value(raw_lines[[i]], lines[[i]] == 1L,
+                            missing_colon[[i]])
+    key <- if (missing_colon[[i]]) {
+      keys[[i]]
+    } else {
+      slash_key_to_colon(raw_lines[[i]])
+    }
+    paste0(key, ":", rawToChar(as.vector(value)))
   }, "")
 }
 
-# `bytes` past their leading spaces and tabs, one `:`, and the spaces and
-# tabs after it.
-slash_after_separator <- function(bytes) {
-  blank <- as.raw(c(0x20, 0x09))
-  past_blank <- function(b) {
-    slash_drop(b, match(TRUE, !b %in% blank, nomatch = length(b) + 1L) - 1L)
-  }
-  bytes <- past_blank(bytes)
-  if (length(bytes) > 0L && bytes[[1L]] == as.raw(0x3a)) {
-    bytes <- past_blank(slash_drop(bytes, 1L))
-  }
-  bytes
+# A line's bytes before its first `:`, past its leading spaces and tabs.
+slash_key_to_colon <- function(bytes) {
+  bytes <- bytes[seq_len(match(as.raw(0x3a), bytes) - 1L)]
+  lead <- match(TRUE, !bytes %in% as.raw(c(0x20, 0x09)),
+                nomatch = length(bytes) + 1L)
+  rawToChar(slash_drop(bytes, lead - 1L))
 }
 
 # `x` without its first `k` elements.
