@@ -872,10 +872,14 @@ ar_late_proof <- function(ua, fails, allows = 30L) {
   k <- seq_len(1000L)
   ties <- paste0("Disallow: /a", k, "\nAllow: /a", k, "\n")
   paste0("User-agent: ", ua, "\n",
-         paste0(ties[seq_len(fails)], collapse = ""), "Disallow: /zz\n",
-         paste0(ties[-seq_len(fails)], collapse = ""),
+         paste(ties[seq_len(fails)], collapse = ""), "Disallow: /zz\n",
+         paste(ties[-seq_len(fails)], collapse = ""),
          paste0("Allow: /*/x", seq_len(allows), "/\n", collapse = ""),
-         if (grepl(" ", ua)) "\nUser-agent: Foo\nDisallow: /q\n" else "")
+         if (grepl(" ", ua, fixed = TRUE)) {
+           "\nUser-agent: Foo\nDisallow: /q\n"
+         } else {
+           ""
+         })
 }
 
 test_that("ROBO-micbpqbc: a failing pair costs the first Allow no more", {
@@ -992,8 +996,8 @@ test_that("ROBO-micbpqbc: both merges read under their share", {
   expect_gt(ar_checked(ar_both(300L)), 150L)
   # Google's merge cuts `360Spider` to no token: the group names no
   # crawler there, so its reading holds no class and the pair fails.
-  expect_false(ar_code %in%
-                 ar_codes("User-agent: 360Spider\nDisallow: /my/\nAllow: */s/\n"))
+  spider <- "User-agent: 360Spider\nDisallow: /my/\nAllow: */s/\n"
+  expect_false(ar_code %in% ar_codes(spider))
   # Google's reread reads each Disallow under its Allow's crawlers: under
   # those of the `zzqbot` group, whose `/zz?` would fail the pair, `/my/`
   # would not decide the witness without the Allow.
@@ -1066,15 +1070,17 @@ test_that("ROBO-micbpqbc: the rounds go on while they gather, and no further", {
   }
   # 100 Allows, a tiny budget: the takes stop at the first that does not
   # fit, rather than passing every Allow's entries.
-  calls <- 0L
+  calls <- new.env()
+  calls$n <- 0L
   take <- reopen_take
   local_mocked_bindings(reopen_take = function(...) {
-    calls <<- calls + 1L
+    calls$n <- calls$n + 1L
     take(...)
   })
   found <- allow_reopens_diagnostics(ar_groups(ar_square(100L)), budget = 50)
-  expect_identical(attr(found, "stopped"), ar_stopped(100L, 0L, "*/a1xxxxxxxx/"))
-  expect_lt(calls, 10L)
+  expect_identical(attr(found, "stopped"),
+                   ar_stopped(100L, 0L, "*/a1xxxxxxxx/"))
+  expect_lt(calls$n, 10L)
 })
 
 # The best of five runs of `small` and of `large`, taken in turn, so a
