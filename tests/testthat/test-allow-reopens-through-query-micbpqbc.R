@@ -1111,6 +1111,56 @@ test_that("ROBO-micbpqbc: the check stays linear on costly shapes", {
               "validator")
 })
 
+# `n` Disallows and `n` Allows whose witnesses all hold one gram, so every
+# wide rule's posting holds every row (`uploads`), or each Allow's pairs
+# failing until the last Disallow (`failing`).
+ar_wide <- function(shape, n) {
+  k <- seq_len(n)
+  switch(
+    shape,
+    uploads = paste0("User-agent: *\n",
+                     paste0("Disallow: /d", k, "/\n", collapse = ""),
+                     paste0("Allow: */wp-content/uploads/", k, "/\n",
+                            collapse = "")),
+    failing = paste0("User-agent: *\n",
+                     paste0("Disallow: /d", k, "/\nAllow: /d", k, "/$\n",
+                            collapse = ""),
+                     "Disallow: /last/\n",
+                     paste0("Allow: */sitemapxxxxxx", k, "/\n", collapse = ""))
+  )
+}
+
+test_that("ROBO-micbpqbc: the work stays linear in the file", {
+  skip_on_cran()
+  # Work units, not time, so load cannot move them: the elements of every
+  # vector findInterval() searches. The budget's halving searches the rows
+  # each wide rule's posting holds; counted once per rule, that grew with
+  # Allows times rows.
+  count <- new.env()
+  count$n <- 0
+  on.exit(suppressMessages(untrace("findInterval", where = baseenv())),
+          add = TRUE)
+  suppressMessages(trace("findInterval", bquote(assign(
+    "n", get("n", envir = .(count)) + length(vec), envir = .(count)
+  )), print = FALSE, where = baseenv()))
+  bodies <- list(
+    uploads = function(n) ar_wide("uploads", n),
+    cross = function(n) ar_shape("cross", n),
+    failing = function(n) ar_wide("failing", n)
+  )
+  for (shape in names(bodies)) {
+    work <- vapply(c(400L, 1600L, 6400L), function(n) {
+      groups <- ar_groups(bodies[[shape]](n))
+      count$n <- 0
+      found <- allow_reopens_diagnostics(groups)
+      expect_false(is.null(attr(found, "stopped")), label = shape)
+      count$n
+    }, 0)
+    expect_lt(work[[2L]], 6 * work[[1L]], label = shape)
+    expect_lt(work[[3L]], 6 * work[[2L]], label = shape)
+  }
+})
+
 # Sets the locale categories for the calling test, restored on exit; skips
 # when one is not installed (as pt_local_locale() in
 # test-product-token-grammar-mtmkpwuf.R).

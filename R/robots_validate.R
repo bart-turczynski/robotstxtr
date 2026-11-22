@@ -5242,10 +5242,9 @@ slash_rows_within <- function(near, far, owner, budget) {
     per_row[as.integer(rownames(sums))] <- sums[, 1L]
   }
   cum <- c(0, cumsum(per_row))
+  far_upto <- slash_postings_upto(far)
   cost <- function(e) {
-    cum[[e + 1L]] + sum(vapply(far$found, function(p) {
-      findInterval(e, p)
-    }, 0L))
+    cum[[e + 1L]] + far_upto(e)
   }
   if (cost(n) <= budget) {
     return(list(rows = n, spent = cost(n)))
@@ -5261,6 +5260,45 @@ slash_rows_within <- function(near, far, owner, budget) {
   list(rows = e, spent = cost(e))
 }
 
+# For the fragment hits `far`, a function of a row `e`: how many of all the
+# rules' postings are rows up to `e`. Rules sharing a (class, gram) share
+# its posting, which is counted once and weighted by those rules: the
+# setup is linear in the distinct postings, and each call is one search,
+# not one per rule, so the halving in slash_rows_within() never costs the
+# rules times their postings.
+slash_postings_upto <- function(far) {
+  id <- far$id[!is.na(far$id)]
+  if (length(id) == 0L) {
+    return(function(e) 0)
+  }
+  weight <- tabulate(id, length(far$index))
+  used <- which(weight > 0L)
+  rows <- unlist(far$index[used], use.names = FALSE)
+  each <- rep(as.numeric(weight[used]), lengths(far$index[used]))
+  o <- order(rows)
+  rows <- rows[o]
+  total <- c(0, cumsum(each[o]))
+  function(e) {
+    total[[findInterval(e, rows, checkSorted = FALSE, checkNA = FALSE) + 1L]]
+  }
+}
+
+# How many rows of each rule's posting in `far` are up to `last`, found
+# once per distinct posting (slash_postings_upto()).
+slash_posting_lengths <- function(far, last) {
+  lens <- integer(length(far$found))
+  hit <- !is.na(far$id)
+  if (!any(hit)) {
+    return(lens)
+  }
+  used <- unique(far$id[hit])
+  upto <- vapply(far$index[used], function(p) {
+    findInterval(last, p, checkSorted = FALSE, checkNA = FALSE)
+  }, 0L)
+  lens[hit] <- upto[match(far$id[hit], used)]
+  lens
+}
+
 # The (row, rule) pairs of slash_split_bodies() for rows up to `last`: the
 # head hits, and the fragment postings cut at `last`, kept where the path
 # starts with the rule's head.
@@ -5268,7 +5306,7 @@ slash_pairs_upto <- function(near, far, paths, last) {
   k <- near$row <= last
   near_row <- rep(near$row[k], lengths(near$found[k]))
   near_rule <- unlist(near$found[k], use.names = FALSE)
-  lens <- vapply(far$found, function(p) findInterval(last, p), 0L)
+  lens <- slash_posting_lengths(far, last)
   far_row <- unlist(Map(function(p, l) p[seq_len(l)], far$found, lens),
                     use.names = FALSE)
   far_row <- as.integer(far_row)
@@ -5329,16 +5367,21 @@ slash_head_hits <- function(rule, rule_class, head, paths, class) {
 
 # Where rules with a later fragment can match, unbuilt: for each rule, in
 # `found`, the rows (ascending) whose path, in the rule's class, holds the
-# fragment's first three bytes (slash_gram_index()); with `rule` and `head`.
+# fragment's first three bytes (slash_gram_index()); with `rule` and `head`,
+# and, for counting, `index`, the distinct postings, and `id`, each rule's
+# place in it (NA for none).
 slash_fragment_hits <- function(rule, rule_class, head, frag, paths, class) {
   if (length(rule) == 0L) {
-    return(list(found = list(), rule = integer(), head = character()))
+    return(list(found = list(), rule = integer(), head = character(),
+                index = list(), id = integer()))
   }
   gram <- substr(frag, 1L, 3L)
   index <- slash_gram_index(paths, class, sort(unique(nchar(gram, "bytes"))))
-  found <- index[match(paste(rule_class, gram, sep = "\n"), names(index))]
+  id <- match(paste(rule_class, gram, sep = "\n"), names(index))
+  found <- index[id]
   found[lengths(found) == 0L] <- list(integer())
-  list(found = unname(found), rule = rule, head = head)
+  list(found = unname(found), rule = rule, head = head,
+       index = unname(index), id = id)
 }
 
 # The rows of each (class, run of `sizes` bytes) the paths hold, as a list
