@@ -363,9 +363,9 @@ An Allow or Disallow pattern names a query parameter right after its
 first \code{?} (\code{/items/*?sort=}), so it may miss URLs where that
 parameter follows another one (\code{/items/x?a=1&sort=}); for an
 Allow, the gap can leave such URLs restricted. The message shows one
-such URL. Not reported when a \code{*} stands before that \code{?}
-and the same crawlers also have the rule with that \code{?} written
-\code{&}. \cr
+such URL. Not reported when the same crawlers also have the rule
+with that \code{?} written \code{*&}, or written \code{&} when a
+\code{*} stands before that \code{?}. \cr
 \code{missing_user_agent} \tab error \tab
 Allow or Disallow rules exist but no line names a non-empty
 User-agent. \cr
@@ -712,15 +712,16 @@ are not reported, while a later \verb{?} does not stop the check (\verb{/p?q=?} 
 reported), nor is a value whose path
 before the first \verb{?} holds a \code{.} or \code{..} segment, written as is or as
 \verb{\%2E} in either case, wherever it sits (URL normalization removes it from
-a request). A rule is not reported when a \code{*} stands right before that
-\verb{?} and every crawler its group names also has a rule of the same type
-whose value is the same with that \verb{?} written \code{&} (\verb{/*?page=} beside
-\verb{/*&page=}). Without the \code{*}, the \code{&} rule needs \code{&} right after the text
-before it (\verb{/search&page=} misses \verb{/search?a=1&page=1} on all three
-matchers), so the row stays. The message says only what the rule may
-miss, with its example, and suggests no rewrite. Groups merge here on
-the whole User-agent value,
-folded to ASCII lower case, so a twin only Google's cut merge supplies
+a request). A rule is not reported when every crawler its group names
+also has a twin, a rule of the same type whose value is the same with
+that \verb{?} written \verb{*&} (\verb{/search?page=} beside \verb{/search*&page=}), or
+written \code{&} when a \code{*} stands right before that \verb{?} (\verb{/*?page=} beside
+\verb{/*&page=}). Without that \code{*}, the \code{&} rule needs \code{&} right after the
+text before it (\verb{/search&page=} misses \verb{/search?a=1&page=1} on all three
+matchers), so it is no twin and the row stays. The message says only
+what the rule may miss, with its example, and suggests no rewrite.
+Groups merge here on the whole User-agent value, folded to ASCII lower
+case, so a twin only Google's cut merge supplies
 keeps the row, and \code{*} and named crawlers are
 kept apart. A group no crawler reads, as under an empty \verb{User-agent:}
 line, gets no row, as a rule before any User-agent line gets none. The

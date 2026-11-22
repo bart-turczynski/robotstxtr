@@ -314,16 +314,68 @@ test_that("ROBO-fuhcwaom: a twin with no `*` before it keeps the row", {
   expect_identical(d$message, qp_message("page", "/search?a=1&page="))
   d <- qp_diag("User-agent: *\nAllow: /p/a?q=x*\nAllow: /p/a&q=x*\n")
   expect_identical(d$message, qp_message("q", "/p/a?a=1&q=xx", "allow"))
-  # The `*&` form is no twin: the row keeps the plain message.
-  d <- qp_diag(paste0("User-agent: *\nDisallow: /search?page=\n",
-                      "Disallow: /search*&page=\n"))
-  expect_identical(d$message, qp_message("page", "/search?a=1&page="))
   # A `*` right before the `?` makes the twin reach: silent, led by `*` too.
   expect_identical(qp_codes("User-agent: *\nDisallow: *?q=\nDisallow: *&q=\n"),
                    character(0))
   expect_identical(
     qp_lines("User-agent: *\nDisallow: /a*?q=\nDisallow: /a*&q=\n"),
     integer(0)
+  )
+})
+
+# Both twin forms cover the later position on google, bing and yandex, as
+# a Disallow and as an Allow under a fixture-only `Disallow: /`: the value
+# with its first `?` written `*&`, and written `&` after a `*` that stands
+# right before that `?`. Each silences the row, for every crawler the
+# group names.
+test_that("ROBO-fuhcwaom: either twin form covers the later position", {
+  pairs <- list(
+    c("/search?page=", "/search*&page=", "/search?a=1&page=1"),
+    c("/*?page=", "/*&page=", "/x?a=1&page=1"),
+    c("/*?page=", "/**&page=", "/x?a=1&page=1")
+  )
+  for (pair in pairs) {
+    label <- paste(pair[[1L]], pair[[2L]])
+    for (backend in names(qp_engines)) {
+      expect_identical(
+        qp_decide(paste0("User-agent: *\nDisallow: ", pair[[1L]],
+                         "\nDisallow: ", pair[[2L]], "\n"),
+                  pair[[3L]], backend),
+        "disallow", label = paste(backend, label)
+      )
+      expect_identical(
+        qp_decide(paste0("User-agent: *\nDisallow: /\nAllow: ", pair[[1L]],
+                         "\nAllow: ", pair[[2L]], "\n"),
+                  pair[[3L]], backend),
+        "allow", label = paste(backend, label)
+      )
+    }
+    for (type in c("Allow", "Disallow")) {
+      expect_identical(
+        qp_lines(paste0("User-agent: *\n", type, ": ", pair[[1L]], "\n",
+                        type, ": ", pair[[2L]], "\n")),
+        integer(0), label = paste(type, label)
+      )
+    }
+  }
+  # Per crawler class: Bar lacks the `*&` twin, so the row stays.
+  two <- "User-agent: Foo\nUser-agent: Bar\nDisallow: /search?page=\n\n"
+  expect_identical(
+    qp_lines(paste0(two, "User-agent: Foo\nDisallow: /search*&page=\n")), 3L
+  )
+  expect_identical(
+    qp_lines(paste0(two, "User-agent: Foo\nUser-agent: Bar\n",
+                    "Disallow: /search*&page=\n")),
+    integer(0)
+  )
+  # Another head or type is no twin.
+  expect_identical(
+    qp_lines("User-agent: *\nDisallow: /search?page=\nAllow: /search*&page=\n"),
+    2L
+  )
+  expect_identical(
+    qp_lines("User-agent: *\nDisallow: /search?page=\nDisallow: /s*&page=\n"),
+    2L
   )
 })
 

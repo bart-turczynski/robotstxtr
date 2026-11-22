@@ -354,9 +354,9 @@ validation_unsupported <- c(
 #'     first \code{?} (\code{/items/*?sort=}), so it may miss URLs where that
 #'     parameter follows another one (\code{/items/x?a=1&sort=}); for an
 #'     Allow, the gap can leave such URLs restricted. The message shows one
-#'     such URL. Not reported when a \code{*} stands before that \code{?}
-#'     and the same crawlers also have the rule with that \code{?} written
-#'     \code{&}. \cr
+#'     such URL. Not reported when the same crawlers also have the rule
+#'     with that \code{?} written \code{*&}, or written \code{&} when a
+#'     \code{*} stands before that \code{?}. \cr
 #'   \code{missing_user_agent} \tab error \tab
 #'     Allow or Disallow rules exist but no line names a non-empty
 #'     User-agent. \cr
@@ -703,15 +703,16 @@ validation_unsupported <- c(
 #' reported), nor is a value whose path
 #' before the first `?` holds a `.` or `..` segment, written as is or as
 #' `%2E` in either case, wherever it sits (URL normalization removes it from
-#' a request). A rule is not reported when a `*` stands right before that
-#' `?` and every crawler its group names also has a rule of the same type
-#' whose value is the same with that `?` written `&` (`/*?page=` beside
-#' `/*&page=`). Without the `*`, the `&` rule needs `&` right after the text
-#' before it (`/search&page=` misses `/search?a=1&page=1` on all three
-#' matchers), so the row stays. The message says only what the rule may
-#' miss, with its example, and suggests no rewrite. Groups merge here on
-#' the whole User-agent value,
-#' folded to ASCII lower case, so a twin only Google's cut merge supplies
+#' a request). A rule is not reported when every crawler its group names
+#' also has a twin, a rule of the same type whose value is the same with
+#' that `?` written `*&` (`/search?page=` beside `/search*&page=`), or
+#' written `&` when a `*` stands right before that `?` (`/*?page=` beside
+#' `/*&page=`). Without that `*`, the `&` rule needs `&` right after the
+#' text before it (`/search&page=` misses `/search?a=1&page=1` on all three
+#' matchers), so it is no twin and the row stays. The message says only
+#' what the rule may miss, with its example, and suggests no rewrite.
+#' Groups merge here on the whole User-agent value, folded to ASCII lower
+#' case, so a twin only Google's cut merge supplies
 #' keeps the row, and `*` and named crawlers are
 #' kept apart. A group no crawler reads, as under an empty `User-agent:`
 #' line, gets no row, as a rule before any User-agent line gets none. The
@@ -4140,11 +4141,9 @@ duplicate_rule_cut_group_names <- function(look, own, cap) {
 # (`/items/*?sort=`) matches the parameter only where a `?` stands right
 # before it: the matchers read `?` as a literal byte, so the rule may miss a
 # URL where the parameter follows another one (ROBO-fuhcwaom). A candidate
-# (query_parameter_candidates()) is silent when a `*` stands before its first
-# `?` and, for every crawler class its group names, the merged rules hold
-# the same type with the `&` form of the value (that `?` written `&`);
-# without the `*` the twin does not reach a later parameter, and the row
-# stays. Groups merge on the whole User-agent
+# (query_parameter_candidates()) is silent when, for every crawler class its
+# group names, the merged rules hold a twin that covers the later position
+# (query_parameter_kept()). Groups merge on the whole User-agent
 # value (`agents$uncut`), so a twin only Google's cut merge supplies keeps
 # the row, and a group no crawler class reads gets none
 # (query_parameter_kept()). The message shows the example path
@@ -4190,13 +4189,15 @@ query_parameter_candidates <- function(rules, skip) {
 }
 
 # For each candidate in `at` (indexes of `groups$rules`), whether it keeps
-# its row: not every crawler class its group names (whole-value merge,
-# validation_token_expander() on `agents$uncut`) has a rule of the same
-# type whose canonical value is the candidate's with its first `?` written
-# `&`, with a `*` right before that `&` (`/*&sort=`). Without the `*`, `&`
-# must follow the prefix directly (`/search&page=` misses
-# `/search?a=1&page=1`), so the row is kept. A group naming no class has no
-# crawler that reads the rule, so it gets no row.
+# its row: some crawler class its group names (whole-value merge,
+# validation_token_expander() on `agents$uncut`) lacks a twin, a rule of
+# the same type that covers the later position. A twin is the candidate's
+# canonical value with its first `?` written `*&` (`/search*&page=`), or
+# written `&` when a `*` already stands right before that `?` (`/*&sort=`
+# for `/*?sort=`). Without that `*`, the `&` form needs `&` right after the
+# text before it (`/search&page=` misses `/search?a=1&page=1`), so it is
+# no twin. A group naming no class has no crawler that reads the rule, so
+# it gets no row.
 query_parameter_kept <- function(groups, at) {
   rules <- groups$rules
   value <- rules$value[at]
@@ -4204,15 +4205,17 @@ query_parameter_kept <- function(groups, at) {
   held <- expand(rules$group)
   have <- paste(held$class, rules$type[held$owner], rules$value[held$owner],
                 sep = "\n")
-  twin <- sub("?", "&", value, fixed = TRUE, useBytes = TRUE)
-  mine <- expand(rules$group[at])
-  want <- paste(mine$class, rules$type[at][mine$owner], twin[mine$owner],
-                sep = "\n")
-  short <- seq_along(at) %in% mine$owner[!want %in% have]
-  twinned <- seq_along(at) %in% mine$owner & !short
   q <- regexpr("?", value, fixed = TRUE, useBytes = TRUE)
   star <- substr(value, q - 1L, q - 1L) == "*"
-  short | (twinned & !star)
+  amp <- sub("?", "&", value, fixed = TRUE, useBytes = TRUE)
+  star_amp <- sub("?", "*&", value, fixed = TRUE, useBytes = TRUE)
+  mine <- expand(rules$group[at])
+  key <- function(twin) {
+    paste(mine$class, rules$type[at][mine$owner], twin[mine$owner],
+          sep = "\n")
+  }
+  has <- (star[mine$owner] & key(amp) %in% have) | key(star_amp) %in% have
+  seq_along(at) %in% mine$owner[!has]
 }
 
 # The witness paths of each candidate value: `control`, the value with each
