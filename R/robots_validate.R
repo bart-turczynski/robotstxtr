@@ -5753,8 +5753,7 @@ reopen_take <- function(lists, i, pos, cursor, want, limit = Inf) {
 
 # Reads the Allows' pairs in rounds: round `r` takes up to `chunk` times
 # 2^(r - 1) more pairs of each Allow still pending (reopen_take()), in
-# Allow order, the first pending one, once a pair of it failed, the rest
-# of its list, and reads them (reopen_reads()). Each round has what is left
+# Allow order, and reads them (reopen_reads()). Each round has what is left
 # of `budget`: half for the lists, the takes and the first reading, the
 # rest for the removal read. An Allow's first proving pair ends it
 # ("hit"), as does a list read through with none ("none"). A pair the
@@ -5787,11 +5786,7 @@ reopen_rounds <- function(groups, shape, allows, lists, written, budget,
     }
     left <- budget - spent
     was <- list(status, cursor, names(held))
-    # Once a pair of it failed, the first pending Allow takes the rest of
-    # its list: only Allows up to it can count as checked.
-    lead <- if (cursor[[pending[[1L]]]] > 0L) Inf else want
-    take <- reopen_round_take(lists, pending, cursor, held, want, left / 2,
-                              lead)
+    take <- reopen_round_take(lists, pending, cursor, held, want, left / 2)
     held <- take$held
     cursor <- take$cursor
     status[take$none] <- "none"
@@ -5825,15 +5820,14 @@ reopen_rounds <- function(groups, shape, allows, lists, written, budget,
 
 # One round's takes for the pending Allows `pending`, in order, within
 # `budget`: each gathers its list once per set of classes (`held`, by
-# reopen_lists()$key) and takes its next `want` pairs, the first one
-# `lead` (reopen_take()), as far as `budget` goes. The first Allow whose
+# reopen_lists()$key) and takes its next `want` pairs (reopen_take()), as
+# far as `budget` goes. The first Allow whose
 # list does not fit takes nothing, nor does any later one; one whose list
 # is read through with nothing taken is `none`. Returns the pairs as
 # list(allow, at, control, idx), `idx` each pair's place in its Allow's
 # list, with `held`, `cursor`, `size` (each Allow's list length), `none`
 # and `spent`.
-reopen_round_take <- function(lists, pending, cursor, held, want, budget,
-                              lead = want) {
+reopen_round_take <- function(lists, pending, cursor, held, want, budget) {
   size <- rep(NA_integer_, length(cursor))
   allow <- list()
   idx <- list()
@@ -5854,8 +5848,7 @@ reopen_round_take <- function(lists, pending, cursor, held, want, budget,
     if (room < min(1, length(list_pos) - cursor[[i]])) {
       break
     }
-    got <- reopen_take(lists, i, list_pos, cursor[[i]],
-                       if (j == 1L) lead else want, room)
+    got <- reopen_take(lists, i, list_pos, cursor[[i]], want, room)
     held[[key]] <- list_pos
     spent <- spent + cost + got$spent
     cursor[[i]] <- got$cursor

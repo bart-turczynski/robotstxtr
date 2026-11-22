@@ -744,7 +744,8 @@ test_that("ROBO-micbpqbc: Allows past the work budget get no row", {
   # The rounds read Allows out of line order: `*/tttttttt/` proves on its
   # first pair while `*/ssssss/`, whose witnesses a longer Disallow blocks,
   # is still reading its twenty, and runs out. No Allow counts as checked,
-  # so the later one gets no row either.
+  # so the later one gets no row either. From 320 the rounds, doubling
+  # each Allow's pairs, read all twenty-one.
   groups <- ar_groups(paste0("User-agent: Foo\n",
                              paste0("Disallow: /d", 1:20, "/\n", collapse = ""),
                              "Disallow: /*?q=/ssssss/\n",
@@ -752,7 +753,7 @@ test_that("ROBO-micbpqbc: Allows past the work budget get no row", {
   found <- allow_reopens_diagnostics(groups, budget = 200)
   expect_identical(nrow(found), 0L)
   expect_identical(attr(found, "stopped"), ar_stopped(2L, 0L, "*/ssssss/"))
-  found <- allow_reopens_diagnostics(groups, budget = 300)
+  found <- allow_reopens_diagnostics(groups, budget = 320)
   expect_match(found$message, "The Allow on line 24 ('*/tttttttt/')",
                fixed = TRUE)
   expect_null(attr(found, "stopped"))
@@ -861,6 +862,34 @@ test_that("ROBO-micbpqbc: an Allow's pairs are read up to the first proof", {
       expect_match(found$message, sprintf("and %d more", n - 5L),
                    fixed = TRUE)
     }
+  }
+})
+
+# `allows` Allows `/*/xN/` after 1,001 Disallows, `fails` Disallow/Allow
+# ties `/aK` first, whose controls the tie allows, so their pairs fail, then
+# the proving `/zz` and the rest of the ties (the reviewer's shape).
+ar_late_proof <- function(ua, fails, allows = 30L) {
+  k <- seq_len(1000L)
+  ties <- paste0("Disallow: /a", k, "\nAllow: /a", k, "\n")
+  paste0("User-agent: ", ua, "\n",
+         paste0(ties[seq_len(fails)], collapse = ""), "Disallow: /zz\n",
+         paste0(ties[-seq_len(fails)], collapse = ""),
+         paste0("Allow: /*/x", seq_len(allows), "/\n", collapse = ""),
+         if (grepl(" ", ua)) "\nUser-agent: Foo\nDisallow: /q\n" else "")
+}
+
+test_that("ROBO-micbpqbc: a failing pair costs the first Allow no more", {
+  # Every Allow proves on `/zz`, past failing pairs; the first Allow reads
+  # in rounds like the rest, not its whole list once a pair fails, so the
+  # budget left after its proof checks all thirty.
+  for (case in list(list("Foo web", 10L), list("Foo", 50L))) {
+    found <- allow_reopens_diagnostics(ar_groups(ar_late_proof(case[[1L]],
+                                                               case[[2L]])))
+    expect_null(attr(found, "stopped"), label = case[[1L]])
+    expect_match(found$message, "line 2003 ('/*/x1/') allows '/zz?q=/x1/'",
+                 fixed = TRUE, label = case[[1L]])
+    expect_match(found$message, "and 25 more.", fixed = TRUE,
+                 label = case[[1L]])
   }
 })
 
