@@ -858,11 +858,11 @@ on the line that blocks the path, on the whole-value merge and on
 Google's merge; read again with every Allow of this shape left out, that
 line must block the query URL too, so an Allow of another shape that
 opens it (\verb{Allow: /c?}) silences the row. The row names that line, which
-may be another Disallow (\verb{/c$}). Each Allow's pairs are read in line
-order up to the first that gives a row, within a fixed amount of work;
-an Allow shorter than a Disallow cannot win over it. The package's
-Yandex matcher gives a tie of pattern lengths to the Disallow, where
-Google gives it to the Allow. An Allow such as
+may be another Disallow (\verb{/c$}). The pairs of each Allow are read in
+line order up to the first that gives a row, within a fixed amount of
+work; an Allow shorter than a Disallow cannot win over it. The
+package's Yandex matcher gives a tie of pattern lengths to the
+Disallow, where Google gives it to the Allow. An Allow such as
 \verb{*/x?p=} can also get \code{rule_query_parameter_position}; both rows stand. A
 body cut at \code{max_bytes} is not checked, and a
 \verb{User-agent: __usage_ai-training} group gets no row.

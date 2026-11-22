@@ -930,15 +930,20 @@ test_that("ROBO-micbpqbc: a cut value elsewhere leaves the budget whole", {
                    c(TRUE, TRUE, TRUE, FALSE))
 })
 
-# Best of five runs, so a loaded machine cannot fail the ratio
-# (test-cut-note-zqyqbudf.R).
-ar_best <- function(expr_fn) {
-  min(vapply(1:5, function(i) system.time(expr_fn())[["elapsed"]], 0))
+# The best of five runs of `small` and of `large`, taken in turn, so a
+# loaded machine slows both alike and cannot fail the ratio
+# (test-cut-note-zqyqbudf.R). A floor of 0.1s keeps a fast small run from
+# making the bound a few tens of milliseconds.
+ar_ratio_ok <- function(small, large, label) {
+  times <- vapply(1:5, function(i) {
+    c(system.time(small())[["elapsed"]], system.time(large())[["elapsed"]])
+  }, numeric(2))
+  expect_lt(min(times[2L, ]), 8 * max(min(times[1L, ]), 0.1), label = label)
 }
 
-ar_time_check <- function(body) {
+ar_check_fn <- function(body) {
   groups <- ar_groups(body)
-  ar_best(function() allow_reopens_diagnostics(groups))
+  function() allow_reopens_diagnostics(groups)
 }
 
 test_that("ROBO-micbpqbc: the check stays linear on costly shapes", {
@@ -950,14 +955,13 @@ test_that("ROBO-micbpqbc: the check stays linear on costly shapes", {
     expect_false(is.null(attr(found, "stopped")), label = shape)
   }
   for (shape in shapes) {
-    small <- ar_time_check(ar_shape(shape, 100L))
-    large <- ar_time_check(ar_shape(shape, 400L))
-    expect_lt(large, 8 * max(small, 0.05), label = shape)
+    ar_ratio_ok(ar_check_fn(ar_shape(shape, 100L)),
+                ar_check_fn(ar_shape(shape, 400L)), shape)
   }
   # The whole validator too.
-  small <- ar_best(function() robots_validate_text(ar_shape("cross", 100L)))
-  large <- ar_best(function() robots_validate_text(ar_shape("cross", 400L)))
-  expect_lt(large, 8 * max(small, 0.05))
+  ar_ratio_ok(function() robots_validate_text(ar_shape("cross", 100L)),
+              function() robots_validate_text(ar_shape("cross", 400L)),
+              "validator")
 })
 
 # Sets the locale categories for the calling test, restored on exit; skips
@@ -1000,11 +1004,11 @@ test_that("ROBO-micbpqbc: edge inputs in the session's locale", {
   ar_edge()
   # Google's matcher compares the escaped witness; the package's Bing and
   # Yandex matchers compare the byte as written.
-  body <- "User-agent: %s\nDisallow: /my/\nAllow: */café/\n"
+  body <- "User-agent: %s\nDisallow: /my/\nAllow: */caf\u00e9/\n"
   expect_identical(ar_decide(body, c("/my/", "/my/?q=/caf%C3%A9/"), "google"),
                    ar_opened)
   for (backend in c("bing", "yandex")) {
-    expect_identical(ar_decide(body, c("/my/", "/my/?q=/café/"),
+    expect_identical(ar_decide(body, c("/my/", "/my/?q=/caf\u00e9/"),
                                backend), ar_opened, label = backend)
   }
   # Empty values give no pair.
