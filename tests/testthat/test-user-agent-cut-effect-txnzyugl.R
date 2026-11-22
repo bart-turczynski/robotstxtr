@@ -59,10 +59,19 @@ cx_other <- paste0("Only Google's parser shortens the value, and Google's ",
                    "crawlers do not go by it, so nothing changes for them; ",
                    "how the named crawler's own parser reads it is unknown.")
 
-# Google's matcher's own reading of the token, through the legacy text path:
-# the v1 facades refuse a token outside the RFC 9309 identifier rule (`Spinn3r`,
-# `MJ12bot`) as input before the matcher sees it (ROBO-mtmkpwuf).
-cx_decide <- function(body, url, token) {
+cx_decide <- function(body, url, token, ruleset = "google") {
+  robots_evaluate_text_v1(
+    robots_txt = body, url = paste0("https://example.com", url),
+    robots_product_token = token, robots_policy_ruleset = ruleset,
+    matcher_backend = "google"
+  )$results$url_decision
+}
+
+# Google's matcher's own reading of a token that is not an RFC 9309
+# identifier (`Spinn3r`, `MJ12bot`, `360Spider`), through the legacy text
+# path: the v1 facades refuse such a token as input before the matcher sees
+# it (ROBO-mtmkpwuf).
+cx_decide_legacy <- function(body, url, token) {
   allowed <- allowed_by_robots_text(
     body, paste0("https://example.com", url), token
   )$results$allowed
@@ -111,9 +120,10 @@ test_that("each message states the effect for its kind of cut", {
 test_that("a cut value falls back to `*` on the Google backend", {
   body <- paste0("User-agent: *\nDisallow: /account/\n\n",
                  "User-agent: Spinn3r\nDisallow: /podcasts/\n")
-  expect_identical(cx_decide(body, c("/podcasts/x", "/account/settings"),
-                             "Spinn3r"),
-                   c("allow", "disallow"))
+  expect_identical(
+    cx_decide_legacy(body, c("/podcasts/x", "/account/settings"), "Spinn3r"),
+    c("allow", "disallow")
+  )
   expect_identical(cx_decide(body, "/podcasts/x", "Spinn"), "disallow")
   x <- robots_validate_text(body)
   expect_identical(cx_rows(x)$message,
@@ -122,14 +132,14 @@ test_that("a cut value falls back to `*` on the Google backend", {
 
 test_that("with no `*` group a cut value gets no rules", {
   body <- "User-agent: MJ12bot\nDisallow: /\n"
-  expect_identical(cx_decide(body, "/x", "MJ12bot"), "allow")
+  expect_identical(cx_decide_legacy(body, "/x", "MJ12bot"), "allow")
   expect_identical(cx_rows(robots_validate_text(body))$message,
                    cx_read_as("MJ", cx_no_star, cx_other))
 })
 
 test_that("an empty cut matches no crawler", {
   body <- "User-agent: *\nAllow: /\n\nUser-agent: 360Spider\nDisallow: /\n"
-  expect_identical(cx_decide(body, "/x", "360Spider"), "allow")
+  expect_identical(cx_decide_legacy(body, "/x", "360Spider"), "allow")
   expect_identical(cx_rows(robots_validate_text(body))$message,
                    cx_none(cx_star))
 })
@@ -138,7 +148,7 @@ test_that("an agent stacked with a cut value keeps the group", {
   body <- paste0("User-agent: *\nAllow: /\n\n",
                  "User-agent: MJ12bot\nUser-agent: AhrefsBot\nDisallow: /\n")
   expect_identical(cx_decide(body, "/x", "AhrefsBot"), "disallow")
-  expect_identical(cx_decide(body, "/x", "MJ12bot"), "allow")
+  expect_identical(cx_decide_legacy(body, "/x", "MJ12bot"), "allow")
   expect_identical(cx_rows(robots_validate_text(body))$line, 4L)
 })
 
@@ -216,7 +226,7 @@ test_that("a suffix that plainly means the token is info", {
 
 test_that("a cut line in a `*` group still gets that group", {
   body <- "User-agent: *\nUser-agent: Spinn3r\nDisallow: /a\n"
-  expect_identical(cx_decide(body, "/a", "Spinn3r"), "disallow")
+  expect_identical(cx_decide_legacy(body, "/a", "Spinn3r"), "disallow")
   m <- cx_rows(robots_validate_text(body))$message
   expect_match(m, paste0("a crawler going by the full value still gets this ",
                          "group from Google's matcher, since the group also ",
