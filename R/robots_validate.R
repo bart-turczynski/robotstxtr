@@ -4575,7 +4575,7 @@ slash_split_diagnostics <- function(groups) {
 # the candidate decide `P/`, decides `P` the other way, and agrees on that
 # line; NA otherwise. Each (candidate, class) row is read under a
 # body of the class's rules that can match `P/`: a rule's literal head (up
-# to its first `*`, `$` or `%`, and for an Allow ending in `/index.htm...`
+# to its first `*` or `$`, and for an Allow ending in `/index.htm...`
 # up to its last `/`, which Google's matcher also reads as that path with
 # `$`) must be a prefix of `P/`, and every other rule matches neither URL.
 # Rules keep file order, so ties resolve as in the whole group. One batch
@@ -4627,7 +4627,11 @@ slash_split_bodies <- function(rules, expand, paths, class) {
   index <- rules$type[live] == "allow" &
     grepl("/index[.]htm[^/]*$", value, useBytes = TRUE)
   head[index] <- sub("index[.]htm[^/]*$", "", value[index], useBytes = TRUE)
-  head <- sub("[*$%].*$", "", head, useBytes = TRUE)
+  # A `%` is a literal byte to Google's matcher, which compares the escape
+  # as written, and a candidate `P/` holds none (slash_candidates()), so a
+  # head running past a `%` is never a prefix of `P/`: the rule matches
+  # neither URL and stays out.
+  head <- sub("[*$].*$", "", head, useBytes = TRUE)
   held <- expand(rules$group[live])
   rule_key <- paste(held$class, head[held$owner], sep = "\n")
   by_key <- split(live[held$owner], factor(rule_key, unique(rule_key)))

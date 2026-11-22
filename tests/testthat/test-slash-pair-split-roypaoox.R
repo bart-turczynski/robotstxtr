@@ -335,6 +335,23 @@ test_that("ROBO-roypaoox: a group naming several crawlers names them", {
   ))
 })
 
+test_that("ROBO-roypaoox: rows come in line order, empties stay out", {
+  # The group row on line 1 comes before the Allow row on line 3.
+  d <- sp_rows("User-agent: *\nDisallow: /a\nAllow: /a/b/\nDisallow: /c/\n",
+               sp_split)
+  expect_identical(d$line, c(1L, 3L))
+  expect_identical(d$message, c(sp_open_message(4L, "/c/", "/c"),
+                                sp_blocked_message("/a/b/", "/a/b", 2L)))
+  # An empty Disallow decides nothing: `B`'s bare URL is allowed by no rule,
+  # as `A`'s is, so the two classes agree.
+  d <- sp_rows(paste0("User-agent: A\nUser-agent: B\nDisallow: /x/\n\n",
+                      "User-agent: B\nDisallow:\n"), sp_split)
+  expect_identical(d$line, 1L)
+  # An empty User-agent line names no crawler, so it is not counted.
+  d <- sp_rows("User-agent:\nUser-agent: Foo\nDisallow: /n/\n", sp_split)
+  expect_identical(d$message, sp_open_message(3L, "/n/", "/n"))
+})
+
 test_that("ROBO-roypaoox: a line with a pair and a split row", {
   d <- sp_diag(sp_body("pair_and_split"))
   expect_identical(d$message, c(
@@ -671,6 +688,18 @@ test_that("ROBO-roypaoox: the bare pattern covers the slash pattern", {
 # The split's decisions are Google's matcher's on the class's rules a
 # literal head lookup keeps: the same as on all of them.
 test_that("ROBO-roypaoox: the kept rules decide as all of them", {
+  # A `%` is literal to Google's matcher, so a rule holding one never
+  # matches a candidate path, which holds none: such a rule stays out.
+  read <- wildcard_witness_decide(
+    "User-agent: witness\nDisallow: /%41/\nDisallow: /a%20b/\n", c(1L, 1L),
+    c("/A/", "/a b/")
+  )
+  expect_identical(read$allowed, c(TRUE, TRUE))
+  read <- wildcard_witness_decide(
+    c("User-agent: witness\nDisallow: /%41/\n",
+      "User-agent: witness\nDisallow: /a%20b/\n"), 1:2, c("/%41/", "/a%20b/")
+  )
+  expect_identical(read$allowed, c(FALSE, FALSE))
   for (name in c("index_allow", "star_led", "dollar_head", "deeper",
                  "pair_and_split", "bare_blocked")) {
     groups <- sp_groups(sp_body(name))
