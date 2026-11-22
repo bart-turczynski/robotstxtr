@@ -599,6 +599,17 @@ test_that("ROBO-fuhcwaom: edge inputs", {
                     "User-agent: *\nDisallow: /*?q=\n")),
     5L
   )
+  # No candidate: the check returns before it builds the uncut expander.
+  local({
+    local_mocked_bindings(validation_token_expander = function(...) {
+      stop("expander built")
+    })
+    found <- query_parameter_position_diagnostics(
+      qp_parsed_groups("User-agent: *\nDisallow: /p\n")
+    )
+    expect_identical(nrow(found), 0L)
+    expect_named(found, c("line", "type", "message"))
+  })
   # No candidate: the helpers return empty vectors.
   groups <- qp_parsed_groups("User-agent: *\nDisallow: /p\n")
   expect_identical(query_parameter_kept(groups, integer()), logical(0))

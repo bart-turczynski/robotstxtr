@@ -4166,7 +4166,10 @@ query_parameter_position_diagnostics <- function(groups, skip = integer(),
                                                  nul_cut = integer()) {
   rules <- groups$rules
   at <- query_parameter_candidates(rules, skip)
-  at <- at[query_parameter_kept(groups, at, nul_cut)]
+  # Most files hold no candidate: skip building the uncut expander.
+  if (length(at) > 0L) {
+    at <- at[query_parameter_kept(groups, at, nul_cut)]
+  }
   paths <- query_parameter_paths(rules$value[at])
   data.frame(
     line = rules$line[at], type = rules$type[at],
