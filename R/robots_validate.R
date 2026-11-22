@@ -4497,19 +4497,28 @@ slash_rows <- function(type, line = integer(), message = character(),
              directive = directive, stringsAsFactors = FALSE)
 }
 
+# The two forms of each value as the messages show them: `bare` is `P`
+# elided as query_parameter_cap() elides past 40 bytes, and `slash` is the
+# same text with the `/` after it, so the two stay apart however long `P`
+# is.
+slash_shown <- function(value) {
+  bare <- ifelse(endsWith(value, "/"), slash_partner(value), value)
+  bare <- query_parameter_cap(bare, 40L)
+  list(bare = bare, slash = paste0(bare, "/"))
+}
+
 # The pair row's text: what each form matches, calling neither redundant.
 slash_pair_message <- function(type, value, earlier) {
-  partner <- slash_partner(value)
+  shown <- slash_shown(value)
   slash <- endsWith(value, "/")
-  bare <- query_parameter_cap(ifelse(slash, partner, value), 40L)
-  long <- query_parameter_cap(ifelse(slash, value, partner), 40L)
+  this <- ifelse(slash, shown$slash, shown$bare)
+  other <- ifelse(slash, shown$bare, shown$slash)
   sprintf(paste0(
     "The %s on line %d has '%s' and this one '%s': '%s' also matches every ",
-    "path '%s' matches, and also '%s' itself and paths such as '%sx' ",
-    "(RFC 9309 section 2.2.2)."
-  ), ifelse(type == "allow", "Allow", "Disallow"), earlier,
-  query_parameter_cap(partner, 40L), query_parameter_cap(value, 40L),
-  bare, long, bare, bare)
+    "path '%s' matches, and also '%s' itself and the paths that go on from ",
+    "it without a '/' (RFC 9309 section 2.2.2)."
+  ), ifelse(type == "allow", "Allow", "Disallow"), earlier, other, this,
+  shown$bare, shown$slash, shown$bare)
 }
 
 # " This holds for every crawler the group names: ..." for a group naming
@@ -4664,16 +4673,14 @@ slash_split_rows <- function(groups, at, bare_line) {
   rules <- groups$rules
   allow <- rules$type[at] == "allow"
   opened <- at[allow]
-  value <- rules$value[opened]
+  shown <- slash_shown(rules$value[opened])
   blocked <- slash_rows(
     rules$type[opened], rules$line[opened],
     paste0(
       sprintf(paste0(
         "This Allow opens the URL '%s', but '%s' stays disallowed by line ",
         "%d.%s"
-      ), query_parameter_cap(value, 40L),
-      query_parameter_cap(slash_partner(value), 40L), bare_line[allow],
-      slash_redirect()),
+      ), shown$slash, shown$bare, bare_line[allow], slash_redirect()),
       slash_crawler_note(groups$agents, rules$group[opened])
     )
   )
@@ -4718,14 +4725,14 @@ slash_open_rows <- function(groups, at, cap = 5L) {
 
 slash_open_message <- function(value, line, cap) {
   if (length(value) == 1L) {
+    shown <- slash_shown(value)
     return(sprintf(paste0(
       "The Disallow on line %d blocks the URL '%s', but '%s' stays ",
       "allowed.%s"
-    ), line, query_parameter_cap(value, 40L),
-    query_parameter_cap(slash_partner(value), 40L), slash_redirect()))
+    ), line, shown$slash, shown$bare, slash_redirect()))
   }
   shown <- utils::head(seq_along(value), cap)
-  listed <- sprintf("'%s' (line %d)", query_parameter_cap(value[shown], 40L),
+  listed <- sprintf("'%s' (line %d)", slash_shown(value[shown])$slash,
                     line[shown])
   paste0(
     "These Disallows block the URL that ends in '/', but the URL without ",

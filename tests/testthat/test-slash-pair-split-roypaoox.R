@@ -29,9 +29,9 @@ sp_pair_message <- function(type, earlier, other, this) {
   slash <- if (endsWith(this, "/")) this else other
   sprintf(paste0(
     "The %s on line %d has '%s' and this one '%s': '%s' also matches every ",
-    "path '%s' matches, and also '%s' itself and paths such as '%sx' ",
-    "(RFC 9309 section 2.2.2)."
-  ), type, earlier, other, this, bare, slash, bare, bare)
+    "path '%s' matches, and also '%s' itself and the paths that go on from ",
+    "it without a '/' (RFC 9309 section 2.2.2)."
+  ), type, earlier, other, this, bare, slash, bare)
 }
 
 sp_blocked_message <- function(slash, bare, line) {
@@ -609,10 +609,21 @@ test_that("ROBO-roypaoox: long values are elided in the message", {
   d <- sp_diag(paste0("User-agent: *\nDisallow: ", long, "/\nDisallow: ",
                       long, "\n"))
   expect_identical(d$code, sp_pair)
+  # The bare form is elided, and the slash form is the same text with its
+  # `/` kept, so the two stay apart.
   shown <- paste0("/", strrep("a", 35L), "...")
   expect_identical(d$message,
-                   sp_pair_message("Disallow", 2L, shown, shown))
+                   sp_pair_message("Disallow", 2L, paste0(shown, "/"), shown))
   expect_lt(nchar(d$message), 400L)
+  d <- sp_diag(paste0("User-agent: *\nDisallow: /\nAllow: ", long, "/\n"))
+  expect_identical(d$message,
+                   sp_blocked_message(paste0(shown, "/"), shown, 2L))
+  d <- sp_diag(paste0("User-agent: *\nDisallow: ", long, "/\n"))
+  expect_identical(d$message, sp_open_message(2L, paste0(shown, "/"), shown))
+  d <- sp_diag(paste0("User-agent: *\nDisallow: ", long, "/\nDisallow: /b/\n"))
+  expect_identical(d$message, sp_open_list(sprintf(
+    "'%s/' (line 2) and '/b/' (line 3)", shown
+  )))
 })
 
 # The crossing check: how each backend decides the bare and the slash URL.
