@@ -365,8 +365,7 @@ parameter follows another one (\code{/items/x?a=1&sort=}); for an
 Allow, the gap can leave such URLs restricted. The message shows one
 such URL. Not reported when a \code{*} stands before that \code{?}
 and the same crawlers also have the rule with that \code{?} written
-\code{&}; without the \code{*}, the message says that rule does not
-cover them and names the \code{*&} form. \cr
+\code{&}. \cr
 \code{missing_user_agent} \tab error \tab
 Allow or Disallow rules exist but no line names a non-empty
 User-agent. \cr
@@ -718,9 +717,9 @@ a request). A rule is not reported when a \code{*} stands right before that
 whose value is the same with that \verb{?} written \code{&} (\verb{/*?page=} beside
 \verb{/*&page=}). Without the \code{*}, the \code{&} rule needs \code{&} right after the text
 before it (\verb{/search&page=} misses \verb{/search?a=1&page=1} on all three
-matchers), so the row stays and its message says the \code{&} rule does not
-cover the example and names the form that does, with \verb{*&}
-(\verb{/search*&page=}). Groups merge here on the whole User-agent value,
+matchers), so the row stays. The message says only what the rule may
+miss, with its example, and suggests no rewrite. Groups merge here on
+the whole User-agent value,
 folded to ASCII lower case, so a twin only Google's cut merge supplies
 keeps the row, and \code{*} and named crawlers are
 kept apart. A group no crawler reads, as under an empty \verb{User-agent:}

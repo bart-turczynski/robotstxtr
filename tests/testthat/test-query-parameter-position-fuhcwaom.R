@@ -287,12 +287,6 @@ test_that("ROBO-fuhcwaom: the `&` twin in the merged rules silences the row", {
 # on google, bing and yandex, `/search&page=` beside `/search?page=` leaves
 # `/search?a=1&page=1` allowed, `/search*&page=` disallows it, and
 # `/*&page=` beside `/*?page=` disallows `/x?a=1&page=1`.
-qp_twin_note <- paste0(
-  " The same rule with '&' in place of that '?' does not cover them ",
-  "either: it needs '&' right after the text before it, so a '*' must ",
-  "stand before the '&', as in '%s'."
-)
-
 test_that("ROBO-fuhcwaom: a twin with no `*` before it keeps the row", {
   plain <- paste0("User-agent: *\nDisallow: /search?page=\n",
                   "Disallow: /search&page=\n")
@@ -316,15 +310,10 @@ test_that("ROBO-fuhcwaom: a twin with no `*` before it keeps the row", {
   d <- qp_diag(plain)
   expect_identical(d$code, qp_code)
   expect_identical(d$line, 2L)
-  expect_identical(d$message, paste0(
-    qp_message("page", "/search?a=1&page="),
-    sprintf(qp_twin_note, "/search*&page=")
-  ))
+  # The row says only what the rule misses, and suggests no rewrite.
+  expect_identical(d$message, qp_message("page", "/search?a=1&page="))
   d <- qp_diag("User-agent: *\nAllow: /p/a?q=x*\nAllow: /p/a&q=x*\n")
-  expect_identical(d$message, paste0(
-    qp_message("q", "/p/a?a=1&q=xx", "allow"),
-    sprintf(qp_twin_note, "/p/a*&q=x*")
-  ))
+  expect_identical(d$message, qp_message("q", "/p/a?a=1&q=xx", "allow"))
   # The `*&` form is no twin: the row keeps the plain message.
   d <- qp_diag(paste0("User-agent: *\nDisallow: /search?page=\n",
                       "Disallow: /search*&page=\n"))
@@ -455,11 +444,9 @@ test_that("ROBO-fuhcwaom: edge inputs", {
   )
   # No candidate: the helpers return empty vectors.
   groups <- qp_parsed_groups("User-agent: *\nDisallow: /p\n")
-  expect_identical(query_parameter_kept(groups, integer()),
-                   list(keep = logical(0), twin = logical(0)))
+  expect_identical(query_parameter_kept(groups, integer()), logical(0))
   expect_identical(
-    query_parameter_message(character(), query_parameter_paths(character()),
-                            logical()),
+    query_parameter_message(character(), query_parameter_paths(character())),
     character(0)
   )
 })
@@ -482,15 +469,6 @@ test_that("ROBO-fuhcwaom: the quoted example is capped", {
   expect_identical(d$code, qp_code)
   expect_identical(d$message,
                    qp_message(shown, paste0("/p?a=1&", shown, "=1")))
-  # The `*&` form in the twin sentence is capped the same way.
-  head <- paste0("/", strrep("h", 100L))
-  d <- qp_diag(paste0("User-agent: *\nDisallow: ", head, "?q=1\nDisallow: ",
-                      head, "&q=1\n"))
-  shown <- paste0("/", strrep("h", 35L), "...")
-  expect_identical(d$message, paste0(
-    qp_message("q", paste0(shown, "?a=1&q=1")),
-    sprintf(qp_twin_note, paste0(shown, "*&q=1"))
-  ))
 })
 
 test_that("ROBO-fuhcwaom: a body cut at max_bytes is not checked", {
