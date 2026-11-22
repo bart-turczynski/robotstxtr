@@ -251,6 +251,15 @@ test_that("ROBO-jdnluzbb: a value at the line buffer keeps today's message", {
   rows <- fu_rows("https://e.example/", strrep("a", 16663L))
   expect_identical(rows$code, c("line_too_long", fu_slash))
   expect_identical(fu_message(rows), fu_today)
+  # A `#` inside the buffer cuts the value first, so a long comment after
+  # it leaves the value whole and the message names its path.
+  rows <- fu_rows("https://e.example/a #", strrep("c", 17000L))
+  expect_identical(rows$code, c("line_too_long", fu_slash))
+  expect_identical(fu_message(rows), fu_new("/a"))
+  rows <- fu_rows("https://e.example/a#", strrep("c", 17000L))
+  expect_identical(rows$code,
+                   c("line_too_long", "rule_cut_by_comment", fu_slash))
+  expect_identical(fu_message(rows), fu_new("/a"))
   # Just inside the buffer, the message names the path.
   path <- strrep("a", 16000L)
   rows <- fu_rows("https://e.example/", path)

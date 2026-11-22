@@ -1458,13 +1458,13 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     }
     # A rule value written as a full URL names the path to write
     # (ROBO-jdnluzbb). One read of the value as written serves this and the
-    # stray-% check below; a value cut at the line buffer keeps the plain
-    # message.
+    # stray-% check below. A value cut at the line buffer keeps the plain
+    # message; one a `#` cut inside the buffer, on a longer line, does not.
     full_url <- NULL
     if (type %in% c("allow", "disallow")) {
       written <- rule_written_value(raw_lines[[line]], line == 1L,
                                     parsed$missing_colon[[i]])
-      if (!parsed$line_too_long[[i]]) {
+      if (!isTRUE(attr(written, "buffer_cut"))) {
         full_url <- rule_full_url_message(
           written, robots_url,
           nul_counts[[line]] > 0L && rule_cut_by_nul(raw_lines[[line]])
@@ -4604,14 +4604,18 @@ rule_invalid_percent_escape_diagnostic <- function(written, nul_cut = FALSE) {
 # value (rule_raw_value()) with the trailing blanks the parser trims removed
 # (StripWhitespaceSlowly() and AsciiIsSpace(), src/robots.cc), so a final
 # `%` stays final. Leading blanks are kept: no `%` check reads them, as a
-# context starts at its `%` and a placeholder at its own.
+# context starts at its `%` and a placeholder at its own. rule_raw_value()'s
+# `buffer_cut` attribute is kept: TRUE when the value ends at the line
+# buffer, not when a `#` cut it first (ROBO-jdnluzbb).
 rule_written_value <- function(line_bytes, first_line, missing_colon) {
   bytes <- rule_raw_value(line_bytes, first_line, missing_colon)
   keep <- which(!bytes %in% as.raw(c(0x20, 0x09, 0x0a, 0x0b, 0x0c, 0x0d)))
   if (length(keep) == 0L) {
     return(raw(0L))
   }
-  bytes[seq_len(keep[[length(keep)]])]
+  out <- bytes[seq_len(keep[[length(keep)]])]
+  attr(out, "buffer_cut") <- attr(bytes, "buffer_cut")
+  out
 }
 
 # ROBO-jdnluzbb: the rule_missing_leading_slash message for a value written
