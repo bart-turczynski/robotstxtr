@@ -226,7 +226,10 @@ names a parameter right after `?`, so it may miss URLs where that parameter
 follows another one. An info, `rule_slash_pair`, notes a literal pattern
 written both as `/notes` and `/notes/` for the same crawlers, and an info,
 `rule_slash_split`, notes a crawler that gets one decision for `/gallery` and
-another for `/gallery/`, which a server redirect between them makes matter. A
+another for `/gallery/`, which a server redirect between them makes matter. An
+info, `rule_end_anchor_query`, notes a Disallow such as `/x/edit$` that blocks
+`/x/edit` but not `/x/edit?x=1`, since the final `$` ends the match at the end
+of the path and query together. A
 warning, `html_body`, says the body looks like an HTML page rather than a robots.txt;
 `xml_body` and `json_body` say the same of a body that starts with markup, such
 as an XML error, or looks like a JSON object or array, such as an API error.

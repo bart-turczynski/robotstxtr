@@ -376,9 +376,20 @@ validation_unsupported <- c(
 #'     would make the check costly, candidates past a fixed amount of work,
 #'     linear in the file's rules, get no row, and
 #'     \code{rule_check_stopped} says so. \cr
+#'   \code{rule_end_anchor_query} \tab info \tab
+#'     A Disallow whose pattern ends in \code{$} and holds no \code{?}
+#'     (\code{/x/edit$}) blocks its path but not the same path with a query
+#'     added (\code{/x/edit?x=1}): the \code{$} ends the match at the end of
+#'     the path and query together. Reported only when the rule decides the
+#'     path and the query URL comes out allowed under every rule the
+#'     crawlers have. One row per group of crawlers, on its first User-agent
+#'     line, listing five rules at most, then a count. Past a fixed amount
+#'     of work, as for \code{rule_slash_split}, candidates get no row and
+#'     \code{rule_check_stopped} says so. \cr
 #'   \code{rule_check_stopped} \tab info \tab
-#'     The file is too large for \code{rule_slash_pair} or
-#'     \code{rule_slash_split} to check every candidate quickly, so the check
+#'     The file is too large for \code{rule_slash_pair},
+#'     \code{rule_slash_split} or \code{rule_end_anchor_query} to check
+#'     every candidate quickly, so the check
 #'     read only the first ones, in line order. The message gives the counts
 #'     found, checked and skipped and names the earliest skipped rule; the
 #'     skipped ones may have the same problem. At most one row per check,
@@ -781,10 +792,32 @@ validation_unsupported <- c(
 #' `User-agent: __usage_ai-training` group gets neither: it states a training
 #' preference, not crawl access.
 #'
+#' `rule_end_anchor_query` reads a non-empty Disallow whose canonical value
+#' is led by `/` or `*`, ends in its only `$` and holds no `?`. A value
+#' ending in `*$` is left out, since the `*` matches every ending, and so is
+#' one whose path holds a `.` or `..` segment, written as is or as `%2E`,
+#' since URL normalization would remove it, or a `%` that starts no
+#' two-hex-digit escape, which no correctly encoded URL carries. The path
+#' the rule blocks is the
+#' value without the `$`, each `*` written `x`, and the query URL is that
+#' path with `?x=1` added. Google's matcher makes the decisions over every
+#' rule of the crawler's merged groups, so a second rule that blocks the
+#' query URL (`Disallow: /x/edit?`, `Disallow: /*?`), or an Allow that wins
+#' the path, silences the row. A row is reported only where every crawler
+#' the group names agrees, on the whole-value merge and on Google's merge.
+#' The paths are built from the canonical value, so a non-ASCII byte shows
+#' as its upper-case `%XX` escape, the form Google's matcher compares; the
+#' package's Bing and Yandex matchers compare such a byte, and a lower-case
+#' escape, as written, and its Yandex matcher lets an Allow `/x` win over a
+#' Disallow `/x$` for `/x`. A body cut at `max_bytes` is not checked: a
+#' later Disallow could block the query URL. The check reads its candidates
+#' within a fixed amount of work, as the slash checks do, and a
+#' `User-agent: __usage_ai-training` group gets no row.
+#'
 #' On a document holding a NUL byte, `wildcard_rules_not_inherited`,
 #' `disallow_tied_by_allow`, `duplicate_rule`,
-#' `rule_query_parameter_position`, `rule_slash_pair`, `rule_slash_split`
-#' and the AI-training codes follow Google's
+#' `rule_query_parameter_position`, `rule_slash_pair`, `rule_slash_split`,
+#' `rule_end_anchor_query` and the AI-training codes follow Google's
 #' reading: the parser and Google's matcher end a line at its
 #' first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
 #' byte, so each such message says it is Google's reading, unless every NUL
@@ -1815,9 +1848,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # rule differently (ROBO-roypaoox). A later Allow could change a decision,
   # so a cut body is skipped.
   if (!body_truncated) {
-    found <- slash_split_diagnostics(
-      groups, written = slash_written_keys(raw_lines[groups$rules$line])
-    )
+    written <- slash_written_keys(raw_lines[groups$rules$line])
+    found <- slash_split_diagnostics(groups, written = written)
     if (nrow(found) > 0L) {
       add_chunk(
         found$line, "info", "rule_slash_split", found$directive,
@@ -1830,6 +1862,24 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       add_diagnostic(
         NA_integer_, "info", "rule_check_stopped", NA_character_,
         slash_stop_message("split", attr(found, "stopped"))
+      )
+    }
+    # A `$`-anchored Disallow that the same path with a query added escapes
+    # (ROBO-nzcvlsvk). A later Disallow could block the witness, so a cut
+    # body is skipped too.
+    found <- end_anchor_diagnostics(groups, written = written)
+    if (nrow(found) > 0L) {
+      add_chunk(
+        found$line, "info", "rule_end_anchor_query", found$directive,
+        vapply(raw_lines[found$line], render_validation_line, "",
+               USE.NAMES = FALSE),
+        paste0(found$message, nul_reading)
+      )
+    }
+    if (!is.null(attr(found, "stopped"))) {
+      add_diagnostic(
+        NA_integer_, "info", "rule_check_stopped", NA_character_,
+        slash_stop_message("end_anchor", attr(found, "stopped"))
       )
     }
   }
@@ -4540,9 +4590,14 @@ slash_stop <- function(rules, at, checked) {
 }
 
 # The rule_check_stopped row's text, for the split check (`kind`
-# "split") or the pair check ("pair"), in plain words with the file's own
-# counts and its earliest skipped value.
+# "split"), the pair check ("pair") or the end-anchor check
+# ("end_anchor"), in plain words with the file's own counts and its
+# earliest skipped value.
 slash_stop_message <- function(kind, stop) {
+  if (kind == "end_anchor") {
+    return(paste(end_anchor_stop_intro(stop),
+                 slash_stop_counts(stop, "have the same problem")))
+  }
   shown <- slash_shown(stop$value)
   rules <- if (stop$found == 1L) "1 rule" else sprintf("%d rules", stop$found)
   intro <- if (kind == "split") {
@@ -5144,8 +5199,10 @@ slash_redirect <- function() {
 
 # One row per set of crawler classes for Disallows `at` that block `P/` and
 # leave `P` allowed, on the first User-agent line of the group holding the
-# earliest one.
-slash_open_rows <- function(groups, at, cap = 5L) {
+# earliest one. `message` builds each row's text from the set's values and
+# lines (rule_end_anchor_query passes its own).
+slash_open_rows <- function(groups, at, cap = 5L,
+                            message = slash_open_message) {
   rules <- groups$rules
   if (length(at) == 0L) {
     return(slash_rows(character()))
@@ -5162,12 +5219,12 @@ slash_open_rows <- function(groups, at, cap = 5L) {
   # The group's first User-agent line the check reads (slash_groups() may
   # have left out a policy-token line before it); agents are in file order.
   anchor <- groups$agents$line[match(group[first], groups$agents$group)]
-  message <- vapply(sets, function(k) {
-    slash_open_message(rules$value[at[k]], rules$line[at[k]], cap)
+  text <- vapply(sets, function(k) {
+    message(rules$value[at[k]], rules$line[at[k]], cap)
   }, "", USE.NAMES = FALSE)
   slash_rows(
     rep("disallow", length(sets)), anchor,
-    paste0(message, slash_crawler_note(groups$agents, group[first])),
+    paste0(text, slash_crawler_note(groups$agents, group[first])),
     directive = "user-agent"
   )
 }
@@ -5188,6 +5245,117 @@ slash_open_message <- function(value, line, cap) {
     "it stays allowed: ", joined_and(listed, length(value) - length(shown)),
     ".", slash_redirect()
   )
+}
+
+# A Disallow whose pattern ends in `$` and holds no `?` blocks its path but
+# not the same path with a query added (ROBO-nzcvlsvk): the `$` ends the
+# match at the end of the path and query together. The control is the
+# value as a path (end_anchor_controls()), the witness the control with
+# `?x=1` added. A candidate (end_anchor_candidates()) is reported only when,
+# for every crawler class its group names, merged on the whole User-agent
+# value and on Google's token, it is the line that decides the control,
+# so the control is disallowed, and the witness comes out allowed: every
+# rule of the class takes part, so a second rule that blocks the witness
+# or an Allow that wins the control silences it. The decisions are Google's
+# matcher's, read by witness_pair_readings() within `budget`
+# (slash_budget()) in line order; a candidate past it gets no row. One row
+# per set of crawler classes, on the first User-agent line the check reads
+# of the group holding the earliest one (slash_open_rows()). A cut body is
+# not checked: a later Disallow could block the witness. Returns
+# slash_rows() with a `directive` column; when the budget cut candidates,
+# its "stopped" attribute holds slash_stop()'s counts.
+end_anchor_diagnostics <- function(groups, written = NULL, budget = NULL) {
+  groups <- slash_groups(groups)
+  rules <- groups$rules
+  at <- end_anchor_candidates(rules)
+  if (length(at) == 0L) {
+    return(slash_rows(character()))
+  }
+  if (is.null(budget)) {
+    budget <- slash_budget(rules, at)
+  }
+  control <- end_anchor_controls(rules$value[at])
+  read <- witness_pair_readings(groups, at, control, paste0(control, "?x=1"),
+                                "short", written, budget)
+  out <- slash_open_rows(groups, at[read$ok], message = end_anchor_message)
+  attr(out, "stopped") <- slash_stop(rules, at, read$checked)
+  out
+}
+
+# Indexes of `rules` that are rule_end_anchor_query candidates: a non-empty
+# Disallow whose canonical value is led by `/` or `*`, ends in its only
+# `$` and holds no `?`, so the `$` anchors the path alone. Not one ending in
+# `*$`: the `*` matches every ending, so the `$` anchors nothing. Not one
+# whose control holds a `.` or `..` segment, written as is or as `%2E`
+# (query_parameter_candidates()'s scan): URL normalization would remove it
+# from the control before matching. Nor one whose control holds a `%` that
+# starts no two-hex-digit escape (rule_invalid_percent_escape): no correctly
+# encoded URL carries it, so there is no exact control to show.
+end_anchor_candidates <- function(rules) {
+  value <- rules$value
+  hit <- which(
+    rules$type == "disallow" & !rules$empty &
+      grepl("^[/*][^?$]*[$]$", value, useBytes = TRUE) &
+      !endsWith(value, "*$")
+  )
+  control <- end_anchor_controls(value[hit])
+  dot <- grepl("/([.]|%2E){1,2}(/|$)", control, useBytes = TRUE)
+  stray <- grepl("%", gsub("%[0-9A-Fa-f]{2}", "", control, useBytes = TRUE),
+                 fixed = TRUE)
+  hit[!dot & !stray]
+}
+
+# Each candidate value as a path: without its final `$`, each `*` written
+# `x`, led by `/` (query_parameter_lead()).
+end_anchor_controls <- function(value) {
+  query_parameter_lead(sub("[$]$", "", value, useBytes = TRUE))
+}
+
+# The control and witness as the messages show them: the control elided as
+# query_parameter_cap() elides past 40 bytes and rendered as `raw_text` is,
+# and the witness the same text with `?x=1` after it.
+end_anchor_shown <- function(value) {
+  control <- query_parameter_render(
+    query_parameter_cap(end_anchor_controls(value), 40L)
+  )
+  list(control = control, witness = paste0(control, "?x=1"))
+}
+
+# One row's text for the Disallows `value` on lines `line`: one names its
+# line, more are listed, five at most, then a count.
+end_anchor_message <- function(value, line, cap) {
+  shown <- end_anchor_shown(value)
+  blocks <- sprintf("blocks '%s' but not '%s'", shown$control, shown$witness)
+  if (length(value) == 1L) {
+    return(sprintf("The Disallow on line %d %s.%s", line, blocks,
+                   end_anchor_why("the rule")))
+  }
+  k <- utils::head(seq_along(value), cap)
+  paste0(
+    "These Disallows block a path but not the same path with a query added: ",
+    joined_and(sprintf("line %d %s", line[k], blocks[k]),
+               length(value) - length(k)),
+    ".", end_anchor_why("each rule")
+  )
+}
+
+end_anchor_why <- function(rule) {
+  paste0(" A final '$' ends the match at the end of the path and query ",
+         "together, so a query such as '?x=1' takes the URL out of ", rule,
+         ". The site may serve the same page with a query.")
+}
+
+# The opening of a stopped end-anchor check's rule_check_stopped row: what
+# it looks for, with the file's count and its earliest skipped value.
+end_anchor_stop_intro <- function(stop) {
+  rules <- if (stop$found == 1L) "1 Disallow rule" else
+    sprintf("%d Disallow rules", stop$found)
+  shown <- end_anchor_shown(stop$value)
+  sprintf(paste0(
+    "This file has %s whose path ends in '$', such as '%s'. For each one, ",
+    "the validator checks whether the rule blocks '%s' but not '%s'."
+  ), rules, query_parameter_render(query_parameter_cap(stop$value, 40L)),
+  shown$control, shown$witness)
 }
 
 wildcard_inheritance_message <- function(tokens, one_group, missing,
