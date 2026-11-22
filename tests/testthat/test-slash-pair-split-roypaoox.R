@@ -520,6 +520,16 @@ test_that("ROBO-roypaoox: edge inputs", {
     " This is Google's reading, which ends each line at its first NUL; ",
     "Bing and Yandex read the NUL as an ordinary byte."
   ))
+  # A split row in a body with a NUL carries the same sentence.
+  body <- c(charToRaw("User-agent: *\nDisallow: /a"), as.raw(0),
+            charToRaw("zz\nDisallow: /notes/\n"))
+  d <- sp_diag(body)
+  expect_identical(d$code, c("nul_byte", "rule_cut_by_nul", sp_split))
+  expect_identical(d$message[[3L]], paste0(
+    sp_open_message(3L, "/notes/", "/notes"),
+    " This is Google's reading, which ends each line at its first NUL; ",
+    "Bing and Yandex read the NUL as an ordinary byte."
+  ))
   # A latin1 byte and a lone UTF-8 lead byte are escaped in the canonical
   # value, which then holds `%`: no candidate, no row and no error.
   for (byte in as.raw(c(0xe9, 0xc3))) {
