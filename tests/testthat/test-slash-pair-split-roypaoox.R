@@ -594,6 +594,16 @@ test_that("ROBO-roypaoox: a body cut at max_bytes gets the pair, no split", {
                    sp_open_message(4L, "/b/", "/b"))
 })
 
+test_that("ROBO-roypaoox: a rule written at the line buffer still splits", {
+  # `Allow:` and no space: the line fills Google's line buffer, so a witness
+  # line that added a space would lose the rule's last byte.
+  body <- paste0("User-agent: Foo\nDisallow: /\nAllow:/", strrep("a", 16655L),
+                 "/\n")
+  d <- sp_rows(body, sp_split)
+  expect_identical(d$line, 3L)
+  expect_identical(d$directive, "allow")
+})
+
 test_that("ROBO-roypaoox: long values are elided in the message", {
   long <- paste0("/", strrep("a", 8000L))
   d <- sp_diag(paste0("User-agent: *\nDisallow: ", long, "/\nDisallow: ",

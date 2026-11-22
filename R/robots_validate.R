@@ -4647,7 +4647,9 @@ slash_split_bodies <- function(rules, expand, paths, class) {
   order_by <- order(row, rule)
   row <- row[order_by]
   rule <- rule[order_by]
-  text <- paste0(ifelse(rules$type[rule] == "allow", "Allow: ", "Disallow: "),
+  # No space after the colon: a witness line is then never longer than the
+  # line it copies, so a rule written at Google's line buffer stays whole.
+  text <- paste0(ifelse(rules$type[rule] == "allow", "Allow:", "Disallow:"),
                  rules$value[rule], "\n")
   bodies <- vapply(split(text, factor(row, seq_along(paths))), function(x) {
     paste0("User-agent: witness\n", paste(x, collapse = ""))
