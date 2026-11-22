@@ -4663,18 +4663,29 @@ rule_full_url_message <- function(written, robots_url = NA_character_,
 
 # The path to suggest, `/` when empty, and whether dot segments were removed
 # from it. A final `$` with no query after it is the end anchor, so it is
-# set aside while dot segments are removed (`/a/..$` gives `/a/$`).
+# set aside while dot segments are removed (`/a/b/..$` gives `/a/$`). A `*`
+# matches any bytes, `/` and `.` among them, so dot segments are removed
+# only from the segments before the one holding the first `*`; the rest
+# stays as written (`/*/../a` stays `/*/../a`). A non-empty path here
+# starts with `/`, as it follows an authority.
 rule_full_url_path <- function(path, last) {
   anchor <- last && length(path) > 0L && path[[length(path)]] == as.raw(0x24)
   if (anchor) {
     path <- path[-length(path)]
+  }
+  rest <- raw(0L)
+  star <- match(as.raw(0x2a), path)
+  if (!is.na(star)) {
+    keep <- max(which(path[seq_len(star - 1L)] == as.raw(0x2f)))
+    rest <- path[(keep + 1L):length(path)]
+    path <- path[seq_len(keep)]
   }
   out <- remove_dot_segments_v1(path)
   dots <- !identical(out, path)
   if (length(out) == 0L) {
     out <- charToRaw("/")
   }
-  list(path = c(out, if (anchor) as.raw(0x24)), dots = dots)
+  list(path = c(out, rest, if (anchor) as.raw(0x24)), dots = dots)
 }
 
 # The URL in `written` without its leading blanks, or NULL: not led by

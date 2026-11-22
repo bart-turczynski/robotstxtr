@@ -124,6 +124,12 @@ fu_shapes <- list(
     "https://e.example/a/b/..$", "/a/$", scope = "", notes = fu_dots,
     url = "https://e.example/a/b/.."
   ),
+  # Dot segments before the first `*` are removed; the `*` and what
+  # follows stay as written.
+  dots_star = fu_shape(
+    "https://e.example/a/./b*c", "/a/b*c", scope = "", notes = fu_dots,
+    url = "https://e.example/a/./bxc"
+  ),
   # An escaped dot is no dot segment, as in rule_dot_segment.
   escaped_dot = fu_shape(
     "https://e.example/a/%2E/b", "/a/%2E/b",
@@ -184,6 +190,18 @@ test_that("ROBO-jdnluzbb: the line's other rows keep their own messages", {
            "only against '%2E' in the URL, never against '.', though RFC ",
            "9309 section 2.2.2 decodes it.")
   )
+})
+
+test_that("ROBO-jdnluzbb: no dot segment is removed across a `*`", {
+  # A `*` matches any bytes, `/` and `.` among them, so the segments from
+  # the first `*` on stay as written. Not match-checked: a literal `/../`
+  # in a rule matches no URL the default normalization sends.
+  expect_identical(fu_message(fu_rows("https://e.example/*/../private")),
+                   fu_new("/*/../private", scope = ""))
+  expect_identical(fu_message(fu_rows("https://e.example/a/./x*/../b")),
+                   fu_new("/a/x*/../b", scope = "", notes = fu_dots))
+  expect_identical(fu_message(fu_rows("https://e.example/a/../*/./b$")),
+                   fu_new("/*/./b$", scope = "", notes = fu_dots))
 })
 
 test_that("ROBO-jdnluzbb: an Allow value gets the same message", {
