@@ -4933,10 +4933,10 @@ slash_split_diagnostics <- function(groups, written = NULL, budget = NULL) {
 # Returns list(line, ok, checked, spent): `ok` where every reading's `ok`
 # holds, `line` where every reading names the same line (NA otherwise),
 # `checked` the leading candidates every reading read, and `spent` the work
-# done. `differ` as witness_pair_reading() takes it.
+# done. `differ` and `group` as witness_pair_reading() takes them.
 witness_pair_readings <- function(groups, at, short, long, decides,
                                   written = NULL, budget = Inf,
-                                  differ = TRUE) {
+                                  differ = TRUE, group = NULL) {
   agents <- groups$agents
   keys <- list(agents$uncut)
   if (!all(agents$uncut == agents$key)) {
@@ -4948,7 +4948,7 @@ witness_pair_readings <- function(groups, at, short, long, decides,
   spent <- 0
   for (key in keys) {
     read <- witness_pair_reading(groups, at, key, short, long, decides,
-                                 written, budget - spent, differ)
+                                 written, budget - spent, differ, group)
     spent <- spent + read$spent
     ok <- ok & read$ok
     if (is.null(line)) {
@@ -4980,20 +4980,25 @@ witness_pair_readings <- function(groups, at, short, long, decides,
 # the whole group. One batch call reads every row. Candidates are read in
 # line order while their rows and the rules of their classes
 # (slash_read_plan()), then their body lines, fit `budget`; the rest stay
-# NA and not ok.
+# NA and not ok. `group`, when given, names each candidate's group to read
+# the classes of in place of its own: the removal read of
+# allow_reopens_diagnostics() reads a Disallow under its Allow's crawlers.
 witness_pair_reading <- function(groups, at, key, short, long, decides,
                                  written = NULL, budget = Inf,
-                                 differ = TRUE) {
+                                 differ = TRUE, group = NULL) {
   rules <- groups$rules
+  if (is.null(group)) {
+    group <- rules$group[at]
+  }
   expand <- validation_token_expander(groups, key)
   unread <- list(ok = rep(FALSE, length(at)),
                  line = rep(NA_integer_, length(at)))
   # An empty rule decides nothing; left in, Google's matcher could name its
   # line for a URL no other rule matches, with the same decision.
   live <- which(!rules$empty)
-  plan <- slash_read_plan(expand, rules$group[at], rules$group[live], budget)
+  plan <- slash_read_plan(expand, group, rules$group[live], budget)
   spent <- plan$spent
-  rows <- expand(rules$group[at[seq_len(plan$n)]])
+  rows <- expand(group[seq_len(plan$n)])
   if (length(rows$owner) == 0L) {
     return(c(unread, list(spent = spent, read = plan$n)))
   }
@@ -5737,7 +5742,9 @@ reopen_near <- function(groups, wanted, key = groups$agents$uncut) {
 # left, on a copy of `groups` with every
 # shape-A Allow (`shape`) left out of every body (flagged empty), of the
 # line the first named deciding the control and the witness getting the
-# same decision: without such Allows, the witness would be blocked. An
+# same decision, under the Allow's crawler classes (not those of the line's
+# own group, which can name crawlers the Allow never covers): without such
+# Allows, the witness would be blocked. An
 # Allow of another shape that also opens the witness (`Allow: /c?`) fails
 # it. Returns list(done, ok, line) per pair: `done` whether its
 # readings finished, `ok` whether it passed both, `line` the line deciding
@@ -5765,7 +5772,8 @@ reopen_reads <- function(groups, shape, allows, pairs, written, budget) {
   removed$rules$empty[shape] <- TRUE
   second <- witness_pair_readings(
     removed, match(first$line[k], rules$line), pairs$control[k], witness[k],
-    "short", written, budget - first$spent, differ = FALSE
+    "short", written, budget - first$spent, differ = FALSE,
+    group = rules$group[at[k]]
   )
   read <- seq_along(k) <= second$checked
   out$done[k] <- read

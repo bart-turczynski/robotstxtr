@@ -172,8 +172,12 @@ ar_fixtures <- list(
                      today = c("empty_rule_value", ar_split))
 )
 
+ar_fill <- function(body, token = "Foo") {
+  gsub("%s", token, body, fixed = TRUE)
+}
+
 ar_body <- function(name, token = "Foo") {
-  gsub("%s", token, ar_fixtures[[name]]$body, fixed = TRUE)
+  ar_fill(ar_fixtures[[name]]$body, token)
 }
 
 test_that("ROBO-micbpqbc: today's codes on every candidate shape and skip", {
@@ -378,6 +382,26 @@ test_that("ROBO-micbpqbc: the removal read leaves out every shape-A Allow", {
   ))
   # An Allow of another shape opens the witness: no row.
   expect_false(ar_code %in% ar_codes(ar_body("non_a_opener")))
+  # The removal read reads the Allow's crawlers, not those of the deciding
+  # Disallow's group: Bar's own Allow of another shape opens the witness for
+  # Bar alone, whom Foo's Allow never covers.
+  extra <- paste0("User-agent: %s\nUser-agent: Bar\nDisallow: /my/\n\n",
+                  "User-agent: %s\nAllow: */x/\n\n",
+                  "User-agent: Bar\nAllow: /my/?\n")
+  d <- ar_diag(ar_fill(extra))
+  expect_identical(d$line[d$code == ar_code], 5L)
+  expect_identical(d$message[d$code == ar_code],
+                   ar_one(6L, "*/x/", "/my/", "/x/", 3L))
+  for (backend in names(ar_engines)) {
+    # A tie of pattern lengths, which the package's Yandex matcher gives
+    # the Disallow.
+    expect_identical(ar_decide(extra, c("/my/", "/my/?q=/x/"), backend),
+                     if (backend == "yandex") ar_closed else ar_opened,
+                     label = backend)
+    no_allow <- sub("Allow: */x/", "Allow: /zz", extra, fixed = TRUE)
+    expect_identical(ar_decide(no_allow, "/my/?q=/x/", backend), "disallow",
+                     label = backend)
+  }
   # Others are listed, five at most, then a count.
   d <- ar_diag(paste0("User-agent: Foo\nDisallow: /abcdefgh/\n",
                       "Allow: */a_long_name/\n",
@@ -687,22 +711,24 @@ test_that("ROBO-micbpqbc: Allows past the work budget get no row", {
     )),
     " The other 1 was skipped, and it may do the same."
   ))
-  # The removal read reads the decider's crawlers, here three classes, at
-  # 11: from 12 the pair list (6) and the first reading (5) fit their half,
-  # the removal read runs out, and the Allow is not checked.
+  # The removal read reads the Allow's crawlers, here one class, at 3 (a
+  # row, the class's one live rule, one body line), not the three classes
+  # of the deciding Disallow's group (11): from 12 the pair list (6) and
+  # the first reading (5) fit their half, and the removal read fits the
+  # rest.
   groups <- ar_groups(paste0("User-agent: Foo\nUser-agent: Bar\n",
                              "User-agent: Baz\nDisallow: /my/\n\n",
                              "User-agent: Foo\nAllow: */s/\n\n",
                              "User-agent: Bar\nDisallow: /zz?\n\n",
                              "User-agent: Baz\nDisallow: /zz?\n"))
-  for (budget in c(12, 15)) {
+  found <- allow_reopens_diagnostics(groups, budget = 11)
+  expect_identical(nrow(found), 0L)
+  expect_identical(attr(found, "stopped"), ar_stopped(1L, 0L, "*/s/"))
+  for (budget in c(12, 16)) {
     found <- allow_reopens_diagnostics(groups, budget = budget)
-    expect_identical(nrow(found), 0L, label = budget)
-    expect_identical(attr(found, "stopped"), ar_stopped(1L, 0L, "*/s/"))
+    expect_identical(found$line, 6L, label = budget)
+    expect_null(attr(found, "stopped"))
   }
-  found <- allow_reopens_diagnostics(groups, budget = 16)
-  expect_identical(found$line, 6L)
-  expect_null(attr(found, "stopped"))
   # A normal file gets no such row.
   for (name in names(ar_fixtures)) {
     expect_false("rule_check_stopped" %in% ar_codes(ar_body(name)),
