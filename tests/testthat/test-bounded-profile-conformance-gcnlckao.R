@@ -80,7 +80,7 @@ bp_unsupported <- list(
 # (the sitemapr trap), affixed and partial spellings, whitespace-bearing values,
 # and the wildcard, which is a group label but never a selector. A non-ASCII
 # look-alike (Cyrillic U+0445 and U+043E) and digits only are here too, the
-# rows the google and rfc9309 backends refuse as outside the RFC 9309 identifier rule
+# rows the google and rfc9309 backends refuse as not RFC 9309 identifiers
 # before any fetch (ROBO-mtmkpwuf). These two backends keep their own
 # refusal, which the adapter makes after the fetch: a known asymmetry the
 # ticket keeps.

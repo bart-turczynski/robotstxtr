@@ -2271,7 +2271,7 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #'   never sent as a header. A character vector of length one or `length(url)`.
 #'   The Google backend accepts any valid Google robots product token and
 #'   yields Google semantics for it; on the `"google"` and `"rfc9309"`
-#'   backends a token outside the RFC 9309 identifier rule (ASCII letters, `_` and
+#'   backends a token that is not an RFC 9309 identifier (ASCII letters, `_` and
 #'   `-`) leaves its row refused as input (see Details). Under the
 #'   `"google"` ruleset, a token in
 #'   `matcher_capability$google$crawler_tokens` also selects its group as

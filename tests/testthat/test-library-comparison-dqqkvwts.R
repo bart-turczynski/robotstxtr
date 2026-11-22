@@ -20,7 +20,7 @@
 # the reference does. run.R's expected-split list names the catalog's
 # grp-googlebot-image-fallback rows, where the v1 path's crawler-token layer
 # parts from the reference by design (ROBO-fbbmvbob), and the two rows whose
-# token v1 refuses as outside the RFC 9309 identifier rule, Bot2 and `*`, recorded
+# token v1 refuses as not an RFC 9309 identifier, Bot2 and `*`, recorded
 # as "NA" (ROBO-mtmkpwuf).
 #
 # The bodies are the committed fixtures: the class fixtures in
@@ -159,7 +159,7 @@ test_that("every catalog row: the recorded answers (ROBO-tanodypz)", {
                  robotstxtr = c("0", "1", "NA"), c("0", "1", "ERR"))
     expect_true(all(rec[[col]] %in% ok), info = col)
   }
-  # The one row v1 refuses: the token Bot2, outside the RFC 9309 identifier rule.
+  # The one row v1 refuses: the token Bot2, not an RFC 9309 identifier.
   expect_identical(rec$token[rec$robotstxtr == "NA"], "Bot2")
   # The reference's answer is the catalog's Google decision.
   expect_identical(rec$google_ref,

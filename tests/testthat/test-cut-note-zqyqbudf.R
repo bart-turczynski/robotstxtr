@@ -255,7 +255,7 @@ test_that("on Google a cut value is read as its token", {
   # The premise: a crawler going by the full value `Peer39_Crawler` gets the
   # `*` rule on Google's matcher; one whose token is `Peer` gets the named
   # groups. The v1 facade refuses the full value as input, since it is
-  # outside the RFC 9309 identifier rule (ROBO-mtmkpwuf); the legacy path shows the
+  # not an RFC 9309 identifier (ROBO-mtmkpwuf); the legacy path shows the
   # matcher's reading.
   decide <- function(token) {
     robots_evaluate_text_v1(
