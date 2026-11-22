@@ -4579,13 +4579,18 @@ rule_written_value <- function(line_bytes, first_line, missing_colon) {
   bytes[keep[[1L]]:keep[[length(keep)]]]
 }
 
-# A `%name%` template placeholder, read on the value as written.
-validation_placeholder_pattern <- "%[A-Za-z_][A-Za-z0-9_]*%"
+# A `%name%` template placeholder, read on the value as written. A closing
+# `%` followed by two hex digits starts an escape (`/%x%41`), so it closes
+# no placeholder.
+validation_placeholder_pattern <- "%[A-Za-z_][A-Za-z0-9_]*%(?![0-9A-Fa-f]{2})"
 
-# The first `%name%` placeholder in `written` (raw bytes), or NULL.
+# The first `%name%` placeholder in `written` (raw bytes), or NULL. The name
+# cannot cross a `%`, so each try ends at the next `%` and the scan stays
+# linear.
 rule_written_placeholder <- function(written) {
   text <- rawToChar(written)
-  hit <- regexpr(validation_placeholder_pattern, text, useBytes = TRUE)
+  hit <- regexpr(validation_placeholder_pattern, text, perl = TRUE,
+                 useBytes = TRUE)
   if (hit < 0L) NULL else regmatches(text, hit)
 }
 

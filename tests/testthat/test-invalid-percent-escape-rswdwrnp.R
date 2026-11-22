@@ -273,6 +273,10 @@ test_that("ROBO-rswdwrnp: the placeholder wording", {
     ip_message(ip_rows("/%ab%zz")),
     ip_ph_upper("'%zz'", 1L, "%ab%", "%ab", "%AB%")
   )
+  # A closing `%` that starts a valid escape closes no placeholder.
+  expect_identical(ip_message(ip_rows("/%x%41")), ip_a("'%x%'"))
+  expect_identical(ip_message(ip_rows("/%x%41%y%")),
+                   ip_ph("'%x%', '%y%', '%'", 3L, "%y%"))
   # The (b) value with no placeholder keeps the (b) message.
   expect_identical(ip_message(ip_rows("/x?d=%")), ip_b("'%'"))
   # `[% name %]` is not detected here (ROBO-areyzfoy).
