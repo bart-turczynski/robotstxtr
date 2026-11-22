@@ -358,6 +358,15 @@ the crawler only because Google's matcher cuts two written User-agent
 values to one token, the message says the repeat is Google's only and
 names the values, and that a matcher comparing the whole value keeps
 those groups apart. \cr
+\code{rule_query_parameter_position} \tab info \tab
+An Allow or Disallow pattern names a query parameter right after its
+first \code{?} (\code{/items/*?sort=}), so it may miss URLs where that
+parameter follows another one (\code{/items/x?a=1&sort=}); for an
+Allow, the gap can leave such URLs restricted. The message shows one
+such URL. Not reported when the same crawlers also have the rule
+with that \code{?} written \code{*&}, or written \code{&} when a
+\code{*} stands right before that \code{?} (\code{/*?sort=}, not
+\code{/a*b?sort=}). \cr
 \code{missing_user_agent} \tab error \tab
 Allow or Disallow rules exist but no line names a non-empty
 User-agent. \cr
@@ -692,9 +701,48 @@ beside \code{User-agent: Foo} and \verb{User-agent: 1bot} does, a matcher that
 compares the whole value merges them too, and the row keeps the plain
 message.
 
+For \code{rule_query_parameter_position}, the scan reads the canonical value:
+led by \code{/} or \code{*}, not ending in \code{$}, with its first \verb{?} followed by a
+parameter name (letters, digits, \verb{_}, \code{.} and \code{-}) and \code{=}. The package's
+Google, Bing and Yandex matchers read \verb{?} as a literal byte and \code{*} as
+any run, so \verb{/items/*?sort=} matches \verb{/items/x?sort=a} and misses
+\verb{/items/x?a=1&sort=a}. Only the first \verb{?} counts: in \verb{/items?back=?sort=}
+the parameter is \code{back}, and a later \verb{?} does not stop the check
+(\verb{/p?q=?} is reported). Not reported: a \code{*} before the \code{=} (\verb{/*?*sort=}),
+a first \verb{?} with no parameter name and \code{=} after it (\verb{/p?}), and a
+\code{$}-anchored value. Also not reported: a value whose path before the
+first \verb{?} holds a \code{.} or \code{..} segment, written as is or as \verb{\%2E} in
+either case, wherever it sits, since URL normalization removes such a
+segment from a request. A rule is not reported when every crawler its
+group names also has a twin, a rule of the same type whose value is the
+same with that \verb{?} written \verb{*&} (\verb{/search?page=} beside \verb{/search*&page=}), or
+written \code{&} when a \code{*} stands right before that \verb{?} (\verb{/*?page=} beside
+\verb{/*&page=}). Without that \code{*}, the \code{&} rule needs \code{&} right after the
+text before it (\verb{/search&page=} misses \verb{/search?a=1&page=1} on all three
+matchers), so it is no twin and the row stays. Nor is a rule that gets
+\code{rule_cut_by_nul}: the NUL cuts it on Google's reading only, and the
+rule Bing and Yandex read still misses the URL. The message says only
+what the rule may miss, with its example, and suggests no rewrite.
+Groups merge here on the whole User-agent value, folded to ASCII lower
+case, so a twin only Google's cut merge supplies keeps the row, and \code{*}
+and named crawlers are kept apart. A group no crawler reads, as under an
+empty \verb{User-agent:} line, gets no row, as a rule before any User-agent
+line gets none. The example path writes each \code{*} as \code{x} and adds \verb{a=1&}
+after the \verb{?}, or \verb{b=2&} or \verb{c=3&} where the parameter is named \code{a} or
+the last byte before the \verb{?} other than \code{*} is \code{1}, so that an \code{&} rule
+with the same head cannot match the example either: the pattern matches
+the path without the addition and misses the example. The example is
+built from the canonical value, so an escape shows in upper case, and
+its parameter name, the text before the \verb{?} and the text after the \code{=}
+are each cut to their first 36 characters and "..." past 40, or one or
+two fewer where the cut would split a \verb{\%XX} escape. A
+lower-case-escape twin gets no row, and a body cut at \code{max_bytes} is not
+checked: a twin past the cut could silence the rule.
+
 On a document holding a NUL byte, \code{wildcard_rules_not_inherited},
-\code{disallow_tied_by_allow}, \code{duplicate_rule} and the AI-training codes
-follow Google's reading: the parser and Google's matcher end a line at its
+\code{disallow_tied_by_allow}, \code{duplicate_rule},
+\code{rule_query_parameter_position} and the AI-training codes follow Google's
+reading: the parser and Google's matcher end a line at its
 first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
 byte, so each such message says it is Google's reading, unless every NUL
 sits in a comment. \code{user_agent_cut} runs too; its message already names

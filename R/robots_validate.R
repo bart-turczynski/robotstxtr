@@ -349,6 +349,15 @@ validation_unsupported <- c(
 #'     values to one token, the message says the repeat is Google's only and
 #'     names the values, and that a matcher comparing the whole value keeps
 #'     those groups apart. \cr
+#'   \code{rule_query_parameter_position} \tab info \tab
+#'     An Allow or Disallow pattern names a query parameter right after its
+#'     first \code{?} (\code{/items/*?sort=}), so it may miss URLs where that
+#'     parameter follows another one (\code{/items/x?a=1&sort=}); for an
+#'     Allow, the gap can leave such URLs restricted. The message shows one
+#'     such URL. Not reported when the same crawlers also have the rule
+#'     with that \code{?} written \code{*&}, or written \code{&} when a
+#'     \code{*} stands right before that \code{?} (\code{/*?sort=}, not
+#'     \code{/a*b?sort=}). \cr
 #'   \code{missing_user_agent} \tab error \tab
 #'     Allow or Disallow rules exist but no line names a non-empty
 #'     User-agent. \cr
@@ -683,9 +692,48 @@ validation_unsupported <- c(
 #' compares the whole value merges them too, and the row keeps the plain
 #' message.
 #'
+#' For `rule_query_parameter_position`, the scan reads the canonical value:
+#' led by `/` or `*`, not ending in `$`, with its first `?` followed by a
+#' parameter name (letters, digits, `_`, `.` and `-`) and `=`. The package's
+#' Google, Bing and Yandex matchers read `?` as a literal byte and `*` as
+#' any run, so `/items/*?sort=` matches `/items/x?sort=a` and misses
+#' `/items/x?a=1&sort=a`. Only the first `?` counts: in `/items?back=?sort=`
+#' the parameter is `back`, and a later `?` does not stop the check
+#' (`/p?q=?` is reported). Not reported: a `*` before the `=` (`/*?*sort=`),
+#' a first `?` with no parameter name and `=` after it (`/p?`), and a
+#' `$`-anchored value. Also not reported: a value whose path before the
+#' first `?` holds a `.` or `..` segment, written as is or as `%2E` in
+#' either case, wherever it sits, since URL normalization removes such a
+#' segment from a request. A rule is not reported when every crawler its
+#' group names also has a twin, a rule of the same type whose value is the
+#' same with that `?` written `*&` (`/search?page=` beside `/search*&page=`), or
+#' written `&` when a `*` stands right before that `?` (`/*?page=` beside
+#' `/*&page=`). Without that `*`, the `&` rule needs `&` right after the
+#' text before it (`/search&page=` misses `/search?a=1&page=1` on all three
+#' matchers), so it is no twin and the row stays. Nor is a rule that gets
+#' `rule_cut_by_nul`: the NUL cuts it on Google's reading only, and the
+#' rule Bing and Yandex read still misses the URL. The message says only
+#' what the rule may miss, with its example, and suggests no rewrite.
+#' Groups merge here on the whole User-agent value, folded to ASCII lower
+#' case, so a twin only Google's cut merge supplies keeps the row, and `*`
+#' and named crawlers are kept apart. A group no crawler reads, as under an
+#' empty `User-agent:` line, gets no row, as a rule before any User-agent
+#' line gets none. The example path writes each `*` as `x` and adds `a=1&`
+#' after the `?`, or `b=2&` or `c=3&` where the parameter is named `a` or
+#' the last byte before the `?` other than `*` is `1`, so that an `&` rule
+#' with the same head cannot match the example either: the pattern matches
+#' the path without the addition and misses the example. The example is
+#' built from the canonical value, so an escape shows in upper case, and
+#' its parameter name, the text before the `?` and the text after the `=`
+#' are each cut to their first 36 characters and "..." past 40, or one or
+#' two fewer where the cut would split a `%XX` escape. A
+#' lower-case-escape twin gets no row, and a body cut at `max_bytes` is not
+#' checked: a twin past the cut could silence the rule.
+#'
 #' On a document holding a NUL byte, `wildcard_rules_not_inherited`,
-#' `disallow_tied_by_allow`, `duplicate_rule` and the AI-training codes
-#' follow Google's reading: the parser and Google's matcher end a line at its
+#' `disallow_tied_by_allow`, `duplicate_rule`,
+#' `rule_query_parameter_position` and the AI-training codes follow Google's
+#' reading: the parser and Google's matcher end a line at its
 #' first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
 #' byte, so each such message says it is Google's reading, unless every NUL
 #' sits in a comment. `user_agent_cut` runs too; its message already names
@@ -1670,6 +1718,28 @@ validate_document_bytes <- function(bytes, source_id, source_type,
              USE.NAMES = FALSE),
       paste0(found$message, nul_reading)
     )
+  }
+  # A query-parameter rule that misses the parameter in a later position
+  # (ROBO-fuhcwaom). An `&` twin past a cut could silence it, so a cut body
+  # is skipped; a lower-case-escape twin is left out, as above.
+  # A twin cut by a NUL is Google's reading only: Bing and Yandex read
+  # another rule, which still misses the URL, so it silences nothing.
+  if (!body_truncated) {
+    nul_rules <- groups$rules$line[nul_counts[groups$rules$line] > 0L &
+                                     !groups$rules$empty]
+    nul_cut <- nul_rules[vapply(raw_lines[nul_rules], rule_cut_by_nul,
+                                logical(1L))]
+    found <- query_parameter_position_diagnostics(
+      groups, skip = which(!is.na(escape_twin)), nul_cut = nul_cut
+    )
+    if (nrow(found) > 0L) {
+      add_chunk(
+        found$line, "info", "rule_query_parameter_position", found$type,
+        vapply(raw_lines[found$line], render_validation_line, "",
+               USE.NAMES = FALSE),
+        paste0(found$message, nul_reading)
+      )
+    }
   }
 
   # A file with no Allow or Disallow line restricts nothing (RFC 9309
@@ -4076,6 +4146,207 @@ duplicate_rule_cut_group_names <- function(look, own, cap) {
     ),
     duplicate_rule_cut_apart(look$folded[firsts], look$engines)
   )
+}
+
+# A rule whose pattern names a query parameter right after its first `?`
+# (`/items/*?sort=`) matches the parameter only where a `?` stands right
+# before it: the matchers read `?` as a literal byte, so the rule may miss a
+# URL where the parameter follows another one (ROBO-fuhcwaom). A candidate
+# (query_parameter_candidates()) is silent when, for every crawler class its
+# group names, the merged rules hold a twin that covers the later position
+# (query_parameter_kept()). Groups merge on the whole User-agent
+# value (`agents$uncut`), so a twin only Google's cut merge supplies keeps
+# the row, and a group no crawler class reads gets none
+# (query_parameter_kept()). The message shows the example path
+# of query_parameter_paths(). Lines in `skip` (lower-case-escape twins,
+# ROBO-nvzzjubl) get no row, and lines in `nul_cut` (rule_cut_by_nul) are
+# no twin. Returns a data frame of `line`, `type` and `message`, in line
+# order.
+query_parameter_position_diagnostics <- function(groups, skip = integer(),
+                                                 nul_cut = integer()) {
+  rules <- groups$rules
+  at <- query_parameter_candidates(rules, skip)
+  # Most files hold no candidate: skip building the uncut expander.
+  if (length(at) > 0L) {
+    at <- at[query_parameter_kept(groups, at, nul_cut)]
+  }
+  paths <- query_parameter_paths(rules$value[at])
+  data.frame(
+    line = rules$line[at], type = rules$type[at],
+    message = query_parameter_message(rules$type[at], paths),
+    stringsAsFactors = FALSE
+  )
+}
+
+# Indexes of `rules` whose canonical value, led by `/` or `*` and not ending
+# in `$`, has its first `?` followed by a parameter name ([A-Za-z0-9_.-]+)
+# and `=`. So a `*` between that `?` and the `=` (`/*?*sort=`), a first `?`
+# with no `name=` after it (`/p?`, `/items*?`) and a later `?`
+# (`/items?back=?sort=`) do not make a candidate; a `?` after the `=` does
+# not matter (`/p?q=?` and `/p?q=*?` are candidates). A value whose path
+# before the first `?` holds a `.` or `..` segment, literal or escaped as
+# `%2E` (written in either case), wherever it sits (after a `*` too), is
+# skipped: URL normalization removes such a segment from the control path
+# before matching (rule_dot_segment, ROBO-rnjfbhvn, reports the literal
+# ones outside a `*`). Single passes with no nested quantifier keep the
+# cost linear (ROBO-dbvmxcfw).
+query_parameter_candidates <- function(rules, skip) {
+  value <- rules$value
+  hit <- which(
+    substr(value, 1L, 1L) %in% c("/", "*") & !endsWith(value, "$") &
+      grepl("^[^?]*[?][A-Za-z0-9_.-]+=", value, useBytes = TRUE) &
+      !rules$line %in% skip
+  )
+  # The path before the first `?`. The canonical value upper-cases every
+  # escape, so a written `%2e` reads `%2E` here and one case is enough.
+  path <- substr(value[hit], 1L,
+                 regexpr("?", value[hit], fixed = TRUE, useBytes = TRUE) - 1L)
+  dot <- grepl("/([.]|%2E){1,2}(/|$)", path, useBytes = TRUE)
+  hit[!dot]
+}
+
+# For each candidate in `at` (indexes of `groups$rules`), whether it keeps
+# its row: some crawler class its group names (whole-value merge,
+# validation_token_expander() on `agents$uncut`) lacks a twin, a rule of
+# the same type that covers the later position. A twin is the candidate's
+# canonical value with its first `?` written `*&` (`/search*&page=`), or
+# written `&` when a `*` already stands right before that `?` (`/*&sort=`
+# for `/*?sort=`). Without that `*`, the `&` form needs `&` right after the
+# text before it (`/search&page=` misses `/search?a=1&page=1`), so it is
+# no twin, and nor is a line in `nul_cut`: a NUL cut its value on Google's
+# reading only, so Bing and Yandex read another rule. A group naming no
+# class has no crawler that reads the rule, so it gets no row.
+query_parameter_kept <- function(groups, at, nul_cut = integer()) {
+  rules <- groups$rules
+  value <- rules$value[at]
+  expand <- validation_token_expander(groups, groups$agents$uncut)
+  held <- expand(rules$group)
+  usable <- !rules$line[held$owner] %in% nul_cut
+  owner <- held$owner[usable]
+  have <- paste(held$class[usable], rules$type[owner], rules$value[owner],
+                sep = "\n")
+  q <- regexpr("?", value, fixed = TRUE, useBytes = TRUE)
+  star <- substr(value, q - 1L, q - 1L) == "*"
+  amp <- sub("?", "&", value, fixed = TRUE, useBytes = TRUE)
+  star_amp <- sub("?", "*&", value, fixed = TRUE, useBytes = TRUE)
+  mine <- expand(rules$group[at])
+  key <- function(twin) {
+    paste(mine$class, rules$type[at][mine$owner], twin[mine$owner],
+          sep = "\n")
+  }
+  has <- (star[mine$owner] & key(amp) %in% have) | key(star_amp) %in% have
+  seq_along(at) %in% mine$owner[!has]
+}
+
+# The witness paths of each candidate value: `control`, the value with each
+# `*` written `x`, and `example`, the same with a filler parameter and `&`
+# (query_parameter_filler(), `a=1&` mostly) after the first `?`, each led
+# by `/`; `name` is the parameter. Both paths come from the canonical
+# value, whose escapes are upper case. The control matches the pattern on
+# Google's and Bing's matchers, which upper-case a pattern's escapes too:
+# each `*` matches its `x` and every other byte itself, and no final `$`
+# anchors it. The package's Yandex matcher compares the pattern as written,
+# so there a rule with a lower-case escape (`/p?q=%2b`) matches neither
+# path; the row stays, since the position gap holds for the escape as
+# written as well. The example misses on every matcher:
+# the pattern's first `?` cannot sit on the example's first `?`, which is
+# followed by the filler, not by `name=`, nor on a later one, since the
+# pattern's `?` bytes after it would need as many again after that one and
+# the example has fewer left. So no matcher call is needed: Google's
+# matcher costs the path's length times the pattern's on a value full of
+# `*`, and the check must stay linear (ROBO-dbvmxcfw). The tests read both
+# paths on every backend.
+query_parameter_paths <- function(values) {
+  if (length(values) == 0L) {
+    return(list(name = character(), filler = character(), head = character(),
+                tail = character(), control = character(),
+                example = character()))
+  }
+  # A candidate's first `?` starts the leftmost `?name=` run.
+  run <- regexpr("[?][A-Za-z0-9_.-]+=", values, useBytes = TRUE)
+  start <- as.integer(run)
+  end <- start + attr(run, "match.length") - 1L
+  name <- substr(values, start + 1L, end - 1L)
+  # `head` before the `?`, `tail` after the `=`.
+  head <- substr(values, 1L, start - 1L)
+  tail <- substr(values, end + 1L, nchar(values, "bytes"))
+  filler <- query_parameter_filler(name, head)
+  example <- paste0(head, "?", filler, "&", name, "=", tail)
+  list(name = name, filler = filler, head = head, tail = tail,
+       control = query_parameter_lead(values),
+       example = query_parameter_lead(example))
+}
+
+# The parameter the example puts first: `a=1`, else `b=2`, else `c=3`, the
+# first whose name differs from the rule's parameter (so the example's
+# first `?` is not followed by `name=`) and whose last byte differs from
+# the last byte of `head` that is not `*`. An `&` rule with the same head
+# (`/*1&q=` beside `/*1?q=`) then cannot match the example by ending its
+# head on the filler's value right before the `&` (`/x1?a=1&q=`). Two
+# conditions rule out two choices at most, so one of three always fits.
+query_parameter_filler <- function(name, head) {
+  literal <- sub("[*]+$", "", head, useBytes = TRUE)
+  n <- nchar(literal, "bytes")
+  last <- substr(literal, n, n)
+  pick <- rep(3L, length(name))
+  pick[name != "b" & last != "2"] <- 2L
+  pick[name != "a" & last != "1"] <- 1L
+  c("a=1", "b=2", "c=3")[pick]
+}
+
+# A pattern as a path: each `*` written `x`, led by `/`.
+query_parameter_lead <- function(x) {
+  x <- gsub("*", "x", x, fixed = TRUE, useBytes = TRUE)
+  ifelse(startsWith(x, "/"), x, paste0("/", x))
+}
+
+# The row's text: the `?name=` run and the example path (`paths`, from
+# query_parameter_paths()), rendered ASCII-safe as `raw_text` is. It says
+# what the rule misses and suggests no rewrite: each usual rewrite changes
+# what the rule matches. The name, the text before the `?` and the text
+# after the `=` are each elided past `cap` bytes, as ai_training_name()
+# elides an agent name, so the message stays bounded however long the
+# value is; the `?a=1&name=` run always shows.
+query_parameter_message <- function(type, paths, cap = 40L) {
+  shown <- function(x) query_parameter_render(query_parameter_cap(x, cap))
+  name <- ai_training_name(paths$name, cap)
+  example <- paste0(
+    shown(query_parameter_lead(paths$head)), "?", paths$filler, "&", name,
+    "=", shown(gsub("*", "x", paths$tail, fixed = TRUE, useBytes = TRUE))
+  )
+  effect <- ifelse(
+    type == "allow",
+    paste0("this Allow may not apply to URLs where '%s' follows another ",
+           "parameter, such as %s, and the gap can leave them restricted."),
+    paste0("this rule may miss URLs where '%s' follows another parameter, ",
+           "such as %s.")
+  )
+  sprintf(paste0("Pattern holds '?%s=', which matches '%s' only where a '?' ",
+                 "stands right before it, so ", effect),
+          name, name, name, example)
+}
+
+# ai_training_name()'s elision (the first `cap - 4` bytes and "..." past
+# `cap`), backed off one or two bytes where the cut would split a `%XX`
+# escape, so an escape shows whole or not at all.
+query_parameter_cap <- function(x, cap) {
+  k <- cap - 4L
+  keep <- rep(k, length(x))
+  keep[substr(x, k - 1L, k - 1L) == "%"] <- k - 2L
+  keep[substr(x, k, k) == "%"] <- k - 1L
+  long <- nchar(x, "bytes") > cap
+  x[long] <- paste0(substr(x[long], 1L, keep[long]), "...")
+  x
+}
+
+# Values as `raw_text` renders a line: printable ASCII as is, other bytes as
+# escapes.
+query_parameter_render <- function(x) {
+  odd <- grepl("[^ -~]", x, useBytes = TRUE)
+  x[odd] <- vapply(x[odd], function(v) {
+    render_validation_line(charToRaw(v))
+  }, "", USE.NAMES = FALSE)
+  x
 }
 
 wildcard_inheritance_message <- function(tokens, one_group, missing,

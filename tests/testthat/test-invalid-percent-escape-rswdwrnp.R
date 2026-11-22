@@ -113,10 +113,12 @@ ip_stray <- list(
     ip_new, ip_ph("'%su', '%'", "%subscriber_hash%")
   ),
   "/x?d=%date%" = list(
-    c(ip_new, "rule_lowercase_escape"),
+    c(ip_new, "rule_lowercase_escape", "rule_query_parameter_position"),
     ip_ph_upper("'%'", "%date%", "%da", "%DAte%")
   ),
-  "/x?d=%DAte%" = list(ip_new, ip_ph("'%'", "%DAte%")),
+  "/x?d=%DAte%" = list(
+    c(ip_new, "rule_query_parameter_position"), ip_ph("'%'", "%DAte%")
+  ),
   "/a%4g" = list(ip_new, ip_a("'%4g'")),
   # test-escaped-unreserved-gaczsrgj.R's eu_clean held these two, which now
   # get only this code: no rule_escaped_unreserved.
@@ -167,7 +169,7 @@ ip_valid <- list(
   "/a%2f" = "rule_lowercase_escape",
   "/a/%2e/b" = c("rule_escaped_unreserved", "rule_lowercase_escape"),
   "/a/%2E%2E/b" = "rule_escaped_unreserved",
-  "/p?u={{name}}" = character(0),
+  "/p?u={{name}}" = "rule_query_parameter_position",
   "/*|NAME|*" = character(0)
 )
 

@@ -135,6 +135,7 @@ Google's own C++ reads it, then handed to the same binding (ROBO-pvqrfvol).
 | Status diagnostics on fetch | ROBO-ybzbxfml: `test-validate-status-ybzbxfml.R` |
 | Allow ties a Disallow | ROBO-fdhmlvwm: `test-allow-tie-disallow-fdhmlvwm.R` |
 | Duplicate rules | ROBO-xexjgecr: `test-duplicate-rule-xexjgecr.R` |
+| Query-parameter rules: a parameter named right after the first `?` (`rule_query_parameter_position`; silent when every crawler has a twin, the value with that `?` written `*&`, or written `&` after a `*` that stands right before it; not past a `*`, with no `name=` after the `?`, with a final `$`, a dot segment before the `?` or on a cut body) | ROBO-fuhcwaom: `test-query-parameter-position-fuhcwaom.R` |
 | Lines over the 16,663-byte buffer (validator) | `test-robots_validate-htvtajbr.R` ("overlong parser lines are errors") |
 | Size: the 512,000-byte Google window, a body cut at `max_bytes`, the Yandex 500 KB rule | ROBO-ldpahknv: `test-truncated-robots-ldpahknv.R`; `test-engine-contract-v1-unowhvjx.R` (window tests); ROBO-ptibdnvy: `test-google-cut-prefix-ptibdnvy.R`; ROBO-arrtietl: `test-yandex-cut-file-arrtietl.R` |
 | ASCII-only case folding of tokens under any locale | `test-ascii-case-folding-tldlaxgq.R` |
