@@ -4678,20 +4678,21 @@ rule_full_url_escape <- function(bytes) {
   paste(chars, collapse = "")
 }
 
-# What the suggested pattern matches: `/` matches every URL; a pattern with
-# no `*` and no final `$` matches as a prefix.
+# What the suggested pattern matches: a pattern with no `*` and no final `$`
+# matches as a prefix, and `/` matches every URL. The package's Google, Bing
+# and Yandex matchers read `/$` as the root path with no query.
 rule_full_url_scope <- function(suggestion) {
-  if (identical(suggestion, "/")) {
-    return(paste0(" The pattern '/' matches every URL, so it applies to ",
-                  "the whole site."))
-  }
   if (grepl("*", suggestion, fixed = TRUE) || endsWith(suggestion, "$")) {
     return(NULL)
   }
   paste0(
     " Without wildcards or an end anchor, this pattern matches any path ",
     "and query beginning with it. A trailing '$' requires matching through ",
-    "the end of the path and query."
+    "the end of the path and query.",
+    if (identical(suggestion, "/")) {
+      paste0(" The pattern '/' matches every URL, so it applies to the ",
+             "whole site; '/$' limits it to the home page, without a query.")
+    }
   )
 }
 

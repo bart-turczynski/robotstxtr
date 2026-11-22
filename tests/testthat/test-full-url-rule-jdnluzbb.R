@@ -37,7 +37,9 @@ fu_prefix <- paste0(
 )
 
 fu_root <- paste0(
-  " The pattern '/' matches every URL, so it applies to the whole site."
+  fu_prefix,
+  " The pattern '/' matches every URL, so it applies to the whole site; ",
+  "'/$' limits it to the home page, without a query."
 )
 
 fu_dots <- " Dot segments removed (RFC 3986 section 5.2.4)."
@@ -348,6 +350,13 @@ test_that("ROBO-jdnluzbb: the scope sentences hold on every engine", {
       fu_decision("/", c("https://e.example/", "https://e.example/z?q=1"),
                   backend),
       c("disallow", "disallow"), label = backend
+    )
+    # `/$` is the home page alone: no other path, no query.
+    home <- paste0("https://e.example",
+                   c("/", "", "/?x=1", "/a", "/index.html"))
+    expect_identical(
+      fu_decision("/$", home, backend),
+      c("disallow", "disallow", "allow", "allow", "allow"), label = backend
     )
   }
 })
