@@ -975,6 +975,108 @@ test_that("ROBO-micbpqbc: a budget cut in Google's reread gets the row", {
   expect_identical(nrow(allow_reopens_diagnostics(groups)), 1L)
 })
 
+# `n` Disallows and `n` Allows under `Foo extra`, which Google's merge
+# reads with the Foo group: both merges read every pair.
+ar_both <- function(n) {
+  k <- seq_len(n)
+  paste0("User-agent: Foo extra\n",
+         paste0("Disallow: /d", k, "/\n", collapse = ""),
+         paste0("Allow: */a", k, "xxxxxxxx/\n", collapse = ""),
+         "\nUser-agent: Foo\nDisallow: /q\n")
+}
+
+test_that("ROBO-micbpqbc: both merges read under their share", {
+  # The whole-value reading gets its candidates' share of the budget, so
+  # Google's reread has the rest; with the whole budget, it would leave
+  # Google's none and no Allow would be checked.
+  expect_gt(ar_checked(ar_both(300L)), 150L)
+  # Google's merge cuts `360Spider` to no token: the group names no
+  # crawler there, so its reading holds no class and the pair fails.
+  expect_false(ar_code %in%
+                 ar_codes("User-agent: 360Spider\nDisallow: /my/\nAllow: */s/\n"))
+  # Google's reread reads each Disallow under its Allow's crawlers: under
+  # those of the `zzqbot` group, whose `/zz?` would fail the pair, `/my/`
+  # would not decide the witness without the Allow.
+  d <- ar_diag(paste0(
+    "User-agent: zzqbot extra\nUser-agent: otherbot\nDisallow: /my/\n\n",
+    "User-agent: zzqbot extra\nAllow: */x/\n\n",
+    "User-agent: otherbot\nAllow: /my/?\n\n",
+    "User-agent: zzqbot\nDisallow: /zz?\n"
+  ))
+  expect_identical(d$line[d$code == ar_code], 5L)
+  # Google's reread must not open the witness another way: `/my/?` does
+  # once the shape-A Allows are left out, on Google's merge only.
+  expect_false(ar_code %in% ar_codes(paste0(
+    "User-agent: Foo extra\nDisallow: /my/\nAllow: */sss/\n\n",
+    "User-agent: Foo\nAllow: /my/?\n"
+  )))
+})
+
+test_that("ROBO-micbpqbc: the shared reading returns only what both read", {
+  groups <- ar_groups(ar_both(20L))
+  at <- reopen_shape(groups$rules)
+  short <- sprintf("/d%d/", seq_along(at))
+  long <- paste0(short, "?q=", reopen_literal(groups$rules$value[at]))
+  read <- function(budget, key = NULL) {
+    if (is.null(key)) {
+      return(witness_pair_readings(groups, at, short, long, "long",
+                                   budget = budget, share = TRUE))
+    }
+    witness_pair_reading(groups, at, groups$agents[[key]], short, long,
+                         "long", budget = budget)
+  }
+  # A budget the whole-value reading's share cuts: Google's reread reads
+  # only the candidates it read, and spends what they cost.
+  both <- read(200)
+  whole <- read(100, "uncut")
+  expect_gt(whole$read, 0L)
+  expect_lt(whole$read, length(at))
+  expect_identical(both$checked, whole$read)
+  k <- seq_len(whole$read)
+  google <- witness_pair_reading(groups, at[k], groups$agents$key, short[k],
+                                 long[k], "long", budget = 200 - whole$spent)
+  expect_identical(both$spent, whole$spent + google$spent)
+  # Where the merges name other lines deciding the control, the line is
+  # NA: `/my/*` decides it on Google's merge only.
+  groups <- ar_groups(paste0(
+    "User-agent: Foo extra\nDisallow: /my/\nAllow: */sss/\n\n",
+    "User-agent: Foo\nDisallow: /my/*\n"
+  ))
+  at <- reopen_shape(groups$rules)
+  one <- witness_pair_reading(groups, at, groups$agents$uncut, "/my/",
+                              "/my/?q=/sss/", "long")
+  expect_identical(one$line, 2L)
+  both <- witness_pair_readings(groups, at, "/my/", "/my/?q=/sss/", "long",
+                                share = TRUE)
+  expect_true(both$ok)
+  expect_identical(both$line, NA_integer_)
+})
+
+test_that("ROBO-micbpqbc: the rounds go on while they gather, and no further", {
+  # Gathering the Allow's list (a group and 200 Disallows) leaves the first
+  # round too little to read its pair. A round that gathers a list moves
+  # on: the next one, the list held, reads the pair.
+  body <- paste0("User-agent: Foo\n",
+                 paste0("Disallow: /d", 1:200, "/\n", collapse = ""),
+                 "Allow: */sxxxxxxxx/\n")
+  for (budget in c(650, 700, 750, 800)) {
+    found <- allow_reopens_diagnostics(ar_groups(body), budget = budget)
+    expect_identical(found$line, 1L, label = budget)
+    expect_null(attr(found, "stopped"), label = budget)
+  }
+  # 100 Allows, a tiny budget: the takes stop at the first that does not
+  # fit, rather than passing every Allow's entries.
+  calls <- 0L
+  take <- reopen_take
+  local_mocked_bindings(reopen_take = function(...) {
+    calls <<- calls + 1L
+    take(...)
+  })
+  found <- allow_reopens_diagnostics(ar_groups(ar_square(100L)), budget = 50)
+  expect_identical(attr(found, "stopped"), ar_stopped(100L, 0L, "*/a1xxxxxxxx/"))
+  expect_lt(calls, 10L)
+})
+
 # The best of five runs of `small` and of `large`, taken in turn, so a
 # loaded machine slows both alike and cannot fail the ratio
 # (test-cut-note-zqyqbudf.R). A floor of 0.1s keeps a fast small run from
