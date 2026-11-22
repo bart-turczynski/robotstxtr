@@ -411,7 +411,7 @@ test_that("ROBO-micbpqbc: rows group by crawler set, five Allows listed", {
     ar_item(i + 2L, paste0("*", v), "/my/", v, 2L)
   }, "")
   expect_identical(d$message[d$code == ar_code], ar_list(paste0(
-    paste(listed[1:4], collapse = ", "), ", ", listed[[5L]], " and 2 more"
+    toString(listed[1:4]), ", ", listed[[5L]], " and 2 more"
   )))
   # Merged repeated groups give one row.
   d <- ar_diag(ar_body("repeated"))
@@ -651,7 +651,9 @@ test_that("ROBO-micbpqbc: Allows past the work budget get no row", {
     " It was skipped, and it may do the same."
   ))
   # Allows are checked in line order: the second runs out.
-  groups <- ar_groups("User-agent: Foo\nDisallow: /my/\nAllow: */s/\nAllow: */t/\n")
+  groups <- ar_groups(
+    "User-agent: Foo\nDisallow: /my/\nAllow: */s/\nAllow: */t/\n"
+  )
   found <- allow_reopens_diagnostics(groups, budget = 12)
   expect_identical(found$message, ar_one(
     3L, "*/s/", "/my/", "/s/", 2L,

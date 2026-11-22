@@ -386,9 +386,20 @@ validation_unsupported <- c(
 #'     line, listing five rules at most, then a count. Past a fixed amount
 #'     of work, as for \code{rule_slash_split}, candidates get no row and
 #'     \code{rule_check_stopped} says so. \cr
+#'   \code{allow_reopens_through_query} \tab info \tab
+#'     An Allow that opens with \code{*} or \code{/*} and then names a path
+#'     (\code{*/x/}) also matches inside a query, so it allows
+#'     \code{/c?q=/x/} while a Disallow blocks \code{/c}. Reported only when
+#'     the Allow decides the query URL while the path stays blocked, and
+#'     with every such Allow left out the query URL would be blocked too,
+#'     under every rule the crawlers have. One row per group of crawlers, on
+#'     its first User-agent line, listing five Allows at most, then a count.
+#'     Past a fixed amount of work, as for \code{rule_slash_split}, Allows
+#'     get no row and \code{rule_check_stopped} says so. \cr
 #'   \code{rule_check_stopped} \tab info \tab
 #'     The file is too large for \code{rule_slash_pair},
-#'     \code{rule_slash_split} or \code{rule_end_anchor_query} to check
+#'     \code{rule_slash_split}, \code{rule_end_anchor_query} or
+#'     \code{allow_reopens_through_query} to check
 #'     every candidate quickly, so the check
 #'     read only the first ones, in line order. The message gives the counts
 #'     found, checked and skipped and names the earliest skipped rule; the
@@ -821,10 +832,35 @@ validation_unsupported <- c(
 #' as the slash checks do, and a `User-agent: __usage_ai-training` group
 #' gets no row.
 #'
+#' `allow_reopens_through_query` reads an Allow whose pattern is led by `*`
+#' or `/*` and whose rest after that run of `*` is a path: a `/` and at
+#' least one more byte (`*/x/`, `/*/x/`, `/**/x$`, `*/x/$`), so not `/*/`
+#' alone, `/*.css` or `*?next=`. It pairs the Allow with each non-empty
+#' Disallow the same crawlers have that is led by `/` or `*` and holds no
+#' `?` and no final `$`. The path the Disallow blocks is its value with each
+#' `*` written `x`, and the query URL is that path, `?q=` and the path the
+#' Allow names, its inner `*` written `x`. A value with a dot segment, a `%`
+#' that starts no escape or a byte no URL carries is left out, as for
+#' `rule_end_anchor_query`. Google's matcher makes the decisions over every
+#' rule of the crawler's merged groups: the Allow must decide the query URL
+#' while the path stays disallowed, every crawler the group names agreeing
+#' on the line that blocks the path, on the whole-value merge and on
+#' Google's merge; read again with every Allow of this shape left out, that
+#' line must block the query URL too, so an Allow of another shape that
+#' opens it (`Allow: /c?`) silences the row. The row names that line, which
+#' may be another Disallow (`/c$`). Every pair is read, in line order,
+#' within a fixed amount of work; an Allow shorter than a Disallow cannot
+#' win over it. The package's Yandex matcher gives a tie of pattern lengths
+#' to the Disallow, where Google gives it to the Allow. An Allow such as
+#' `*/x?p=` can also get `rule_query_parameter_position`; both rows stand. A
+#' body cut at `max_bytes` is not checked, and a
+#' `User-agent: __usage_ai-training` group gets no row.
+#'
 #' On a document holding a NUL byte, `wildcard_rules_not_inherited`,
 #' `disallow_tied_by_allow`, `duplicate_rule`,
 #' `rule_query_parameter_position`, `rule_slash_pair`, `rule_slash_split`,
-#' `rule_end_anchor_query` and the AI-training codes follow Google's
+#' `rule_end_anchor_query`, `allow_reopens_through_query` and the
+#' AI-training codes follow Google's
 #' reading: the parser and Google's matcher end a line at its
 #' first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
 #' byte, so each such message says it is Google's reading, unless every NUL
@@ -4933,8 +4969,9 @@ witness_pair_readings <- function(groups, at, short, long, decides,
 # is the line that decides that path and the other path gets the other
 # decision, or, with `differ = FALSE`, the same decision. Returns
 # list(ok, line, spent, read): `ok`, per candidate, where every class the
-# group names (validation_token_expander() on `key`) is ok; `line`, where they are and also agree on the file line that decides
-# the other path (0 when no rule matches it), that line, NA otherwise;
+# group names (validation_token_expander() on `key`) is ok; `line`, where
+# they are and also agree on the file line that decides the other path
+# (0 when no rule matches it), that line, NA otherwise;
 # `spent` the work done, and `read` how many leading candidates were read
 # whole. Each row is read under a body of the class's rules that can match
 # `long` (slash_split_bodies()): a rule that matches `short` can match
@@ -5621,10 +5658,10 @@ reopen_controls <- function(rules) {
 # then counts what it costs that reading at least: its Allow's classes as
 # (candidate, class) rows, as many witness body lines for the Allow itself,
 # and one for the Disallow, and, when some User-agent value is cut, three
-# more for Google's merge (one row and the two lines). The list stops before the first Allow that
-# would take the count past `budget`, which the reading could not read
-# whole either, so it never grows with Allows times Disallows or crawler
-# classes.
+# more for Google's merge (one row and the two lines). The list stops
+# before the first Allow that would take the count past `budget`, which the
+# reading could not read whole either, so it never grows with Allows times
+# Disallows or crawler classes.
 reopen_pairs <- function(groups, allows, controls, budget, filter = TRUE) {
   d <- controls$at
   if (length(d) == 0L) {
@@ -5776,13 +5813,15 @@ reopen_others <- function(groups, shape, at) {
   by_group <- split(rules$line[shape], rules$group[shape])
   key <- near$key(rules$group[at])
   held <- list()
-  lapply(seq_along(at), function(i) {
+  out <- vector("list", length(at))
+  for (i in seq_along(at)) {
     if (is.null(held[[key[[i]]]])) {
       found <- by_group[as.character(near$groups(rules$group[at[[i]]]))]
-      held[[key[[i]]]] <<- sort(unlist(found, use.names = FALSE))
+      held[[key[[i]]]] <- sort(unlist(found, use.names = FALSE))
     }
-    setdiff(held[[key[[i]]]], rules$line[at[[i]]])
-  })
+    out[[i]] <- setdiff(held[[key[[i]]]], rules$line[at[[i]]])
+  }
+  out
 }
 
 # One row's text for the Allows `value` on lines `line`, each with its
