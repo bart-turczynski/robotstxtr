@@ -264,6 +264,23 @@ test_that("ROBO-jdnluzbb: a NUL cuts the URL, on Google's reading", {
   rows <- fu_rows(fu_body("https://e.example/a", as.raw(0x00), "b"))
   expect_identical(rows$code, c("nul_byte", "rule_cut_by_nul", fu_slash))
   expect_identical(fu_message(rows), fu_new("/a"))
+  # A NUL in the query keeps the path and the query before it.
+  rows <- fu_rows(fu_body("https://e.example/a?b", as.raw(0x00), "c"))
+  expect_identical(fu_message(rows), fu_new("/a?b"))
+})
+
+test_that("ROBO-jdnluzbb: a NUL before the path keeps today's message", {
+  # Cut inside the host, or right after it, no path the author wrote is
+  # left, so the value is not read as the site root.
+  for (value in list(fu_body("https://e.ex", as.raw(0x00), "ample/a"),
+                     fu_body("https://e.example", as.raw(0x00), "/a"))) {
+    rows <- fu_rows(value)
+    expect_identical(rows$code, c("nul_byte", "rule_cut_by_nul", fu_slash))
+    expect_identical(fu_message(rows), fu_today)
+  }
+  # With no NUL, a bare host is the root.
+  expect_identical(fu_message(fu_rows("https://e.example")),
+                   fu_new("/", scope = fu_root))
 })
 
 test_that("ROBO-jdnluzbb: the missing-colon form never reaches the check", {

@@ -1465,7 +1465,10 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       written <- rule_written_value(raw_lines[[line]], line == 1L,
                                     parsed$missing_colon[[i]])
       if (!parsed$line_too_long[[i]]) {
-        full_url <- rule_full_url_message(written, robots_url)
+        full_url <- rule_full_url_message(
+          written, robots_url,
+          nul_counts[[line]] > 0L && rule_cut_by_nul(raw_lines[[line]])
+        )
       }
     }
     for (found in directive_value_diagnostics(type, value)) {
@@ -4617,7 +4620,8 @@ rule_written_value <- function(line_bytes, first_line, missing_colon) {
 # `robots_url` is the robots.txt requested, NA for supplied text. The path
 # loses its dot segments, as an RFC 3986 client's request does; its case,
 # its escapes and the query stay as written.
-rule_full_url_message <- function(written, robots_url = NA_character_) {
+rule_full_url_message <- function(written, robots_url = NA_character_,
+                                  nul_cut = FALSE) {
   url <- rule_full_url_bytes(written)
   if (is.null(url)) {
     return(NULL)
@@ -4630,7 +4634,10 @@ rule_full_url_message <- function(written, robots_url = NA_character_) {
   origin <- destination_origin(rawToChar(c(
     split$scheme, charToRaw("//"), split$authority, charToRaw("/")
   )))
-  if (is.na(origin)) {
+  # A NUL that cut the value before its path began (`nul_cut`, Google's
+  # reading) leaves no path the author wrote, so the plain message stays.
+  if (is.na(origin) ||
+        (nul_cut && length(split$path) == 0L && length(split$query) == 0L)) {
     return(NULL)
   }
   path <- remove_dot_segments_v1(split$path)
