@@ -269,6 +269,9 @@ test_that("ROBO-rswdwrnp: a control byte after a `%` is written \\xNN", {
   ))$diagnostics
   expect_identical(x$code, c("rule_control_character", ip_new))
   expect_identical(ip_message(x), ip_a("'%\\x01b'"))
+  # A `'` would end the quoted item, so it is written \x27 too.
+  expect_identical(ip_message(ip_rows("/a%'b")), ip_a("'%\\x27b'"))
+  expect_identical(ip_message(ip_rows("/a%zz'")), ip_a("'%zz'"))
 })
 
 test_that("ROBO-rswdwrnp: distinct `%` are listed once, up to ten", {

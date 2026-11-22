@@ -219,7 +219,8 @@ validation_unsupported <- c(
 #'     says that Google ends the rule there while Bing and Yandex read the
 #'     NUL as a byte of the rule. One per rule line, naming up to ten
 #'     \code{\%} with the two bytes after each, quoted as written in the
-#'     file; a control or non-ASCII byte is shown by its hex code. \cr
+#'     file; a control or non-ASCII byte, or a \code{'}, is shown by its hex
+#'     code. \cr
 #'   \code{rule_lowercase_escape} \tab warning \tab
 #'     A pattern holds a lower-case percent-escape, such as \code{\%3c}.
 #'     Google upper-cases the escape in a pattern but not in the URL, so a URL
@@ -4637,7 +4638,8 @@ rule_placeholder_sentences <- function(name) {
 # rule_control_character_message() lists, quoted from the value as written
 # (`bytes`). Class (a) items come first, each class in value order, so the
 # `%` that sets the message is never hidden in "and N more". A byte below
-# 0x20, DEL or a non-ASCII byte is written \xNN, so the message stays ASCII.
+# 0x20, DEL or a non-ASCII byte is written \xNN, so the message stays ASCII,
+# and so is a `'`, which would end the quoted item.
 # `open` is TRUE for each stray `%` of class (b). A value holding a `%name%`
 # placeholder gets the class (a) lead and the placeholder sentences, whatever
 # its class. `nul_cut` is TRUE when a NUL cut the value (rule_cut_by_nul).
@@ -4654,7 +4656,8 @@ rule_invalid_percent_escape_message <- function(bytes, stray, open, nul_cut) {
   k <- length(first)
   items <- vapply(first[seq_len(min(k, cap))], function(p) {
     ctx <- as.integer(bytes[p:min(p + 2L, n)])
-    shown <- ifelse(ctx < 0x20L | ctx >= 0x7fL, sprintf("\\x%02X", ctx),
+    shown <- ifelse(ctx < 0x20L | ctx >= 0x7fL | ctx == 0x27L,
+                    sprintf("\\x%02X", ctx),
                     rawToChar(as.raw(ctx), multiple = TRUE))
     paste0("'", paste(shown, collapse = ""), "'")
   }, "")
