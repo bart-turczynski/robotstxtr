@@ -930,6 +930,22 @@ test_that("ROBO-micbpqbc: a cut value elsewhere leaves the budget whole", {
                    c(TRUE, TRUE, TRUE, FALSE))
 })
 
+test_that("ROBO-micbpqbc: a budget cut in Google's reread gets the row", {
+  # The whole-value merge reads `Foo extra` alone, cheaply; Google's reads
+  # it as Foo, with 500 more Disallows. Wherever Google's reread runs out,
+  # the Allow is not checked: no row, but the stop row says so.
+  groups <- ar_groups(paste0(
+    "User-agent: Foo extra\nDisallow: /my/\nAllow: */s/\n\n",
+    "User-agent: Foo\n", paste0("Disallow: /r", 1:500, "/\n", collapse = "")
+  ))
+  for (budget in seq(200, 1000, by = 50)) {
+    found <- allow_reopens_diagnostics(groups, budget = budget)
+    expect_true(nrow(found) > 0L || !is.null(attr(found, "stopped")),
+                label = budget)
+  }
+  expect_identical(nrow(allow_reopens_diagnostics(groups)), 1L)
+})
+
 # The best of five runs of `small` and of `large`, taken in turn, so a
 # loaded machine slows both alike and cannot fail the ratio
 # (test-cut-note-zqyqbudf.R). A floor of 0.1s keeps a fast small run from
