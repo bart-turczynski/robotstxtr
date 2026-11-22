@@ -201,6 +201,16 @@ validation_unsupported <- c(
 #'     A pattern percent-escapes an unreserved character, such as \code{\%7E}
 #'     for \code{~}. Google matches only the escape, never the character,
 #'     though RFC 9309 section 2.2.2 decodes it. One per rule line. \cr
+#'   \code{rule_invalid_percent_escape} \tab warning \tab
+#'     A pattern holds a \code{\%} that starts no two-hex-digit escape. The
+#'     package's Google, Bing and Yandex matchers compare it as written, and
+#'     a URL writes a literal \code{\%} as \code{\%25}, so the rule matches
+#'     only URLs that carry the raw \code{\%}; a value such as
+#'     \code{\%name\%} is named as an unfilled template placeholder. A
+#'     \code{\%}, or \code{\%} and one hex digit, at the pattern's end or
+#'     before a \code{*} matches any escape it begins, which may be meant,
+#'     and gets its own message. One per rule line, naming up to ten
+#'     \code{\%} with the two bytes after each. \cr
 #'   \code{rule_lowercase_escape} \tab warning \tab
 #'     A pattern holds a lower-case percent-escape, such as \code{\%3c}.
 #'     Google upper-cases the escape in a pattern but not in the URL, so a URL
@@ -4407,6 +4417,10 @@ rule_value_diagnostics <- function(value) {
   if (!is.null(dot_segment)) {
     found[[length(found) + 1L]] <- dot_segment
   }
+  percent <- rule_invalid_percent_escape_diagnostic(value)
+  if (!is.null(percent)) {
+    found[[length(found) + 1L]] <- percent
+  }
   found
 }
 
@@ -4512,6 +4526,93 @@ rule_dot_segment_diagnostic <- function(value) {
       "rule may never match."
     )
   )
+}
+
+# ROBO-rswdwrnp: a `%` that starts no two-hex-digit escape. The test is per
+# position, as rfc3986_invalid_classes_v1() (R/url-preprocessing-v1.R) reads
+# a URL's stray `%`, so the validator and the URL note agree. The canonical
+# value is checked: MaybeEscapePattern() copies a stray `%` and writes only
+# valid escapes. A stray `%` is class (b) when it, or it and one hex digit,
+# ends the value or stands before a `*`: the matchers then match any escape
+# it begins. Every other stray `%` is class (a), a final `$` included. One
+# byte pass and one placeholder regex keep the cost linear (ROBO-dbvmxcfw).
+# Returns a finding or NULL.
+rule_invalid_percent_escape_diagnostic <- function(value) {
+  bytes <- charToRaw(value)
+  n <- length(bytes)
+  hex <- charToRaw("0123456789ABCDEFabcdef")
+  is_hex <- function(at) at <= n & bytes[pmin(at, n)] %in% hex
+  pct <- which(bytes == as.raw(0x25))
+  stray <- pct[!(is_hex(pct + 1L) & is_hex(pct + 2L))]
+  if (length(stray) == 0L) {
+    return(NULL)
+  }
+  after <- stray + 1L + is_hex(stray + 1L)
+  open <- after > n | bytes[pmin(after, n)] == as.raw(0x2a)
+  list(
+    code = "rule_invalid_percent_escape",
+    message = rule_invalid_percent_escape_message(
+      value, bytes, stray, all(open)
+    )
+  )
+}
+
+# A `%name%` template placeholder, `%[A-Za-z_][A-Za-z0-9_]*%`, whose opening
+# `%` is stray: a name led by two hex digits, as in the canonical `%C3%A9`, is
+# an escape and no placeholder.
+validation_placeholder_pattern <- paste0(
+  "%([G-Zg-z_][A-Za-z0-9_]*|[A-Fa-f]([G-Zg-z_][A-Za-z0-9_]*)?)%"
+)
+
+# Each stray `%` with up to two bytes after it, distinct, in order, up to
+# ten, as rule_control_character_message() lists. A byte below 0x20 or DEL
+# is written \xNN. `open` is TRUE when every stray `%` is class (b).
+rule_invalid_percent_escape_message <- function(value, bytes, stray, open) {
+  n <- length(bytes)
+  at <- function(k) {
+    ifelse(stray + k <= n, as.integer(bytes[pmin(stray + k, n)]), 256L)
+  }
+  key <- at(1L) * 257L + at(2L)
+  first <- stray[!duplicated(key)]
+  cap <- 10L
+  k <- length(first)
+  items <- vapply(first[seq_len(min(k, cap))], function(p) {
+    ctx <- as.integer(bytes[p:min(p + 2L, n)])
+    shown <- ifelse(ctx < 0x20L | ctx == 0x7fL, sprintf("\\x%02X", ctx),
+                    rawToChar(as.raw(ctx), multiple = TRUE))
+    paste0("'", paste(shown, collapse = ""), "'")
+  }, "")
+  listed <- toString(items)
+  if (k > cap) {
+    listed <- sprintf("%s, and %d more", listed, k - cap)
+  }
+  if (open) {
+    return(paste0(
+      "Pattern holds ", listed, if (k == 1L) ", a '%'" else ", each a '%'",
+      " cut short by a '*' or by the pattern's end. The package's Google, ",
+      "Bing and Yandex matchers compare the pattern as written, so the rule ",
+      "matches any URL with a percent-escape that begins there, as a final ",
+      "'%' matches '%20' and '%25' alike. This may be meant; to match only a ",
+      "literal '%', write '%25'."
+    ))
+  }
+  message <- paste0(
+    "Pattern holds ", listed, if (k == 1L) ", a '%'" else ", each a '%'",
+    " that starts no two-hex-digit escape. The package's Google, Bing and ",
+    "Yandex matchers compare it as a literal '%', so this rule matches only ",
+    "URLs that carry the raw '%', which correctly encoded URLs never do. ",
+    "Write '%25' for a literal '%'."
+  )
+  placeholder <- regmatches(
+    value, regexpr(validation_placeholder_pattern, value, useBytes = TRUE)
+  )
+  if (length(placeholder) == 1L) {
+    message <- paste0(
+      message, " '", placeholder, "' looks like an unfilled template ",
+      "placeholder."
+    )
+  }
+  message
 }
 
 # The parser keeps 16,663 bytes of a line: its read buffer holds kMaxLineLen - 1

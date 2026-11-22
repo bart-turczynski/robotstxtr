@@ -1,12 +1,24 @@
 # ROBO-rswdwrnp: an Allow or Disallow pattern with a `%` that starts no
-# two-hex-digit escape. These pins record today's codes for every shape the
-# new check reads, and the package's matchers on each shape.
+# two-hex-digit escape is rule_invalid_percent_escape, one row per rule line.
+# A stray `%` is class (a), never part of an escape, unless it, or it and one
+# hex digit, ends the pattern or stands before a `*`: that is class (b), and
+# matches any escape it begins. Any (a) gives the (a) message; all (b) give
+# the (b) message. The message lists up to ten distinct `%` with the two
+# bytes after each, and an (a) message names a `%name%` placeholder.
 
-# The validator's codes for one rule line, after a User-agent line.
-ip_codes <- function(value, type = "Disallow") {
+# The validator's rows for one rule line, after a User-agent line.
+ip_rows <- function(value, type = "Disallow") {
   robots_validate_text(
     paste0("User-agent: *\n", type, ": ", value, "\n")
-  )$diagnostics$code
+  )$diagnostics
+}
+
+ip_codes <- function(value, type = "Disallow") {
+  ip_rows(value, type)$code
+}
+
+ip_message <- function(x) {
+  x$message[x$code == "rule_invalid_percent_escape"]
 }
 
 # A body from pieces: a string is text, a raw vector is bytes.
@@ -15,29 +27,71 @@ ip_body <- function(...) {
   unlist(lapply(parts, function(p) if (is.raw(p)) p else charToRaw(p)))
 }
 
-# Shapes with a stray `%`, each with the codes it gets today.
-ip_stray_now <- list(
-  "/*hashid=%subscriber_hash%" = character(0),
-  "/a%4g" = character(0),
-  "/a%$" = character(0),
-  "/a%4$" = character(0),
-  "/%%25" = character(0),
-  "/%2%2e" = c("rule_escaped_unreserved", "rule_lowercase_escape"),
-  "/a/./%zz" = "rule_dot_segment",
-  "/[% name %]" = "rule_inner_whitespace",
-  "/a%" = character(0),
-  "/a%4" = character(0),
-  "/a%*" = character(0),
-  "/a%4*" = character(0),
-  "*%*" = character(0)
+ip_new <- "rule_invalid_percent_escape"
+
+ip_a <- function(listed, n = 1L) {
+  paste0(
+    "Pattern holds ", listed, if (n == 1L) ", a '%'" else ", each a '%'",
+    " that starts no two-hex-digit escape. The package's Google, Bing and ",
+    "Yandex matchers compare it as a literal '%', so this rule matches only ",
+    "URLs that carry the raw '%', which correctly encoded URLs never do. ",
+    "Write '%25' for a literal '%'."
+  )
+}
+
+ip_b <- function(listed, n = 1L) {
+  paste0(
+    "Pattern holds ", listed, if (n == 1L) ", a '%'" else ", each a '%'",
+    " cut short by a '*' or by the pattern's end. The package's Google, ",
+    "Bing and Yandex matchers compare the pattern as written, so the rule ",
+    "matches any URL with a percent-escape that begins there, as a final ",
+    "'%' matches '%20' and '%25' alike. This may be meant; to match only a ",
+    "literal '%', write '%25'."
+  )
+}
+
+ip_placeholder <- function(name) {
+  paste0(" '", name, "' looks like an unfilled template placeholder.")
+}
+
+# Shapes with a stray `%`: their codes and the new row's message.
+ip_stray <- list(
+  "/*hashid=%subscriber_hash%" = list(
+    ip_new,
+    paste0(ip_a("'%su', '%'", 2L), ip_placeholder("%subscriber_hash%"))
+  ),
+  "/a%4g" = list(ip_new, ip_a("'%4g'")),
+  "/a%$" = list(ip_new, ip_a("'%$'")),
+  "/a%4$" = list(ip_new, ip_a("'%4$'")),
+  "/%%25" = list(ip_new, ip_a("'%%2'")),
+  "/%2%2e" = list(
+    c("rule_escaped_unreserved", ip_new, "rule_lowercase_escape"),
+    ip_a("'%2%'")
+  ),
+  "/a/./%zz" = list(c("rule_dot_segment", ip_new), ip_a("'%zz'")),
+  "/[% name %]" = list(
+    c("rule_inner_whitespace", ip_new), ip_a("'% n', '%]'", 2L)
+  ),
+  "/a%zz%" = list(
+    ip_new, paste0(ip_a("'%zz', '%'", 2L), ip_placeholder("%zz%"))
+  ),
+  "/a%" = list(ip_new, ip_b("'%'")),
+  "/a%4" = list(ip_new, ip_b("'%4'")),
+  "/a%F" = list(ip_new, ip_b("'%F'")),
+  "/a%*" = list(ip_new, ip_b("'%*'")),
+  "/a%4*" = list(ip_new, ip_b("'%4*'")),
+  "*%*" = list(ip_new, ip_b("'%*'")),
+  "/a%*b%" = list(ip_new, ip_b("'%*b', '%'", 2L)),
+  "/ab%cd%" = list(c(ip_new, "rule_lowercase_escape"), ip_b("'%'"))
 )
 
-# Shapes with no stray `%`, each with the codes it gets today.
-ip_valid_now <- list(
+# Shapes with no stray `%`, each with the codes it got before the check.
+ip_valid <- list(
   "/a%2F" = character(0),
   "/a%25" = character(0),
   "/%25%25" = character(0),
   "/a%C3%A9" = character(0),
+  "/a%41*" = "rule_escaped_unreserved",
   "/a%2f" = "rule_lowercase_escape",
   "/a/%2e/b" = c("rule_escaped_unreserved", "rule_lowercase_escape"),
   "/a/%2E%2E/b" = "rule_escaped_unreserved",
@@ -45,41 +99,67 @@ ip_valid_now <- list(
   "/*|NAME|*" = character(0)
 )
 
-test_that("ROBO-rswdwrnp: today a stray `%` gets no code of its own", {
+test_that("ROBO-rswdwrnp: the unfilled placeholder is one warning row", {
+  x <- robots_validate_text(
+    "User-agent: *\nDisallow: /*hashid=%subscriber_hash%\n"
+  )
+  expect_identical(x$diagnostics$code, ip_new)
+  expect_identical(x$diagnostics$line, 2L)
+  expect_identical(x$diagnostics$severity, "warning")
+  expect_identical(x$diagnostics$directive, "disallow")
+  expect_identical(x$diagnostics$raw_text,
+                   "Disallow: /*hashid=%subscriber_hash%")
+  expect_identical(x$documents$validation_status, "warning")
+  message <- x$diagnostics$message
+  expect_match(message, "'%su'", fixed = TRUE)
+  expect_match(message, "'%25'", fixed = TRUE)
+  expect_match(message, "'%subscriber_hash%' looks like an unfilled",
+               fixed = TRUE)
+})
+
+test_that("ROBO-rswdwrnp: each stray shape gets its class's message", {
   for (type in c("Allow", "Disallow")) {
-    for (value in names(ip_stray_now)) {
-      expect_identical(
-        ip_codes(value, type), ip_stray_now[[value]],
-        label = paste(type, value)
-      )
+    for (value in names(ip_stray)) {
+      label <- paste(type, value)
+      x <- ip_rows(value, type)
+      expect_identical(x$code, ip_stray[[value]][[1L]], label = label)
+      expect_identical(ip_message(x), ip_stray[[value]][[2L]], label = label)
     }
+  }
+})
+
+test_that("ROBO-rswdwrnp: a class (b) message never claims no URL matches", {
+  for (value in c("/a%", "/a%4", "/a%*", "*%*")) {
+    message <- ip_message(ip_rows(value))
+    expect_no_match(message, "correctly encoded URLs never", fixed = TRUE)
+    expect_match(message, "This may be meant", fixed = TRUE)
   }
 })
 
 test_that("ROBO-rswdwrnp: valid escapes keep their codes", {
   for (type in c("Allow", "Disallow")) {
-    for (value in names(ip_valid_now)) {
+    for (value in names(ip_valid)) {
       expect_identical(
-        ip_codes(value, type), ip_valid_now[[value]],
+        ip_codes(value, type), ip_valid[[value]],
         label = paste(type, value)
       )
     }
   }
 })
 
-test_that("ROBO-rswdwrnp: raw non-ASCII bytes beside a `%`, today", {
+test_that("ROBO-rswdwrnp: raw non-ASCII bytes are read in canonical form", {
   # A raw e-acute (UTF-8 C3 A9), written with escapes to keep this file ASCII.
+  # The parser writes it as `%C3%A9`, a valid escape and no placeholder.
   e_acute <- as.raw(c(0xc3, 0xa9))
   expect_identical(
     robots_validate_text(ip_body("User-agent: *\nDisallow: /", e_acute,
                                  "\n"))$diagnostics$code,
     character(0)
   )
-  expect_identical(
-    robots_validate_text(ip_body("User-agent: *\nDisallow: /a%", e_acute,
-                                 "\n"))$diagnostics$code,
-    character(0)
-  )
+  x <- robots_validate_text(ip_body("User-agent: *\nDisallow: /a%", e_acute,
+                                    "\n"))$diagnostics
+  expect_identical(x$code, ip_new)
+  expect_identical(x$message, ip_a("'%%C'"))
   # Invalid UTF-8: a lone 0xE9 after a valid escape.
   expect_identical(
     robots_validate_text(ip_body("User-agent: *\nDisallow: /a%2F",
@@ -88,10 +168,55 @@ test_that("ROBO-rswdwrnp: raw non-ASCII bytes beside a `%`, today", {
   )
   latin <- "User-agent: *\nDisallow: /a%\xe9\n"
   Encoding(latin) <- "latin1"
-  expect_identical(robots_validate_text(latin)$diagnostics$code, character(0))
+  x <- robots_validate_text(latin)$diagnostics
+  expect_identical(x$code, ip_new)
+  expect_identical(x$message, ip_a("'%%C'"))
+  # A placeholder after a canonical escape is still named.
+  expect_identical(
+    ip_message(ip_rows("/%C3%subscriber%")),
+    paste0(ip_a("'%su', '%'", 2L), ip_placeholder("%subscriber%"))
+  )
 })
 
-test_that("ROBO-rswdwrnp: a `%` the parser never reads as a rule, today", {
+test_that("ROBO-rswdwrnp: a control byte after a `%` is written \\xNN", {
+  x <- robots_validate_text(ip_body(
+    "User-agent: *\nDisallow: /a%", as.raw(1), "b\n"
+  ))$diagnostics
+  expect_identical(x$code, c("rule_control_character", ip_new))
+  expect_identical(ip_message(x), ip_a("'%\\x01b'"))
+})
+
+test_that("ROBO-rswdwrnp: distinct `%` are listed once, up to ten", {
+  expect_identical(ip_message(ip_rows("/%zz/%zz/%zz")), ip_a("'%zz'"))
+  ten <- paste0("/", paste0("%", letters[7:16], "-", collapse = ""))
+  expect_identical(
+    ip_message(ip_rows(ten)),
+    ip_a(toString(sprintf("'%%%s-'", letters[7:16])), 10L)
+  )
+  eleven <- paste0("/", paste0("%", letters[7:17], "-", collapse = ""))
+  expect_identical(
+    ip_message(ip_rows(eleven)),
+    ip_a(paste0(toString(sprintf("'%%%s-'", letters[7:16])),
+                ", and 1 more"), 11L)
+  )
+})
+
+test_that("ROBO-rswdwrnp: the placeholder wording", {
+  expect_identical(
+    ip_message(ip_rows("/a%_x1%b")),
+    paste0(ip_a("'%_x', '%b'", 2L), ip_placeholder("%_x1%"))
+  )
+  expect_identical(
+    ip_message(ip_rows("/a?u=%a%")),
+    paste0(ip_a("'%a%', '%'", 2L), ip_placeholder("%a%"))
+  )
+  # A name led by two hex digits is an escape, so no placeholder.
+  expect_identical(ip_message(ip_rows("/%ab%zz")), ip_a("'%zz'"))
+  # `[% name %]` is not detected here (ROBO-areyzfoy).
+  expect_no_match(ip_message(ip_rows("/[% name %]")), "placeholder")
+})
+
+test_that("ROBO-rswdwrnp: a `%` the parser never reads as a rule is silent", {
   expect_identical(
     robots_validate_text(ip_body(
       "User-agent: *\nDisallow: /a", as.raw(0), "%zz\n"
@@ -117,17 +242,70 @@ ip_cut <- function() {
   filler <- strrep("a", 16663L - nchar(pre) - 1L)
   robots_validate_text(
     paste0("User-agent: *\n", pre, filler, "%zz\n")
-  )$diagnostics$code
+  )$diagnostics
 }
 
-test_that("ROBO-rswdwrnp: a `%` at the line buffer's end, today", {
-  expect_identical(ip_cut(), "line_too_long")
+test_that("ROBO-rswdwrnp: a `%` at the line buffer's end is class (b)", {
+  x <- ip_cut()
+  expect_identical(x$code, c("line_too_long", ip_new))
+  expect_identical(ip_message(x), ip_b("'%'"))
+})
+
+# Best of five runs, so a loaded machine cannot fail the ratio
+# (test-cut-note-zqyqbudf.R).
+ip_time <- function(body) {
+  min(vapply(1:5, function(i) {
+    system.time(robots_validate_text(body))[["elapsed"]]
+  }, 0))
+}
+
+ip_rules <- function(n) {
+  paste0(
+    "User-agent: *\n",
+    paste0("Disallow: /p", seq_len(n), "/%zz%\n", collapse = "")
+  )
+}
+
+test_that("ROBO-rswdwrnp: the check stays linear (ROBO-dbvmxcfw)", {
+  skip_on_cran()
+  small <- ip_time(ip_rules(1000L))
+  large <- ip_time(ip_rules(4000L))
+  expect_lt(large, 8 * max(small, 0.05))
+
+  # 16,000 bytes of `%`, every one stray, against a same-length plain value.
+  pct <- ip_time(paste0("User-agent: *\nDisallow: /", strrep("%", 16000L),
+                        "\n"))
+  plain <- ip_time(paste0("User-agent: *\nDisallow: /", strrep("a", 16000L),
+                          "\n"))
+  expect_lt(pct, 8 * max(plain, 0.05))
+})
+
+# The helper on one value, 20 calls per run so a cost that grows with the
+# value's length clears the floor; best of five, as ip_time().
+ip_time_value <- function(value) {
+  min(vapply(1:5, function(i) {
+    system.time(for (k in 1:20) {
+      rule_invalid_percent_escape_diagnostic(value)
+    })[["elapsed"]]
+  }, 0))
+}
+
+test_that("ROBO-rswdwrnp: the check is linear in the value's length", {
+  skip_on_cran()
+  # 4,000 and 16,000 bytes, inside the 16,663-byte buffer: distinct stray
+  # contexts, and a run of placeholder-like names.
+  short <- ip_time_value(strrep("/%zx", 1000L))
+  long <- ip_time_value(strrep("/%zx", 4000L))
+  expect_lt(long, 8 * max(short, 0.05))
+  short <- ip_time_value(paste0("/", strrep("%", 4000L)))
+  long <- ip_time_value(paste0("/", strrep("%", 16000L)))
+  expect_lt(long, 8 * max(short, 0.05))
 })
 
 # The package's matchers on each class, under the v1 default
-# url_normalization = "rfc3986", on google, bing and yandex alike. The rfc9309
-# backend is capability_unavailable in every mode (ADR 0002), so it is not
-# testable here.
+# url_normalization = "rfc3986", on google, bing and yandex alike: the
+# evidence for each message. The rfc9309 backend is capability_unavailable in
+# every mode (ADR 0002), so it is not testable here.
 ip_engines <- list(google = "Googlebot", bing = "bingbot", yandex = "Yandex")
 
 ip_eval <- function(rule, paths, backend, mode = "rfc3986") {
@@ -197,5 +375,9 @@ test_that("ROBO-rswdwrnp: a class (b) `%` matches every escape it begins", {
     r <- ip_eval("*%*", c("/%24", "/x"), backend)
     expect_identical(r$url_decision, c("disallow", "allow"),
                      label = paste(backend, "*%*"))
+    # `%25` matches only a literal `%`.
+    r <- ip_eval("/a%25", c("/a%25", "/a%20b"), backend)
+    expect_identical(r$url_decision, c("disallow", "allow"),
+                     label = paste(backend, "/a%25"))
   }
 })
