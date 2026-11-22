@@ -491,6 +491,10 @@ test_that("ROBO-roypaoox: the scan makes each exclusion", {
   expect_identical(slash_candidates(groups$rules), seq_along(hits))
   expect_identical(slash_partner(c("/x/", "/x", "/a/b/")),
                    c("/x", "/x/", "/a/b"))
+  # Only a value ending in `/` is a split candidate: `/x` decides `/x` and
+  # `Allow: /*/` opens `/x/`, which is no split of `/x`'s.
+  expect_identical(sp_codes("User-agent: *\nDisallow: /x\nAllow: /*/\n"),
+                   character(0))
   # Each miss, beside its other form or under `Disallow: /`, draws no row.
   for (value in misses[-length(misses)]) {
     for (body in c(sprintf("User-agent: *\nDisallow: %s\nDisallow: %s/\n",
