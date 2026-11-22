@@ -190,6 +190,14 @@ A \code{$} before a pattern's end; it matches a literal \code{$}. \cr
 \code{rule_inner_whitespace} \tab warning \tab
 A pattern holds a space, tab, vertical tab or form feed; crawlers
 request URLs with it percent-encoded, so the rule never matches. \cr
+\code{rule_dot_segment} \tab warning \tab
+A pattern holds a \code{.} or \code{..} path segment, after a
+\code{/} and before a \code{/}, a \code{?} or a final \code{$}. Some
+URL parsers remove dot segments before requesting (RFC 3986 section
+5.2.4), so the rule may never match; the v1 evaluators' default
+\code{url_normalization = "rfc3986"} removes the segment from the URL
+too (ADR 0002). Not checked past a \code{?} or a \code{*}; an escaped
+\code{\%2E} is not a dot here. One per rule line. \cr
 \code{rule_control_character} \tab warning \tab
 A pattern holds an ASCII control byte, 0x01 to 0x08 or 0x0E to 0x1F.
 RFC 9309 section 2.2 excludes it from a path pattern and RFC 3986 bars
