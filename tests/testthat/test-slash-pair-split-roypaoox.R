@@ -349,6 +349,13 @@ test_that("ROBO-roypaoox: the AI-training policy token gets no row", {
                     "Allow: /kit/\nAllow: /kit\n")),
     "ai_training_preference"
   )
+  # Left out on Google's key: a versioned token line is read as the token,
+  # so it is left out too, though its whole value is another.
+  expect_identical(
+    sp_codes(paste0("User-agent: __usage_ai-training/1.0\nDisallow: /x/\n",
+                    "Disallow: /x\n")),
+    c("user_agent_cut", "ai_training_token_near_miss")
+  )
   # A crawler's own group beside it keeps its rows.
   d <- sp_diag(paste0("User-agent: __usage_ai-training\nDisallow: /kit/\n\n",
                       "User-agent: Foo\nDisallow: /kit/\n"))
