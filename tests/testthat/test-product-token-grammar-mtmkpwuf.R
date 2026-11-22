@@ -179,11 +179,23 @@ test_that("latin1 and invalid UTF-8 tokens are refused with no warning", {
   expect_match(r$error_message, "leading valid part is \"G\",", fixed = TRUE)
 })
 
-# Whether this machine has `locale` for LC_CTYPE; the session's is restored.
-pt_locale_available <- function(locale) {
-  old <- Sys.getlocale("LC_CTYPE")
-  on.exit(Sys.setlocale("LC_CTYPE", old))
-  nzchar(suppressWarnings(Sys.setlocale("LC_CTYPE", locale)))
+# Sets each named locale category for the calling test, base R only (withr
+# is not a declared dependency), and restores it when the test ends. A
+# locale this machine does not have skips the test: the gate's container
+# has only C and C.UTF-8.
+pt_local_locale <- function(categories, env = parent.frame()) {
+  for (category in names(categories)) {
+    old <- Sys.getlocale(category)
+    # on.exit() in the test's own frame, added after any earlier ones.
+    do.call(base::on.exit,
+            list(bquote(Sys.setlocale(.(category), .(old))), TRUE, FALSE),
+            envir = env)
+    set <- suppressWarnings(Sys.setlocale(category, categories[[category]]))
+    if (!nzchar(set)) {
+      testthat::skip(sprintf("locale %s is not installed for %s",
+                             categories[[category]], category))
+    }
+  }
 }
 
 # The screen in one locale: a letter outside ASCII and an invalid UTF-8
@@ -203,18 +215,17 @@ pt_expect_locale_screen <- function() {
 }
 
 test_that("the grammar does not widen with the collation locale", {
-  withr::local_locale(c(LC_COLLATE = "en_US.UTF-8"))
+  pt_local_locale(c(LC_COLLATE = "en_US.UTF-8"))
   pt_expect_locale_screen()
 })
 
 test_that("the grammar is the same in the C locale", {
-  withr::local_locale(c(LC_CTYPE = "C", LC_COLLATE = "C"))
+  pt_local_locale(c(LC_CTYPE = "C", LC_COLLATE = "C"))
   pt_expect_locale_screen()
 })
 
 test_that("the grammar is the same in a Turkish locale", {
-  skip_if_not(pt_locale_available("tr_TR.UTF-8"), "no tr_TR.UTF-8 locale")
-  withr::local_locale(c(LC_CTYPE = "tr_TR.UTF-8", LC_COLLATE = "tr_TR.UTF-8"))
+  pt_local_locale(c(LC_CTYPE = "tr_TR.UTF-8", LC_COLLATE = "tr_TR.UTF-8"))
   pt_expect_locale_screen()
 })
 
