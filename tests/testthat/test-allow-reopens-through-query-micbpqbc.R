@@ -539,7 +539,8 @@ test_that("ROBO-micbpqbc: the scans make each exclusion", {
   # A final run of `*` names no byte: `/*/*` matches what `/*/` matches.
   not_shape <- c("/*/", "/*/$", "*/", "/*.css", "*?next=", "/my/*x", "/x/*/y",
                  "*", "/*", "*/$", "x*/y", "/*/*", "/*/**", "*/*$")
-  expect_false(ar_code %in% ar_codes("User-agent: *\nDisallow: /c\nAllow: /*/*\n"))
+  expect_false(ar_code %in%
+                 ar_codes("User-agent: *\nDisallow: /c\nAllow: /*/*\n"))
   for (backend in names(ar_engines)) {
     paths <- c("/c", "/c?q=/x", "/c/x", "/cx")
     expect_identical(
@@ -705,17 +706,17 @@ ar_stop_text <- function(found, value, done) {
 }
 
 test_that("ROBO-micbpqbc: Allows past the work budget get no row", {
-  # The pair list counts 2 (a group and a Disallow gathered) and 3 (one
-  # row and two body lines) against the first reading's half; the first
-  # reading costs 5 (a row, the class's two rules, two body lines), and the
-  # removal read 3 of the rest.
+  # A round's half holds the take, 3 (a group and a Disallow gathered, one
+  # entry passed), and the first reading, 5 (a row, the class's two rules,
+  # two body lines); the removal read costs 3 of the rest. From 16 the
+  # first round fits; below, the next round has less.
   groups <- ar_groups("User-agent: Foo\nDisallow: /my/\nAllow: */s/\n")
-  for (budget in list(NULL, 10)) {
+  for (budget in list(NULL, 16)) {
     found <- allow_reopens_diagnostics(groups, budget = budget)
     expect_identical(found$line, 1L)
     expect_null(attr(found, "stopped"))
   }
-  found <- allow_reopens_diagnostics(groups, budget = 9)
+  found <- allow_reopens_diagnostics(groups, budget = 15)
   expect_identical(nrow(found), 0L)
   stop <- attr(found, "stopped")
   expect_identical(stop, ar_stopped(1L, 0L, "*/s/"))
@@ -727,7 +728,7 @@ test_that("ROBO-micbpqbc: Allows past the work budget get no row", {
   groups <- ar_groups(
     "User-agent: Foo\nDisallow: /my/\nAllow: */s/\nAllow: */t/\n"
   )
-  found <- allow_reopens_diagnostics(groups, budget = 12)
+  found <- allow_reopens_diagnostics(groups, budget = 22)
   expect_identical(found$message, ar_one(
     3L, "*/s/", "/my/", "/s/", 2L,
     " and the other Allow that opens with '*' or '/*' (line 4)"
@@ -740,20 +741,35 @@ test_that("ROBO-micbpqbc: Allows past the work budget get no row", {
     )),
     " The other 1 was skipped, and it may do the same."
   ))
+  # The rounds read Allows out of line order: `*/tttttttt/` proves on its
+  # first pair while `*/ssssss/`, whose witnesses a longer Disallow blocks,
+  # is still reading its twenty, and runs out. No Allow counts as checked,
+  # so the later one gets no row either.
+  groups <- ar_groups(paste0("User-agent: Foo\n",
+                             paste0("Disallow: /d", 1:20, "/\n", collapse = ""),
+                             "Disallow: /*?q=/ssssss/\n",
+                             "Allow: */ssssss/\nAllow: */tttttttt/\n"))
+  found <- allow_reopens_diagnostics(groups, budget = 200)
+  expect_identical(nrow(found), 0L)
+  expect_identical(attr(found, "stopped"), ar_stopped(2L, 0L, "*/ssssss/"))
+  found <- allow_reopens_diagnostics(groups, budget = 300)
+  expect_match(found$message, "The Allow on line 24 ('*/tttttttt/')",
+               fixed = TRUE)
+  expect_null(attr(found, "stopped"))
   # The removal read reads the Allow's crawlers, here one class, at 3 (a
   # row, the class's one live rule, one body line), not the three classes
-  # of the deciding Disallow's group (11): from 12 the pair list (6) and
-  # the first reading (5) fit their half, and the removal read fits the
-  # rest.
+  # of the deciding Disallow's group (11): from 18 the take (4: two groups
+  # and a Disallow gathered, one entry passed) and the first reading (5)
+  # fit their half, and the removal read fits the rest.
   groups <- ar_groups(paste0("User-agent: Foo\nUser-agent: Bar\n",
                              "User-agent: Baz\nDisallow: /my/\n\n",
                              "User-agent: Foo\nAllow: */s/\n\n",
                              "User-agent: Bar\nDisallow: /zz?\n\n",
                              "User-agent: Baz\nDisallow: /zz?\n"))
-  found <- allow_reopens_diagnostics(groups, budget = 11)
+  found <- allow_reopens_diagnostics(groups, budget = 17)
   expect_identical(nrow(found), 0L)
   expect_identical(attr(found, "stopped"), ar_stopped(1L, 0L, "*/s/"))
-  for (budget in c(12, 16)) {
+  for (budget in c(18, 24)) {
     found <- allow_reopens_diagnostics(groups, budget = budget)
     expect_identical(found$line, 6L, label = budget)
     expect_null(attr(found, "stopped"))
@@ -769,8 +785,10 @@ test_that("ROBO-micbpqbc: Allows past the work budget get no row", {
 # `n` Disallows and `n` long shape-A Allows in one group, whose literals
 # share a gram with every witness (`cross`), Allows named like the
 # Disallows (`gram`), one group naming `n` crawlers that each have a group
-# of their own (`classes`), and pairs in one group beside a cut value, so
-# both merges are read (`cut`).
+# of their own (`classes`), pairs in one group beside a cut value, so
+# both merges are read (`cut`), and pairs that all fail, a longer Disallow
+# blocking every witness, so every Allow reads its whole list in rounds
+# (`fail`).
 ar_shape <- function(shape, n) {
   k <- seq_len(n)
   switch(
@@ -789,26 +807,89 @@ ar_shape <- function(shape, n) {
     cut = paste0("User-agent: *\n",
                  paste0("Disallow: /d", k, "/\nAllow: */a", k, "x/\n",
                         collapse = ""),
-                 "\nUser-agent: Foo web\nDisallow: /g/\nAllow: */gx/\n")
+                 "\nUser-agent: Foo web\nDisallow: /g/\nAllow: */gx/\n"),
+    fail = paste0("User-agent: *\n",
+                  paste0("Disallow: /d", k, "/\n", collapse = ""),
+                  "Disallow: /*?q=/aaaaaa*\n",
+                  paste0("Allow: */aaaaaa", k, "/\n", collapse = ""))
   )
 }
 
 test_that("ROBO-micbpqbc: a file too large for the check gets the row", {
-  d <- ar_diag(ar_shape("cross", 100L))
+  # Each witness holds a gram of every Allow, so each body holds every
+  # Allow: the body lines grow with Allows times Allows.
+  d <- ar_diag(ar_shape("cross", 400L))
   stop <- d[d$code == "rule_check_stopped", , drop = FALSE]
   expect_identical(stop$line, NA_integer_)
   expect_identical(stop$severity, "info")
   expect_identical(stop$directive, NA_character_)
   expect_identical(stop$message, paste0(
-    ar_stop_text(100L, "*/aaaaaa2/", paste0(
-      "them all quickly, so only the first was checked, in line order."
+    ar_stop_text(400L, "*/aaaaaa86/", paste0(
+      "them all quickly, so only the first 85 were checked, in line order."
     )),
-    " The other 99 were skipped, and some of them may do the same."
+    " The other 315 were skipped, and some of them may do the same."
   ))
-  # The first Allow keeps its row; none past it.
+  # The checked Allows keep their row; none past them.
   expect_identical(d$line[d$code == ar_code], 1L)
   expect_match(d$message[d$code == ar_code],
-               "The Allow on line 102 ('*/aaaaaa1/')", fixed = TRUE)
+               "line 402 ('*/aaaaaa1/') allows", fixed = TRUE)
+  expect_match(d$message[d$code == ar_code], "'/d1/' and 80 more.",
+               fixed = TRUE)
+})
+
+# `n` Disallows and `n` Allows in one group, each Allow's first pair
+# proving (the reviewer's shape).
+ar_square <- function(n, ua = "Foo") {
+  k <- seq_len(n)
+  paste0("User-agent: ", ua, "\n",
+         paste0("Disallow: /d", k, "/\n", collapse = ""),
+         paste0("Allow: */a", k, "xxxxxxxx/\n", collapse = ""))
+}
+
+test_that("ROBO-micbpqbc: an Allow's pairs are read up to the first proof", {
+  # Every Allow is checked and none stops, however many Disallows the
+  # crawlers have: an Allow reads the pairs it uses, not all of them.
+  for (n in c(50L, 150L, 300L)) {
+    for (ua in c("Foo", "Foo extra")) {
+      d <- ar_diag(ar_square(n, ua))
+      expect_false("rule_check_stopped" %in% d$code, label = n)
+      found <- allow_reopens_diagnostics(ar_groups(ar_square(n, ua)))
+      expect_null(attr(found, "stopped"), label = n)
+      expect_match(found$message, sprintf(
+        "line %d ('*/a1xxxxxxxx/') allows '/d1/?q=/a1xxxxxxxx/'", n + 2L
+      ), fixed = TRUE)
+      expect_match(found$message, sprintf("and %d more", n - 5L),
+                   fixed = TRUE)
+    }
+  }
+})
+
+test_that("ROBO-micbpqbc: reading in rounds changes no row", {
+  # Seeded synthetic files, several pairs per Allow: the same rows read in
+  # rounds as read all at once.
+  disallows <- c("/a/", "/ab/", "/abc/", "/a", "/*/a/", "/b/x/", "/abcdefg/",
+                 "/a/?q=/b/", "/a/$", "/b/", "/*?q=/b/", "/c/", "/d/")
+  allows <- c("*/b/", "*/ab/", "/*/b/x/", "*/abc/$", "*/b", "/a/?", "*/a/b/",
+              "/**/bb/", "/b/", "*/bbbb/")
+  agents <- c("*", "Foo", "Bar", "Foo web")
+  set.seed(20261123)
+  rows <- 0L
+  for (i in 1:60) {
+    body <- paste(vapply(1:3, function(g) {
+      ua <- paste0("User-agent: ", sample(agents, sample(1:2, 1L)), "\n",
+                   collapse = "")
+      rules <- c(paste0("Disallow: ", sample(disallows, 6L)),
+                 paste0("Allow: ", sample(allows, 3L)))
+      paste0(ua, paste0(sample(rules), "\n", collapse = ""))
+    }, ""), collapse = "\n")
+    groups <- ar_groups(body)
+    lazy <- allow_reopens_diagnostics(groups, budget = Inf)
+    whole <- allow_reopens_diagnostics(groups, budget = Inf, chunk = Inf)
+    expect_identical(lazy, whole, label = body)
+    expect_identical(allow_reopens_diagnostics(groups), lazy, label = body)
+    rows <- rows + nrow(lazy)
+  }
+  expect_gt(rows, 10L)
 })
 
 # How many of a body's shape-A Allows the check reads.
@@ -863,11 +944,12 @@ ar_time_check <- function(body) {
 test_that("ROBO-micbpqbc: the check stays linear on costly shapes", {
   skip_on_cran()
   # Each shape stops at the budget rather than growing.
-  for (shape in c("cross", "gram", "classes", "cut")) {
+  shapes <- c("cross", "gram", "classes", "cut", "fail")
+  for (shape in shapes) {
     found <- allow_reopens_diagnostics(ar_groups(ar_shape(shape, 400L)))
     expect_false(is.null(attr(found, "stopped")), label = shape)
   }
-  for (shape in c("cross", "gram", "classes", "cut")) {
+  for (shape in shapes) {
     small <- ar_time_check(ar_shape(shape, 100L))
     large <- ar_time_check(ar_shape(shape, 400L))
     expect_lt(large, 8 * max(small, 0.05), label = shape)

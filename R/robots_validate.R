@@ -849,10 +849,11 @@ validation_unsupported <- c(
 #' Google's merge; read again with every Allow of this shape left out, that
 #' line must block the query URL too, so an Allow of another shape that
 #' opens it (`Allow: /c?`) silences the row. The row names that line, which
-#' may be another Disallow (`/c$`). Every pair is read, in line order,
-#' within a fixed amount of work; an Allow shorter than a Disallow cannot
-#' win over it. The package's Yandex matcher gives a tie of pattern lengths
-#' to the Disallow, where Google gives it to the Allow. An Allow such as
+#' may be another Disallow (`/c$`). Each Allow's pairs are read in line
+#' order up to the first that gives a row, within a fixed amount of work;
+#' an Allow shorter than a Disallow cannot win over it. The package's
+#' Yandex matcher gives a tie of pattern lengths to the Disallow, where
+#' Google gives it to the Allow. An Allow such as
 #' `*/x?p=` can also get `rule_query_parameter_position`; both rows stand. A
 #' body cut at `max_bytes` is not checked, and a
 #' `User-agent: __usage_ai-training` group gets no row.
@@ -5639,7 +5640,7 @@ end_anchor_stop_intro <- function(stop) {
 # An Allow that opens with `*` or `/*` and then names a path (`*/x/`,
 # `/*/x/`, `/**/x$`) also matches inside a URL's query (ROBO-micbpqbc): it
 # can allow `/c?q=/x/` while a Disallow blocks `/c`. Candidates are
-# (Allow, Disallow) pairs (reopen_pairs()): the Allow a safe shape-A one
+# (Allow, Disallow) pairs (reopen_lists()): the Allow a safe shape-A one
 # (reopen_shape(), url_safe_path() on its literal), the Disallow a control
 # (reopen_controls()) the same crawlers have. The control is the Disallow
 # as a path, and the witness the control, `?q=` and the Allow's literal
@@ -5651,19 +5652,22 @@ end_anchor_stop_intro <- function(stop) {
 # and the witness comes out disallowed too (reopen_reads()). The row names
 # that line, which may be another Disallow than the pair's (`/c$`). The
 # decisions are Google's matcher's, read by witness_pair_readings() within
-# `budget` (slash_budget() on the Allows) in pair order, Allow line then
-# Disallow line. An Allow counts as checked once each pair up to its first
-# reported one finished, in line order up to the first unfinished Allow;
-# that one and every later one get no row, and the stop counts say so. One
-# row per set of crawler classes, on the first User-agent line the check
-# reads of the group holding the earliest Allow (slash_open_rows()), five
-# Allows at most, then a count. A cut body is not checked: a later rule
-# could decide the witness. `filter = FALSE` turns off the length filter
-# of reopen_pairs(), for the tests. Returns slash_rows() with a `directive`
-# column; when the budget cut Allows, its "stopped" attribute holds
-# slash_stop()'s counts.
+# `budget` (slash_budget() on the Allows). Each Allow's pairs are read in
+# Disallow line order and only up to the first that proves
+# (reopen_rounds()), so an Allow whose first pair proves costs one pair
+# however many Disallows its crawlers have. An Allow counts as checked once
+# each pair up to its first reported one finished, in line order up to the
+# first unfinished Allow; that one and every later one get no row, and the
+# stop counts say so. One row per set of crawler classes, on the first
+# User-agent line the check reads of the group holding the earliest Allow
+# (slash_open_rows()), five Allows at most, then a count. A cut body is not
+# checked: a later rule could decide the witness. `filter = FALSE` turns
+# off the length filter of reopen_take(), and `chunk = Inf` reads every
+# pair in one round, for the tests. Returns slash_rows() with a
+# `directive` column; when the budget cut Allows, its "stopped" attribute
+# holds slash_stop()'s counts.
 allow_reopens_diagnostics <- function(groups, written = NULL, budget = NULL,
-                                      filter = TRUE) {
+                                      filter = TRUE, chunk = 1) {
   groups <- slash_groups(groups)
   rules <- groups$rules
   shape <- reopen_shape(rules)
@@ -5675,19 +5679,200 @@ allow_reopens_diagnostics <- function(groups, written = NULL, budget = NULL,
   if (is.null(budget)) {
     budget <- slash_budget(rules, allows)
   }
-  pairs <- reopen_pairs(groups, allows, reopen_controls(rules), budget / 2,
-                        filter)
-  read <- reopen_reads(groups, shape, allows, pairs, written, budget)
-  state <- reopen_state(pairs, read, length(allows))
+  lists <- reopen_lists(groups, allows, reopen_controls(rules), filter)
+  state <- reopen_rounds(groups, shape, allows, lists, written, budget, chunk)
   # Allows count as checked in line order up to the first one whose pairs
-  # did not finish. The readings take pairs in Allow order, so no Allow
-  # past it has a reported pair.
-  checked <- match(FALSE, state$finished, nomatch = length(allows) + 1L) - 1L
-  hit <- which(!is.na(state$pair))
-  out <- reopen_rows(groups, shape, allows[hit], pairs, read,
-                     state$pair[hit])
+  # did not finish. The rounds read Allows out of line order, so a later
+  # Allow can prove before an earlier one runs out of budget; a row past
+  # the first unfinished Allow would contradict the stop row.
+  finished <- state$status %in% c("hit", "none")
+  checked <- match(FALSE, finished, nomatch = length(allows) + 1L) - 1L
+  hit <- which(state$status == "hit" & seq_along(allows) <= checked)
+  out <- reopen_rows(groups, shape, allows[hit], state$control[hit],
+                     state$line[hit])
   attr(out, "stopped") <- slash_stop(rules, allows, checked)
   out
+}
+
+# The Disallows each Allow may pair with, gathered lazily: `key`, per
+# Allow, its set of crawler classes on the whole-value merge
+# (reopen_near()), `gather(i)`, the positions in `controls` (in line
+# order) of the Disallows the classes of Allow `i` hold, with the work
+# that took, and the sizes the length filter compares. A pair's Disallow
+# shares a crawler class with its Allow on the whole-value merge: the row
+# speaks for those crawlers, and a control from another crawler's Disallow
+# would say nothing about theirs. Each set of classes is gathered once, at
+# one unit per group and Disallow gathered, so the work never grows with
+# Allows times Disallows. With no control, nothing is built.
+reopen_lists <- function(groups, allows, controls, filter = TRUE) {
+  d <- controls$at
+  rules <- groups$rules
+  out <- list(d = d, control = controls$control, filter = filter,
+              size = nchar(rules$value[d], "bytes"),
+              a_size = nchar(rules$value[allows], "bytes"))
+  if (length(d) == 0L) {
+    return(out)
+  }
+  near <- reopen_near(groups, rules$group[c(allows, d)])
+  by_group <- split(seq_along(d), rules$group[d])
+  out$key <- near$key(rules$group[allows])
+  out$gather <- function(i) {
+    near_groups <- near$groups(rules$group[allows[[i]]])
+    pos <- as.integer(unlist(by_group[as.character(near_groups)],
+                             use.names = FALSE))
+    list(pos = sort(pos), spent = length(near_groups) + length(pos))
+  }
+  out
+}
+
+# The next pairs of Allow `i` from its list `pos` past `cursor`, at most
+# `want`, as list(idx, cursor, spent): the places in `pos` taken, the new
+# cursor and the entries passed. A perf filter only: Google ranks matching
+# rules by pattern length and an Allow wins a tie, and a Disallow matches
+# the witness as it matches the control, a prefix of it, so an Allow
+# shorter than a Disallow its crawlers have can never decide the witness;
+# such a Disallow is passed over. At most four entries per pair wanted,
+# and `limit`, are passed in one call, and each entry passed counts as
+# work.
+reopen_take <- function(lists, i, pos, cursor, want, limit = Inf) {
+  rest <- min(length(pos) - cursor, limit)
+  if (!lists$filter) {
+    n <- min(rest, want)
+    return(list(idx = cursor + seq_len(n), cursor = cursor + n, spent = n))
+  }
+  idx <- cursor + seq_len(min(rest, 4 * want))
+  ok <- idx[lists$size[pos[idx]] <= lists$a_size[[i]]]
+  if (length(ok) >= want) {
+    ok <- ok[seq_len(want)]
+    end <- ok[[length(ok)]]
+  } else {
+    end <- cursor + length(idx)
+  }
+  list(idx = ok, cursor = end, spent = end - cursor)
+}
+
+# Reads the Allows' pairs in rounds: round `r` takes up to `chunk` times
+# 2^(r - 1) more pairs of each Allow still pending (reopen_take()), in
+# Allow order, the first pending one, once a pair of it failed, the rest
+# of its list, and reads them (reopen_reads()). Each round has what is left
+# of `budget`: half for the lists, the takes and the first reading, the
+# rest for the removal read. An Allow's first proving pair ends it
+# ("hit"), as does a list read through with none ("none"). A pair the
+# round's share could not take or read is taken again in the next round,
+# with what the round left; a round that moves no Allow on and gathers no
+# list ends the reading, and the Allows still pending are "open". The
+# chunks double, and a round that runs out of its share leaves at most
+# half of what it had, so the rounds number at most about log2 of the
+# longest list plus log2 of `budget`. Returns, per Allow, `status` and,
+# for a hit, its pair's `control` and `line`, the line deciding the
+# control.
+reopen_rounds <- function(groups, shape, allows, lists, written, budget,
+                          chunk = 1) {
+  n <- length(allows)
+  status <- rep("pending", n)
+  control <- rep(NA_character_, n)
+  line <- rep(NA_integer_, n)
+  if (length(lists$d) == 0L) {
+    status[] <- "none"
+    return(list(status = status, control = control, line = line))
+  }
+  cursor <- integer(n)
+  held <- list()
+  spent <- 0
+  want <- chunk
+  repeat {
+    pending <- which(status == "pending")
+    if (length(pending) == 0L) {
+      break
+    }
+    left <- budget - spent
+    was <- list(status, cursor, names(held))
+    # Once a pair of it failed, the first pending Allow takes the rest of
+    # its list: only Allows up to it can count as checked.
+    lead <- if (cursor[[pending[[1L]]]] > 0L) Inf else want
+    take <- reopen_round_take(lists, pending, cursor, held, want, left / 2,
+                              lead)
+    held <- take$held
+    cursor <- take$cursor
+    status[take$none] <- "none"
+    pairs <- take$pairs
+    read <- reopen_reads(groups, shape, allows, pairs, written,
+                         left - take$spent, left / 2 - take$spent)
+    spent <- spent + take$spent + read$spent
+    # Per Allow of the round, its first pair that did not finish or
+    # proved: a proof ends it, and an unfinished pair is taken again.
+    stops <- which(!read$done | read$ok)
+    owners <- unique(pairs$allow)
+    first <- stops[match(owners, pairs$allow[stops])]
+    found <- !is.na(first)
+    proved <- found & read$ok[first]
+    hit <- owners[proved]
+    status[hit] <- "hit"
+    control[hit] <- pairs$control[first[proved]]
+    line[hit] <- read$line[first[proved]]
+    again <- found & !proved
+    cursor[owners[again]] <- pairs$idx[first[again]] - 1L
+    done <- owners[!found & cursor[owners] >= take$size[owners]]
+    status[done] <- "none"
+    if (identical(list(status, cursor, names(held)), was)) {
+      status[status == "pending"] <- "open"
+      break
+    }
+    want <- want * 2
+  }
+  list(status = status, control = control, line = line)
+}
+
+# One round's takes for the pending Allows `pending`, in order, within
+# `budget`: each gathers its list once per set of classes (`held`, by
+# reopen_lists()$key) and takes its next `want` pairs, the first one
+# `lead` (reopen_take()), as far as `budget` goes. The first Allow whose
+# list does not fit takes nothing, nor does any later one; one whose list
+# is read through with nothing taken is `none`. Returns the pairs as
+# list(allow, at, control, idx), `idx` each pair's place in its Allow's
+# list, with `held`, `cursor`, `size` (each Allow's list length), `none`
+# and `spent`.
+reopen_round_take <- function(lists, pending, cursor, held, want, budget,
+                              lead = want) {
+  size <- rep(NA_integer_, length(cursor))
+  allow <- list()
+  idx <- list()
+  pos <- list()
+  none <- integer()
+  spent <- 0
+  for (j in seq_along(pending)) {
+    i <- pending[[j]]
+    key <- lists$key[[i]]
+    cost <- 0
+    list_pos <- held[[key]]
+    if (is.null(list_pos)) {
+      found <- lists$gather(i)
+      cost <- found$spent
+      list_pos <- found$pos
+    }
+    room <- floor(budget - spent - cost)
+    if (room < min(1, length(list_pos) - cursor[[i]])) {
+      break
+    }
+    got <- reopen_take(lists, i, list_pos, cursor[[i]],
+                       if (j == 1L) lead else want, room)
+    held[[key]] <- list_pos
+    spent <- spent + cost + got$spent
+    cursor[[i]] <- got$cursor
+    size[[i]] <- length(list_pos)
+    if (length(got$idx) == 0L && got$cursor >= length(list_pos)) {
+      none <- c(none, i)
+    }
+    allow[[j]] <- rep(i, length(got$idx))
+    idx[[j]] <- got$idx
+    pos[[j]] <- list_pos[got$idx]
+  }
+  pos <- as.integer(unlist(pos, use.names = FALSE))
+  list(pairs = list(allow = as.integer(unlist(allow, use.names = FALSE)),
+                    at = lists$d[pos], control = lists$control[pos],
+                    idx = as.integer(unlist(idx, use.names = FALSE))),
+       held = held, cursor = cursor, size = size, none = none,
+       spent = spent)
 }
 
 # Indexes of `rules` that are shape-A Allows: a pattern led by `*` or `/*`
@@ -5728,74 +5913,12 @@ reopen_controls <- function(rules) {
   list(at = at[safe], control = control[safe])
 }
 
-# The candidate pairs of the Allows `allows` and the controls `controls`, as
-# list(allow, at, control, whole): pair `i` is Allow `allows[allow[i]]` with
-# the Disallow `at[i]` and its control, in Allow order, then Disallow line
-# order; `whole` counts the leading Allows whose pairs are all listed. A
-# pair's Disallow shares a crawler class with its Allow on the whole-value
-# merge: the row speaks for those crawlers, and a control from another
-# crawler's Disallow would say nothing about theirs. The Disallows an
-# Allow's crawler classes hold are gathered once per set of classes
-# (reopen_near()), and that work counts against `budget`, the first
-# reading's share, as one unit per group and Disallow gathered. Each pair
-# then counts what it costs that reading at least: its Allow's classes as
-# (candidate, class) rows, as many witness body lines for the Allow itself,
-# and one for the Disallow, and, when some User-agent value is cut, three
-# more for Google's merge (one row and the two lines). The list stops
-# before the first Allow that would take the count past `budget`, which the
-# reading could not read whole either, so it never grows with Allows times
-# Disallows or crawler classes.
-reopen_pairs <- function(groups, allows, controls, budget, filter = TRUE) {
-  d <- controls$at
-  if (length(d) == 0L) {
-    return(list(allow = integer(), at = integer(), control = character(),
-                whole = length(allows)))
-  }
-  rules <- groups$rules
-  near <- reopen_near(groups, rules$group[c(allows, d)])
-  size <- nchar(rules$value[d], "bytes")
-  by_group <- split(seq_along(d), rules$group[d])
-  a_size <- nchar(rules$value[allows], "bytes")
-  key <- near$key(rules$group[allows])
-  classes <- near$classes(rules$group[allows])
-  agents <- groups$agents
-  cut <- if (all(agents$uncut == agents$key)) 0 else 3
-  held <- list()
-  found <- vector("list", length(allows))
-  spent <- 0
-  whole <- length(allows)
-  for (i in seq_along(allows)) {
-    if (is.null(held[[key[[i]]]])) {
-      near_groups <- near$groups(rules$group[allows[[i]]])
-      pos <- as.integer(unlist(by_group[as.character(near_groups)],
-                               use.names = FALSE))
-      held[[key[[i]]]] <- pos[order(size[pos], pos)]
-      spent <- spent + length(near_groups) + length(pos)
-    }
-    pos <- held[[key[[i]]]]
-    # A perf filter only: Google ranks matching rules by pattern length and
-    # an Allow wins a tie, and a Disallow matches the witness as it matches
-    # the control, a prefix of it, so an Allow shorter than a Disallow its
-    # crawlers have can never decide the witness.
-    k <- if (filter) findInterval(a_size[[i]], size[pos]) else length(pos)
-    spent <- spent + k * (2 * classes[[i]] + 1 + cut)
-    if (spent > budget) {
-      whole <- i - 1L
-      break
-    }
-    found[[i]] <- sort(pos[seq_len(k)])
-  }
-  pos <- unlist(found, use.names = FALSE)
-  list(allow = rep(seq_along(found), lengths(found)), at = d[pos],
-       control = controls$control[pos], whole = whole)
-}
-
 # The crawler classes of the groups `wanted` on a merge (`key`,
 # validation_token_expander(); the whole-value merge by default), as
-# functions of group ids: `key`, one string per set of classes, `classes`,
-# how many, and `groups`, for one group, every group sharing a class with
-# it, itself included. The counts come from the (group, class) pairs, which
-# grow with the User-agent lines.
+# functions of group ids: `key`, one string per set of classes, and
+# `groups`, for one group, every group sharing a class with it, itself
+# included. The work comes from the (group, class) pairs, which grow with
+# the User-agent lines.
 reopen_near <- function(groups, wanted, key = groups$agents$uncut) {
   wanted <- unique(wanted)
   pairs <- validation_token_expander(groups, key)(wanted)
@@ -5805,7 +5928,6 @@ reopen_near <- function(groups, wanted, key = groups$agents$uncut) {
                 USE.NAMES = FALSE)
   list(
     key = function(g) paste0("#", key[match(g, wanted)]),
-    classes = function(g) lengths(classes)[match(g, wanted)],
     groups = function(g) {
       held <- classes[[match(g, wanted)]]
       unique(unlist(by_class[as.character(held)], use.names = FALSE))
@@ -5813,8 +5935,9 @@ reopen_near <- function(groups, wanted, key = groups$agents$uncut) {
   )
 }
 
-# The two readings of the pairs, sharing `budget`: the first, within half
-# of it, so the second always has the other half for what the first
+# The two readings of the pairs (list(allow, at, control), `allow`
+# indexing `allows`), sharing `budget`: the first, within `first` (half of
+# it by default), so the second always has the rest for what the first
 # passed, of the Allow deciding the witness and the control getting the
 # other decision; the second, for the pairs that pass it, within what is
 # left, on a copy of `groups` with every
@@ -5824,22 +5947,24 @@ reopen_near <- function(groups, wanted, key = groups$agents$uncut) {
 # own group, which can name crawlers the Allow never covers): without such
 # Allows, the witness would be blocked. An
 # Allow of another shape that also opens the witness (`Allow: /c?`) fails
-# it. Returns list(done, ok, line) per pair: `done` whether its
-# readings finished, `ok` whether it passed both, `line` the line deciding
-# its control.
-reopen_reads <- function(groups, shape, allows, pairs, written, budget) {
+# it. Returns list(done, ok, line) per pair, with `spent`: `done` whether
+# its readings finished, `ok` whether it passed both, `line` the line
+# deciding its control.
+reopen_reads <- function(groups, shape, allows, pairs, written, budget,
+                         first = budget / 2) {
   rules <- groups$rules
   at <- allows[pairs$allow]
   n <- length(at)
   witness <- paste0(pairs$control, "?q=", reopen_literal(rules$value[at]))
   out <- list(done = rep(TRUE, n), ok = logical(n),
-              line = rep(NA_integer_, n))
+              line = rep(NA_integer_, n), spent = 0)
   if (n == 0L) {
     return(out)
   }
   first <- witness_pair_readings(groups, at, pairs$control, witness, "long",
-                                 written, budget / 2, share = TRUE)
+                                 written, first, share = TRUE)
   out$line <- first$line
+  out$spent <- first$spent
   read <- seq_len(n) <= first$checked
   out$done <- read
   k <- which(read & first$ok & !is.na(first$line))
@@ -5856,33 +5981,20 @@ reopen_reads <- function(groups, shape, allows, pairs, written, budget) {
   read <- seq_along(k) <= second$checked
   out$done[k] <- read
   out$ok[k] <- read & second$ok
+  out$spent <- out$spent + second$spent
   out
 }
 
-# Per Allow (`n` of them), from the pairs' readings: `pair`, its first
-# reported pair (NA when none), and `finished`, whether every pair up to
-# that one, or every pair when none is reported, finished, its pairs all
-# listed.
-reopen_state <- function(pairs, read, n) {
-  stops <- which(!read$done | read$ok)
-  first <- stops[match(seq_len(n), pairs$allow[stops])]
-  hit <- !is.na(first)
-  hit[hit] <- read$ok[first[hit]]
-  list(finished = seq_len(n) <= pairs$whole & (is.na(first) | hit),
-       pair = ifelse(hit, first, NA_integer_))
-}
-
-# The rows for the reported Allows `at`, each with its pair `pair`: one per
-# set of crawler classes (slash_open_rows()).
-reopen_rows <- function(groups, shape, at, pairs, read, pair) {
+# The rows for the reported Allows `at`, each with its pair's `control` and
+# `decider`, the line deciding it: one per set of crawler classes
+# (slash_open_rows()).
+reopen_rows <- function(groups, shape, at, control, decider) {
   rules <- groups$rules
   line <- rules$line[at]
   others <- reopen_others(groups, shape, at)
   message <- function(value, lines, cap) {
     k <- match(lines, line)
-    p <- pair[k]
-    reopen_message(value, lines, cap, pairs$control[p], read$line[p],
-                   others[k])
+    reopen_message(value, lines, cap, control[k], decider[k], others[k])
   }
   slash_open_rows(groups, at, message = message)
 }
