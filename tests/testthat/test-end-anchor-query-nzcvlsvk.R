@@ -483,9 +483,9 @@ test_that("ROBO-nzcvlsvk: candidates past the work budget get no row", {
   stop <- attr(found, "stopped")
   expect_identical(stop, ea_stopped(2L, 1L, "/b$"))
   expect_identical(slash_stop_message("end_anchor", stop), paste0(
-    "This file has 2 Disallow rules whose path ends in '$', such as '/b$'. ",
-    "For each one, the validator checks whether the rule blocks '/b' but ",
-    "not '/b?x=1'. This file is too large to check them all quickly, so ",
+    "This file has 2 Disallow rules whose pattern ends in '$' and has no ",
+    "'?' before it, such as '/b$'. For each one, the validator checks ",
+    "whether the rule blocks '/b' but not '/b?x=1'. This file is too large to check them all quickly, so ",
     "only the first was checked, in line order. The other 1 was skipped, ",
     "and it may have the same problem."
   ))
@@ -502,9 +502,9 @@ test_that("ROBO-nzcvlsvk: candidates past the work budget get no row", {
   stop <- attr(found, "stopped")
   expect_identical(stop, ea_stopped(1L, 0L, "/a$"))
   expect_identical(slash_stop_message("end_anchor", stop), paste0(
-    "This file has 1 Disallow rule whose path ends in '$', such as '/a$'. ",
-    "For each one, the validator checks whether the rule blocks '/a' but ",
-    "not '/a?x=1'. This file is too large to check it quickly, so it was ",
+    "This file has 1 Disallow rule whose pattern ends in '$' and has no '?' ",
+    "before it, such as '/a$'. For each one, the validator checks whether ",
+    "the rule blocks '/a' but not '/a?x=1'. This file is too large to check it quickly, so it was ",
     "not checked. It was skipped, and it may have the same problem."
   ))
   # A normal file gets no such row.
@@ -555,9 +555,9 @@ test_that("ROBO-nzcvlsvk: a file too large for the check gets the row", {
   expect_identical(stop$directive, NA_character_)
   expect_identical(stop$raw_text, NA_character_)
   expect_identical(stop$message, paste0(
-    "This file has 250 Disallow rules whose path ends in '$', such as ",
-    "'/d1$'. For each one, the validator checks whether the rule blocks ",
-    "'/d1' but not '/d1?x=1'. This file is too large to check them all ",
+    "This file has 250 Disallow rules whose pattern ends in '$' and has no ",
+    "'?' before it, such as '/d1$'. For each one, the validator checks ",
+    "whether the rule blocks '/d1' but not '/d1?x=1'. This file is too large to check them all ",
     "quickly, so none of them were checked. All 250 were skipped, and some ",
     "of them may have the same problem."
   ))
