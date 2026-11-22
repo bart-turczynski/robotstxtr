@@ -4653,6 +4653,8 @@ slash_split_reading <- function(groups, at, key) {
 # return, which are rules the path's own bytes say may match it, so Google's
 # matcher must read them anyway (ROBO-dbvmxcfw).
 slash_split_bodies <- function(rules, expand, paths, class) {
+  # An empty rule decides nothing; left in, Google's matcher could name its
+  # line for a URL no other rule matches, with the same decision.
   live <- which(!rules$empty)
   part <- slash_rule_parts(rules$type[live], rules$value[live])
   held <- expand(rules$group[live])
