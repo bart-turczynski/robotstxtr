@@ -5414,13 +5414,14 @@ end_anchor_controls <- function(value, filler = "x") {
 
 # The control and witness of filler pair `pair` (end_anchor_fillers()) as
 # the messages show them: the control elided as query_parameter_cap()
-# elides past 40 bytes and rendered as `raw_text` is, and the witness the
-# same text with the pair's query after it.
+# elides past 40 bytes, and the witness the same text with the pair's query
+# after it. A candidate value is printable ASCII (end_anchor_candidates()
+# leaves out control bytes, and the canonical value escapes the rest), so
+# it shows as is.
 end_anchor_shown <- function(value, pair = 1L) {
   fill <- end_anchor_fillers()
-  control <- query_parameter_render(query_parameter_cap(
-    end_anchor_controls(value, fill$path[pair]), 40L
-  ))
+  control <- query_parameter_cap(end_anchor_controls(value, fill$path[pair]),
+                                 40L)
   list(control = control, witness = paste0(control, fill$query[pair]))
 }
 
@@ -5459,8 +5460,8 @@ end_anchor_stop_intro <- function(stop) {
     "This file has %s whose pattern ends in '$' and has no '?' before it, ",
     "such as '%s'. For each one, the validator checks whether the rule ",
     "blocks '%s' but not '%s'."
-  ), rules, query_parameter_render(query_parameter_cap(stop$value, 40L)),
-  shown$control, shown$witness)
+  ), rules, query_parameter_cap(stop$value, 40L), shown$control,
+  shown$witness)
 }
 
 wildcard_inheritance_message <- function(tokens, one_group, missing,

@@ -359,6 +359,16 @@ test_that("ROBO-nzcvlsvk: edge inputs", {
     expect_identical(d$message[d$code == ea_code],
                      ea_one_message(2L, escaped))
   }
+  # Every candidate value is printable ASCII, so the messages show it as
+  # is: non-ASCII bytes are escaped, and control bytes leave the value out.
+  body <- c(charToRaw("User-agent: *\nDisallow: /a"), as.raw(0xe9),
+            charToRaw("$\nDisallow: /b"), as.raw(c(0xc3, 0xa9)),
+            charToRaw("$\nDisallow: /c"), as.raw(0x7f), charToRaw("$\n"))
+  rules <- validation_groups(as.data.frame(
+    robotstxtr_validation_parse_(body), stringsAsFactors = FALSE
+  ))$rules
+  at <- end_anchor_candidates(rules)
+  expect_identical(rules$value[at], c("/a%E9$", "/b%C3%A9$"))
   # An empty body gets no row.
   expect_identical(ea_codes(""), "no_rules")
   # A rule at the line buffer: `disalow:` and no space fill it, so a witness
