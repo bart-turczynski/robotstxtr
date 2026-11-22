@@ -4498,7 +4498,8 @@ rule_escaped_unreserved_diagnostic <- function(value) {
 # `%2E` are not hits. One grepl, anchored and with no nested quantifiers,
 # keeps the cost linear (ROBO-dbvmxcfw). Returns a finding or NULL.
 rule_dot_segment_diagnostic <- function(value) {
-  # A value not led by `/` is rule_missing_leading_slash's: it never matches.
+  # A value not led by `/` is skipped: one led by another byte already gets
+  # rule_missing_leading_slash, and one led by `*` can match in the query.
   if (!startsWith(value, "/") ||
         !grepl("^[^?*]*/[.][.]?(/|[?]|[$]$)", value, useBytes = TRUE)) {
     return(NULL)
