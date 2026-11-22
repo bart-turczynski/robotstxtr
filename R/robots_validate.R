@@ -358,6 +358,31 @@ validation_unsupported <- c(
 #'     with that \code{?} written \code{*&}, or written \code{&} when a
 #'     \code{*} stands right before that \code{?} (\code{/*?sort=}, not
 #'     \code{/a*b?sort=}). \cr
+#'   \code{rule_slash_pair} \tab info \tab
+#'     The same crawlers have a literal Allow or Disallow pattern both
+#'     without and with a trailing \code{/} (\code{/notes} and
+#'     \code{/notes/}). The bare pattern also matches every path the slash
+#'     pattern matches, the bare URL and paths that go on without a
+#'     \code{/}. Anchored on the later line; the message names the earlier
+#'     one and calls neither redundant. \cr
+#'   \code{rule_slash_split} \tab info \tab
+#'     A crawler gets a different decision for the bare URL \code{P} than
+#'     for the slash URL \code{P/} of a literal rule \code{P/}, which a
+#'     server redirect between them makes matter. An Allow that opens
+#'     \code{P/} while \code{P} stays disallowed is anchored on the Allow
+#'     line; Disallows that block \code{P/} while \code{P} stays allowed get
+#'     one row per group of crawlers, on its first User-agent line, listing
+#'     five rules at most, then a count. On a file whose rules and crawlers
+#'     would make the check costly, candidates past a fixed amount of work,
+#'     linear in the file's rules, get no row, and
+#'     \code{rule_slash_check_stopped} says so. \cr
+#'   \code{rule_slash_check_stopped} \tab info \tab
+#'     The file is too large for \code{rule_slash_pair} or
+#'     \code{rule_slash_split} to check every candidate quickly, so the check
+#'     read only the first ones, in line order. The message gives the counts
+#'     found, checked and skipped and names the earliest skipped rule; the
+#'     skipped ones may have the same problem. At most one row per check,
+#'     for the whole file (no line). \cr
 #'   \code{missing_user_agent} \tab error \tab
 #'     Allow or Disallow rules exist but no line names a non-empty
 #'     User-agent. \cr
@@ -730,9 +755,36 @@ validation_unsupported <- c(
 #' lower-case-escape twin gets no row, and a body cut at `max_bytes` is not
 #' checked: a twin past the cut could silence the rule.
 #'
+#' `rule_slash_pair` and `rule_slash_split` read only literal patterns: led
+#' by `/`, of printable ASCII other than space, with no `*`, `$`, `?` or
+#' `%`, and no `.` or `..` segment anywhere, the end included (`/a/.`),
+#' since URL normalization would remove it from the bare URL. The root `/`,
+#' a value ending in `//`, and wildcard, `$`-anchored, query, percent-encoded
+#' and dot-segment values are left for a later version; they still take part
+#' in the decisions. Only the first line of each type and value is read for
+#' a crawler, so a `duplicate_rule` repeat is neither a pair's later line
+#' nor a separate split. Google's matcher makes the decisions: for the split,
+#' the rule `P/` must itself decide `P/`, and only the two URLs `P` and `P/`
+#' are compared, so a deeper rule (`Allow: /x/y`) changes nothing. Groups
+#' merge as the matchers merge them, every row keeps the original line
+#' numbers, and a row is reported only where every crawler the group names
+#' agrees. `rule_slash_pair` merges on the whole User-agent value, so a pair
+#' only Google's cut merge forms gets no row; `rule_slash_split` is
+#' reported only where the whole-value merge and Google's merge give the
+#' same decisions and deciding lines. A body cut at `max_bytes` gets
+#' `rule_slash_pair`, which a later line cannot undo, but not
+#' `rule_slash_split`, which a later Allow could change. Both checks read
+#' their candidates in line order within a fixed amount of work, linear in
+#' the file's rules and candidates; when a check stops before the last one,
+#' one `rule_slash_check_stopped` row says how many it found, checked and
+#' skipped, and names the earliest skipped rule. A
+#' `User-agent: __usage_ai-training` group gets neither: it states a training
+#' preference, not crawl access.
+#'
 #' On a document holding a NUL byte, `wildcard_rules_not_inherited`,
 #' `disallow_tied_by_allow`, `duplicate_rule`,
-#' `rule_query_parameter_position` and the AI-training codes follow Google's
+#' `rule_query_parameter_position`, `rule_slash_pair`, `rule_slash_split`
+#' and the AI-training codes follow Google's
 #' reading: the parser and Google's matcher end a line at its
 #' first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
 #' byte, so each such message says it is Google's reading, unless every NUL
@@ -1738,6 +1790,46 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         vapply(raw_lines[found$line], render_validation_line, "",
                USE.NAMES = FALSE),
         paste0(found$message, nul_reading)
+      )
+    }
+  }
+  # A literal `P` and `P/` of one type for the same crawlers (ROBO-roypaoox).
+  # Later lines cannot undo a pair, so a cut body is checked too.
+  found <- slash_pair_diagnostics(groups)
+  if (nrow(found) > 0L) {
+    add_chunk(
+      found$line, "info", "rule_slash_pair", found$directive,
+      vapply(raw_lines[found$line], render_validation_line, "",
+             USE.NAMES = FALSE),
+      paste0(found$message, nul_reading)
+    )
+  }
+  # A check that stopped at its work budget says so, once, for the file.
+  if (!is.null(attr(found, "stopped"))) {
+    add_diagnostic(
+      NA_integer_, "info", "rule_slash_check_stopped", NA_character_,
+      slash_stop_message("pair", attr(found, "stopped"))
+    )
+  }
+  # A crawler decides the bare URL `P` and the slash URL `P/` of a literal
+  # rule differently (ROBO-roypaoox). A later Allow could change a decision,
+  # so a cut body is skipped.
+  if (!body_truncated) {
+    found <- slash_split_diagnostics(
+      groups, written = slash_written_keys(raw_lines[groups$rules$line])
+    )
+    if (nrow(found) > 0L) {
+      add_chunk(
+        found$line, "info", "rule_slash_split", found$directive,
+        vapply(raw_lines[found$line], render_validation_line, "",
+               USE.NAMES = FALSE),
+        paste0(found$message, nul_reading)
+      )
+    }
+    if (!is.null(attr(found, "stopped"))) {
+      add_diagnostic(
+        NA_integer_, "info", "rule_slash_check_stopped", NA_character_,
+        slash_stop_message("split", attr(found, "stopped"))
       )
     }
   }
@@ -4347,6 +4439,706 @@ query_parameter_render <- function(x) {
     render_validation_line(charToRaw(v))
   }, "", USE.NAMES = FALSE)
   x
+}
+
+# Indexes of `rules` whose canonical value is a literal path pattern for the
+# trailing-slash checks (ROBO-roypaoox): led by `/`, not `/` itself, of
+# printable ASCII other than space, with no `*`, `$`, `?` or `%`, not ending
+# in `//`, and with no `.` or `..` segment anywhere, the unbounded end
+# included (`/a/.`): URL normalization would remove it from the bare URL
+# (ROBO-rnjfbhvn). A non-ASCII byte is escaped in the canonical value, so
+# such a value holds `%` and is no candidate. An empty value is not led by
+# `/`, so it is none either.
+slash_candidates <- function(rules) {
+  value <- rules$value
+  which(
+    startsWith(value, "/") & value != "/" &
+      !grepl("[^!-~]|[*$?%]|//$", value, useBytes = TRUE) &
+      !grepl("/[.][.]?(/|$)", value, useBytes = TRUE)
+  )
+}
+
+# The groups the trailing-slash checks read. The AI-training policy token
+# states a training preference, not crawl access, and names no crawler
+# (ROBO-kzyfejcv), so its User-agent lines are left out, as
+# wildcard_inheritance_diagnostics() leaves them out: on Google's key, so
+# `__usage_ai-training/1.0` goes too. A group naming only the token gets no
+# row.
+slash_groups <- function(groups) {
+  agents <- groups$agents
+  groups$agents <- agents[agents$key != ai_training_token, , drop = FALSE]
+  groups
+}
+
+# Each rule line's key as written (`Disallow`, `disalow`, `ALLOW`): its
+# bytes from the first one that is not a space or tab up to the first `:`,
+# space, tab or NUL. A witness line built from it and the value is then
+# never longer than the line it copies. Google's parser accepts the same
+# keys on the witness line.
+slash_written_keys <- function(raw_lines) {
+  stop_at <- as.raw(c(0x3a, 0x20, 0x09, 0x00))
+  vapply(raw_lines, function(bytes) {
+    lead <- match(TRUE, !bytes %in% as.raw(c(0x20, 0x09)), nomatch = 1L)
+    bytes <- bytes[lead:length(bytes)]
+    end <- match(TRUE, bytes %in% stop_at, nomatch = length(bytes) + 1L)
+    rawToChar(bytes[seq_len(end - 1L)])
+  }, "", USE.NAMES = FALSE)
+}
+
+# The other form of each candidate value: `P` for `P/`, `P/` for `P`.
+slash_partner <- function(value) {
+  slash <- endsWith(value, "/")
+  out <- paste0(value, "/")
+  out[slash] <- substr(value[slash], 1L, nchar(value[slash], "bytes") - 1L)
+  out
+}
+
+# For candidate rows `rows` (owner, class) of `rules[at, ]`, whether each is
+# the first line of its type and value in its class: only that line is read,
+# so a repeat (duplicate_rule's) is not a pair's later line. Rows are in
+# owner order, so a key's first row is its first line.
+slash_first <- function(rules, at, rows) {
+  o <- rows$owner
+  key <- paste(rows$class, rules$type[at][o], rules$value[at][o], sep = "\n")
+  match(key, key) == seq_along(key)
+}
+
+# The work the slash checks may do on a file: 32 units per rule and per
+# candidate, plus 20,000, so the cost stays linear in the file however its
+# rules and crawlers combine. A unit is one (candidate, class) read or one
+# witness body line. The constants leave every case in the tests and in
+# the synthetic noise bodies below the cap: 2,000 named groups of 20 rules
+# whose crawlers Google's matcher merges into one class spend about half.
+slash_budget <- function(rules, at) {
+  32 * (nrow(rules) + length(at)) + 20000
+}
+
+# The (candidate, class) rows each of `group` (the candidates' groups) has
+# under `expand`, counted per distinct group, so nothing grows with the
+# product of candidates and classes.
+slash_class_counts <- function(expand, group) {
+  wanted <- unique(group)
+  tabulate(expand(wanted)$owner, length(wanted))[match(group, wanted)]
+}
+
+# The leading items, in order, whose summed `cost` fits `budget`.
+slash_within <- function(cost, budget) {
+  cumsum(cost) <= budget
+}
+
+# What a check that stopped at its budget reports: `found` candidates (the
+# rules at `at`), the first `checked` of them read in line order, the rest
+# `skipped`, and `value`, the earliest skipped one. NULL when every
+# candidate was read.
+slash_stop <- function(rules, at, checked) {
+  if (checked >= length(at)) {
+    return(NULL)
+  }
+  list(found = length(at), checked = checked,
+       skipped = length(at) - checked,
+       value = rules$value[[at[[checked + 1L]]]])
+}
+
+# The rule_slash_check_stopped row's text, for the split check (`kind`
+# "split") or the pair check ("pair"), in plain words with the file's own
+# counts and its earliest skipped value.
+slash_stop_message <- function(kind, stop) {
+  shown <- slash_shown(stop$value)
+  rules <- if (stop$found == 1L) "1 rule" else sprintf("%d rules", stop$found)
+  intro <- if (kind == "split") {
+    sprintf(paste0(
+      "This file has %s whose path ends in '/', such as '%s'. For each one, ",
+      "the validator checks whether crawlers treat '%s' and '%s' differently."
+    ), rules, shown$slash, shown$bare, shown$slash)
+  } else {
+    sprintf(paste0(
+      "This file has %s that may come in pairs like '%s' and '%s'. For each ",
+      "one, the validator checks whether the same crawlers have both forms."
+    ), rules, shown$bare, shown$slash)
+  }
+  problem <- if (kind == "split") "have the same problem" else
+    "be part of such a pair"
+  paste(intro, slash_stop_counts(stop, problem))
+}
+
+# The counting sentences of slash_stop_message(), singular or plural.
+slash_stop_counts <- function(stop, problem) {
+  them <- if (stop$found == 1L) "it" else "them all"
+  done <- if (stop$checked == 0L && stop$found == 1L) {
+    "it was not checked"
+  } else if (stop$checked == 0L) {
+    "none of them were checked"
+  } else if (stop$checked == 1L) {
+    "only the first was checked, in line order"
+  } else {
+    sprintf("only the first %d were checked, in line order", stop$checked)
+  }
+  rest <- if (stop$checked == 0L && stop$skipped == 1L) {
+    sprintf("It was skipped, and it may %s.", problem)
+  } else if (stop$checked == 0L) {
+    sprintf("All %d were skipped, and some of them may %s.", stop$skipped,
+            problem)
+  } else if (stop$skipped == 1L) {
+    sprintf("The other 1 was skipped, and it may %s.", problem)
+  } else {
+    sprintf("The other %d were skipped, and some of them may %s.",
+            stop$skipped, problem)
+  }
+  sprintf("This file is too large to check %s quickly, so %s. %s", them,
+          done, rest)
+}
+
+# The rows whose owner (an index of `at`) passes `ok` on every row; owners
+# with no row (a group no crawler class reads) never pass.
+slash_every <- function(owner, ok) {
+  setdiff(unique(owner), owner[!ok])
+}
+
+# A literal Allow or Disallow `P` and `P/` of the same type for the same
+# crawlers (ROBO-roypaoox). `P` also matches every path `P/` matches (RFC
+# 9309 section 2.2.2), and the bare URL `P` and paths that go on without
+# `/` too. The row sits on the later line and names each class's first line
+# of the other form (every distinct one, slash_pair_lead()); it is reported
+# only when, for every crawler class its group names, the line is the first
+# of its type and value and the other form sits on an earlier line. Groups
+# merge on the whole User-agent value (`agents$uncut`), so a pair that only
+# Google's cut merge forms gets no row (its user_agent_cut rows cover it).
+# Later lines cannot undo a pair, so a cut body is checked too. Candidates
+# are read in line order, one (candidate, class) row each, while the rows
+# fit `budget` (slash_budget()); later ones get no row: their other form
+# sits on an earlier line, so every line read has what it needs. Returns a
+# data frame of `line`, `type` and `message`, in line order; when the
+# budget cut candidates, its "stopped" attribute holds slash_stop()'s counts.
+slash_pair_diagnostics <- function(groups, budget = NULL) {
+  groups <- slash_groups(groups)
+  rules <- groups$rules
+  at <- slash_candidates(rules)
+  if (length(at) == 0L) {
+    return(slash_rows(character()))
+  }
+  if (is.null(budget)) {
+    budget <- slash_budget(rules, at)
+  }
+  expand <- validation_token_expander(groups, groups$agents$uncut)
+  read <- slash_within(slash_class_counts(expand, rules$group[at]), budget)
+  stop <- slash_stop(rules, at, sum(read))
+  at <- at[read]
+  rows <- expand(rules$group[at])
+  o <- rows$owner
+  line <- rules$line[at]
+  key <- paste(rows$class, rules$type[at][o], rules$value[at][o], sep = "\n")
+  other <- line[o][match(paste(rows$class, rules$type[at][o],
+                               slash_partner(rules$value[at])[o],
+                               sep = "\n"), key)]
+  ok <- slash_first(rules, at, rows) & !is.na(other) & other < line[o]
+  hit <- sort(slash_every(o, ok))
+  # Each class names its own first line of the other form; where classes
+  # differ, every such line is named, so the claim holds for each crawler.
+  earlier <- split(other[o %in% hit], o[o %in% hit])
+  at <- at[hit]
+  lead <- vapply(seq_along(at), function(i) {
+    slash_pair_lead(rules$type[[at[[i]]]], sort(unique(earlier[[i]])))
+  }, "")
+  found <- slash_rows(
+    rules$type[at],
+    line = rules$line[at],
+    message = paste0(
+      slash_pair_message(rules$value[at], lead),
+      slash_crawler_note(groups$agents, rules$group[at])
+    )
+  )
+  attr(found, "stopped") <- stop
+  found
+}
+
+slash_rows <- function(type, line = integer(), message = character(),
+                       directive = type) {
+  data.frame(line = line, type = type, message = message,
+             directive = directive, stringsAsFactors = FALSE)
+}
+
+# The two forms of each value as the messages show them: `bare` is `P`
+# elided as query_parameter_cap() elides past 40 bytes, and `slash` is the
+# same text with the `/` after it, so the two stay apart however long `P`
+# is.
+slash_shown <- function(value) {
+  bare <- ifelse(endsWith(value, "/"), slash_partner(value), value)
+  bare <- query_parameter_cap(bare, 40L)
+  list(bare = bare, slash = paste0(bare, "/"))
+}
+
+# The opening of a pair row: "The Disallow on line 2 has" for one earlier
+# line, "The Disallows on lines 2, 5 and 8 have" for more, five lines at
+# most, then a count.
+slash_pair_lead <- function(type, lines, cap = 5L) {
+  noun <- if (type == "allow") "Allow" else "Disallow"
+  if (length(lines) == 1L) {
+    return(sprintf("The %s on line %d has", noun, lines))
+  }
+  shown <- utils::head(lines, cap)
+  sprintf("The %ss on lines %s have", noun,
+          joined_and(as.character(shown), length(lines) - length(shown)))
+}
+
+# The pair row's text: what each form matches, calling neither redundant.
+slash_pair_message <- function(value, lead) {
+  shown <- slash_shown(value)
+  slash <- endsWith(value, "/")
+  this <- ifelse(slash, shown$slash, shown$bare)
+  other <- ifelse(slash, shown$bare, shown$slash)
+  sprintf(paste0(
+    "%s '%s' and this one '%s': '%s' also matches every path '%s' matches, ",
+    "and also '%s' itself and the paths that go on from it without a '/' ",
+    "(RFC 9309 section 2.2.2)."
+  ), lead, other, this, shown$bare, shown$slash, shown$bare)
+}
+
+# " This holds for every crawler the group names: ..." for a group naming
+# more than one crawler (its written values, five at most, then a count),
+# else "". Built once per group: the names come from one split.
+slash_crawler_note <- function(agents, group) {
+  named <- agents$global | nzchar(agents$uncut)
+  # One name per crawler: values the whole-value merge reads as one class
+  # key (`Googlebot`, `googlebot`) count once, as first written.
+  id <- paste(agents$group, ifelse(agents$global, "*", agents$uncut),
+              sep = "\n")
+  named <- named & !duplicated(id)
+  by_group <- split(agents$name[named], agents$group[named])
+  wanted <- unique(group)
+  note <- vapply(by_group[as.character(wanted)], function(names) {
+    names <- unique(names)
+    if (length(names) < 2L) {
+      return("")
+    }
+    shown <- sprintf("'%s'", ai_training_name(utils::head(names, 5L)))
+    sprintf(" This holds for every crawler the group names: %s.",
+            joined_and(shown, length(names) - length(shown)))
+  }, "", USE.NAMES = FALSE)
+  note[match(group, wanted)]
+}
+
+# A literal rule `P/` whose crawlers get a different decision for the bare
+# URL `P` than for the slash URL `P/` (ROBO-roypaoox). A candidate must
+# decide `P/` itself in each class, which only the first line of its type
+# and value does (the matcher keeps the first of equal rules, and an Allow
+# wins a tie), so a repeat is no candidate. The direction follows the
+# candidate's type: an Allow opens `P/` while `P`
+# stays disallowed (one row on the Allow line), a Disallow blocks `P/` while
+# `P` stays allowed (one row per set of crawler classes, anchored on the
+# first User-agent line of the group holding the earliest listed rule, five
+# rules at most, then a count). Every rule of a class takes part in the
+# decisions, which are Google's matcher's (slash_split_reading()). A row is
+# reported only where every class the group names, merged on the whole
+# User-agent value and on Google's token, gives the same decisions and the
+# same deciding lines; the two merges coincide when no value is cut, and
+# then one reading is made. A cut body is not checked: a later Allow could
+# change a decision. The readings share `budget` (slash_budget()): each
+# reads candidates in line order while its (candidate, class) rows and
+# witness body lines fit what is left, and a candidate past it gets no row.
+# Returns slash_rows() with a `directive` column; when the budget cut
+# candidates, its "stopped" attribute holds slash_stop()'s counts.
+slash_split_diagnostics <- function(groups, written = NULL, budget = NULL) {
+  groups <- slash_groups(groups)
+  rules <- groups$rules
+  at <- slash_candidates(rules)
+  at <- at[endsWith(rules$value[at], "/")]
+  if (length(at) == 0L) {
+    return(slash_rows(character()))
+  }
+  if (is.null(budget)) {
+    budget <- slash_budget(rules, at)
+  }
+  agents <- groups$agents
+  keys <- list(agents$uncut)
+  if (!all(agents$uncut == agents$key)) {
+    keys <- c(keys, list(agents$key))
+  }
+  reads <- list()
+  checked <- length(at)
+  for (key in keys) {
+    read <- slash_split_reading(groups, at, key, written, budget)
+    budget <- budget - read$spent
+    reads <- c(reads, list(read$line))
+    checked <- min(checked, read$read)
+  }
+  bare_line <- reads[[1L]]
+  for (other in reads[-1L]) {
+    agree <- !is.na(bare_line) & !is.na(other) & bare_line == other
+    bare_line[!agree] <- NA_integer_
+  }
+  found <- !is.na(bare_line)
+  out <- slash_split_rows(groups, at[found], bare_line[found])
+  # A candidate is checked when every reading read it.
+  attr(out, "stopped") <- slash_stop(rules, at, checked)
+  out
+}
+
+# For each candidate in `at` (indexes of `groups$rules`, values `P/`), the
+# file line that decides the bare URL `P` (0 when no rule matches it) when
+# every class the group names (validation_token_expander() on `key`) has
+# the candidate decide `P/`, decides `P` the other way, and agrees on that
+# line; NA otherwise. Each (candidate, class) row is read under a body of
+# the class's rules that can match `P/` (slash_split_bodies()); every other
+# rule matches neither URL, and rules keep file order, so ties resolve as in
+# the whole group. One batch call reads every row. Candidates are read in
+# line order while their rows and the rules of their classes
+# (slash_read_plan()), then their body lines, fit `budget`; the rest stay
+# NA. Returns list(line, spent, read): `spent` the work done, `read` how
+# many leading candidates were read whole.
+slash_split_reading <- function(groups, at, key, written = NULL,
+                                budget = Inf) {
+  rules <- groups$rules
+  expand <- validation_token_expander(groups, key)
+  out <- rep(NA_integer_, length(at))
+  # An empty rule decides nothing; left in, Google's matcher could name its
+  # line for a URL no other rule matches, with the same decision.
+  live <- which(!rules$empty)
+  plan <- slash_read_plan(expand, rules$group[at], rules$group[live], budget)
+  spent <- plan$spent
+  rows <- expand(rules$group[at[seq_len(plan$n)]])
+  if (length(rows$owner) == 0L) {
+    return(list(line = out, spent = spent, read = plan$n))
+  }
+  value <- rules$value[at][rows$owner]
+  held <- list(rule = live[plan$held$owner], class = plan$held$class)
+  body <- slash_split_bodies(rules, held, value, rows$class, written,
+                             rows$owner, budget - spent)
+  spent <- spent + body$spent
+  kept <- seq_len(body$rows)
+  # Whole candidates only: all of the plan's, or those up to the last owner
+  # kept (candidates before the first owner name no class).
+  read_n <- if (body$rows == length(rows$owner)) {
+    plan$n
+  } else if (body$rows == 0L) {
+    rows$owner[[1L]] - 1L
+  } else {
+    rows$owner[[body$rows]]
+  }
+  if (length(kept) == 0L) {
+    return(list(line = out, spent = spent, read = read_n))
+  }
+  rows <- lapply(rows, `[`, kept)
+  value <- value[kept]
+  paths <- c(rbind(slash_partner(value), value))
+  read <- wildcard_witness_decide(body$bodies, rep(seq_along(value), each = 2L),
+                                  paths)
+  file_line <- function(k) {
+    j <- read$line[k]
+    found <- integer(length(j))
+    hit <- j > 1L
+    found[hit] <- rules$line[body$rule[body$start[(k[hit] + 1L) %/% 2L] +
+                                         j[hit] - 2L]]
+    found
+  }
+  bare <- seq(1L, length(paths), by = 2L)
+  bare_line <- file_line(bare)
+  ok <- file_line(bare + 1L) == rules$line[at][rows$owner] &
+    read$allowed[bare] != read$allowed[bare + 1L]
+  same <- tapply(bare_line, rows$owner, function(x) all(x == x[[1L]]))
+  hit <- intersect(slash_every(rows$owner, ok),
+                   as.integer(names(same)[same]))
+  out[hit] <- bare_line[match(hit, rows$owner)]
+  list(line = out, spent = spent, read = read_n)
+}
+
+# How many candidates (their groups `cand_group`, in line order) one
+# reading takes within `budget`, as list(n, spent, held). A candidate costs
+# its (candidate, class) rows, and a class costs, once, the live rules
+# (their groups `live_group`) it holds, when the first candidate that needs
+# it is taken: a group naming many crawlers repeats its rules in each of
+# their classes. `held` gives the (rule, class) pairs of the classes taken,
+# `owner` indexing `live_group`. Every count comes from the (group, class)
+# pairs, which grow with the User-agent lines, not with their product with
+# the rules.
+slash_read_plan <- function(expand, cand_group, live_group, budget) {
+  wanted <- unique(c(cand_group, live_group))
+  pairs <- expand(wanted)
+  per <- tabulate(pairs$owner, length(wanted))[match(cand_group, wanted)]
+  rule_n <- tabulate(match(live_group, wanted), length(wanted))
+  first <- match(wanted, cand_group)
+  first[is.na(first)] <- Inf
+  class_first <- tapply(first[pairs$owner], pairs$class, min)
+  pair_first <- class_first[as.character(pairs$class)]
+  joins <- pair_first <= length(cand_group)
+  held_at <- numeric(length(cand_group))
+  if (any(joins)) {
+    sums <- rowsum(rule_n[pairs$owner][joins], pair_first[joins])
+    held_at[as.integer(rownames(sums))] <- sums[, 1L]
+  }
+  cost <- cumsum(per) + cumsum(held_at)
+  n <- sum(cost <= budget)
+  # A perf filter only: a class no candidate taken needs is never read.
+  taken <- pair_first <= n
+  by_group <- split(pairs$class[taken],
+                    factor(pairs$owner[taken], seq_along(wanted)))
+  classes <- by_group[match(live_group, wanted)]
+  list(n = n, spent = if (n == 0L) 0 else cost[[n]],
+       held = list(owner = rep(seq_along(live_group), lengths(classes)),
+                   class = unlist(classes, use.names = FALSE)))
+}
+
+# The witness bodies of slash_split_reading(), one per row (`paths` the
+# slash URLs, `class` the rows' classes, `held` the (rule, class) pairs a
+# body may draw on, `rule` indexing `rules`): `bodies`, and `rule` (indexes
+# of `rules`, row after row in file order) with `start`, each row's first
+# position in `rule`. A rule joins a row's body when it can match `P/` (and
+# so `P`, a prefix of it): its pattern (slash_rule_parts()) must start with
+# its literal head and hold each later literal fragment. A rule with no
+# later fragment is found by its head (slash_head_hits()), one with one
+# through its longest later fragment (slash_fragment_hits()). Both keep a
+# superset of the rules that match, so the decisions are the whole group's.
+# A row's own rule is always in its body. Rows are kept in order, whole
+# owners (`owner`, the rows' candidates) at a time, while their body lines
+# fit `budget` (slash_rows_within()); `rows` counts the rows kept and
+# `spent` their body lines. Without the budget the body lines could grow
+# with rules times candidates: rules sharing a prefix or a fragment's first
+# bytes with every candidate (ROBO-dbvmxcfw). The rest of the work is linear
+# in `held` and in the bytes of the paths.
+slash_split_bodies <- function(rules, held, paths, class, written = NULL,
+                               owner = seq_along(paths), budget = Inf) {
+  rule <- held$rule
+  part <- slash_rule_parts(rules$type[rule], rules$value[rule])
+  head <- part$head
+  frag <- part$frag
+  wide <- nzchar(frag)
+  near <- slash_head_hits(rule[!wide], held$class[!wide], head[!wide],
+                          paths, class)
+  far <- slash_fragment_hits(rule[wide], held$class[wide], head[wide],
+                             frag[wide], paths, class)
+  within <- slash_rows_within(near, far, owner, budget)
+  if (within$rows == 0L) {
+    return(list(bodies = character(), rule = integer(), start = integer(),
+                rows = 0L, spent = within$spent))
+  }
+  pairs <- slash_pairs_upto(near, far, paths, within$rows)
+  row <- pairs$row
+  rule <- pairs$rule
+  order_by <- order(row, rule)
+  row <- row[order_by]
+  rule <- rule[order_by]
+  # The key as written (`written`, slash_written_keys(), else `Allow` or
+  # `Disallow`) and no space after the colon: a witness line is then never
+  # longer than the line it copies, so a rule written at Google's line
+  # buffer stays whole.
+  key <- if (is.null(written)) {
+    ifelse(rules$type[rule] == "allow", "Allow", "Disallow")
+  } else {
+    written[rule]
+  }
+  text <- paste0(key, ":", rules$value[rule], "\n")
+  kept <- seq_len(within$rows)
+  bodies <- vapply(split(text, factor(row, kept)), function(x) {
+    paste0("User-agent: witness\n", paste(x, collapse = ""))
+  }, "", USE.NAMES = FALSE)
+  list(bodies = bodies, rule = rule, start = match(kept, row),
+       rows = within$rows, spent = within$spent)
+}
+
+# How many leading rows slash_split_bodies() keeps: all of them when their
+# body lines fit `budget`, else the most whole owners (rows are in owner
+# order) that fit, found by halving. A row's lines are its head hits'
+# rules and the fragment postings up to it, counted without building them.
+slash_rows_within <- function(near, far, owner, budget) {
+  n <- length(owner)
+  per_row <- numeric(n)
+  if (length(near$row) > 0L) {
+    sums <- rowsum(lengths(near$found), near$row)
+    per_row[as.integer(rownames(sums))] <- sums[, 1L]
+  }
+  cum <- c(0, cumsum(per_row))
+  cost <- function(e) {
+    cum[[e + 1L]] + sum(vapply(far$found, function(p) {
+      findInterval(e, p)
+    }, 0L))
+  }
+  if (cost(n) <= budget) {
+    return(list(rows = n, spent = cost(n)))
+  }
+  ends <- which(c(owner[-1L] != owner[-n], TRUE))
+  lo <- 0L
+  hi <- length(ends)
+  while (lo < hi) {
+    mid <- (lo + hi + 1L) %/% 2L
+    if (cost(ends[[mid]]) <= budget) lo <- mid else hi <- mid - 1L
+  }
+  e <- if (lo == 0L) 0L else ends[[lo]]
+  list(rows = e, spent = cost(e))
+}
+
+# The (row, rule) pairs of slash_split_bodies() for rows up to `last`: the
+# head hits, and the fragment postings cut at `last`, kept where the path
+# starts with the rule's head.
+slash_pairs_upto <- function(near, far, paths, last) {
+  k <- near$row <= last
+  near_row <- rep(near$row[k], lengths(near$found[k]))
+  near_rule <- unlist(near$found[k], use.names = FALSE)
+  lens <- vapply(far$found, function(p) findInterval(last, p), 0L)
+  far_row <- unlist(Map(function(p, l) p[seq_len(l)], far$found, lens),
+                    use.names = FALSE)
+  far_row <- as.integer(far_row)
+  far_rule <- rep(far$rule, lens)
+  # A perf filter only: a rule whose head the path does not start with
+  # cannot match it, so keeping it would change no decision.
+  keep <- startsWith(paths[far_row], rep(far$head, lens))
+  list(row = c(near_row, far_row[keep]), rule = c(near_rule, far_rule[keep]))
+}
+
+# Each rule's pattern as Google's matcher reads it against a candidate path,
+# split for slash_split_bodies(): `head`, the literal bytes before the first
+# `*`, and `frag`, the longest literal run after it ("" when none). An
+# Allow ending in `/index.htm...` is cut after its last `/`, which Google's
+# matcher also reads as that path with `$`; only a final `$` anchors, and a
+# `$` or `%` elsewhere is a literal byte, which no candidate holds
+# (slash_candidates()), so a head or fragment holding one matches none.
+slash_rule_parts <- function(type, value) {
+  pattern <- value
+  index <- type == "allow" & grepl("/index[.]htm[^/]*$", value, useBytes = TRUE)
+  pattern[index] <- sub("index[.]htm[^/]*$", "", value[index], useBytes = TRUE)
+  pattern <- sub("[$]$", "", pattern, useBytes = TRUE)
+  star <- regexpr("*", pattern, fixed = TRUE, useBytes = TRUE)
+  wild <- star > 0L
+  head <- pattern
+  frag <- character(length(pattern))
+  head[wild] <- substr(pattern[wild], 1L, star[wild] - 1L)
+  rest <- strsplit(substring(pattern[wild], star[wild] + 1L), "*",
+                   fixed = TRUE, useBytes = TRUE)
+  frag[wild] <- vapply(rest, function(f) {
+    if (length(f) == 0L) "" else f[[which.max(nchar(f, "bytes"))]]
+  }, "")
+  list(head = head, frag = frag)
+}
+
+# Where rules with no later fragment can match, unbuilt: `row`, a row
+# whose path starts with some rule's head in the rule's class, and
+# `found`, those rules, one vector per entry of `row`. Heads are looked up
+# at their distinct lengths only, so a long path costs its length, not its
+# length squared.
+slash_head_hits <- function(rule, rule_class, head, paths, class) {
+  if (length(rule) == 0L) {
+    return(list(row = integer(), found = list()))
+  }
+  key <- paste(rule_class, head, sep = "\n")
+  by_key <- split(rule, factor(key, unique(key)))
+  sizes <- sort(unique(nchar(head, "bytes")))
+  # A perf filter only: a head longer than the path is no prefix of it, so
+  # looking it up too would find nothing.
+  n <- findInterval(nchar(paths, "bytes"), sizes)
+  row <- rep(seq_along(paths), n)
+  size <- sizes[sequence(n)]
+  hit <- match(paste(class[row], substr(paths[row], 1L, size), sep = "\n"),
+               names(by_key))
+  list(row = row[!is.na(hit)], found = unname(by_key[hit[!is.na(hit)]]))
+}
+
+# Where rules with a later fragment can match, unbuilt: for each rule, in
+# `found`, the rows (ascending) whose path, in the rule's class, holds the
+# fragment's first three bytes (slash_gram_index()); with `rule` and `head`.
+slash_fragment_hits <- function(rule, rule_class, head, frag, paths, class) {
+  if (length(rule) == 0L) {
+    return(list(found = list(), rule = integer(), head = character()))
+  }
+  gram <- substr(frag, 1L, 3L)
+  index <- slash_gram_index(paths, class, sort(unique(nchar(gram, "bytes"))))
+  found <- index[match(paste(rule_class, gram, sep = "\n"), names(index))]
+  found[lengths(found) == 0L] <- list(integer())
+  list(found = unname(found), rule = rule, head = head)
+}
+
+# The rows of each (class, run of `sizes` bytes) the paths hold, as a list
+# named by "class\nrun"; a row is listed once per run. The runs number at
+# most three per byte of each path.
+slash_gram_index <- function(paths, class, sizes) {
+  parts <- lapply(sizes, function(g) {
+    k <- pmax(nchar(paths, "bytes") - g + 1L, 0L)
+    row <- rep(seq_along(paths), k)
+    start <- sequence(k)
+    list(row = row, key = paste(class[row],
+                                substr(paths[row], start, start + g - 1L),
+                                sep = "\n"))
+  })
+  row <- unlist(lapply(parts, `[[`, "row"), use.names = FALSE)
+  key <- unlist(lapply(parts, `[[`, "key"), use.names = FALSE)
+  # A perf filter only: a run a path holds twice would list the row twice,
+  # and the duplicate witness line would change no decision.
+  keep <- !duplicated(paste(row, key, sep = "\n"))
+  split(row[keep], factor(key[keep], unique(key[keep])))
+}
+
+# The split rows: one per Allow (the bare URL stays disallowed by
+# `bare_line`), and one per set of crawler classes (whole-value merge) for
+# the Disallows (the bare URL stays allowed), in line order.
+slash_split_rows <- function(groups, at, bare_line) {
+  rules <- groups$rules
+  allow <- rules$type[at] == "allow"
+  opened <- at[allow]
+  shown <- slash_shown(rules$value[opened])
+  blocked <- slash_rows(
+    rules$type[opened], rules$line[opened],
+    paste0(
+      sprintf(paste0(
+        "This Allow opens the URL '%s', but '%s' stays disallowed by line ",
+        "%d.%s"
+      ), shown$slash, shown$bare, bare_line[allow], slash_redirect()),
+      slash_crawler_note(groups$agents, rules$group[opened])
+    )
+  )
+  found <- rbind(blocked, slash_open_rows(groups, at[!allow]))
+  found <- found[order(found$line), , drop = FALSE]
+  rownames(found) <- NULL
+  found
+}
+
+slash_redirect <- function() {
+  paste0(" A server redirect between the two URLs changes what a crawler ",
+         "reaches.")
+}
+
+# One row per set of crawler classes for Disallows `at` that block `P/` and
+# leave `P` allowed, on the first User-agent line of the group holding the
+# earliest one.
+slash_open_rows <- function(groups, at, cap = 5L) {
+  rules <- groups$rules
+  if (length(at) == 0L) {
+    return(slash_rows(character()))
+  }
+  group <- rules$group[at]
+  wanted <- unique(group)
+  rows <- validation_token_expander(groups, groups$agents$uncut)(wanted)
+  signature <- vapply(split(rows$class, factor(rows$owner,
+                                               seq_along(wanted))),
+                      function(x) paste(sort(x), collapse = " "), "")
+  sets <- split(seq_along(at), factor(signature[match(group, wanted)],
+                                      unique(signature[match(group, wanted)])))
+  first <- vapply(sets, `[[`, 0L, 1L)
+  # The group's first User-agent line the check reads (slash_groups() may
+  # have left out a policy-token line before it); agents are in file order.
+  anchor <- groups$agents$line[match(group[first], groups$agents$group)]
+  message <- vapply(sets, function(k) {
+    slash_open_message(rules$value[at[k]], rules$line[at[k]], cap)
+  }, "", USE.NAMES = FALSE)
+  slash_rows(
+    rep("disallow", length(sets)), anchor,
+    paste0(message, slash_crawler_note(groups$agents, group[first])),
+    directive = "user-agent"
+  )
+}
+
+slash_open_message <- function(value, line, cap) {
+  if (length(value) == 1L) {
+    shown <- slash_shown(value)
+    return(sprintf(paste0(
+      "The Disallow on line %d blocks the URL '%s', but '%s' stays ",
+      "allowed.%s"
+    ), line, shown$slash, shown$bare, slash_redirect()))
+  }
+  shown <- utils::head(seq_along(value), cap)
+  listed <- sprintf("'%s' (line %d)", slash_shown(value[shown])$slash,
+                    line[shown])
+  paste0(
+    "These Disallows block the URL that ends in '/', but the URL without ",
+    "it stays allowed: ", joined_and(listed, length(value) - length(shown)),
+    ".", slash_redirect()
+  )
 }
 
 wildcard_inheritance_message <- function(tokens, one_group, missing,

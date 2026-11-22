@@ -223,7 +223,11 @@ the tie. An info, `duplicate_rule`, notes an Allow or Disallow that repeats an
 earlier rule for the same crawlers, so it has no effect. An info,
 `rule_query_parameter_position`, notes a pattern such as `/items/*?sort=` that
 names a parameter right after `?`, so it may miss URLs where that parameter
-follows another one. A warning, `html_body`, says the body looks like an HTML page rather than a robots.txt;
+follows another one. An info, `rule_slash_pair`, notes a literal pattern
+written both as `/notes` and `/notes/` for the same crawlers, and an info,
+`rule_slash_split`, notes a crawler that gets one decision for `/gallery` and
+another for `/gallery/`, which a server redirect between them makes matter. A
+warning, `html_body`, says the body looks like an HTML page rather than a robots.txt;
 `xml_body` and `json_body` say the same of a body that starts with markup, such
 as an XML error, or looks like a JSON object or array, such as an API error.
 The "Diagnostic codes" section of `?robots_validate_text` lists every code.

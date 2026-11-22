@@ -259,7 +259,8 @@ test_that("ROBO-ybhwztid: the destination is validated as a document", {
   expect_identical(doc$source_type, "redirect_destination")
   expect_identical(doc$validation_status, "valid")
   expect_named(v$destination_diagnostics, names(v$diagnostics))
-  expect_identical(nrow(v$destination_diagnostics), 0L)
+  # Its `Disallow: /private/` gets the bare-allowed info (ROBO-roypaoox).
+  expect_identical(v$destination_diagnostics$code, "rule_slash_split")
   expect_identical(v$destination_map$destination_source_id, "destination_1")
 })
 

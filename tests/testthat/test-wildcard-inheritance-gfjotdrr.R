@@ -68,18 +68,26 @@ test_that("a named group dropping the * Disallows gets one warning", {
   expect_identical(x$documents$validation_status, "warning")
   expect_identical(x$documents$warning_count, 1L)
   expect_identical(x$documents$error_count, 0L)
-  expect_identical(x$diagnostics$code, "wildcard_disallows_not_inherited")
-  expect_identical(x$diagnostics$severity, "warning")
-  expect_identical(x$diagnostics$line, 8L)
-  expect_identical(x$diagnostics$directive, "user-agent")
-  expect_identical(x$diagnostics$raw_text, "User-agent: Bingbot")
-  expect_identical(x$diagnostics$message, paste0(
+  # The group's `Disallow: /blog/search/` also gets the bare-allowed
+  # rule_slash_split info on the same line (ROBO-roypaoox).
+  expect_identical(x$diagnostics$code,
+                   c("wildcard_disallows_not_inherited", "rule_slash_split"))
+  expect_identical(x$diagnostics$severity, c("warning", "info"))
+  expect_identical(x$diagnostics$line, c(8L, 8L))
+  expect_identical(x$diagnostics$directive, c("user-agent", "user-agent"))
+  expect_identical(x$diagnostics$raw_text,
+                   c("User-agent: Bingbot", "User-agent: Bingbot"))
+  expect_identical(x$diagnostics$message, c(paste0(
     "Bingbot obeys only this group, so these `User-agent: *` Disallows ",
     "do not apply to it: Disallow: /wp-admin/* (line 2), ",
     "Disallow: /tickets/satisfaction/* (line 3), ",
     "Disallow: /conversations/satisfaction/* (line 4), ",
     "Disallow: /a/* (line 5), Disallow: /b/* (line 6).", wi_warn_tail()
-  ))
+  ), paste0(
+    "The Disallow on line 9 blocks the URL '/blog/search/', but ",
+    "'/blog/search' stays allowed. A server redirect between the two URLs ",
+    "changes what a crawler reaches."
+  )))
   expect_false(any(grepl("probably|mistake|intend", x$diagnostics$message)))
 })
 

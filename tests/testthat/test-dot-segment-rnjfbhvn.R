@@ -71,8 +71,14 @@ test_that("ROBO-rnjfbhvn: a bounded dot segment is flagged", {
 test_that("ROBO-rnjfbhvn: other dots keep their codes", {
   for (type in c("Allow", "Disallow")) {
     for (value in names(ds_misses)) {
+      expected <- ds_misses[[value]]
+      # A Disallow `P/` alone blocks `P/` and leaves `P` allowed
+      # (ROBO-roypaoox).
+      if (type == "Disallow" && value %in% c("/a..b/", "/.well-known/")) {
+        expected <- c(expected, "rule_slash_split")
+      }
       expect_identical(
-        ds_codes(type, value), ds_misses[[value]],
+        ds_codes(type, value), expected,
         label = paste(type, value)
       )
     }
@@ -90,7 +96,7 @@ test_that("ROBO-rnjfbhvn: a NUL or a `#` cuts the value before the check", {
   )
   expect_identical(
     robots_validate_text(nul)$diagnostics$code,
-    c("nul_byte", "rule_cut_by_nul")
+    c("nul_byte", "rule_cut_by_nul", "rule_slash_split")
   )
   expect_identical(ds_codes("Disallow", "/a#/./b"), "rule_cut_by_comment")
 })

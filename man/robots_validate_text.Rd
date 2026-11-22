@@ -367,6 +367,31 @@ such URL. Not reported when the same crawlers also have the rule
 with that \code{?} written \code{*&}, or written \code{&} when a
 \code{*} stands right before that \code{?} (\code{/*?sort=}, not
 \code{/a*b?sort=}). \cr
+\code{rule_slash_pair} \tab info \tab
+The same crawlers have a literal Allow or Disallow pattern both
+without and with a trailing \code{/} (\code{/notes} and
+\code{/notes/}). The bare pattern also matches every path the slash
+pattern matches, the bare URL and paths that go on without a
+\code{/}. Anchored on the later line; the message names the earlier
+one and calls neither redundant. \cr
+\code{rule_slash_split} \tab info \tab
+A crawler gets a different decision for the bare URL \code{P} than
+for the slash URL \code{P/} of a literal rule \code{P/}, which a
+server redirect between them makes matter. An Allow that opens
+\code{P/} while \code{P} stays disallowed is anchored on the Allow
+line; Disallows that block \code{P/} while \code{P} stays allowed get
+one row per group of crawlers, on its first User-agent line, listing
+five rules at most, then a count. On a file whose rules and crawlers
+would make the check costly, candidates past a fixed amount of work,
+linear in the file's rules, get no row, and
+\code{rule_slash_check_stopped} says so. \cr
+\code{rule_slash_check_stopped} \tab info \tab
+The file is too large for \code{rule_slash_pair} or
+\code{rule_slash_split} to check every candidate quickly, so the check
+read only the first ones, in line order. The message gives the counts
+found, checked and skipped and names the earliest skipped rule; the
+skipped ones may have the same problem. At most one row per check,
+for the whole file (no line). \cr
 \code{missing_user_agent} \tab error \tab
 Allow or Disallow rules exist but no line names a non-empty
 User-agent. \cr
@@ -739,9 +764,36 @@ two fewer where the cut would split a \verb{\%XX} escape. A
 lower-case-escape twin gets no row, and a body cut at \code{max_bytes} is not
 checked: a twin past the cut could silence the rule.
 
+\code{rule_slash_pair} and \code{rule_slash_split} read only literal patterns: led
+by \code{/}, of printable ASCII other than space, with no \code{*}, \code{$}, \verb{?} or
+\verb{\%}, and no \code{.} or \code{..} segment anywhere, the end included (\verb{/a/.}),
+since URL normalization would remove it from the bare URL. The root \code{/},
+a value ending in \verb{//}, and wildcard, \code{$}-anchored, query, percent-encoded
+and dot-segment values are left for a later version; they still take part
+in the decisions. Only the first line of each type and value is read for
+a crawler, so a \code{duplicate_rule} repeat is neither a pair's later line
+nor a separate split. Google's matcher makes the decisions: for the split,
+the rule \verb{P/} must itself decide \verb{P/}, and only the two URLs \code{P} and \verb{P/}
+are compared, so a deeper rule (\verb{Allow: /x/y}) changes nothing. Groups
+merge as the matchers merge them, every row keeps the original line
+numbers, and a row is reported only where every crawler the group names
+agrees. \code{rule_slash_pair} merges on the whole User-agent value, so a pair
+only Google's cut merge forms gets no row; \code{rule_slash_split} is
+reported only where the whole-value merge and Google's merge give the
+same decisions and deciding lines. A body cut at \code{max_bytes} gets
+\code{rule_slash_pair}, which a later line cannot undo, but not
+\code{rule_slash_split}, which a later Allow could change. Both checks read
+their candidates in line order within a fixed amount of work, linear in
+the file's rules and candidates; when a check stops before the last one,
+one \code{rule_slash_check_stopped} row says how many it found, checked and
+skipped, and names the earliest skipped rule. A
+\verb{User-agent: __usage_ai-training} group gets neither: it states a training
+preference, not crawl access.
+
 On a document holding a NUL byte, \code{wildcard_rules_not_inherited},
 \code{disallow_tied_by_allow}, \code{duplicate_rule},
-\code{rule_query_parameter_position} and the AI-training codes follow Google's
+\code{rule_query_parameter_position}, \code{rule_slash_pair}, \code{rule_slash_split}
+and the AI-training codes follow Google's
 reading: the parser and Google's matcher end a line at its
 first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
 byte, so each such message says it is Google's reading, unless every NUL
