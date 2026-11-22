@@ -61,6 +61,10 @@ ip_stray <- list(
     paste0(ip_a("'%su', '%'", 2L), ip_placeholder("%subscriber_hash%"))
   ),
   "/a%4g" = list(ip_new, ip_a("'%4g'")),
+  # test-escaped-unreserved-gaczsrgj.R's eu_clean held these two, which now
+  # get only this code: no rule_escaped_unreserved.
+  "/%zz" = list(ip_new, ip_a("'%zz'")),
+  "/%7" = list(ip_new, ip_b("'%7'")),
   "/a%$" = list(ip_new, ip_a("'%$'")),
   "/a%4$" = list(ip_new, ip_a("'%4$'")),
   "/%%25" = list(ip_new, ip_a("'%%2'")),
