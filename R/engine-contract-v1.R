@@ -1888,10 +1888,12 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
   error_class <- ifelse(
     url_valid, "robots_invalid_product_token", "robots_invalid_url"
   )
-  error_message <- ifelse(
-    url_valid,
-    product_token_error_message_v1(product_token),
-    "URL is missing, empty, malformed, or not HTTP(S)."
+  error_message <- rep("URL is missing, empty, malformed, or not HTTP(S).", n)
+  # A valid row's message comes from its evidence below; only a refused
+  # token row needs one built here.
+  token_refused <- url_valid & !token_valid
+  error_message[token_refused] <- product_token_error_message_v1(
+    product_token[token_refused]
   )
 
   valid <- url_valid & token_valid
