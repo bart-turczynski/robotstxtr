@@ -4223,9 +4223,14 @@ query_parameter_kept <- function(groups, at) {
 # The witness paths of each candidate value: `control`, the value with each
 # `*` written `x`, and `example`, the same with a filler parameter and `&`
 # (query_parameter_filler(), `a=1&` mostly) after the first `?`, each led
-# by `/`; `name` is the parameter. The control matches the pattern: each
-# `*` matches its `x` and every other byte itself, and no final `$` anchors
-# it. The example misses:
+# by `/`; `name` is the parameter. Both paths come from the canonical
+# value, whose escapes are upper case. The control matches the pattern on
+# Google's and Bing's matchers, which upper-case a pattern's escapes too:
+# each `*` matches its `x` and every other byte itself, and no final `$`
+# anchors it. The package's Yandex matcher compares the pattern as written,
+# so there a rule with a lower-case escape (`/p?q=%2b`) matches neither
+# path; the row stays, since the position gap holds for the escape as
+# written as well. The example misses on every matcher:
 # the pattern's first `?` cannot sit on the example's first `?`, which is
 # followed by the filler, not by `name=`, nor on a later one, since the
 # pattern's `?` bytes after it would need as many again after that one and

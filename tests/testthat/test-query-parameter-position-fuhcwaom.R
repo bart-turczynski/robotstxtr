@@ -243,6 +243,47 @@ test_that("ROBO-fuhcwaom: every backend decides the control and example", {
   }
 })
 
+# A lower-case escape: the paths come from the canonical value, upper-cased.
+# Google and Bing upper-case the pattern too, so they decide as above; the
+# package's Yandex matcher compares the pattern as written, so it matches
+# neither path. The row stays.
+qp_lower <- list(
+  "/a%3f?q=" = c("/a%3F?q=", "/a%3F?a=1&q="),
+  "/p?q=%2b" = c("/p?q=%2B", "/p?a=1&q=%2B")
+)
+qp_lower_decisions <- list(
+  disallow = list(google = c("disallow", "allow"),
+                  bing = c("disallow", "allow"),
+                  yandex = c("allow", "allow")),
+  allow = list(google = c("allow", "disallow"),
+               bing = c("allow", "disallow"),
+               yandex = c("disallow", "disallow"))
+)
+
+test_that("ROBO-fuhcwaom: a lower-case escape splits the backends", {
+  for (value in names(qp_lower)) {
+    paths <- qp_lower[[value]]
+    d <- qp_diag(paste0("User-agent: *\nDisallow: ", value, "\n"))
+    expect_identical(d$code, c("rule_lowercase_escape", qp_code),
+                     label = value)
+    expect_identical(d$message[[2L]], qp_message("q", paths[[2L]]),
+                     label = value)
+    for (backend in names(qp_engines)) {
+      label <- paste(backend, value)
+      expect_identical(
+        qp_decide(paste0("User-agent: *\nDisallow: ", value, "\n"), paths,
+                  backend),
+        qp_lower_decisions$disallow[[backend]], label = label
+      )
+      expect_identical(
+        qp_decide(paste0("User-agent: *\nDisallow: /\nAllow: ", value, "\n"),
+                  paths, backend),
+        qp_lower_decisions$allow[[backend]], label = label
+      )
+    }
+  }
+})
+
 test_that("ROBO-fuhcwaom: a dot segment before `?` loses the control", {
   backends <- names(qp_engines)
   for (value in names(qp_dot_controls)) {
