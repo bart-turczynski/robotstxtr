@@ -3594,11 +3594,16 @@ wildcard_witness_eval <- function(bodies, ids, paths) {
 
 # wildcard_witness_eval() with the deciding line too: `allowed`, and
 # `line`, the body line of the rule that decided (0 when none matched).
+# The bodies are marked UTF-8, as decode_matcher_body() marks the file's, so
+# cpp11 hands the matcher their bytes: a witness line copies the written
+# bytes (slash_written_rules()), and a native string holding a non-ASCII
+# byte would otherwise be translated, in a C locale to `<e9>` text.
 wildcard_witness_decide <- function(bodies, ids, paths) {
   n <- length(paths)
   if (n == 0L) {
     return(list(allowed = logical(), line = integer()))
   }
+  Encoding(bodies) <- "UTF-8"
   found <- robotstxtr_google_eval_batch_(
     bodies = bodies,
     per_row = list(ids = as.integer(ids), agents = rep("witness", n),
