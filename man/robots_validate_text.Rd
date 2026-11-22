@@ -365,7 +365,8 @@ parameter follows another one (\code{/items/x?a=1&sort=}); for an
 Allow, the gap can leave such URLs restricted. The message shows one
 such URL. Not reported when the same crawlers also have the rule
 with that \code{?} written \code{*&}, or written \code{&} when a
-\code{*} stands before that \code{?}. \cr
+\code{*} stands right before that \code{?} (\code{/*?sort=}, not
+\code{/a*b?sort=}). \cr
 \code{missing_user_agent} \tab error \tab
 Allow or Disallow rules exist but no line names a non-empty
 User-agent. \cr
@@ -706,15 +707,15 @@ parameter name (letters, digits, \verb{_}, \code{.} and \code{-}) and \code{=}. 
 Google, Bing and Yandex matchers read \verb{?} as a literal byte and \code{*} as
 any run, so \verb{/items/*?sort=} matches \verb{/items/x?sort=a} and misses
 \verb{/items/x?a=1&sort=a}. Only the first \verb{?} counts: in \verb{/items?back=?sort=}
-the parameter is \code{back}. A \code{*} before the \code{=} (\verb{/*?*sort=}), a first \verb{?}
-with no parameter name and \code{=} after it (\verb{/p?}) and a \code{$}-anchored value
-are not reported, while a later \verb{?} does not stop the check (\verb{/p?q=?} is
-reported), nor is a value whose path
-before the first \verb{?} holds a \code{.} or \code{..} segment, written as is or as
-\verb{\%2E} in either case, wherever it sits (URL normalization removes it from
-a request). A rule is not reported when every crawler its group names
-also has a twin, a rule of the same type whose value is the same with
-that \verb{?} written \verb{*&} (\verb{/search?page=} beside \verb{/search*&page=}), or
+the parameter is \code{back}, and a later \verb{?} does not stop the check
+(\verb{/p?q=?} is reported). Not reported: a \code{*} before the \code{=} (\verb{/*?*sort=}),
+a first \verb{?} with no parameter name and \code{=} after it (\verb{/p?}), and a
+\code{$}-anchored value. Also not reported: a value whose path before the
+first \verb{?} holds a \code{.} or \code{..} segment, written as is or as \verb{\%2E} in
+either case, wherever it sits, since URL normalization removes such a
+segment from a request. A rule is not reported when every crawler its
+group names also has a twin, a rule of the same type whose value is the
+same with that \verb{?} written \verb{*&} (\verb{/search?page=} beside \verb{/search*&page=}), or
 written \code{&} when a \code{*} stands right before that \verb{?} (\verb{/*?page=} beside
 \verb{/*&page=}). Without that \code{*}, the \code{&} rule needs \code{&} right after the
 text before it (\verb{/search&page=} misses \verb{/search?a=1&page=1} on all three
@@ -723,18 +724,17 @@ matchers), so it is no twin and the row stays. Nor is a rule that gets
 rule Bing and Yandex read still misses the URL. The message says only
 what the rule may miss, with its example, and suggests no rewrite.
 Groups merge here on the whole User-agent value, folded to ASCII lower
-case, so a twin only Google's cut merge supplies
-keeps the row, and \code{*} and named crawlers are
-kept apart. A group no crawler reads, as under an empty \verb{User-agent:}
-line, gets no row, as a rule before any User-agent line gets none. The
-example path writes each \code{*} as \code{x} and adds \verb{a=1&} after the \verb{?}, or
-\verb{b=2&} or \verb{c=3&} where the parameter is named \code{a} or the last byte
-before the \verb{?} other than \code{*} is \code{1}, so that an \code{&} rule with the same
-head cannot match the example either: the pattern matches the path
-without the addition and misses the example. The example is built
-from the canonical value, so an escape shows in upper case, and its
-parameter name, the text before the \verb{?} and the text after the \code{=} are
-each cut to their first 36 characters and "..." past 40. A
+case, so a twin only Google's cut merge supplies keeps the row, and \code{*}
+and named crawlers are kept apart. A group no crawler reads, as under an
+empty \verb{User-agent:} line, gets no row, as a rule before any User-agent
+line gets none. The example path writes each \code{*} as \code{x} and adds \verb{a=1&}
+after the \verb{?}, or \verb{b=2&} or \verb{c=3&} where the parameter is named \code{a} or
+the last byte before the \verb{?} other than \code{*} is \code{1}, so that an \code{&} rule
+with the same head cannot match the example either: the pattern matches
+the path without the addition and misses the example. The example is
+built from the canonical value, so an escape shows in upper case, and
+its parameter name, the text before the \verb{?} and the text after the \code{=}
+are each cut to their first 36 characters and "..." past 40. A
 lower-case-escape twin gets no row, and a body cut at \code{max_bytes} is not
 checked: a twin past the cut could silence the rule.
 

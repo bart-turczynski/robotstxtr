@@ -356,7 +356,8 @@ validation_unsupported <- c(
 #'     Allow, the gap can leave such URLs restricted. The message shows one
 #'     such URL. Not reported when the same crawlers also have the rule
 #'     with that \code{?} written \code{*&}, or written \code{&} when a
-#'     \code{*} stands before that \code{?}. \cr
+#'     \code{*} stands right before that \code{?} (\code{/*?sort=}, not
+#'     \code{/a*b?sort=}). \cr
 #'   \code{missing_user_agent} \tab error \tab
 #'     Allow or Disallow rules exist but no line names a non-empty
 #'     User-agent. \cr
@@ -697,15 +698,15 @@ validation_unsupported <- c(
 #' Google, Bing and Yandex matchers read `?` as a literal byte and `*` as
 #' any run, so `/items/*?sort=` matches `/items/x?sort=a` and misses
 #' `/items/x?a=1&sort=a`. Only the first `?` counts: in `/items?back=?sort=`
-#' the parameter is `back`. A `*` before the `=` (`/*?*sort=`), a first `?`
-#' with no parameter name and `=` after it (`/p?`) and a `$`-anchored value
-#' are not reported, while a later `?` does not stop the check (`/p?q=?` is
-#' reported), nor is a value whose path
-#' before the first `?` holds a `.` or `..` segment, written as is or as
-#' `%2E` in either case, wherever it sits (URL normalization removes it from
-#' a request). A rule is not reported when every crawler its group names
-#' also has a twin, a rule of the same type whose value is the same with
-#' that `?` written `*&` (`/search?page=` beside `/search*&page=`), or
+#' the parameter is `back`, and a later `?` does not stop the check
+#' (`/p?q=?` is reported). Not reported: a `*` before the `=` (`/*?*sort=`),
+#' a first `?` with no parameter name and `=` after it (`/p?`), and a
+#' `$`-anchored value. Also not reported: a value whose path before the
+#' first `?` holds a `.` or `..` segment, written as is or as `%2E` in
+#' either case, wherever it sits, since URL normalization removes such a
+#' segment from a request. A rule is not reported when every crawler its
+#' group names also has a twin, a rule of the same type whose value is the
+#' same with that `?` written `*&` (`/search?page=` beside `/search*&page=`), or
 #' written `&` when a `*` stands right before that `?` (`/*?page=` beside
 #' `/*&page=`). Without that `*`, the `&` rule needs `&` right after the
 #' text before it (`/search&page=` misses `/search?a=1&page=1` on all three
@@ -714,18 +715,17 @@ validation_unsupported <- c(
 #' rule Bing and Yandex read still misses the URL. The message says only
 #' what the rule may miss, with its example, and suggests no rewrite.
 #' Groups merge here on the whole User-agent value, folded to ASCII lower
-#' case, so a twin only Google's cut merge supplies
-#' keeps the row, and `*` and named crawlers are
-#' kept apart. A group no crawler reads, as under an empty `User-agent:`
-#' line, gets no row, as a rule before any User-agent line gets none. The
-#' example path writes each `*` as `x` and adds `a=1&` after the `?`, or
-#' `b=2&` or `c=3&` where the parameter is named `a` or the last byte
-#' before the `?` other than `*` is `1`, so that an `&` rule with the same
-#' head cannot match the example either: the pattern matches the path
-#' without the addition and misses the example. The example is built
-#' from the canonical value, so an escape shows in upper case, and its
-#' parameter name, the text before the `?` and the text after the `=` are
-#' each cut to their first 36 characters and "..." past 40. A
+#' case, so a twin only Google's cut merge supplies keeps the row, and `*`
+#' and named crawlers are kept apart. A group no crawler reads, as under an
+#' empty `User-agent:` line, gets no row, as a rule before any User-agent
+#' line gets none. The example path writes each `*` as `x` and adds `a=1&`
+#' after the `?`, or `b=2&` or `c=3&` where the parameter is named `a` or
+#' the last byte before the `?` other than `*` is `1`, so that an `&` rule
+#' with the same head cannot match the example either: the pattern matches
+#' the path without the addition and misses the example. The example is
+#' built from the canonical value, so an escape shows in upper case, and
+#' its parameter name, the text before the `?` and the text after the `=`
+#' are each cut to their first 36 characters and "..." past 40. A
 #' lower-case-escape twin gets no row, and a body cut at `max_bytes` is not
 #' checked: a twin past the cut could silence the rule.
 #'
