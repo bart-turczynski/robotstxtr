@@ -635,10 +635,10 @@ ea_odd_today <- list(space = "rule_inner_whitespace",
                      tab = "rule_inner_whitespace",
                      control = "rule_control_character", del = character(0))
 
-test_that("ROBO-nzcvlsvk: today a value no URL carries gets the row", {
+test_that("ROBO-nzcvlsvk: a value no URL carries gets no row", {
   for (name in names(ea_odd_bytes)) {
     expect_identical(ea_codes(ea_odd_body(ea_odd_bytes[[name]])),
-                     c(ea_odd_today[[name]], ea_code), label = name)
+                     ea_odd_today[[name]], label = name)
   }
 })
 

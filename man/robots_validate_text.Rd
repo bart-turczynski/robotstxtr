@@ -806,8 +806,9 @@ is led by \code{/} or \code{*}, ends in its only \code{$} and holds no \verb{?}.
 ending in \verb{*$} is left out, since the \code{*} matches every ending, and so is
 one whose path holds a \code{.} or \code{..} segment, written as is or as \verb{\%2E},
 since URL normalization would remove it, or a \verb{\%} that starts no
-two-hex-digit escape, which no correctly encoded URL carries. The path
-the rule blocks is the
+two-hex-digit escape, which no correctly encoded URL carries, or a space,
+a tab, another control byte or DEL, which no URL a crawler sends carries.
+The path the rule blocks is the
 value without the \code{$}, each \code{*} written \code{x}, and the query URL is that
 path with \code{?x=1} added. Google's matcher makes the decisions over every
 rule of the crawler's merged groups, so a second rule that blocks the

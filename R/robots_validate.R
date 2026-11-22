@@ -797,8 +797,9 @@ validation_unsupported <- c(
 #' ending in `*$` is left out, since the `*` matches every ending, and so is
 #' one whose path holds a `.` or `..` segment, written as is or as `%2E`,
 #' since URL normalization would remove it, or a `%` that starts no
-#' two-hex-digit escape, which no correctly encoded URL carries. The path
-#' the rule blocks is the
+#' two-hex-digit escape, which no correctly encoded URL carries, or a space,
+#' a tab, another control byte or DEL, which no URL a crawler sends carries.
+#' The path the rule blocks is the
 #' value without the `$`, each `*` written `x`, and the query URL is that
 #' path with `?x=1` added. Google's matcher makes the decisions over every
 #' rule of the crawler's merged groups, so a second rule that blocks the
@@ -5291,13 +5292,16 @@ end_anchor_diagnostics <- function(groups, written = NULL, budget = NULL) {
 # (query_parameter_candidates()'s scan): URL normalization would remove it
 # from the control before matching. Nor one whose control holds a `%` that
 # starts no two-hex-digit escape (rule_invalid_percent_escape): no correctly
-# encoded URL carries it, so there is no exact control to show.
+# encoded URL carries it, so there is no exact control to show. Nor one
+# holding a space, a tab, another control byte or DEL (rule_inner_whitespace,
+# rule_control_character): no URL a crawler sends carries such a byte.
 end_anchor_candidates <- function(rules) {
   value <- rules$value
   hit <- which(
     rules$type == "disallow" & !rules$empty &
       grepl("^[/*][^?$]*[$]$", value, useBytes = TRUE) &
-      !endsWith(value, "*$")
+      !endsWith(value, "*$") &
+      !grepl("[\001-\040\177]", value, useBytes = TRUE)
   )
   control <- end_anchor_controls(value[hit])
   dot <- grepl("/([.]|%2E){1,2}(/|$)", control, useBytes = TRUE)
