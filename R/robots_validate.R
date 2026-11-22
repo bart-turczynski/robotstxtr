@@ -219,8 +219,8 @@ validation_unsupported <- c(
 #'     says that Google ends the rule there while Bing and Yandex read the
 #'     NUL as a byte of the rule. One per rule line, naming up to ten
 #'     \code{\%} with the two bytes after each, quoted as written in the
-#'     file; a control or non-ASCII byte, or a \code{'}, is shown by its hex
-#'     code. \cr
+#'     file; a control or non-ASCII byte, or a single quote, is shown by its
+#'     hex code. \cr
 #'   \code{rule_lowercase_escape} \tab warning \tab
 #'     A pattern holds a lower-case percent-escape, such as \code{\%3c}.
 #'     Google upper-cases the escape in a pattern but not in the URL, so a URL
