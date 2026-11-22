@@ -113,6 +113,17 @@ fu_shapes <- list(
   dots_query = fu_shape(
     "https://e.example/a/./b?x=/./", "/a/b?x=/./", notes = fu_dots
   ),
+  # A final `$` is the end anchor: set aside while dot segments are
+  # removed, then put back. A client sends `/a/..` as `/`, `/a/b/..` as
+  # `/a/`.
+  dots_dollar = fu_shape(
+    "https://e.example/a/..$", "/$", scope = "", notes = fu_dots,
+    url = "https://e.example/a/.."
+  ),
+  dots_dollar_deep = fu_shape(
+    "https://e.example/a/b/..$", "/a/$", scope = "", notes = fu_dots,
+    url = "https://e.example/a/b/.."
+  ),
   # An escaped dot is no dot segment, as in rule_dot_segment.
   escaped_dot = fu_shape(
     "https://e.example/a/%2E/b", "/a/%2E/b",

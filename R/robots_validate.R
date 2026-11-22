@@ -4646,23 +4646,35 @@ rule_full_url_message <- function(written, robots_url = NA_character_,
   if (is.na(origin)) {
     return(NULL)
   }
-  path <- remove_dot_segments_v1(split$path)
-  dots <- !identical(path, split$path)
-  if (length(path) == 0L) {
-    path <- charToRaw("/")
-  }
-  pattern <- c(path, split$query)
+  path <- rule_full_url_path(split$path, length(split$query) == 0L)
+  pattern <- c(path$path, split$query)
   wide <- any(as.integer(pattern) >= 0x80L)
   suggestion <- rule_full_url_escape(pattern)
   paste0(
     "Pattern does not start with '/' or '*'; URL paths always start ",
     "with '/', so this rule never matches. The value is a full URL; write ",
     "its path and query instead: '", suggestion, "'.",
-    if (dots) " Dot segments removed (RFC 3986 section 5.2.4).",
+    if (path$dots) " Dot segments removed (RFC 3986 section 5.2.4).",
     if (wide) " Non-ASCII bytes written as upper-case %XX escapes.",
     rule_full_url_scope(suggestion),
     rule_full_url_origin(origin, robots_url)
   )
+}
+
+# The path to suggest, `/` when empty, and whether dot segments were removed
+# from it. A final `$` with no query after it is the end anchor, so it is
+# set aside while dot segments are removed (`/a/..$` gives `/a/$`).
+rule_full_url_path <- function(path, last) {
+  anchor <- last && length(path) > 0L && path[[length(path)]] == as.raw(0x24)
+  if (anchor) {
+    path <- path[-length(path)]
+  }
+  out <- remove_dot_segments_v1(path)
+  dots <- !identical(out, path)
+  if (length(out) == 0L) {
+    out <- charToRaw("/")
+  }
+  list(path = c(out, if (anchor) as.raw(0x24)), dots = dots)
 }
 
 # The URL in `written` without its leading blanks, or NULL: not led by
