@@ -212,7 +212,9 @@ validation_unsupported <- c(
 #'     \code{\%DAte\%} there and \code{\%date\%} on Yandex. A
 #'     \code{\%}, or \code{\%} and one hex digit, at the pattern's end or
 #'     before a \code{*} matches any escape it begins, which may be meant,
-#'     and gets its own message. One per rule line, naming up to ten
+#'     and gets its own message; the matchers compare the digit's case, so a
+#'     lower-case digit matches only lower-case escapes, which RFC 3986
+#'     section 2.1 advises against. One per rule line, naming up to ten
 #'     \code{\%} with the two bytes after each. \cr
 #'   \code{rule_lowercase_escape} \tab warning \tab
 #'     A pattern holds a lower-case percent-escape, such as \code{\%3c}.
@@ -4645,13 +4647,20 @@ rule_invalid_percent_escape_message <- function(written, bytes, stray, open) {
   }
   placeholder <- rule_written_placeholder(written)
   if (open && is.null(placeholder)) {
+    # The matchers compare a cut-short escape's digit case by case.
+    lower <- any(bytes[pmin(stray + 1L, n)] %in% charToRaw("abcdef") &
+                   stray < n)
     return(paste0(
       "Pattern holds ", listed, if (k == 1L) ", a '%'" else ", each a '%'",
       " cut short by a '*' or by the pattern's end. The package's Google, ",
       "Bing and Yandex matchers compare the pattern as written, so the rule ",
       "matches any URL with a percent-escape that begins there, as a final ",
-      "'%' matches '%20' and '%25' alike. This may be meant; to match only a ",
-      "literal '%', write '%25'."
+      "'%' matches '%20' and '%25' alike.",
+      if (lower) {
+        paste0(" A lower-case hex digit there matches only lower-case ",
+               "escapes, which RFC 3986 section 2.1 advises against.")
+      },
+      " This may be meant; to match only a literal '%', write '%25'."
     ))
   }
   lead <- paste0(

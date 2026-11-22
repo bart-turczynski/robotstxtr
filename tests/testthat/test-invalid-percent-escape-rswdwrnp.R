@@ -39,14 +39,18 @@ ip_a <- function(listed, n = 1L) {
   )
 }
 
-ip_b <- function(listed, n = 1L) {
+ip_b <- function(listed, n = 1L, lower = FALSE) {
   paste0(
     "Pattern holds ", listed, if (n == 1L) ", a '%'" else ", each a '%'",
     " cut short by a '*' or by the pattern's end. The package's Google, ",
     "Bing and Yandex matchers compare the pattern as written, so the rule ",
     "matches any URL with a percent-escape that begins there, as a final ",
-    "'%' matches '%20' and '%25' alike. This may be meant; to match only a ",
-    "literal '%', write '%25'."
+    "'%' matches '%20' and '%25' alike.",
+    if (lower) {
+      paste0(" A lower-case hex digit there matches only lower-case escapes, ",
+             "which RFC 3986 section 2.1 advises against.")
+    },
+    " This may be meant; to match only a literal '%', write '%25'."
   )
 }
 
@@ -119,6 +123,10 @@ ip_stray <- list(
   "/a%" = list(ip_new, ip_b("'%'")),
   "/a%4" = list(ip_new, ip_b("'%4'")),
   "/a%F" = list(ip_new, ip_b("'%F'")),
+  # A lower-case digit matches only lower-case escapes.
+  "/a%f" = list(ip_new, ip_b("'%f'", lower = TRUE)),
+  "/a%f*" = list(ip_new, ip_b("'%f*'", lower = TRUE)),
+  "/a%F*b%f" = list(ip_new, ip_b("'%F*', '%f'", 2L, lower = TRUE)),
   "/a%*" = list(ip_new, ip_b("'%*'")),
   "/a%4*" = list(ip_new, ip_b("'%4*'")),
   "*%*" = list(ip_new, ip_b("'%*'")),
@@ -407,6 +415,19 @@ test_that("ROBO-rswdwrnp: a class (a) `%` matches only the raw `%`", {
       ip_eval("/*hashid=%subscriber_hash%", "/x?hashid=abc",
               backend)$url_decision,
       "allow", label = backend
+    )
+  }
+})
+
+test_that("ROBO-rswdwrnp: a cut-short escape's digit keeps its case", {
+  for (backend in names(ip_engines)) {
+    expect_identical(
+      ip_eval("/a%f", c("/a%F0", "/a%f0"), backend)$url_decision,
+      c("allow", "disallow"), label = paste(backend, "/a%f")
+    )
+    expect_identical(
+      ip_eval("/a%F", c("/a%F0", "/a%f0"), backend)$url_decision,
+      c("disallow", "allow"), label = paste(backend, "/a%F")
     )
   }
 })
