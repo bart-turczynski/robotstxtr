@@ -620,3 +620,44 @@ test_that("ROBO-nzcvlsvk: the check is linear in the value's length", {
   long <- ea_time_check(ea_value(4000L), 20L)
   expect_lt(long, 8 * max(short, 0.05))
 })
+
+# Bytes no URL a crawler sends carries (rule_inner_whitespace,
+# rule_control_character): a space, a tab, a control byte and DEL, built
+# in code between `/a` and `b$`.
+ea_odd_bytes <- list(space = as.raw(0x20), tab = as.raw(0x09),
+                     control = as.raw(0x01), del = as.raw(0x7f))
+
+ea_odd_body <- function(byte) {
+  c(charToRaw("User-agent: *\nDisallow: /a"), byte, charToRaw("b$\n"))
+}
+
+ea_odd_today <- list(space = "rule_inner_whitespace",
+                     tab = "rule_inner_whitespace",
+                     control = "rule_control_character", del = character(0))
+
+test_that("ROBO-nzcvlsvk: today a value no URL carries gets the row", {
+  for (name in names(ea_odd_bytes)) {
+    expect_identical(ea_codes(ea_odd_body(ea_odd_bytes[[name]])),
+                     c(ea_odd_today[[name]], ea_code), label = name)
+  }
+})
+
+# A value whose canonical escapes grow past the 16,663-byte line buffer:
+# `n` e-acute characters, two bytes each written, six bytes escaped.
+ea_long_utf8 <- function(n) {
+  paste0("User-agent: *\nDisallow: /", strrep(intToUtf8(233L), n), "$\n")
+}
+
+test_that("ROBO-nzcvlsvk: today a value escaped past the buffer is silent", {
+  expect_identical(ea_codes(ea_long_utf8(10L)), ea_code)
+  expect_identical(ea_codes(ea_long_utf8(3000L)), character(0))
+})
+
+# A twin a NUL cuts: Google reads `Disallow: /a?`, which blocks the
+# witness; Bing and Yandex read the value with the NUL and `zz`.
+ea_nul_twin <- c(charToRaw("User-agent: *\nDisallow: /a$\nDisallow: /a?"),
+                 as.raw(0), charToRaw("zz\n"))
+
+test_that("ROBO-nzcvlsvk: today a NUL-cut twin silences the row", {
+  expect_identical(ea_codes(ea_nul_twin), c("nul_byte", "rule_cut_by_nul"))
+})
