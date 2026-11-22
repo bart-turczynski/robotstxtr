@@ -424,6 +424,14 @@ test_that("ROBO-roypaoox: a row needs the whole-value merge too", {
   expect_identical(slash_split_reading(groups, at, groups$agents$uncut),
                    NA_integer_)
   expect_identical(slash_split_reading(groups, at, groups$agents$key), 2L)
+  # Both readings split, but a different line blocks `/x`: line 5 on the
+  # whole value, line 2 on Google's merge. No row.
+  body <- paste0("User-agent: Foo web\nDisallow: /x\n\n",
+                 "User-agent: Foo blog\nDisallow: /\nAllow: /x/\n")
+  groups <- sp_groups(body)
+  expect_identical(slash_split_reading(groups, 3L, groups$agents$uncut), 5L)
+  expect_identical(slash_split_reading(groups, 3L, groups$agents$key), 2L)
+  expect_identical(sp_rows(body, sp_split)$line, integer(0))
   # The same whole value, in another ASCII case, merges on both readings.
   expect_identical(sp_rows(sp_body("same_value"), sp_pair)$line, 5L)
   d <- sp_rows(paste0("User-agent: Foo web\nDisallow: /\n\n",
