@@ -4673,6 +4673,8 @@ rule_full_url_bytes <- function(written) {
     return(NULL)
   }
   url <- written[lead[[1L]]:length(written)]
+  # A fast path only: robots_origin() runs the same scheme guard, but this
+  # one skips the byte scans and the rurl parse for every other value.
   head <- rawToChar(url[seq_len(min(8L, length(url)))])
   if (!grepl("^[Hh][Tt][Tt][Pp][Ss]?://", head, useBytes = TRUE)) {
     return(NULL)
