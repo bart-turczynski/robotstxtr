@@ -388,6 +388,26 @@ test_that("ROBO-micbpqbc: the removal read leaves out every shape-A Allow", {
     paste0(" and the other Allows that open with '*' or '/*' (lines 4, 5, ",
            "6, 7, 8 and 2 more)")
   ))
+  # Google's merge reads `Foo extra` as Foo, so the Allow on line 6 is one
+  # the removal read left out too, and the row names it: without line 3
+  # alone, line 6 keeps the witness open on Google. Google's cut only: the
+  # check decides on Google's matcher, and Bing and Yandex do not cut the
+  # value this way.
+  cut <- paste0("User-agent: Foo extra\nDisallow: /my/\nAllow: /*/a/\n\n",
+                "User-agent: Foo\nAllow: */a/\n")
+  d <- ar_diag(cut)
+  expect_identical(d$message[d$code == ar_code], ar_one(
+    3L, "/*/a/", "/my/", "/a/", 2L,
+    " and the other Allow that opens with '*' or '/*' (line 6)"
+  ))
+  google <- function(body) {
+    robots_evaluate_text_v1(body, "https://example.com/my/?q=/a/", "Foo",
+                            "google", "google")$results$url_decision
+  }
+  expect_identical(google(sub("Allow: /*/a/", "Allow: /zz", cut,
+                              fixed = TRUE)), "allow")
+  expect_identical(google(gsub("Allow: [*/]+a/", "Allow: /zz", cut)),
+                   "disallow")
   for (backend in names(ar_engines)) {
     body <- paste0("User-agent: %s\nDisallow: /my/\nAllow: */a/b/\n",
                    "Allow: */b/\nDisallow: /*q=/b/\n")

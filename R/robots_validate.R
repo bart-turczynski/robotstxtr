@@ -5707,15 +5707,15 @@ reopen_pairs <- function(groups, allows, controls, budget, filter = TRUE) {
        control = controls$control[pos], whole = whole)
 }
 
-# The crawler classes of the groups `wanted` on the whole-value merge
-# (validation_token_expander() on `agents$uncut`), as functions of group
-# ids: `key`, one string per set of classes, `classes`, how many, and
-# `groups`, for one group, every group sharing a class with it, itself
-# included. The counts come from the (group, class) pairs, which grow with
-# the User-agent lines.
-reopen_near <- function(groups, wanted) {
+# The crawler classes of the groups `wanted` on a merge (`key`,
+# validation_token_expander(); the whole-value merge by default), as
+# functions of group ids: `key`, one string per set of classes, `classes`,
+# how many, and `groups`, for one group, every group sharing a class with
+# it, itself included. The counts come from the (group, class) pairs, which
+# grow with the User-agent lines.
+reopen_near <- function(groups, wanted, key = groups$agents$uncut) {
   wanted <- unique(wanted)
-  pairs <- validation_token_expander(groups, groups$agents$uncut)(wanted)
+  pairs <- validation_token_expander(groups, key)(wanted)
   by_class <- split(wanted[pairs$owner], pairs$class)
   classes <- split(pairs$class, factor(pairs$owner, seq_along(wanted)))
   key <- vapply(classes, function(x) paste(sort(x), collapse = " "), "",
@@ -5802,21 +5802,27 @@ reopen_rows <- function(groups, shape, at, pairs, read, pair) {
 }
 
 # For each Allow `at`, the lines of the other shape-A Allows (`shape`) its
-# crawler classes hold on the whole-value merge (reopen_near()): the second
-# reading left them out too. Gathered once per set of classes.
+# crawler classes hold on the whole-value merge or on Google's
+# (reopen_near()): the second reading left out every shape-A Allow, and
+# those are the ones a crawler of the Allow's group obeys, on either merge.
+# Gathered once per set of classes.
 reopen_others <- function(groups, shape, at) {
   rules <- groups$rules
   if (length(at) == 0L) {
     return(list())
   }
-  near <- reopen_near(groups, rules$group[c(at, shape)])
+  wanted <- rules$group[c(at, shape)]
+  whole <- reopen_near(groups, wanted)
+  google <- reopen_near(groups, wanted, groups$agents$key)
   by_group <- split(rules$line[shape], rules$group[shape])
-  key <- near$key(rules$group[at])
+  g <- rules$group[at]
+  key <- paste(whole$key(g), google$key(g))
   held <- list()
   out <- vector("list", length(at))
   for (i in seq_along(at)) {
     if (is.null(held[[key[[i]]]])) {
-      found <- by_group[as.character(near$groups(rules$group[at[[i]]]))]
+      near <- union(whole$groups(g[[i]]), google$groups(g[[i]]))
+      found <- by_group[as.character(near)]
       held[[key[[i]]]] <- sort(unlist(found, use.names = FALSE))
     }
     out[[i]] <- setdiff(held[[key[[i]]]], rules$line[at[[i]]])
