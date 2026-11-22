@@ -407,10 +407,23 @@ the Disallow that blocks the path, then the lines of the other
 Allows, four at most, then a count.
 Past a fixed amount of work, as for \code{rule_slash_split}, Allows
 get no row and \code{rule_check_stopped} says so. \cr
+\code{rule_render_resource_blocked} \tab info \tab
+A Disallow whose pattern ends in a file type a page may load
+(\code{.js}, \code{.mjs}, \code{.cjs}, \code{.css}, \code{.json},
+\code{.wasm}), such as \code{/*.js}, blocks the scripts, styles or
+data a page may need to show its content. Reported only when the
+rule decides such a file and, with every such rule left out, the
+file would be allowed, under every rule the crawlers have. One row
+per group of crawlers, on its first User-agent line: the first rule
+with a file it blocks, then the lines of the other rules, four at
+most, then a count. Past a fixed amount of work, as for
+\code{rule_slash_split}, rules get no row and
+\code{rule_check_stopped} says so. \cr
 \code{rule_check_stopped} \tab info \tab
 The file is too large for \code{rule_slash_pair},
-\code{rule_slash_split}, \code{rule_end_anchor_query} or
-\code{allow_reopens_through_query} to check
+\code{rule_slash_split}, \code{rule_end_anchor_query},
+\code{allow_reopens_through_query} or
+\code{rule_render_resource_blocked} to check
 every candidate quickly, so the check
 read only the first ones, in line order. The message gives the counts
 found, checked and skipped and names the earliest skipped rule; the
@@ -869,10 +882,34 @@ Disallow, where Google gives it to the Allow. An Allow such as
 body cut at \code{max_bytes} is not checked, and a
 \verb{User-agent: __usage_ai-training} group gets no row.
 
+\code{rule_render_resource_blocked} reads a non-empty Disallow whose
+canonical value is led by \code{/} or \code{*} and ends in \code{.js}, \code{.mjs}, \code{.cjs},
+\code{.css}, \code{.json} or \code{.wasm}, in any case, then only a run of \code{*}, a final
+\code{$}, or a query with no \code{/} (\verb{/*.js}, \verb{/cart.js}, \verb{/*.js*$},
+\verb{/a.json?v=*}). The file it blocks is the value without a final \code{$} and
+the run of \code{*} before it, each other \code{*} written \code{x} (\verb{/*.css*} blocks
+\verb{/x.css}); where another rule matches that filler, the check tries \code{y},
+then \code{z}. A value with a dot segment, a \verb{\%} that starts no escape or a
+byte no URL carries is left out, as for \code{rule_end_anchor_query}.
+Google's matcher makes the decisions over every rule of the crawler's
+merged groups: the rule must decide the file, so an Allow that wins it
+(\verb{Allow: /*.js}, \verb{Allow: /x.js} beside \verb{Disallow: /x.js}) silences the
+row, and, read again with every such rule left out, the file must come
+out allowed, so a broader rule that blocks it anyway (\verb{Disallow: /},
+\verb{Disallow: /assets/}) silences it too. A row is reported only where
+every crawler the group names agrees, on the whole-value merge and on
+Google's merge. The check does not read folder rules
+(\verb{Disallow: /js/}), paths with no file type, fonts, images or source
+maps. A rule such as \verb{/*.js$} can also get \code{rule_end_anchor_query}, and
+\verb{/a.json?v=*} \code{rule_query_parameter_position}; both rows stand. A body
+cut at \code{max_bytes} is not checked, and a
+\verb{User-agent: __usage_ai-training} group gets no row.
+
 On a document holding a NUL byte, \code{wildcard_rules_not_inherited},
 \code{disallow_tied_by_allow}, \code{duplicate_rule},
 \code{rule_query_parameter_position}, \code{rule_slash_pair}, \code{rule_slash_split},
-\code{rule_end_anchor_query}, \code{allow_reopens_through_query} and the
+\code{rule_end_anchor_query}, \code{allow_reopens_through_query},
+\code{rule_render_resource_blocked} and the
 AI-training codes follow Google's
 reading: the parser and Google's matcher end a line at its
 first NUL, while the Bing and Yandex matchers read the NUL as an ordinary

@@ -398,10 +398,23 @@ validation_unsupported <- c(
 #'     Allows, four at most, then a count.
 #'     Past a fixed amount of work, as for \code{rule_slash_split}, Allows
 #'     get no row and \code{rule_check_stopped} says so. \cr
+#'   \code{rule_render_resource_blocked} \tab info \tab
+#'     A Disallow whose pattern ends in a file type a page may load
+#'     (\code{.js}, \code{.mjs}, \code{.cjs}, \code{.css}, \code{.json},
+#'     \code{.wasm}), such as \code{/*.js}, blocks the scripts, styles or
+#'     data a page may need to show its content. Reported only when the
+#'     rule decides such a file and, with every such rule left out, the
+#'     file would be allowed, under every rule the crawlers have. One row
+#'     per group of crawlers, on its first User-agent line: the first rule
+#'     with a file it blocks, then the lines of the other rules, four at
+#'     most, then a count. Past a fixed amount of work, as for
+#'     \code{rule_slash_split}, rules get no row and
+#'     \code{rule_check_stopped} says so. \cr
 #'   \code{rule_check_stopped} \tab info \tab
 #'     The file is too large for \code{rule_slash_pair},
-#'     \code{rule_slash_split}, \code{rule_end_anchor_query} or
-#'     \code{allow_reopens_through_query} to check
+#'     \code{rule_slash_split}, \code{rule_end_anchor_query},
+#'     \code{allow_reopens_through_query} or
+#'     \code{rule_render_resource_blocked} to check
 #'     every candidate quickly, so the check
 #'     read only the first ones, in line order. The message gives the counts
 #'     found, checked and skipped and names the earliest skipped rule; the
@@ -860,10 +873,34 @@ validation_unsupported <- c(
 #' body cut at `max_bytes` is not checked, and a
 #' `User-agent: __usage_ai-training` group gets no row.
 #'
+#' `rule_render_resource_blocked` reads a non-empty Disallow whose
+#' canonical value is led by `/` or `*` and ends in `.js`, `.mjs`, `.cjs`,
+#' `.css`, `.json` or `.wasm`, in any case, then only a run of `*`, a final
+#' `$`, or a query with no `/` (`/*.js`, `/cart.js`, `/*.js*$`,
+#' `/a.json?v=*`). The file it blocks is the value without a final `$` and
+#' the run of `*` before it, each other `*` written `x` (`/*.css*` blocks
+#' `/x.css`); where another rule matches that filler, the check tries `y`,
+#' then `z`. A value with a dot segment, a `%` that starts no escape or a
+#' byte no URL carries is left out, as for `rule_end_anchor_query`.
+#' Google's matcher makes the decisions over every rule of the crawler's
+#' merged groups: the rule must decide the file, so an Allow that wins it
+#' (`Allow: /*.js`, `Allow: /x.js` beside `Disallow: /x.js`) silences the
+#' row, and, read again with every such rule left out, the file must come
+#' out allowed, so a broader rule that blocks it anyway (`Disallow: /`,
+#' `Disallow: /assets/`) silences it too. A row is reported only where
+#' every crawler the group names agrees, on the whole-value merge and on
+#' Google's merge. The check does not read folder rules
+#' (`Disallow: /js/`), paths with no file type, fonts, images or source
+#' maps. A rule such as `/*.js$` can also get `rule_end_anchor_query`, and
+#' `/a.json?v=*` `rule_query_parameter_position`; both rows stand. A body
+#' cut at `max_bytes` is not checked, and a
+#' `User-agent: __usage_ai-training` group gets no row.
+#'
 #' On a document holding a NUL byte, `wildcard_rules_not_inherited`,
 #' `disallow_tied_by_allow`, `duplicate_rule`,
 #' `rule_query_parameter_position`, `rule_slash_pair`, `rule_slash_split`,
-#' `rule_end_anchor_query`, `allow_reopens_through_query` and the
+#' `rule_end_anchor_query`, `allow_reopens_through_query`,
+#' `rule_render_resource_blocked` and the
 #' AI-training codes follow Google's
 #' reading: the parser and Google's matcher end a line at its
 #' first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
@@ -1949,6 +1986,24 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       add_diagnostic(
         NA_integer_, "info", "rule_check_stopped", NA_character_,
         slash_stop_message("allow_reopen", attr(found, "stopped"))
+      )
+    }
+    # A Disallow that blocks a file type a page may load to show its
+    # content (ROBO-dwywkpes). A later rule could decide the witness, so a
+    # cut body is skipped too.
+    found <- render_resource_diagnostics(groups, written = written)
+    if (nrow(found) > 0L) {
+      add_chunk(
+        found$line, "info", "rule_render_resource_blocked", found$directive,
+        vapply(raw_lines[found$line], render_validation_line, "",
+               USE.NAMES = FALSE),
+        paste0(found$message, nul_reading)
+      )
+    }
+    if (!is.null(attr(found, "stopped"))) {
+      add_diagnostic(
+        NA_integer_, "info", "rule_check_stopped", NA_character_,
+        slash_stop_message("render_resource", attr(found, "stopped"))
       )
     }
   }
@@ -4705,12 +4760,17 @@ slash_stop <- function(rules, at, checked) {
 }
 
 # The rule_check_stopped row's text, for the split check (`kind`
-# "split"), the pair check ("pair"), the end-anchor check ("end_anchor")
-# or the reopen check ("allow_reopen"), in plain words with the file's own
-# counts and its earliest skipped value.
+# "split"), the pair check ("pair"), the end-anchor check ("end_anchor"),
+# the reopen check ("allow_reopen") or the render-resource check
+# ("render_resource"), in plain words with the file's own counts and its
+# earliest skipped value.
 slash_stop_message <- function(kind, stop) {
   if (kind == "end_anchor") {
     return(paste(end_anchor_stop_intro(stop),
+                 slash_stop_counts(stop, "have the same problem")))
+  }
+  if (kind == "render_resource") {
+    return(paste(render_resource_stop_intro(stop),
                  slash_stop_counts(stop, "have the same problem")))
   }
   if (kind == "allow_reopen") {
@@ -5044,7 +5104,8 @@ merge_differs <- function(groups, group) {
 
 # Two paths per candidate in `at` (indexes of `groups$rules`): `short`, a
 # prefix of `long`, and the one named by `decides` ("short" or "long") the
-# candidate must decide. A (candidate, class) row is `ok` when the candidate
+# candidate must decide ("none": no line, witness_pair_verdict()). A
+# (candidate, class) row is `ok` when the candidate
 # is the line that decides that path and the other path gets the other
 # decision, or, with `differ = FALSE`, the same decision. Returns
 # list(ok, line, spent, read): `ok`, per candidate, where every class the
@@ -5111,9 +5172,17 @@ witness_pair_reading <- function(groups, at, key, short, long, decides,
 # decisions on the (short, long) path pairs of rows `o` (their candidates,
 # whose file lines are `cand_line`), and `body`, the witness bodies
 # (`line` the file line of each rule). `differ`: whether the two paths
-# must get different decisions (TRUE) or the same one (FALSE).
+# must get different decisions (TRUE) or the same one (FALSE). With
+# `decides = "none"`, no line need decide: a row is `ok` when both paths
+# come out allowed, and `line` stays NA.
 witness_pair_verdict <- function(out, read, body, line, cand_line, o,
                                  decides, differ = TRUE) {
+  first <- seq(1L, 2L * length(o), by = 2L)
+  if (decides == "none") {
+    ok <- read$allowed[first] & read$allowed[first + 1L]
+    out$ok[slash_every(o, ok)] <- TRUE
+    return(out)
+  }
   file_line <- function(k) {
     j <- read$line[k]
     found <- integer(length(j))
@@ -5122,7 +5191,6 @@ witness_pair_verdict <- function(out, read, body, line, cand_line, o,
                                    j[hit] - 2L]]
     found
   }
-  first <- seq(1L, 2L * length(o), by = 2L)
   own <- if (decides == "long") first + 1L else first
   other <- if (decides == "long") first else first + 1L
   other_line <- file_line(other)
@@ -5223,7 +5291,9 @@ slash_split_bodies <- function(rules, held, paths, class, written = NULL,
   } else {
     written[rule]
   }
-  text <- paste0(line, "\n")
+  # A row may hold no rule (the removal read of rule_render_resource_blocked
+  # leaves out its own), so no rule gives no line.
+  text <- if (length(rule) == 0L) character() else paste0(line, "\n")
   kept <- seq_len(within$rows)
   bodies <- vapply(split(text, factor(row, kept)), function(x) {
     paste0("User-agent: witness\n", paste(x, collapse = ""))
@@ -6051,17 +6121,17 @@ reopen_message <- function(value, line, cap, control, decider) {
 }
 
 # " The Allows on lines 4, 5, 6, 7 and 2 more do the same.": the lines of a
-# row's other Allows, `cap` at most, then a count, or "" when there are
-# none.
-reopen_same_text <- function(lines, cap) {
+# row's other rules (`noun`, "Allow" or "Disallow"), `cap` at most, then a
+# count, or "" when there are none.
+reopen_same_text <- function(lines, cap, noun = "Allow") {
   if (length(lines) == 0L) {
     return("")
   }
   if (length(lines) == 1L) {
-    return(sprintf(" The Allow on line %d does the same.", lines))
+    return(sprintf(" The %s on line %d does the same.", noun, lines))
   }
   shown <- utils::head(lines, cap)
-  sprintf(" The Allows on lines %s do the same.",
+  sprintf(" The %ss on lines %s do the same.", noun,
           joined_and(as.character(shown), length(lines) - length(shown)))
 }
 
@@ -6078,6 +6148,185 @@ reopen_stop_intro <- function(stop) {
     "This file has %s, such as '%s'. For each one, the validator checks ",
     "whether it also matches inside a URL's query and so allows a URL that ",
     "a Disallow blocks without the query."
+  ), rules, query_parameter_cap(stop$value, 40L))
+}
+
+# A Disallow whose pattern ends in a file type a page may load (`.js`,
+# `.mjs`, `.cjs`, `.css`, `.json`, `.wasm`) can block the scripts, styles
+# and data a page needs to show its content (ROBO-dwywkpes). Candidates
+# (render_resource_candidates()) are read on a witness, the value as a
+# file path (render_resource_witness()): `x` for each inner `*` first,
+# then `y`, then `z` for a candidate an earlier filler left unreported, so
+# another rule that happens to match one filler (`Allow: /x.js`) does not
+# silence it. A candidate is reported only when, for every crawler class
+# its group names, merged on the whole User-agent value and on Google's
+# token, it is the line that decides the witness, so the witness is
+# disallowed and no Allow wins it, and, with every candidate of the file
+# left out, the witness comes out allowed: a broader rule that blocks the
+# file anyway (`Disallow: /`, `Disallow: /assets/`) silences it
+# (render_resource_reads()). The decisions are Google's matcher's, read by
+# witness_pair_readings() within `budget` (slash_budget()) in line order,
+# the later fillers and the removal reads on what is left. Candidates
+# count as checked up to the first one whose reading did not finish; that
+# one and every later one get no row, and the stop counts say so. One row
+# per set of crawler classes, on the first User-agent line the check
+# reads of the group holding the earliest one (slash_open_rows()), with
+# the first rule's witness and four more lines at most, then a count. A
+# cut body is not checked: a later rule could decide the witness. Returns
+# slash_rows() with a `directive` column; when the budget cut candidates,
+# its "stopped" attribute holds slash_stop()'s counts.
+render_resource_diagnostics <- function(groups, written = NULL,
+                                        budget = NULL) {
+  groups <- slash_groups(groups)
+  rules <- groups$rules
+  at <- render_resource_candidates(rules)
+  if (length(at) == 0L) {
+    return(slash_rows(character()))
+  }
+  if (is.null(budget)) {
+    budget <- slash_budget(rules, at)
+  }
+  read <- render_resource_reads(groups, at, written, budget)
+  # Candidates count as checked in line order up to the first one whose
+  # reading did not finish; a row past it would contradict the stop row.
+  checked <- match(FALSE, read$finished, nomatch = length(at) + 1L) - 1L
+  pair <- read$pair
+  pair[seq_along(pair) > checked] <- NA_integer_
+  hit <- which(!is.na(pair))
+  hit_line <- rules$line[at[hit]]
+  message <- function(value, line, cap) {
+    render_resource_message(value[[1L]], line, cap,
+                            pair[hit][match(line[[1L]], hit_line)])
+  }
+  out <- slash_open_rows(groups, at[hit], cap = 4L, message = message)
+  attr(out, "stopped") <- slash_stop(rules, at, checked)
+  out
+}
+
+# Indexes of `rules` that are rule_render_resource_blocked candidates: a
+# non-empty Disallow whose canonical value is led by `/` or `*` and ends in
+# a listed file type, in any case, then only a run of `*`, a final `$`, or
+# a query with no `/` (`/*.js`, `/*.js*$`, `/a.json?v=*`). Not a folder
+# (`/js/`), a longer type (`/a.jsp`) or a path that goes on (`/x.json/y`).
+# Nor one whose witness fails url_safe_path(): a dot segment, a stray `%`
+# or a byte no URL carries.
+render_resource_candidates <- function(rules) {
+  value <- rules$value
+  hit <- which(
+    rules$type == "disallow" & !rules$empty &
+      grepl("^[/*]", value, useBytes = TRUE) &
+      grepl("[.](m?js|cjs|css|json|wasm)([*]*[$]?|[?][^/]*)$", value,
+            ignore.case = TRUE, useBytes = TRUE)
+  )
+  hit[url_safe_path(value[hit], render_resource_witness(value[hit]))]
+}
+
+# Each candidate value as the path of a file it blocks: without its final
+# `$` and the run of `*` before it, which would push the type off the end
+# (`/x.cssx`), then each inner `*` written `filler`, led by `/`
+# (end_anchor_controls()). `/*.css*` gives `/x.css`, `/a.json?v=*` gives
+# `/a.json?v=`.
+render_resource_witness <- function(value, filler = "x") {
+  end_anchor_controls(sub("[*]*[$]?$", "", value, useBytes = TRUE), filler)
+}
+
+# The filler readings of the candidates `at`, sharing `budget`: each filler
+# reads, in line order, the candidates every earlier filler read and left
+# unreported (render_resource_pass()). Returns list(pair, finished) as
+# end_anchor_reads() does: `pair`, the first filler that passed (NA when
+# none did), and `finished`, whether the candidate's reading is done.
+render_resource_reads <- function(groups, at, written, budget) {
+  fill <- end_anchor_fillers()$path
+  rules <- groups$rules
+  removed <- groups
+  removed$rules$empty[at] <- TRUE
+  pair <- rep(NA_integer_, length(at))
+  finished <- rep(FALSE, length(at))
+  todo <- seq_along(at)
+  for (k in seq_along(fill)) {
+    witness <- render_resource_witness(rules$value[at[todo]], fill[[k]])
+    read <- render_resource_pass(groups, removed, at[todo], witness, written,
+                                 budget)
+    budget <- budget - read$spent
+    pair[todo[read$ok]] <- k
+    finished[todo[read$ok]] <- TRUE
+    # The next filler reads only the candidates this one read and left.
+    done <- seq_len(read$checked)
+    todo <- todo[done][!read$ok[done]]
+    # A perf shortcut only: with no candidate left, a later filler reads
+    # nothing.
+    if (length(todo) == 0L) {
+      break
+    }
+  }
+  # What the last filler read and left: every filler has read it.
+  if (k == length(fill)) {
+    finished[todo] <- TRUE
+  }
+  list(pair = pair, finished = finished)
+}
+
+# One filler's two readings of the candidates `at` on their `witness`
+# paths, sharing `budget`: the first, within half of it, so the second
+# always has the rest for what the first passed, that the candidate
+# decides the witness (so it is disallowed); the second, for those that
+# pass, on `removed` (every candidate flagged empty), that the witness
+# comes out allowed. Returns list(ok, checked, spent): `checked` the
+# leading candidates both readings finished.
+render_resource_pass <- function(groups, removed, at, witness, written,
+                                 budget) {
+  first <- witness_pair_readings(groups, at, witness, witness, "long",
+                                 written, budget / 2, differ = FALSE,
+                                 share = TRUE)
+  ok <- logical(length(at))
+  checked <- first$checked
+  k <- which(seq_along(at) <= checked & first$ok)
+  if (length(k) == 0L) {
+    return(list(ok = ok, checked = checked, spent = first$spent))
+  }
+  second <- witness_pair_readings(removed, at[k], witness[k], witness[k],
+                                  "none", written, budget - first$spent,
+                                  differ = FALSE, share = TRUE)
+  ok[k] <- seq_along(k) <= second$checked & second$ok
+  if (second$checked < length(k)) {
+    checked <- min(checked, k[[second$checked + 1L]] - 1L)
+  }
+  list(ok = ok, checked = checked, spent = first$spent + second$spent)
+}
+
+# One row's text, in short sentences: the Disallow `value` on `line[1]`
+# with its witness for filler `pair`, then the lines of the row's other
+# Disallows, `cap` at most, then a count. The value and the witness are
+# each elided past 40 bytes (query_parameter_cap()), so the text is
+# bounded whatever the file holds. A value is printable ASCII
+# (url_safe_path() leaves out control bytes, and the canonical value
+# escapes the rest), so it shows as is.
+render_resource_message <- function(value, line, cap, pair = 1L) {
+  witness <- render_resource_witness(value, end_anchor_fillers()$path[pair])
+  paste0(
+    sprintf("The Disallow on line %d ('%s') blocks '%s'.", line[[1L]],
+            query_parameter_cap(value, 40L),
+            query_parameter_cap(witness, 40L)),
+    reopen_same_text(line[-1L], cap, "Disallow"),
+    " A page may need files like this to show its content. A crawler that ",
+    "cannot get them may not see the page as users do. Check a rendered ",
+    "page and the files it loads. You may block a tracking script or an ",
+    "API on purpose."
+  )
+}
+
+# The opening of a stopped render-resource check's rule_check_stopped row:
+# what it looks for, with the file's count and its earliest skipped value.
+render_resource_stop_intro <- function(stop) {
+  rules <- if (stop$found == 1L) {
+    "1 Disallow rule that ends in a file type a page may load"
+  } else {
+    sprintf("%d Disallow rules that end in a file type a page may load",
+            stop$found)
+  }
+  sprintf(paste0(
+    "This file has %s (.js, .css, .json and the like), such as '%s'. For ",
+    "each one, the validator checks whether the rule blocks such a file."
   ), rules, query_parameter_cap(stop$value, 40L))
 }
 
