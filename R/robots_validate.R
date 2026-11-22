@@ -1465,10 +1465,13 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       written <- rule_written_value(raw_lines[[line]], line == 1L,
                                     parsed$missing_colon[[i]])
       if (!isTRUE(attr(written, "buffer_cut"))) {
-        full_url <- rule_full_url_message(
-          written, robots_url,
-          nul_counts[[line]] > 0L && rule_cut_by_nul(raw_lines[[line]])
-        )
+        # A NUL or a glued `#` that cut the value: its rule_cut_by_nul or
+        # rule_cut_by_comment row explains the cut.
+        cut <- (nul_counts[[line]] > 0L &&
+                  rule_cut_by_nul(raw_lines[[line]])) ||
+          (parsed$has_comment[[i]] && nzchar(value) &&
+             rule_cut_by_comment(raw_lines[[line]]))
+        full_url <- rule_full_url_message(written, robots_url, cut)
       }
     }
     for (found in directive_value_diagnostics(type, value)) {
@@ -4621,12 +4624,14 @@ rule_written_value <- function(line_bytes, first_line, missing_colon) {
 # ROBO-jdnluzbb: the rule_missing_leading_slash message for a value written
 # as a full http(s) URL, naming the path and query to write instead, or NULL
 # when the value is no such URL. `written` is rule_written_value()'s bytes;
-# `robots_url` is the robots.txt requested, NA for supplied text. The path
-# loses its dot segments, as an RFC 3986 client's request does; its case,
-# its escapes and the query stay as written.
+# `robots_url` is the robots.txt requested, NA for supplied text. `cut` is
+# TRUE when a NUL or a glued `#` cut the value: what the author wrote is
+# then unknown, so the plain message stays. The path loses its dot
+# segments, as an RFC 3986 client's request does; its case, its escapes
+# and the query stay as written.
 rule_full_url_message <- function(written, robots_url = NA_character_,
-                                  nul_cut = FALSE) {
-  url <- rule_full_url_bytes(written)
+                                  cut = FALSE) {
+  url <- if (cut) NULL else rule_full_url_bytes(written)
   if (is.null(url)) {
     return(NULL)
   }
@@ -4638,10 +4643,7 @@ rule_full_url_message <- function(written, robots_url = NA_character_,
   origin <- destination_origin(rawToChar(c(
     split$scheme, charToRaw("//"), split$authority, charToRaw("/")
   )))
-  # A NUL that cut the value before its path began (`nul_cut`, Google's
-  # reading) leaves no path the author wrote, so the plain message stays.
-  if (is.na(origin) ||
-        (nul_cut && length(split$path) == 0L && length(split$query) == 0L)) {
+  if (is.na(origin)) {
     return(NULL)
   }
   path <- remove_dot_segments_v1(split$path)

@@ -191,10 +191,19 @@ test_that("ROBO-jdnluzbb: values that are no absolute URL keep the message", {
   }
 })
 
-test_that("ROBO-jdnluzbb: a fragment is cut by the parser first", {
-  rows <- fu_rows("https://e.example/a#f")
-  expect_identical(rows$code, c("rule_cut_by_comment", fu_slash))
-  expect_identical(fu_message(rows), fu_new("/a"))
+test_that("ROBO-jdnluzbb: a glued `#` keeps today's message", {
+  # The parser reads a `#` glued to the value as a comment, so a fragment
+  # after the path is a comment cut like any other; rule_cut_by_comment
+  # explains it, and the value cut there is not read as the author's URL.
+  for (value in c("https://e.example/a#frag", "https://e.ex#ample/a")) {
+    rows <- fu_rows(value)
+    expect_identical(rows$code, c("rule_cut_by_comment", fu_slash),
+                     label = value)
+    expect_identical(fu_message(rows), fu_today, label = value)
+  }
+  # A comment set off by a blank is no cut.
+  expect_identical(fu_message(fu_rows("https://e.example/a #c")),
+                   fu_new("/a"))
 })
 
 test_that("ROBO-jdnluzbb: a blank or control byte keeps today's message", {
@@ -256,10 +265,11 @@ test_that("ROBO-jdnluzbb: a value at the line buffer keeps today's message", {
   rows <- fu_rows("https://e.example/a #", strrep("c", 17000L))
   expect_identical(rows$code, c("line_too_long", fu_slash))
   expect_identical(fu_message(rows), fu_new("/a"))
+  # A glued `#` is a comment cut, so that line keeps today's message.
   rows <- fu_rows("https://e.example/a#", strrep("c", 17000L))
   expect_identical(rows$code,
                    c("line_too_long", "rule_cut_by_comment", fu_slash))
-  expect_identical(fu_message(rows), fu_new("/a"))
+  expect_identical(fu_message(rows), fu_today)
   # Just inside the buffer, the message names the path.
   path <- strrep("a", 16000L)
   rows <- fu_rows("https://e.example/", path)
@@ -267,25 +277,22 @@ test_that("ROBO-jdnluzbb: a value at the line buffer keeps today's message", {
   expect_identical(fu_message(rows), fu_new(paste0("/", path)))
 })
 
-test_that("ROBO-jdnluzbb: a NUL cuts the URL, on Google's reading", {
-  # The pattern follows the parser and Google's matcher, which never read
-  # past the NUL; rule_cut_by_nul names the engine split.
-  rows <- fu_rows(fu_body("https://e.example/a", as.raw(0x00), "b"))
-  expect_identical(rows$code, c("nul_byte", "rule_cut_by_nul", fu_slash))
-  expect_identical(fu_message(rows), fu_new("/a"))
-  # A NUL in the query keeps the path and the query before it.
-  rows <- fu_rows(fu_body("https://e.example/a?b", as.raw(0x00), "c"))
-  expect_identical(fu_message(rows), fu_new("/a?b"))
-})
-
-test_that("ROBO-jdnluzbb: a NUL before the path keeps today's message", {
-  # Cut inside the host, or right after it, no path the author wrote is
-  # left, so the value is not read as the site root.
-  for (value in list(fu_body("https://e.ex", as.raw(0x00), "ample/a"),
-                     fu_body("https://e.example", as.raw(0x00), "/a"))) {
+test_that("ROBO-jdnluzbb: a NUL that cuts the URL keeps today's message", {
+  # Google's matcher ends the line at the NUL; Bing and Yandex read on.
+  # rule_cut_by_nul names that split, and the value cut there, wherever
+  # the NUL falls, is not read as the author's URL.
+  nul <- as.raw(0x00)
+  for (value in list(fu_body("https://e.example/a", nul, "b"),
+                     fu_body("https://e.example/a?b", nul, "c"),
+                     fu_body("https://e.example/", nul, "private"),
+                     fu_body("https://e.example?x", nul, "y"),
+                     fu_body("https://e.ex", nul, "ample/a"),
+                     fu_body("https://e.example", nul, "/a"))) {
     rows <- fu_rows(value)
-    expect_identical(rows$code, c("nul_byte", "rule_cut_by_nul", fu_slash))
-    expect_identical(fu_message(rows), fu_today)
+    label <- rawToChar(value[value != nul])
+    expect_identical(rows$code, c("nul_byte", "rule_cut_by_nul", fu_slash),
+                     label = label)
+    expect_identical(fu_message(rows), fu_today, label = label)
   }
   # With no NUL, a bare host is the root.
   expect_identical(fu_message(fu_rows("https://e.example")),
