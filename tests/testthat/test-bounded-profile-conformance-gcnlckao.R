@@ -78,16 +78,21 @@ bp_unsupported <- list(
 
 # Selectors that must stay unsupported on each backend: real crawler identities
 # (the sitemapr trap), affixed and partial spellings, whitespace-bearing values,
-# and the wildcard, which is a group label but never a selector.
+# and the wildcard, which is a group label but never a selector. A non-ASCII
+# look-alike (Cyrillic U+0445 and U+043E) and digits only are here too, the
+# rows the google and rfc9309 backends refuse as not RFC 9309 identifiers
+# before any fetch (ROBO-mtmkpwuf). These two backends keep their own
+# refusal, which the adapter makes after the fetch: a known asymmetry the
+# ticket keeps.
 bp_near_misses <- list(
   yandex = c(
     "YandexBot", "YandexImages", "YandexMobileBot", "YandexAccessibilityBot",
     "YandexComBot", "YandexAdditional", "Yandex/1.0", "Yandex Additional Bot",
-    " Yandex", "Yandex ", "*"
+    " Yandex", "Yandex ", "*", "Yandeх", "123"
   ),
   bing = c(
     "msnbot", "BingPreview", "Bingbot/2.0", "bing", "adidx", "bingbot2",
-    "bing bot", " bingbot", "bingbot ", "*"
+    "bing bot", " bingbot", "bingbot ", "*", "bingbоt", "123"
   )
 )
 

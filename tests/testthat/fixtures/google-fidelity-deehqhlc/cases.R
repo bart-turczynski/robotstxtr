@@ -405,6 +405,12 @@ gf_expected <- list(
             NA, NA, "input_unknown", "input_invalid"),
   gf_expect(4L, c("in-schemeless-url", "in-ftp-url"), gf_url_paths,
             NA, NA, "input_unknown", "input_invalid"),
+  # A caller token that is not an RFC 9309 identifier (a version, a space): the
+  # v1 paths refuse it as input on the google backend under every ruleset
+  # (ROBO-mtmkpwuf); the legacy paths read it as given and agree.
+  gf_expect(4L, c("ua-caller-version", "ua-caller-version-own",
+                  "ua-caller-space"), c("v1_text", "v1_url"),
+            NA, NA, "input_unknown", "input_invalid"),
   # The crawler-token layer of the v1 google ruleset (ROBO-fbbmvbob):
   # Googlebot-Image with no group of its own takes the Googlebot group,
   # where the reference's one token falls through to `*`.

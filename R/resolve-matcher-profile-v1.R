@@ -88,7 +88,9 @@ resolve_profile_looks_like_crawler <- function(token, accepted) {
 #'   `group_label`, `group_selection`, and `profile_revision`. For a backend
 #'   whose `token_policy` is not `"bounded_profiles"` there is no closed set to
 #'   resolve against, so the profile columns are `NA` and the token is returned
-#'   unchanged.
+#'   unchanged. This holds for a `google` or `rfc9309` token outside the
+#'   RFC 9309 identifier rule too, although [robots_evaluate_text_v1()]
+#'   and [robots_evaluate_url_v1()] refuse such a token on those backends.
 #'
 #'   `group_selection` is `"exact_else_wildcard"` when the profile falls back to
 #'   `User-agent: *` groups if no group names it, and `"exact_only"` when it
@@ -179,8 +181,10 @@ resolve_one_matcher_profile_v1 <- function(backend, token, entry) {
     stringsAsFactors = FALSE
   )
 
-  # An unbounded backend has no closed set: there is nothing to resolve, and
-  # rejecting here would be inventing a boundary the backend does not have.
+  # An unbounded backend has no closed set of selectors to resolve against.
+  # Its token grammar (`product_token_grammar`, ROBO-mtmkpwuf) is screened by
+  # the v1 facades, per row; this function keeps returning the row as given
+  # rather than turning that screen into an error here.
   if (!identical(entry$token_policy, "bounded_profiles")) {
     return(unbounded)
   }

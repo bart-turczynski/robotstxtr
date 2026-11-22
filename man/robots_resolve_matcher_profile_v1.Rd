@@ -21,7 +21,9 @@ A data frame with one row per resolved selector and the columns
 \code{group_label}, \code{group_selection}, and \code{profile_revision}. For a backend
 whose \code{token_policy} is not \code{"bounded_profiles"} there is no closed set to
 resolve against, so the profile columns are \code{NA} and the token is returned
-unchanged.
+unchanged. This holds for a \code{google} or \code{rfc9309} token outside the
+RFC 9309 identifier rule too, although \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}
+and \code{\link[=robots_evaluate_url_v1]{robots_evaluate_url_v1()}} refuse such a token on those backends.
 
 \code{group_selection} is \code{"exact_else_wildcard"} when the profile falls back to
 \verb{User-agent: *} groups if no group names it, and \code{"exact_only"} when it

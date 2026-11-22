@@ -867,11 +867,31 @@ harness_tokens <- function() {
   c("*", "Googlebot", "Googlebot-Image", "Yandex", "bingbot", "zzcorpusprobe")
 }
 
-# Every ruleset x available backend x token the facade will take. Each
+# Whether a backend's published `product_token_grammar` admits `token`
+# (ROBO-mtmkpwuf). A backend that publishes none, as a bounded one or a
+# package from before the field, admits any token; "rfc9309_identifier" is
+# the RFC 9309 `identifier` rule the v1 facades screen with, read as bytes.
+# An unknown value stops the run rather than guessing.
+grammar_admits <- function(entry, token) {
+  grammar <- entry$product_token_grammar
+  if (is.null(grammar)) {
+    return(TRUE)
+  }
+  if (!identical(grammar, "rfc9309_identifier")) {
+    harness_refuse(sprintf("unknown product_token_grammar: %s",
+                           toString(grammar)))
+  }
+  grepl("\\A[A-Za-z_-]+\\z", token, perl = TRUE, useBytes = TRUE)
+}
+
+# Every ruleset x available backend x token the facade will evaluate. Each
 # backend is offered the fixed token list plus the tokens the contract
-# publishes for it (a bounded backend's profiles), and
-# robots_resolve_matcher_profile_v1() decides which it accepts. Unavailable
-# backends and unresolvable tokens are listed apart in `pairs`.
+# publishes for it (a bounded backend's profiles). A token must pass the
+# backend's published `product_token_grammar` (grammar_admits()), which the
+# v1 facades screen before anything is matched, and
+# robots_resolve_matcher_profile_v1() decides which selectors a bounded
+# backend accepts. Unavailable backends, tokens outside the grammar and
+# unresolvable tokens are listed apart in `pairs`.
 evaluation_combos <- function(contract, resolve) {
   rulesets <- contract$robots_policy_rulesets
   backends <- contract$matcher_backends
@@ -889,7 +909,12 @@ evaluation_combos <- function(contract, resolve) {
     }, robotstxtr_unresolvable_matcher_profile = function(e) FALSE)
     ok
   }, logical(1))
-  pairs$included <- pairs$availability == "available" & pairs$resolves
+  pairs$grammar_ok <- vapply(seq_len(nrow(pairs)), function(i) {
+    grammar_admits(contract$matcher_capability[[pairs$backend[[i]]]],
+                   pairs$token[[i]])
+  }, logical(1))
+  pairs$included <- pairs$availability == "available" & pairs$grammar_ok &
+    pairs$resolves
   kept <- pairs[pairs$included, c("backend", "token"), drop = FALSE]
   grid <- merge(
     data.frame(ruleset = rulesets, stringsAsFactors = FALSE), kept,

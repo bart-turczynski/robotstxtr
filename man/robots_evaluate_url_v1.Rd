@@ -25,7 +25,10 @@ robots_evaluate_url_v1(
 \verb{User-agent:} group label, NOT an HTTP \code{User-Agent} crawler identity. It is
 never sent as a header. A character vector of length one or \code{length(url)}.
 The Google backend accepts any valid Google robots product token and
-yields Google semantics for it. Under the \code{"google"} ruleset, a token in
+yields Google semantics for it; on the \code{"google"} and \code{"rfc9309"}
+backends a token that is not an RFC 9309 identifier (ASCII letters, \verb{_} and
+\code{-}) leaves its row refused as input (see Details). Under the
+\code{"google"} ruleset, a token in
 \code{matcher_capability$google$crawler_tokens} also selects its group as
 Google documents for that crawler (see Details); any other token, or any
 other ruleset, is not a prediction of the named crawler. The
@@ -118,6 +121,12 @@ ruleset with the \code{google} backend, the Google crawler tokens in
 documents for those crawlers, and \code{group_token} says whose group decided,
 as in \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}; for any other token or ruleset the
 result is not a claim of compatibility with the named crawler.
+
+A row on the \code{google} or \code{rfc9309} backend whose token is outside the
+RFC 9309 identifier rule is refused as input, as in
+\code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}, before any fetch: no request is made for it,
+and an origin whose \verb{/robots.txt} would answer 404 does not turn it into
+\code{allow_all}. A valid row on the same origin is fetched as before.
 
 A Google row whose selected rule has an empty value reports
 \code{reason = "default_allow"} with no line, as in \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}.

@@ -135,9 +135,12 @@ test_that("ROBO-mxermwed: the Google matcher's decision on every check", {
 # The rows where v1 google/google parts from the manifest's legacy
 # `google_decision`: the crawler-token layer (ROBO-fbbmvbob) gives
 # Googlebot-Image the Googlebot group, which the legacy binding never reads.
+# The token Bot2 is not an RFC 9309 identifier, so v1 refuses it as input
+# and decides nothing (ROBO-mtmkpwuf).
 edge_v1_decisions <- c(
   "grp-googlebot-image-fallback /x Googlebot-Image" = "disallow",
-  "grp-googlebot-image-fallback /y Googlebot-Image" = "allow"
+  "grp-googlebot-image-fallback /y Googlebot-Image" = "allow",
+  "grp-digit-in-token /x Bot2" = NA_character_
 )
 
 test_that("ROBO-mxermwed: the v1 google engine agrees on every NUL-free body", {

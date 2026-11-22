@@ -83,7 +83,7 @@ test_that("the contract publishes the table and the moved revisions", {
     cap <- contract$matcher_capability
     expect_identical(cap$google$crawler_tokens, google_crawler_tokens_v1())
     expect_identical(cap$google$token_policy, "arbitrary_valid")
-    expect_identical(contract$schema_revision, "2026-11-21.2")
+    expect_identical(contract$schema_revision, "2026-11-22.1")
     expect_identical(
       contract$policy_revisions[["google"]], "google-robots-policy-2026-11-12"
     )
@@ -258,18 +258,26 @@ test_that("the token matches whole and ASCII case-insensitively", {
   expect_identical(r$group_token, c("Googlebot", "Googlebot"))
   r <- ct_eval(ct_star_only, "https://x.com/page", "ADSBOT-GOOGLE")
   expect_identical(r$url_decision, "allow")
-  for (token in c("Googlebot-Imagex", "Googlebot-Image/1.0",
-                  "Googlebot Image", "Googlebot-Imag")) {
+  for (token in c("Googlebot-Imagex", "Googlebot-Imag")) {
     r <- ct_eval(ct_parent_and_star(), ct_gs_urls, token)
     expect_identical(r$url_decision, c("allow", "disallow"), label = token)
     expect_identical(r$group_token, c("*", "*"), label = token)
   }
   r <- ct_eval(ct_star_only, "https://x.com/page", "AdsBot-Google-Mobilex")
   expect_identical(r$url_decision, "disallow")
-  # A byte outside ASCII matches no row, and is not an error.
+  # A token outside the RFC 9309 identifier rule never reaches the layer: the v1
+  # facades refuse it as input (ROBO-mtmkpwuf).
   bad <- rawToChar(c(charToRaw("Googlebot-"), as.raw(0xff), charToRaw("Image")))
-  r <- ct_eval(ct_parent_and_star(), ct_gs_urls, bad)
-  expect_identical(r$url_decision, c("allow", "disallow"))
+  for (token in c("Googlebot-Image/1.0", "Googlebot Image", bad)) {
+    r <- ct_eval(ct_parent_and_star(), ct_gs_urls, token)
+    expect_identical(r$reason, rep("input_invalid", 2L))
+    expect_identical(r$group_token, rep(NA_character_, 2L))
+  }
+  # The layer's own lookup still matches no row on a byte outside ASCII,
+  # and is not an error.
+  profiles <- google_crawler_profiles_v1(bad, TRUE)
+  expect_identical(profiles$parent_token, NA_character_)
+  expect_false(profiles$ignore_global)
 })
 
 test_that("the legacy functions keep the single-token answer", {

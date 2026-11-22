@@ -254,16 +254,18 @@ test_that("uncut joined and stacked rows keep today's text", {
 test_that("on Google a cut value is read as its token", {
   # The premise: a crawler going by the full value `Peer39_Crawler` gets the
   # `*` rule on Google's matcher; one whose token is `Peer` gets the named
-  # groups.
+  # groups. The v1 facade refuses the full value as input, since it is
+  # not an RFC 9309 identifier (ROBO-mtmkpwuf); the legacy path shows the
+  # matcher's reading.
   decide <- function(token) {
     robots_evaluate_text_v1(
       robots_txt = cn_peer, url = "https://example.com/a",
       robots_product_token = token, robots_policy_ruleset = "google",
       matcher_backend = "google"
-    )$results$url_decision
+    )$results
   }
-  expect_identical(decide("Peer39_Crawler"), "disallow")
-  expect_identical(decide("Peer"), "allow")
+  expect_identical(decide("Peer39_Crawler")$reason, "input_invalid")
+  expect_identical(decide("Peer")$url_decision, "allow")
   allowed <- function(token) {
     allowed_by_robots_text(cn_peer, "https://example.com/a",
                            token)$results$allowed

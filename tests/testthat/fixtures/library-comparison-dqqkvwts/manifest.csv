@@ -54,5 +54,5 @@
 "rule-before-agent","rule-before-agent","../edge-cases/grp-rule-before-user-agent.txt","/x","FooBot","1","1","1","1","ERR","1","1","1","0","0"
 "rule-before-agent","rule-before-agent","../edge-cases/grp-rule-before-user-agent.txt","/y","FooBot","0","0","0","0","ERR","0","0","0","0","0"
 "err-crawl-delay-text","error-crawl-delay","err-crawl-delay-text.txt","/x","FooBot","0","0","0","0","ERR","0","0","0","0","0"
-"err-star-token","error-star-token","err-star-token.txt","/x","*","0","0","0","0","0","0","ERR","0","0","0"
+"err-star-token","error-star-token","err-star-token.txt","/x","*","0","NA","0","0","0","0","ERR","0","0","0"
 "err-empty-field","error-empty-field","err-empty-field.txt","/x","FooBot","0","0","0","0","0","0","0","0","ERR","0"

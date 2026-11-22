@@ -42,6 +42,12 @@ here and the \code{*} group there, and \code{AdsBot-Google} on a body with only 
 \code{*} group is allowed here and obeys \code{*} there. The \code{group_token} column is
 not carried over.
 
+A row the v1 facade refused because its token is not an RFC 9309
+\code{identifier} (such as \code{Googlebot/2.1}; see \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}})
+converts to \code{allowed = NA} with \code{decision_source = "input_unknown"},
+while \code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}} and \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} still
+match that token as given and answer.
+
 Its decisions are the v1 result's, so they follow the \code{url_normalization}
 the result was built with: under the default \code{"rfc3986"},
 \verb{https://example.com/a/../b} is decided as \verb{https://example.com/b}, where

@@ -10,6 +10,14 @@ engine_contract_id_v1 <- function() {
   "robotstxtr.engine-aware/v1"
 }
 
+# 2026-11-22.1: on the google and rfc9309 backends a `robots_product_token`
+# outside the RFC 9309 identifier rule (section 2.2.1: ASCII letters,
+# `_` and `-`) is refused as input, `not_evaluated` / `input_invalid` with
+# `robots_invalid_product_token`, before any fetch; those two backends'
+# `matcher_capability` entries publish `product_token_grammar`
+# (ROBO-mtmkpwuf). No policy revision moved. Both facades share the results
+# schema, so both moved.
+#
 # 2026-11-21.2: `url_normalization` gains "whatwg" (the WHATWG URL
 # serialization through rurl), the contract publishes the value set
 # (`url_normalizations`), and `results` gains `preprocessing_disagreement`,
@@ -49,7 +57,7 @@ engine_contract_id_v1 <- function() {
 # (ROBO-jbralthm; design/engine-profiles.md section 2). Both facades share the
 # evidence schema, so both revisions moved.
 engine_schema_revision_v1 <- function() {
-  "2026-11-21.2"
+  "2026-11-22.1"
 }
 
 # The engine-aware/v2 facade identity (BI-V2-SCHEMA, spec SS15). Introduced by
@@ -64,7 +72,7 @@ engine_contract_id_v2 <- function() {
 }
 
 engine_schema_revision_v2 <- function() {
-  "2026-11-21.2"
+  "2026-11-22.1"
 }
 
 engine_rulesets_v1 <- function() {
@@ -333,6 +341,7 @@ validate_backend_capability_v1 <- function(capability) {
     if ("crawler_tokens" %in% names(entry)) {
       validate_crawler_tokens_v1(entry, backend)
     }
+    validate_token_grammar_v1(entry, backend)
     if (!bounded) next
 
     profiles <- entry$supported_profiles
@@ -434,6 +443,29 @@ validate_crawler_tokens_v1 <- function(entry, backend) {
   invisible(entry)
 }
 
+# A published `product_token_grammar` (ROBO-mtmkpwuf): exactly the
+# `arbitrary_valid` and `rfc9309` backends publish it, with the one value
+# `rfc9309_identifier`, and no bounded backend does. The facades screen
+# the token on the backends that publish it
+# (product_token_grammar_backends_v1()).
+validate_token_grammar_v1 <- function(entry, backend) {
+  screened <- isTRUE(entry$token_policy %in% c("arbitrary_valid", "rfc9309"))
+  published <- "product_token_grammar" %in% names(entry)
+  if (screened != published) {
+    capability_abort_v1(sprintf(
+      "backend %s must publish product_token_grammar %s.", backend,
+      "exactly when its token_policy is arbitrary_valid or rfc9309"
+    ))
+  }
+  if (published &&
+        !identical(entry$product_token_grammar, "rfc9309_identifier")) {
+    capability_abort_v1(sprintf(
+      "backend %s publishes an unknown product_token_grammar.", backend
+    ))
+  }
+  invisible(entry)
+}
+
 capability_abort_v1 <- function(detail) {
   robots_abort(
     sprintf("Matcher capability invariant failed: %s", detail),
@@ -468,6 +500,15 @@ capability_abort_v1 <- function(detail) {
 # enumerate. A `capability_unavailable` backend still publishes its capability
 # entry; `rfc9309` is unavailable AND unbounded, so it publishes no profile
 # table for the second reason, not the first.
+#
+# Those two publish `product_token_grammar = "rfc9309_identifier"`
+# instead (ROBO-mtmkpwuf): the token must be an RFC 9309 `identifier`, one
+# or more ASCII letters, `_` or `-` (section 2.2.1; its `product-token` is
+# `identifier / "*"`, and `*` names no crawler). The v1 facades refuse any
+# other token on those backends before any fetch: Google cuts each file
+# `User-agent`
+# value at its first other character and compares the cut value with the
+# token as given, so such a token can never name a group.
 engine_backend_capability_v1 <- function() {
   list(
     google = list(
@@ -484,7 +525,8 @@ engine_backend_capability_v1 <- function() {
         "for any other token, the result is not a prediction of the crawler ",
         "the token names."
       ),
-      crawler_tokens = google_crawler_tokens_v1()
+      crawler_tokens = google_crawler_tokens_v1(),
+      product_token_grammar = "rfc9309_identifier"
     ),
     yandex = list(
       token_policy = "bounded_profiles",
@@ -516,7 +558,8 @@ engine_backend_capability_v1 <- function() {
       note = paste0(
         "RFC 9309 behavior is available only under the rfc9309 backend; ",
         "no other backend may be relabeled as RFC 9309 semantics."
-      )
+      ),
+      product_token_grammar = "rfc9309_identifier"
     )
   )
 }
@@ -673,7 +716,10 @@ engine_policy_table_v1 <- function() {
 #' which for a `bounded_profiles` backend also publishes the accepted
 #' matcher-profile selectors in `supported_profiles`, and for `google` the
 #' crawler tokens whose group selection the `google` ruleset takes from
-#' Google's crawler documentation in `crawler_tokens`),
+#' Google's crawler documentation in `crawler_tokens`; for `google` and
+#' `rfc9309`, since schema revision `2026-11-22.1`, the token grammar the v1
+#' facades screen in `product_token_grammar`, always
+#' `"rfc9309_identifier"`: one or more ASCII letters, `_` or `-`),
 #' the separately inspectable vendored-matcher identity fields
 #' (`matcher_identity`, e.g. library/payload/profile/corpus/evidence/
 #' profile-source for the Yandex backend), status-policy table, and supported
@@ -869,6 +915,70 @@ expand_product_token_v1 <- function(token, n) {
     ),
     "robotstxtr_length_mismatch"
   )
+}
+
+# The RFC 9309 identifier rule (section 2.2.1, ROBO-mtmkpwuf) as a
+# PCRE class. The patterns run with `useBytes = TRUE`, so a latin1-marked or
+# invalid UTF-8 token is read byte by byte, with no warning, and a byte
+# outside ASCII never matches.
+product_token_class_v1 <- function() {
+  "[A-Za-z_-]"
+}
+
+# The backends whose capability entry publishes `product_token_grammar`:
+# google and rfc9309. The facades screen the token on these alone.
+product_token_grammar_backends_v1 <- function() {
+  capability <- engine_backend_capability_v1()
+  names(capability)[vapply(capability, function(entry) {
+    !is.null(entry$product_token_grammar)
+  }, logical(1L))]
+}
+
+# TRUE where `token` is one or more grammar bytes and nothing else. `\z`,
+# not `$`, so a trailing line feed is not read as the end.
+product_token_in_grammar_v1 <- function(token) {
+  pattern <- paste0("\\A", product_token_class_v1(), "+\\z")
+  grepl(pattern, token, perl = TRUE, useBytes = TRUE)
+}
+
+# The facades' token screen, one vectorized pass: a token is valid when it
+# is non-empty and, on a backend that publishes the grammar, inside it.
+product_token_valid_v1 <- function(token, backend) {
+  screened <- backend %in% product_token_grammar_backends_v1()
+  !is.na(token) & nzchar(token) &
+    (!screened | product_token_in_grammar_v1(token))
+}
+
+# The input-stage message for a refused token row. An NA or empty token is
+# "missing or empty". Any other refused token is not an RFC 9309
+# `identifier`: the message names its leading run of identifier bytes, when
+# there is one, as a
+# hint only, since a prefix need not name the intended crawler. The token
+# itself is never echoed: it may be invalid UTF-8 or latin1, and
+# `robots_product_token` already carries it.
+product_token_error_message_v1 <- function(token) {
+  out <- rep("Robots product token is missing or empty.", length(token))
+  present <- !is.na(token) & nzchar(token)
+  hint <- sub(
+    paste0("(?s)\\A(", product_token_class_v1(), "*).*\\z"), "\\1",
+    token[present], perl = TRUE, useBytes = TRUE
+  )
+  hint_text <- ifelse(
+    nzchar(hint),
+    paste0(
+      " Its leading valid part is \"", hint, "\", offered, not applied: ",
+      "pass it only if it names the intended crawler."
+    ),
+    ""
+  )
+  out[present] <- paste0(
+    "Robots product token is not an RFC 9309 identifier (section 2.2.1: ",
+    "ASCII letters, `_` and `-` only): a crawler's own product token must ",
+    "be one, and `*` names no crawler. It is the robots.txt `User-agent:` ",
+    "group token, not the HTTP `User-Agent` string.",
+    hint_text
+  )
+  out
 }
 
 # The bytes of a supplied robots.txt string, shared by every text entry point
@@ -1775,10 +1885,12 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
   error_class <- ifelse(
     url_valid, "robots_invalid_product_token", "robots_invalid_url"
   )
-  error_message <- ifelse(
-    url_valid,
-    "Robots product token is missing or empty.",
-    "URL is missing, empty, malformed, or not HTTP(S)."
+  error_message <- rep("URL is missing, empty, malformed, or not HTTP(S).", n)
+  # A valid row's message comes from its evidence below; only a refused
+  # token row needs one built here.
+  token_refused <- url_valid & !token_valid
+  error_message[token_refused] <- product_token_error_message_v1(
+    product_token[token_refused]
   )
 
   valid <- url_valid & token_valid
@@ -1990,6 +2102,25 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' only and never generalize to arbitrary tokens. This boundary is published
 #' as `robots_engine_contract_v1()$matcher_capability`.
 #'
+#' Since schema revision `2026-11-22.1`, a row on the `google` or `rfc9309`
+#' backend whose token is not one or more ASCII letters, `_` or `-` (the
+#' `identifier` rule of RFC 9309 section 2.2.1, published as
+#' `matcher_capability$<backend>$product_token_grammar`) is refused under
+#' every ruleset: `matcher_status = "not_evaluated"`,
+#' `reason = "input_invalid"`, `error_stage = "input"` and
+#' `error_class = "robots_invalid_product_token"`, one row each, with no
+#' error raised. Google's matcher cuts each `User-agent` value in the file at
+#' its first other character and compares the cut value with the token as
+#' given, so such a token (`Googlebot/2.1`, a full HTTP `User-Agent` string,
+#' a leading or trailing space, `*`, digits, a letter outside ASCII) could
+#' never name a group and would silently read `User-agent: *`. RFC 9309's
+#' `product-token` is `identifier / "*"`, but `*` names no crawler, so a
+#' caller's token must be an `identifier`. The token is not trimmed or
+#' rewritten: `error_message` names the leading valid part
+#' (`Googlebot` for `Googlebot/2.1`) as a hint only. The `yandex` and `bing`
+#' backends keep their own refusals, and [allowed_by_robots_text()] and
+#' [allowed_by_robots_url()] read any token as before.
+#'
 #' Under the `google` ruleset with the `google` backend, the result is also a
 #' crawler-aware layer above the matcher for the Google crawler tokens
 #' published as `matcher_capability$google$crawler_tokens` (schema revision
@@ -2140,7 +2271,10 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #'   `User-agent:` group label, NOT an HTTP `User-Agent` crawler identity. It is
 #'   never sent as a header. A character vector of length one or `length(url)`.
 #'   The Google backend accepts any valid Google robots product token and
-#'   yields Google semantics for it. Under the `"google"` ruleset, a token in
+#'   yields Google semantics for it; on the `"google"` and `"rfc9309"`
+#'   backends a token that is not an RFC 9309 identifier (ASCII letters, `_` and
+#'   `-`) leaves its row refused as input (see Details). Under the
+#'   `"google"` ruleset, a token in
 #'   `matcher_capability$google$crawler_tokens` also selects its group as
 #'   Google documents for that crawler (see Details); any other token, or any
 #'   other ruleset, is not a prediction of the named crawler. The
@@ -2198,7 +2332,7 @@ robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
   raw_body <- text_body_bytes_v1(robots_txt)
   evidence <- supplied_evidence_v1(raw_body, source_id)
   url_valid <- !is.na(url) & nzchar(url)
-  token_valid <- !is.na(token) & nzchar(token)
+  token_valid <- product_token_valid_v1(token, backend)
   mapped_source <- ifelse(url_valid & token_valid, source_id, NA_character_)
   results <- evaluate_rows_v1(
     url, token, ruleset, backend, mapped_source, evidence, url_valid,
@@ -2228,6 +2362,12 @@ robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
 #' documents for those crawlers, and `group_token` says whose group decided,
 #' as in [robots_evaluate_text_v1()]; for any other token or ruleset the
 #' result is not a claim of compatibility with the named crawler.
+#'
+#' A row on the `google` or `rfc9309` backend whose token is outside the
+#' RFC 9309 identifier rule is refused as input, as in
+#' [robots_evaluate_text_v1()], before any fetch: no request is made for it,
+#' and an origin whose `/robots.txt` would answer 404 does not turn it into
+#' `allow_all`. A valid row on the same origin is fetched as before.
 #'
 #' A Google row whose selected rule has an empty value reports
 #' `reason = "default_allow"` with no line, as in [robots_evaluate_text_v1()].
@@ -2315,7 +2455,9 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
   }
   origin <- vapply(url, robots_origin, character(1L), USE.NAMES = FALSE)
   url_valid <- !is.na(origin)
-  token_valid <- !is.na(token) & nzchar(token)
+  # Screened before the fetch, so a refused row costs no request
+  # (ROBO-mtmkpwuf).
+  token_valid <- product_token_valid_v1(token, backend)
   fetch_input <- url
   fetch_input[!token_valid] <- NA_character_
   fetched <- fetch_evidence_v1(
@@ -2358,6 +2500,12 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
 #' here and the `*` group there, and `AdsBot-Google` on a body with only a
 #' `*` group is allowed here and obeys `*` there. The `group_token` column is
 #' not carried over.
+#'
+#' A row the v1 facade refused because its token is not an RFC 9309
+#' `identifier` (such as `Googlebot/2.1`; see [robots_evaluate_text_v1()])
+#' converts to `allowed = NA` with `decision_source = "input_unknown"`,
+#' while [allowed_by_robots_text()] and [allowed_by_robots_url()] still
+#' match that token as given and answer.
 #'
 #' Its decisions are the v1 result's, so they follow the `url_normalization`
 #' the result was built with: under the default `"rfc3986"`,

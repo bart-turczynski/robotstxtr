@@ -38,6 +38,13 @@
 #' AI-training policy token `__usage_ai-training`, which `*` never covers
 #' (an Internet-Draft, draft-kelley-aipref-training-preference-signal-00).
 #'
+#' A `user_agent` that is not an RFC 9309 `identifier` (ASCII
+#' letters, `_` and `-`), such as `"Googlebot/2.1"` or a full HTTP
+#' `User-Agent` string, is matched as given and can never equal a file's
+#' cut `User-agent` value, so it silently reads `User-agent: *`; the v1
+#' facades refuse such a token on the `google` and `rfc9309` backends
+#' instead.
+#'
 #' Match metadata is fully populated on the text path. `matched_line` carries
 #' the upstream one-based matching line (or `NA` when no rule matched). For a
 #' matched row, `matched_rule_type` and `matched_rule_value` are correlated from
