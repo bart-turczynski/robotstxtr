@@ -14,6 +14,8 @@ sp_codes <- function(body) {
 
 sp_pair <- "rule_slash_pair"
 sp_split <- "rule_slash_split"
+# A `$`-anchored Disallow a query escapes (ROBO-nzcvlsvk).
+sp_end <- "rule_end_anchor_query"
 
 # The rows of one code.
 sp_rows <- function(body, code) {
@@ -154,7 +156,7 @@ sp_fixtures <- list(
     body = paste0("User-agent: %s\nDisallow: /\nDisallow: /x$\nAllow: /x\n",
                   "Allow: /x/\n"),
     today = character(0),
-    codes = c(sp_pair, sp_split), lines = c(5L, 5L)
+    codes = c(sp_pair, sp_split, sp_end), lines = c(5L, 5L, 1L)
   ),
   star_key = list(
     body = "User-agent: *\nDisallow: /x*\nDisallow: /x/\n",
@@ -215,9 +217,13 @@ sp_groups <- function(body) {
   ))
 }
 
-# The bare-URL lines one reading gives the candidates in `at`.
+# The bare-URL lines one reading gives the candidates in `at`: the shared
+# reader, with the bare URL `P` the short path and the candidate deciding
+# the slash URL `P/`.
 sp_reading <- function(groups, at, key) {
-  slash_split_reading(groups, at, key)$line
+  value <- groups$rules$value[at]
+  witness_pair_reading(groups, at, key, slash_partner(value), value,
+                       "long")$line
 }
 
 test_that("ROBO-roypaoox: each fixture's codes and lines", {
@@ -237,7 +243,7 @@ test_that("ROBO-roypaoox: the new rows are all the change", {
       next
     }
     codes <- sp_codes(sp_body(name))
-    expect_identical(codes[!codes %in% c(sp_pair, sp_split)], today,
+    expect_identical(codes[!codes %in% c(sp_pair, sp_split, sp_end)], today,
                      label = name)
   }
 })
@@ -414,7 +420,11 @@ test_that("ROBO-roypaoox: a line with a pair and a split row", {
   d <- sp_diag(sp_body("pair_and_split"))
   expect_identical(d$message, c(
     sp_pair_message("Allow", 4L, "/x", "/x/"),
-    sp_blocked_message("/x/", "/x", 3L)
+    sp_blocked_message("/x/", "/x", 3L),
+    paste0("The Disallow on line 3 blocks '/x' but not '/x?x=1'. A final ",
+           "'$' ends the match at the end of the path and query together, ",
+           "so the query shown takes the URL out of the rule. The ",
+           "site may serve the same page with a query.")
   ))
   expect_false(identical(d$message[[1L]], d$message[[2L]]))
 })
@@ -563,7 +573,7 @@ test_that("ROBO-roypaoox: a row needs the whole-value merge too", {
 # Values that are no candidate, alone and as an Allow under `Disallow: /`,
 # with the codes each gets.
 sp_misses <- list(
-  "/x$" = list(character(0), character(0)),
+  "/x$" = list(sp_end, character(0)),
   "/x*" = list(character(0), character(0)),
   "/a*b/" = list(character(0), character(0)),
   "/" = list(character(0), "disallow_tied_by_allow"),
@@ -1036,7 +1046,7 @@ test_that("ROBO-roypaoox: a check that stops says so, with its counts", {
   ))
   # A normal file gets no such row.
   for (name in names(sp_fixtures)) {
-    expect_false("rule_slash_check_stopped" %in% sp_codes(sp_body(name)),
+    expect_false("rule_check_stopped" %in% sp_codes(sp_body(name)),
                  label = name)
   }
 })
@@ -1065,7 +1075,7 @@ test_that("ROBO-roypaoox: the split's checked count on each budget branch", {
 
 test_that("ROBO-roypaoox: a file too large for the checks gets the rows", {
   d <- sp_diag(sp_shape("classes", 250L))
-  stop <- d[d$code == "rule_slash_check_stopped", , drop = FALSE]
+  stop <- d[d$code == "rule_check_stopped", , drop = FALSE]
   expect_identical(stop$line, c(NA_integer_, NA_integer_))
   expect_identical(stop$severity, c("info", "info"))
   expect_identical(stop$directive, c(NA_character_, NA_character_))

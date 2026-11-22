@@ -205,7 +205,14 @@ test_that("well-formed patterns stay clean of the value checks", {
     "Disallow: *.pdf", "Disallow: /*.pdf$", "Allow: /$"
   )) {
     x <- vc_validate(line)
-    expect_identical(nrow(x$diagnostics), 0L, label = line)
+    # A `$`-anchored Disallow a query escapes gets its own info row
+    # (ROBO-nzcvlsvk), no value-check finding.
+    expected <- if (line == "Disallow: /*.pdf$") {
+      "rule_end_anchor_query"
+    } else {
+      character(0)
+    }
+    expect_identical(x$diagnostics$code, expected, label = line)
   }
   # The fixture's own `allow: /` ties `Disallow: /` (ROBO-fdhmlvwm).
   x <- vc_validate("Disallow: /")

@@ -384,14 +384,26 @@ one row per group of crawlers, on its first User-agent line, listing
 five rules at most, then a count. On a file whose rules and crawlers
 would make the check costly, candidates past a fixed amount of work,
 linear in the file's rules, get no row, and
-\code{rule_slash_check_stopped} says so. \cr
-\code{rule_slash_check_stopped} \tab info \tab
-The file is too large for \code{rule_slash_pair} or
-\code{rule_slash_split} to check every candidate quickly, so the check
+\code{rule_check_stopped} says so. \cr
+\code{rule_end_anchor_query} \tab info \tab
+A Disallow whose pattern ends in \code{$} and holds no \code{?}
+(\code{/x/edit$}) blocks its path but not the same path with a query
+added (\code{/x/edit?x=1}): the \code{$} ends the match at the end of
+the path and query together. Reported only when the rule decides the
+path and the query URL comes out allowed under every rule the
+crawlers have. One row per group of crawlers, on its first User-agent
+line, listing five rules at most, then a count. Past a fixed amount
+of work, as for \code{rule_slash_split}, candidates get no row and
+\code{rule_check_stopped} says so. \cr
+\code{rule_check_stopped} \tab info \tab
+The file is too large for \code{rule_slash_pair},
+\code{rule_slash_split} or \code{rule_end_anchor_query} to check
+every candidate quickly, so the check
 read only the first ones, in line order. The message gives the counts
 found, checked and skipped and names the earliest skipped rule; the
 skipped ones may have the same problem. At most one row per check,
-for the whole file (no line). \cr
+for the whole file (no line); each row's message says which check
+stopped by saying what that check looks for. \cr
 \code{missing_user_agent} \tab error \tab
 Allow or Disallow rules exist but no line names a non-empty
 User-agent. \cr
@@ -785,15 +797,43 @@ same decisions and deciding lines. A body cut at \code{max_bytes} gets
 \code{rule_slash_split}, which a later Allow could change. Both checks read
 their candidates in line order within a fixed amount of work, linear in
 the file's rules and candidates; when a check stops before the last one,
-one \code{rule_slash_check_stopped} row says how many it found, checked and
+one \code{rule_check_stopped} row says how many it found, checked and
 skipped, and names the earliest skipped rule. A
 \verb{User-agent: __usage_ai-training} group gets neither: it states a training
 preference, not crawl access.
 
+\code{rule_end_anchor_query} reads a non-empty Disallow whose canonical value
+is led by \code{/} or \code{*}, ends in its only \code{$} and holds no \verb{?}. A value
+ending in \verb{*$} is left out, since the \code{*} matches every ending, and so is
+one whose path holds a \code{.} or \code{..} segment, written as is or as \verb{\%2E},
+since URL normalization would remove it, or a \verb{\%} that starts no
+two-hex-digit escape, which no correctly encoded URL carries, or a space,
+a tab, another control byte or DEL, which no URL a crawler sends carries.
+The path the rule blocks is the
+value without the \code{$}, each \code{*} written \code{x}, and the query URL is that
+path with \code{?x=1} added; where another rule matches those filler bytes,
+the check tries \code{y} with \code{?y=2}, then \code{z} with \code{?z=3}, and the row shows
+the pair it found. Google's matcher makes the decisions over every
+rule of the crawler's merged groups, so a second rule that blocks the
+query URL (\verb{Disallow: /x/edit?}, \verb{Disallow: /*?}), or an Allow that wins
+the path, silences the row. A row is reported only where every crawler
+the group names agrees, on the whole-value merge and on Google's merge.
+The paths are built from the canonical value, so a non-ASCII byte shows
+as its upper-case \verb{\%XX} escape, the form Google's matcher compares; the
+package's Bing and Yandex matchers compare such a byte as written. Bing
+upper-cases a lower-case escape as Google does, while the package's
+Yandex matcher compares it as written, and also lets an Allow \verb{/x} win
+over a Disallow \verb{/x$} for \verb{/x}. A rule that gets \code{rule_cut_by_nul} takes
+part with its value cut at the NUL, as Google's parser reads it. A body
+cut at \code{max_bytes} is not checked: a later Disallow could block the
+query URL. The check reads its candidates within a fixed amount of work,
+as the slash checks do, and a \verb{User-agent: __usage_ai-training} group
+gets no row.
+
 On a document holding a NUL byte, \code{wildcard_rules_not_inherited},
 \code{disallow_tied_by_allow}, \code{duplicate_rule},
-\code{rule_query_parameter_position}, \code{rule_slash_pair}, \code{rule_slash_split}
-and the AI-training codes follow Google's
+\code{rule_query_parameter_position}, \code{rule_slash_pair}, \code{rule_slash_split},
+\code{rule_end_anchor_query} and the AI-training codes follow Google's
 reading: the parser and Google's matcher end a line at its
 first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
 byte, so each such message says it is Google's reading, unless every NUL

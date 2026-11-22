@@ -77,6 +77,10 @@ test_that("ROBO-rnjfbhvn: other dots keep their codes", {
       if (type == "Disallow" && value %in% c("/a..b/", "/.well-known/")) {
         expected <- c(expected, "rule_slash_split")
       }
+      # A Disallow `P$` alone blocks `P` and not `P?x=1` (ROBO-nzcvlsvk).
+      if (type == "Disallow" && value == "/v1.$") {
+        expected <- c(expected, "rule_end_anchor_query")
+      }
       expect_identical(
         ds_codes(type, value), expected,
         label = paste(type, value)
