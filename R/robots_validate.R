@@ -807,9 +807,10 @@ validation_unsupported <- c(
 #' the group names agrees, on the whole-value merge and on Google's merge.
 #' The paths are built from the canonical value, so a non-ASCII byte shows
 #' as its upper-case `%XX` escape, the form Google's matcher compares; the
-#' package's Bing and Yandex matchers compare such a byte, and a lower-case
-#' escape, as written, and its Yandex matcher lets an Allow `/x` win over a
-#' Disallow `/x$` for `/x`. A body cut at `max_bytes` is not checked: a
+#' package's Bing and Yandex matchers compare such a byte as written. Bing
+#' upper-cases a lower-case escape as Google does, while the package's
+#' Yandex matcher compares it as written, and also lets an Allow `/x` win
+#' over a Disallow `/x$` for `/x`. A body cut at `max_bytes` is not checked: a
 #' later Disallow could block the query URL. The check reads its candidates
 #' within a fixed amount of work, as the slash checks do, and a
 #' `User-agent: __usage_ai-training` group gets no row.
