@@ -4575,6 +4575,11 @@ slash_pair_message <- function(value, lead) {
 # else "". Built once per group: the names come from one split.
 slash_crawler_note <- function(agents, group) {
   named <- agents$global | nzchar(agents$uncut)
+  # One name per crawler: values the whole-value merge reads as one class
+  # key (`Googlebot`, `googlebot`) count once, as first written.
+  id <- paste(agents$group, ifelse(agents$global, "*", agents$uncut),
+              sep = "\n")
+  named <- named & !duplicated(id)
   by_group <- split(agents$name[named], agents$group[named])
   wanted <- unique(group)
   note <- vapply(by_group[as.character(wanted)], function(names) {

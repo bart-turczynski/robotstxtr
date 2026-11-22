@@ -331,6 +331,16 @@ test_that("ROBO-roypaoox: a group naming several crawlers names them", {
                sp_split)
   expect_identical(d$message,
                    paste0(sp_blocked_message("/g/", "/g", 3L), note))
+  # Case twins are one crawler: no note, as for a group naming one.
+  d <- sp_rows(paste0("User-agent: Googlebot\nUser-agent: googlebot\n",
+                      "Disallow: /x\nDisallow: /x/\n"), sp_pair)
+  expect_identical(d$message, sp_pair_message("Disallow", 3L, "/x", "/x/"))
+  d <- sp_rows(paste0("User-agent: Googlebot\nUser-agent: Bar\n",
+                      "User-agent: googlebot\nDisallow: /n/\n"), sp_split)
+  expect_identical(d$message, paste0(
+    sp_open_message(4L, "/n/", "/n"),
+    " This holds for every crawler the group names: 'Googlebot' and 'Bar'."
+  ))
   # Five names at most, then a count; a name written twice counts once.
   agents <- paste0("User-agent: ", c("A", "B", "C", "D", "E", "F", "G", "A"),
                    "\n", collapse = "")
