@@ -402,7 +402,8 @@ every candidate quickly, so the check
 read only the first ones, in line order. The message gives the counts
 found, checked and skipped and names the earliest skipped rule; the
 skipped ones may have the same problem. At most one row per check,
-for the whole file (no line). \cr
+for the whole file (no line); each row's message says which check
+stopped by saying what that check looks for. \cr
 \code{missing_user_agent} \tab error \tab
 Allow or Disallow rules exist but no line names a non-empty
 User-agent. \cr
