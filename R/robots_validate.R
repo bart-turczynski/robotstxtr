@@ -5605,9 +5605,10 @@ allow_reopens_diagnostics <- function(groups, written = NULL, budget = NULL,
   read <- reopen_reads(groups, shape, allows, pairs, written, budget)
   state <- reopen_state(pairs, read, length(allows))
   # Allows count as checked in line order up to the first one whose pairs
-  # did not finish; a row past it would contradict the stop row.
+  # did not finish. The readings take pairs in Allow order, so no Allow
+  # past it has a reported pair.
   checked <- match(FALSE, state$finished, nomatch = length(allows) + 1L) - 1L
-  hit <- which(!is.na(state$pair) & seq_along(allows) <= checked)
+  hit <- which(!is.na(state$pair))
   out <- reopen_rows(groups, shape, allows[hit], pairs, read,
                      state$pair[hit])
   attr(out, "stopped") <- slash_stop(rules, allows, checked)

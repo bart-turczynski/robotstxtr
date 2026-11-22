@@ -510,6 +510,24 @@ test_that("ROBO-micbpqbc: every class on both merges must agree", {
   expect_true(ar_ok(both, "uncut"))
   expect_true(ar_ok(both, "key"))
   expect_true(ar_code %in% ar_codes(both))
+  # Both classes pass the first reading, but a longer Disallow only B has
+  # decides B's control: the classes name no one deciding line, so the row
+  # could name none, and the pair gets none. Another control that both
+  # classes block by the same line keeps the row. Google's matched lines
+  # only: the row names Google's deciding line.
+  apart <- paste0("User-agent: A\nUser-agent: B\nDisallow: /my/\n",
+                  "Allow: */sss/\n\nUser-agent: B\nDisallow: /my/*\n")
+  expect_false(ar_code %in% ar_codes(apart))
+  lines <- vapply(c("A", "B"), function(token) {
+    robots_evaluate_text_v1(apart, "https://example.com/my/", token,
+                            "google", "google")$results$matched_line
+  }, 0L)
+  expect_identical(unname(lines), c(3L, 7L))
+  d <- ar_diag(sub("Allow: */sss/\n", "Allow: */sss/\nDisallow: /zz/\n",
+                   apart, fixed = TRUE))
+  expect_identical(d$message[d$code == ar_code], paste0(
+    ar_one(4L, "*/sss/", "/zz/", "/sss/", 5L), ar_note("'A' and 'B'")
+  ))
   # A Disallow only another crawler has is no control for this one.
   expect_false(ar_code %in% ar_codes(ar_body("cross_group")))
   expect_false(ar_code %in% ar_codes(ar_body("star_group")))
