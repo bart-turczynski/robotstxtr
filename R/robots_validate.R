@@ -4602,14 +4602,10 @@ slash_split_diagnostics <- function(groups) {
 # file line that decides the bare URL `P` (0 when no rule matches it) when
 # every class the group names (validation_token_expander() on `key`) has
 # the candidate decide `P/`, decides `P` the other way, and agrees on that
-# line; NA otherwise. Each (candidate, class) row is read under a
-# body of the class's rules that can match `P/`: a rule's literal head (up
-# to its first `*` or `$`, and for an Allow ending in `/index.htm...`
-# up to its last `/`, which Google's matcher also reads as that path with
-# `$`) must be a prefix of `P/`, and every other rule matches neither URL.
-# Rules keep file order, so ties resolve as in the whole group. One batch
-# call reads every row, and the bodies stay as small as the matching rules,
-# so the cost is linear in the rules (ROBO-dbvmxcfw).
+# line; NA otherwise. Each (candidate, class) row is read under a body of
+# the class's rules that can match `P/` (slash_split_bodies()); every other
+# rule matches neither URL, and rules keep file order, so ties resolve as in
+# the whole group. One batch call reads every row.
 slash_split_reading <- function(groups, at, key) {
   rules <- groups$rules
   expand <- validation_token_expander(groups, key)
@@ -4646,33 +4642,30 @@ slash_split_reading <- function(groups, at, key) {
 # The witness bodies of slash_split_reading(), one per row (`paths` the
 # slash URLs, `class` the rows' classes): `bodies`, and `rule` (indexes of
 # `rules`, row after row in file order) with `start`, each row's first
-# position in `rule`. A row's own rule is always in its body. Rule heads are
-# looked up at the distinct head lengths only, so a long value costs its
-# length, not its length squared.
+# position in `rule`. A rule joins a row's body when it can match `P/` (and
+# so `P`, a prefix of it): its pattern (slash_rule_parts()) must start with
+# its literal head and hold each later literal fragment. A rule with no
+# later fragment is found by its head (slash_head_pairs()), one with one
+# through its longest later fragment (slash_fragment_pairs()). Both keep a
+# superset of the rules that match, so the decisions are the whole group's.
+# A row's own rule is always in its body. The cost is linear in the rules
+# and in the bytes of the paths, plus the (rule, path) pairs the lookups
+# return, which are rules the path's own bytes say may match it, so Google's
+# matcher must read them anyway (ROBO-dbvmxcfw).
 slash_split_bodies <- function(rules, expand, paths, class) {
   live <- which(!rules$empty)
-  value <- rules$value[live]
-  head <- value
-  index <- rules$type[live] == "allow" &
-    grepl("/index[.]htm[^/]*$", value, useBytes = TRUE)
-  head[index] <- sub("index[.]htm[^/]*$", "", value[index], useBytes = TRUE)
-  # A `%` is a literal byte to Google's matcher, which compares the escape
-  # as written, and a candidate `P/` holds none (slash_candidates()), so a
-  # head running past a `%` is never a prefix of `P/`: the rule matches
-  # neither URL and stays out.
-  head <- sub("[*$].*$", "", head, useBytes = TRUE)
+  part <- slash_rule_parts(rules$type[live], rules$value[live])
   held <- expand(rules$group[live])
-  rule_key <- paste(held$class, head[held$owner], sep = "\n")
-  by_key <- split(live[held$owner], factor(rule_key, unique(rule_key)))
-  sizes <- sort(unique(nchar(head, "bytes")))
-  n <- findInterval(nchar(paths, "bytes"), sizes)
-  row <- rep(seq_along(paths), n)
-  size <- sizes[sequence(n)]
-  hit <- match(paste(class[row], substr(paths[row], 1L, size), sep = "\n"),
-               names(by_key))
-  found <- by_key[hit[!is.na(hit)]]
-  row <- rep(row[!is.na(hit)], lengths(found))
-  rule <- unlist(found, use.names = FALSE)
+  rule <- live[held$owner]
+  head <- part$head[held$owner]
+  frag <- part$frag[held$owner]
+  wide <- nzchar(frag)
+  near <- slash_head_pairs(rule[!wide], held$class[!wide], head[!wide],
+                           paths, class)
+  far <- slash_fragment_pairs(rule[wide], held$class[wide], head[wide],
+                              frag[wide], paths, class)
+  row <- c(near$row, far$row)
+  rule <- c(near$rule, far$rule)
   order_by <- order(row, rule)
   row <- row[order_by]
   rule <- rule[order_by]
@@ -4684,6 +4677,86 @@ slash_split_bodies <- function(rules, expand, paths, class) {
     paste0("User-agent: witness\n", paste(x, collapse = ""))
   }, "", USE.NAMES = FALSE)
   list(bodies = bodies, rule = rule, start = match(seq_along(paths), row))
+}
+
+# Each rule's pattern as Google's matcher reads it against a candidate path,
+# split for slash_split_bodies(): `head`, the literal bytes before the first
+# `*`, and `frag`, the longest literal run after it ("" when none). An
+# Allow ending in `/index.htm...` is cut after its last `/`, which Google's
+# matcher also reads as that path with `$`; only a final `$` anchors, and a
+# `$` or `%` elsewhere is a literal byte, which no candidate holds
+# (slash_candidates()), so a head or fragment holding one matches none.
+slash_rule_parts <- function(type, value) {
+  pattern <- value
+  index <- type == "allow" & grepl("/index[.]htm[^/]*$", value, useBytes = TRUE)
+  pattern[index] <- sub("index[.]htm[^/]*$", "", value[index], useBytes = TRUE)
+  pattern <- sub("[$]$", "", pattern, useBytes = TRUE)
+  star <- regexpr("*", pattern, fixed = TRUE, useBytes = TRUE)
+  wild <- star > 0L
+  head <- pattern
+  frag <- character(length(pattern))
+  head[wild] <- substr(pattern[wild], 1L, star[wild] - 1L)
+  rest <- strsplit(substring(pattern[wild], star[wild] + 1L), "*",
+                   fixed = TRUE, useBytes = TRUE)
+  frag[wild] <- vapply(rest, function(f) {
+    if (length(f) == 0L) "" else f[[which.max(nchar(f, "bytes"))]]
+  }, "")
+  list(head = head, frag = frag)
+}
+
+# The (row, rule) pairs where a rule with no later fragment can match: the
+# row's path starts with the rule's head in the rule's class. Heads are
+# looked up at their distinct lengths only, so a long path costs its length,
+# not its length squared.
+slash_head_pairs <- function(rule, rule_class, head, paths, class) {
+  if (length(rule) == 0L) {
+    return(list(row = integer(), rule = integer()))
+  }
+  key <- paste(rule_class, head, sep = "\n")
+  by_key <- split(rule, factor(key, unique(key)))
+  sizes <- sort(unique(nchar(head, "bytes")))
+  n <- findInterval(nchar(paths, "bytes"), sizes)
+  row <- rep(seq_along(paths), n)
+  size <- sizes[sequence(n)]
+  hit <- match(paste(class[row], substr(paths[row], 1L, size), sep = "\n"),
+               names(by_key))
+  found <- by_key[hit[!is.na(hit)]]
+  list(row = rep(row[!is.na(hit)], lengths(found)),
+       rule = unlist(found, use.names = FALSE))
+}
+
+# The (row, rule) pairs where a rule with a later fragment can match: the
+# row's path, in the rule's class, holds the fragment's first three bytes
+# (slash_gram_index()) and starts with the rule's head.
+slash_fragment_pairs <- function(rule, rule_class, head, frag, paths, class) {
+  if (length(rule) == 0L) {
+    return(list(row = integer(), rule = integer()))
+  }
+  gram <- substr(frag, 1L, 3L)
+  index <- slash_gram_index(paths, class, sort(unique(nchar(gram, "bytes"))))
+  found <- index[match(paste(rule_class, gram, sep = "\n"), names(index))]
+  row <- unlist(found, use.names = FALSE)
+  rule <- rep(rule, lengths(found))
+  keep <- startsWith(paths[row], rep(head, lengths(found)))
+  list(row = row[keep], rule = rule[keep])
+}
+
+# The rows of each (class, run of `sizes` bytes) the paths hold, as a list
+# named by "class\nrun"; a row is listed once per run. The runs number at
+# most three per byte of each path.
+slash_gram_index <- function(paths, class, sizes) {
+  parts <- lapply(sizes, function(g) {
+    k <- pmax(nchar(paths, "bytes") - g + 1L, 0L)
+    row <- rep(seq_along(paths), k)
+    start <- sequence(k)
+    list(row = row, key = paste(class[row],
+                                substr(paths[row], start, start + g - 1L),
+                                sep = "\n"))
+  })
+  row <- unlist(lapply(parts, `[[`, "row"), use.names = FALSE)
+  key <- unlist(lapply(parts, `[[`, "key"), use.names = FALSE)
+  keep <- !duplicated(paste(row, key, sep = "\n"))
+  split(row[keep], factor(key[keep], unique(key[keep])))
 }
 
 # The split rows: one per Allow (the bare URL stays disallowed by

@@ -819,6 +819,26 @@ test_that("ROBO-roypaoox: the checks are linear in the rules (ROBO-dbvmxcfw)", {
   expect_lt(large, 8 * max(small, 0.05))
 })
 
+# `n` literal candidates beside `n` wildcard rules whose head is cut to `/`
+# by an early `*`: a rule like `/*?fN=` or `/*/fN/` must not join every
+# candidate's witness body.
+sp_wild <- function(n) {
+  k <- seq_len(n)
+  paste0("User-agent: *\n",
+         paste0("Disallow: /c", k, "/\n", collapse = ""),
+         paste0("Disallow: /*?f", k, "=\n", collapse = ""),
+         paste0("Disallow: /*/f", k, "/\n", collapse = ""))
+}
+
+test_that("ROBO-roypaoox: the split is linear beside wildcard rules", {
+  skip_on_cran()
+  groups <- sp_groups(sp_wild(250L))
+  expect_identical(nrow(slash_split_diagnostics(groups)), 1L)
+  small <- sp_time_check(sp_wild(250L), 2L)
+  large <- sp_time_check(sp_wild(1000L), 2L)
+  expect_lt(large, 8 * max(small, 0.05))
+})
+
 # A split and a pair whose values carry the length, inside the 16,663-byte
 # line buffer; the checks alone, 20 calls per run.
 sp_value <- function(n) {
