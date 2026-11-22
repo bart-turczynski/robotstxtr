@@ -173,7 +173,10 @@ byte right after the colon hides the path, the message says that the
 first NUL ends the line, so the directive imposes no restriction and
 the text after the NUL is ignored. \cr
 \code{rule_missing_leading_slash} \tab warning \tab
-A pattern not led by \code{/} or \code{*}; it never matches. \cr
+A pattern not led by \code{/} or \code{*}; it never matches. A full
+\code{http} or \code{https} URL gets a message naming the path and
+query to write instead; under \code{\link[=robots_validate_url]{robots_validate_url()}} it also says
+when the URL's origin differs from the robots.txt origin. \cr
 \code{rule_cut_by_comment} \tab warning \tab
 A \code{#} with no space or tab before it starts a comment inside an
 Allow or Disallow value, cutting the rule at the \code{#}. A vertical
