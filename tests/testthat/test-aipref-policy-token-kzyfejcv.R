@@ -33,27 +33,20 @@ ai_stacked <- ai_lines(
 test_that("a token group draws the info and no wildcard info", {
   x <- robots_validate_text(ai_exempt)
   d <- x$diagnostics
-  # `Allow: /press-kit/` under `Disallow: /` also gets the bare-blocked
-  # rule_slash_split info (ROBO-roypaoox).
-  expect_identical(d$code, c("ai_training_preference", "rule_slash_split"))
-  expect_identical(d$severity, c("info", "info"))
-  expect_identical(d$line, c(4L, 6L))
-  expect_identical(d$directive, c("user-agent", "allow"))
-  expect_identical(d$raw_text,
-                   c("User-agent: __usage_ai-training", "Allow: /press-kit/"))
+  expect_identical(d$code, "ai_training_preference")
+  expect_identical(d$severity, "info")
+  expect_identical(d$line, 4L)
+  expect_identical(d$directive, "user-agent")
+  expect_identical(d$raw_text, "User-agent: __usage_ai-training")
   expect_identical(x$documents$validation_status, "valid")
-  expect_identical(d$message, c(paste0(
+  expect_identical(d$message, paste0(
     "`User-agent: __usage_ai-training` states an AI-training preference ",
     "(draft-kelley-aipref-training-preference-signal-00, an Internet-Draft): ",
     "a disallowed path is a preference against training on it, an allowed ",
     "one a preference for it. This group's rules: Disallow: / (line 5), ",
     "Allow: /press-kit/ (line 6). `User-agent: *` rules never apply to the ",
     "token."
-  ), paste0(
-    "This Allow opens the URL '/press-kit/', but '/press-kit' stays ",
-    "disallowed by line 5. A server redirect between the two URLs changes ",
-    "what a crawler reaches."
-  )))
+  ))
 })
 
 test_that("a named crawler beside the token keeps only its lost * Allow", {

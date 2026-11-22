@@ -772,7 +772,9 @@ only Google's cut merge forms gets no row; \code{rule_slash_split} is
 reported only where the whole-value merge and Google's merge give the
 same decisions and deciding lines. A body cut at \code{max_bytes} gets
 \code{rule_slash_pair}, which a later line cannot undo, but not
-\code{rule_slash_split}, which a later Allow could change.
+\code{rule_slash_split}, which a later Allow could change. A
+\verb{User-agent: __usage_ai-training} group gets neither: it states a training
+preference, not crawl access.
 
 On a document holding a NUL byte, \code{wildcard_rules_not_inherited},
 \code{disallow_tied_by_allow}, \code{duplicate_rule},

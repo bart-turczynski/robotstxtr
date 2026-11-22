@@ -763,7 +763,9 @@ validation_unsupported <- c(
 #' reported only where the whole-value merge and Google's merge give the
 #' same decisions and deciding lines. A body cut at `max_bytes` gets
 #' `rule_slash_pair`, which a later line cannot undo, but not
-#' `rule_slash_split`, which a later Allow could change.
+#' `rule_slash_split`, which a later Allow could change. A
+#' `User-agent: __usage_ai-training` group gets neither: it states a training
+#' preference, not crawl access.
 #'
 #' On a document holding a NUL byte, `wildcard_rules_not_inherited`,
 #' `disallow_tied_by_allow`, `duplicate_rule`,
@@ -4427,6 +4429,18 @@ slash_candidates <- function(rules) {
   )
 }
 
+# The groups the trailing-slash checks read. The AI-training policy token
+# states a training preference, not crawl access, and names no crawler
+# (ROBO-kzyfejcv), so its User-agent lines are left out, as
+# wildcard_inheritance_diagnostics() leaves them out: on Google's key, so
+# `__usage_ai-training/1.0` goes too. A group naming only the token gets no
+# row.
+slash_groups <- function(groups) {
+  agents <- groups$agents
+  groups$agents <- agents[agents$key != ai_training_token, , drop = FALSE]
+  groups
+}
+
 # The other form of each candidate value: `P` for `P/`, `P/` for `P`.
 slash_partner <- function(value) {
   slash <- endsWith(value, "/")
@@ -4463,6 +4477,7 @@ slash_every <- function(owner, ok) {
 # Later lines cannot undo a pair, so a cut body is checked too. Returns a
 # data frame of `line`, `type` and `message`, in line order.
 slash_pair_diagnostics <- function(groups) {
+  groups <- slash_groups(groups)
   rules <- groups$rules
   at <- slash_candidates(rules)
   if (length(at) == 0L) {
@@ -4561,6 +4576,7 @@ slash_crawler_note <- function(agents, group) {
 # then one reading is made. A cut body is not checked: a later Allow could
 # change a decision. Returns slash_rows() with a `directive` column.
 slash_split_diagnostics <- function(groups) {
+  groups <- slash_groups(groups)
   rules <- groups$rules
   at <- slash_candidates(rules)
   at <- at[endsWith(rules$value[at], "/")]

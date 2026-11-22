@@ -338,6 +338,24 @@ test_that("ROBO-roypaoox: a group naming several crawlers names them", {
   ))
 })
 
+test_that("ROBO-roypaoox: the AI-training policy token gets no row", {
+  # It states a training preference, not crawl access (ROBO-kzyfejcv).
+  expect_identical(
+    sp_codes("User-agent: __usage_ai-training\nDisallow: /kit/\n"),
+    "ai_training_preference"
+  )
+  expect_identical(
+    sp_codes(paste0("User-agent: __usage_ai-training\nDisallow: /\n",
+                    "Allow: /kit/\nAllow: /kit\n")),
+    "ai_training_preference"
+  )
+  # A crawler's own group beside it keeps its rows.
+  d <- sp_diag(paste0("User-agent: __usage_ai-training\nDisallow: /kit/\n\n",
+                      "User-agent: Foo\nDisallow: /kit/\n"))
+  expect_identical(d$code[d$code == sp_split], sp_split)
+  expect_identical(d$line[d$code == sp_split], 4L)
+})
+
 test_that("ROBO-roypaoox: rows come in line order, empties stay out", {
   # The group row on line 1 comes before the Allow row on line 3.
   d <- sp_rows("User-agent: *\nDisallow: /a\nAllow: /a/b/\nDisallow: /c/\n",
