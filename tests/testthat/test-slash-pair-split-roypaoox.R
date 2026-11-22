@@ -356,6 +356,17 @@ test_that("ROBO-roypaoox: the AI-training policy token gets no row", {
                     "Disallow: /x\n")),
     c("user_agent_cut", "ai_training_token_near_miss")
   )
+  # A group row is anchored on the first User-agent line the check reads,
+  # not on a token line before it.
+  for (token in c("__usage_ai-training", "__usage_ai-training/1.0")) {
+    body <- sprintf("User-agent: %s\nUser-agent: Googlebot\nDisallow: /x/\n",
+                    token)
+    d <- sp_rows(body, sp_split)
+    expect_identical(d$line, 2L, label = token)
+    expect_identical(d$raw_text, "User-agent: Googlebot", label = token)
+    expect_identical(d$message, sp_open_message(3L, "/x/", "/x"),
+                     label = token)
+  }
   # A crawler's own group beside it keeps its rows.
   d <- sp_diag(paste0("User-agent: __usage_ai-training\nDisallow: /kit/\n\n",
                       "User-agent: Foo\nDisallow: /kit/\n"))

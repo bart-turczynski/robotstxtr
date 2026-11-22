@@ -4807,7 +4807,9 @@ slash_open_rows <- function(groups, at, cap = 5L) {
   sets <- split(seq_along(at), factor(signature[match(group, wanted)],
                                       unique(signature[match(group, wanted)])))
   first <- vapply(sets, `[[`, 0L, 1L)
-  anchor <- groups$groups$first_line[match(group[first], groups$groups$group)]
+  # The group's first User-agent line the check reads (slash_groups() may
+  # have left out a policy-token line before it); agents are in file order.
+  anchor <- groups$agents$line[match(group[first], groups$agents$group)]
   message <- vapply(sets, function(k) {
     slash_open_message(rules$value[at[k]], rules$line[at[k]], cap)
   }, "", USE.NAMES = FALSE)
