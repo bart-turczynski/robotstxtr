@@ -5557,7 +5557,7 @@ allow_reopens_diagnostics <- function(groups, written = NULL, budget = NULL,
   if (is.null(budget)) {
     budget <- slash_budget(rules, allows)
   }
-  pairs <- reopen_pairs(groups, allows, reopen_controls(rules), budget,
+  pairs <- reopen_pairs(groups, allows, reopen_controls(rules), budget / 2,
                         filter)
   read <- reopen_reads(groups, shape, allows, pairs, written, budget)
   state <- reopen_state(pairs, read, length(allows))
@@ -5614,11 +5614,17 @@ reopen_controls <- function(rules) {
 # order; `whole` counts the leading Allows whose pairs are all listed. A
 # pair's Disallow shares a crawler class with its Allow on the whole-value
 # merge: the row speaks for those crawlers, and a control from another
-# crawler's Disallow would say nothing about theirs. The list stops before
-# the first Allow whose pairs would take the summed (Allow, class)
-# controls past `budget`: each such count is at most the reading's
-# (candidate, class) rows, so witness_pair_readings() could not read that
-# Allow whole, and the list never grows with Allows times Disallows.
+# crawler's Disallow would say nothing about theirs. The Disallows an
+# Allow's crawler classes hold are gathered once per set of classes
+# (reopen_near()), and that work counts against `budget`, the first
+# reading's share, as one unit per group and Disallow gathered. Each pair
+# then counts what it costs that reading at least: its Allow's classes as
+# (candidate, class) rows, as many witness body lines for the Allow itself,
+# and one for the Disallow, and, when some User-agent value is cut, three
+# more for Google's merge (one row and the two lines). The list stops before the first Allow that
+# would take the count past `budget`, which the reading could not read
+# whole either, so it never grows with Allows times Disallows or crawler
+# classes.
 reopen_pairs <- function(groups, allows, controls, budget, filter = TRUE) {
   d <- controls$at
   if (length(d) == 0L) {
@@ -5626,55 +5632,72 @@ reopen_pairs <- function(groups, allows, controls, budget, filter = TRUE) {
                 whole = length(allows)))
   }
   rules <- groups$rules
-  expand <- validation_token_expander(groups, groups$agents$uncut)
-  by <- reopen_class_controls(expand, rules, d)
-  rows <- expand(rules$group[allows])
-  key <- as.character(rows$class)
-  have <- key %in% names(by$pos)
-  take <- integer(length(key))
-  if (filter) {
+  near <- reopen_near(groups, rules$group[c(allows, d)])
+  size <- nchar(rules$value[d], "bytes")
+  by_group <- split(seq_along(d), rules$group[d])
+  a_size <- nchar(rules$value[allows], "bytes")
+  key <- near$key(rules$group[allows])
+  classes <- near$classes(rules$group[allows])
+  agents <- groups$agents
+  cut <- if (all(agents$uncut == agents$key)) 0 else 3
+  held <- list()
+  found <- vector("list", length(allows))
+  spent <- 0
+  whole <- length(allows)
+  for (i in seq_along(allows)) {
+    if (is.null(held[[key[[i]]]])) {
+      near_groups <- near$groups(rules$group[allows[[i]]])
+      pos <- as.integer(unlist(by_group[as.character(near_groups)],
+                               use.names = FALSE))
+      held[[key[[i]]]] <- pos[order(size[pos], pos)]
+      spent <- spent + length(near_groups) + length(pos)
+    }
+    pos <- held[[key[[i]]]]
     # A perf filter only: Google ranks matching rules by pattern length and
     # an Allow wins a tie, and a Disallow matches the witness as it matches
-    # the control, a prefix of it, so an Allow shorter than the Disallow of
-    # its class can never decide the witness.
-    size <- nchar(rules$value[allows], "bytes")[rows$owner]
-    take[have] <- as.integer(unlist(Map(function(s, k) {
-      findInterval(s, by$size[[k]])
-    }, size[have], key[have]), use.names = FALSE))
-  } else {
-    take[have] <- lengths(by$pos[key[have]])
+    # the control, a prefix of it, so an Allow shorter than a Disallow its
+    # crawlers have can never decide the witness.
+    k <- if (filter) findInterval(a_size[[i]], size[pos]) else length(pos)
+    spent <- spent + k * (2 * classes[[i]] + 1 + cut)
+    if (spent > budget) {
+      whole <- i - 1L
+      break
+    }
+    found[[i]] <- sort(pos[seq_len(k)])
   }
-  cost <- numeric(length(allows))
-  sums <- rowsum(take, rows$owner)
-  cost[as.integer(rownames(sums))] <- sums[, 1L]
-  whole <- sum(cumsum(cost) <= budget)
-  pick <- rows$owner <= whole & take > 0L
-  pos <- as.integer(unlist(Map(function(k, n) by$pos[[k]][seq_len(n)],
-                               key[pick], take[pick]), use.names = FALSE))
-  own <- rep(rows$owner[pick], take[pick])
-  keep <- !duplicated(cbind(own, pos))
-  own <- own[keep]
-  pos <- pos[keep]
-  o <- order(own, pos)
-  list(allow = own[o], at = d[pos[o]], control = controls$control[pos[o]],
-       whole = whole)
+  pos <- unlist(found, use.names = FALSE)
+  list(allow = rep(seq_along(found), lengths(found)), at = d[pos],
+       control = controls$control[pos], whole = whole)
 }
 
-# The controls each crawler class holds, as list(pos, size), named by
-# class: `pos` the positions in `d` (indexes of `rules`) by pattern length
-# in bytes, then line, and `size` those lengths.
-reopen_class_controls <- function(expand, rules, d) {
-  rows <- expand(rules$group[d])
-  size <- nchar(rules$value[d], "bytes")
-  o <- order(rows$class, size[rows$owner], rows$owner)
-  key <- as.character(rows$class[o])
-  f <- factor(key, unique(key))
-  list(pos = split(rows$owner[o], f), size = split(size[rows$owner[o]], f))
+# The crawler classes of the groups `wanted` on the whole-value merge
+# (validation_token_expander() on `agents$uncut`), as functions of group
+# ids: `key`, one string per set of classes, `classes`, how many, and
+# `groups`, for one group, every group sharing a class with it, itself
+# included. The counts come from the (group, class) pairs, which grow with
+# the User-agent lines.
+reopen_near <- function(groups, wanted) {
+  wanted <- unique(wanted)
+  pairs <- validation_token_expander(groups, groups$agents$uncut)(wanted)
+  by_class <- split(wanted[pairs$owner], pairs$class)
+  classes <- split(pairs$class, factor(pairs$owner, seq_along(wanted)))
+  key <- vapply(classes, function(x) paste(sort(x), collapse = " "), "",
+                USE.NAMES = FALSE)
+  list(
+    key = function(g) paste0("#", key[match(g, wanted)]),
+    classes = function(g) lengths(classes)[match(g, wanted)],
+    groups = function(g) {
+      held <- classes[[match(g, wanted)]]
+      unique(unlist(by_class[as.character(held)], use.names = FALSE))
+    }
+  )
 }
 
-# The two readings of the pairs, sharing `budget`: the first, of the Allow
-# deciding the witness and the control getting the other decision; the
-# second, for the pairs that pass it, on a copy of `groups` with every
+# The two readings of the pairs, sharing `budget`: the first, within half
+# of it, so the second always has the other half for what the first
+# passed, of the Allow deciding the witness and the control getting the
+# other decision; the second, for the pairs that pass it, within what is
+# left, on a copy of `groups` with every
 # shape-A Allow (`shape`) left out of every body (flagged empty), of the
 # line the first named deciding the control and the witness getting the
 # same decision: without such Allows, the witness would be blocked. An
@@ -5693,7 +5716,7 @@ reopen_reads <- function(groups, shape, allows, pairs, written, budget) {
     return(out)
   }
   first <- witness_pair_readings(groups, at, pairs$control, witness, "long",
-                                 written, budget)
+                                 written, budget / 2)
   out$line <- first$line
   read <- seq_len(n) <= first$checked
   out$done <- read
@@ -5742,22 +5765,23 @@ reopen_rows <- function(groups, shape, at, pairs, read, pair) {
 }
 
 # For each Allow `at`, the lines of the other shape-A Allows (`shape`) its
-# crawler classes hold on the whole-value merge: the second reading left
-# them out too.
+# crawler classes hold on the whole-value merge (reopen_near()): the second
+# reading left them out too. Gathered once per set of classes.
 reopen_others <- function(groups, shape, at) {
   rules <- groups$rules
   if (length(at) == 0L) {
     return(list())
   }
-  expand <- validation_token_expander(groups, groups$agents$uncut)
-  held <- expand(rules$group[shape])
-  by_class <- split(shape[held$owner], held$class)
-  rows <- expand(rules$group[at])
-  found <- split(by_class[as.character(rows$class)],
-                 factor(rows$owner, seq_along(at)))
+  near <- reopen_near(groups, rules$group[c(at, shape)])
+  by_group <- split(rules$line[shape], rules$group[shape])
+  key <- near$key(rules$group[at])
+  held <- list()
   lapply(seq_along(at), function(i) {
-    k <- unique(unlist(found[[i]], use.names = FALSE))
-    sort(rules$line[setdiff(k, at[[i]])])
+    if (is.null(held[[key[[i]]]])) {
+      found <- by_group[as.character(near$groups(rules$group[at[[i]]]))]
+      held[[key[[i]]]] <<- sort(unlist(found, use.names = FALSE))
+    }
+    setdiff(held[[key[[i]]]], rules$line[at[[i]]])
   })
 }
 
