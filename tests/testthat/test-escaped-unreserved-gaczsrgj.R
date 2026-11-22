@@ -90,7 +90,14 @@ test_that("unescaped, reserved and non-escape values stay clean", {
   for (value in eu_clean) {
     line <- paste0("Disallow: ", value)
     x <- eu_validate(line)
-    expect_identical(nrow(x$diagnostics), 0L, label = line)
+    # A `$`-anchored Disallow a query escapes gets its own info row
+    # (ROBO-nzcvlsvk), no escape finding.
+    expected <- if (line == "Disallow: /*.pdf$") {
+      "rule_end_anchor_query"
+    } else {
+      character(0)
+    }
+    expect_identical(x$diagnostics$code, expected, label = line)
   }
   # An empty Disallow is the allow-all info code since ROBO-vyystald.
   x <- eu_validate("Disallow:")
