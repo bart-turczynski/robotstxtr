@@ -229,7 +229,9 @@ written both as `/notes` and `/notes/` for the same crawlers, and an info,
 another for `/gallery/`, which a server redirect between them makes matter. An
 info, `rule_end_anchor_query`, notes a Disallow such as `/x/edit$` that blocks
 `/x/edit` but not `/x/edit?x=1`, since the final `$` ends the match at the end
-of the path and query together. A
+of the path and query together. An info, `allow_reopens_through_query`, notes
+an Allow such as `*/x/` that also matches inside a query, so it allows
+`/c?q=/x/` while a Disallow blocks `/c`. A
 warning, `html_body`, says the body looks like an HTML page rather than a robots.txt;
 `xml_body` and `json_body` say the same of a body that starts with markup, such
 as an XML error, or looks like a JSON object or array, such as an API error.

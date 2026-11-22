@@ -395,9 +395,22 @@ crawlers have. One row per group of crawlers, on its first User-agent
 line, listing five rules at most, then a count. Past a fixed amount
 of work, as for \code{rule_slash_split}, candidates get no row and
 \code{rule_check_stopped} says so. \cr
+\code{allow_reopens_through_query} \tab info \tab
+An Allow that opens with \code{*} or \code{/*} and then names a path
+(\code{*/x/}) also matches inside a query, so it allows
+\code{/c?q=/x/} while a Disallow blocks \code{/c}. Reported only when
+the Allow decides the query URL while the path stays blocked, and
+with every such Allow left out the query URL would be blocked too,
+under every rule the crawlers have. One row per group of crawlers, on
+its first User-agent line: the first Allow with the URL it allows and
+the Disallow that blocks the path, then the lines of the other
+Allows, four at most, then a count.
+Past a fixed amount of work, as for \code{rule_slash_split}, Allows
+get no row and \code{rule_check_stopped} says so. \cr
 \code{rule_check_stopped} \tab info \tab
 The file is too large for \code{rule_slash_pair},
-\code{rule_slash_split} or \code{rule_end_anchor_query} to check
+\code{rule_slash_split}, \code{rule_end_anchor_query} or
+\code{allow_reopens_through_query} to check
 every candidate quickly, so the check
 read only the first ones, in line order. The message gives the counts
 found, checked and skipped and names the earliest skipped rule; the
@@ -830,10 +843,37 @@ query URL. The check reads its candidates within a fixed amount of work,
 as the slash checks do, and a \verb{User-agent: __usage_ai-training} group
 gets no row.
 
+\code{allow_reopens_through_query} reads an Allow whose pattern is led by \code{*}
+or \verb{/*} and whose rest after that run of \code{*} is a path: a \code{/} and at
+least one more byte before any final \code{*} or \code{$} (\verb{*/x/}, \verb{/*/x/},
+\verb{/**/x$}, \verb{*/x/$}), so not \verb{/*/} or \verb{/*/*} alone, \verb{/*.css} or
+\verb{*?next=}. It pairs the Allow with each non-empty
+Disallow the same crawlers have that is led by \code{/} or \code{*} and holds no
+\verb{?} and no final \code{$}. The path the Disallow blocks is its value with each
+\code{*} written \code{x}, and the query URL is that path, \verb{?q=} and the path the
+Allow names, its inner \code{*} written \code{x}. A value with a dot segment, a \verb{\%}
+that starts no escape or a byte no URL carries is left out, as for
+\code{rule_end_anchor_query}. Google's matcher makes the decisions over every
+rule of the crawler's merged groups: the Allow must decide the query URL
+while the path stays disallowed, every crawler the group names agreeing
+on the line that blocks the path, on the whole-value merge and on
+Google's merge; read again with every Allow of this shape left out, that
+line must block the query URL too, so an Allow of another shape that
+opens it (\verb{Allow: /c?}) silences the row. The row names that line, which
+may be another Disallow (\verb{/c$}). The pairs of each Allow are read in
+line order up to the first that gives a row, within a fixed amount of
+work; an Allow shorter than a Disallow cannot win over it. The
+package's Yandex matcher gives a tie of pattern lengths to the
+Disallow, where Google gives it to the Allow. An Allow such as
+\verb{*/x?p=} can also get \code{rule_query_parameter_position}; both rows stand. A
+body cut at \code{max_bytes} is not checked, and a
+\verb{User-agent: __usage_ai-training} group gets no row.
+
 On a document holding a NUL byte, \code{wildcard_rules_not_inherited},
 \code{disallow_tied_by_allow}, \code{duplicate_rule},
 \code{rule_query_parameter_position}, \code{rule_slash_pair}, \code{rule_slash_split},
-\code{rule_end_anchor_query} and the AI-training codes follow Google's
+\code{rule_end_anchor_query}, \code{allow_reopens_through_query} and the
+AI-training codes follow Google's
 reading: the parser and Google's matcher end a line at its
 first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
 byte, so each such message says it is Google's reading, unless every NUL

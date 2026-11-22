@@ -386,9 +386,22 @@ validation_unsupported <- c(
 #'     line, listing five rules at most, then a count. Past a fixed amount
 #'     of work, as for \code{rule_slash_split}, candidates get no row and
 #'     \code{rule_check_stopped} says so. \cr
+#'   \code{allow_reopens_through_query} \tab info \tab
+#'     An Allow that opens with \code{*} or \code{/*} and then names a path
+#'     (\code{*/x/}) also matches inside a query, so it allows
+#'     \code{/c?q=/x/} while a Disallow blocks \code{/c}. Reported only when
+#'     the Allow decides the query URL while the path stays blocked, and
+#'     with every such Allow left out the query URL would be blocked too,
+#'     under every rule the crawlers have. One row per group of crawlers, on
+#'     its first User-agent line: the first Allow with the URL it allows and
+#'     the Disallow that blocks the path, then the lines of the other
+#'     Allows, four at most, then a count.
+#'     Past a fixed amount of work, as for \code{rule_slash_split}, Allows
+#'     get no row and \code{rule_check_stopped} says so. \cr
 #'   \code{rule_check_stopped} \tab info \tab
 #'     The file is too large for \code{rule_slash_pair},
-#'     \code{rule_slash_split} or \code{rule_end_anchor_query} to check
+#'     \code{rule_slash_split}, \code{rule_end_anchor_query} or
+#'     \code{allow_reopens_through_query} to check
 #'     every candidate quickly, so the check
 #'     read only the first ones, in line order. The message gives the counts
 #'     found, checked and skipped and names the earliest skipped rule; the
@@ -821,10 +834,37 @@ validation_unsupported <- c(
 #' as the slash checks do, and a `User-agent: __usage_ai-training` group
 #' gets no row.
 #'
+#' `allow_reopens_through_query` reads an Allow whose pattern is led by `*`
+#' or `/*` and whose rest after that run of `*` is a path: a `/` and at
+#' least one more byte before any final `*` or `$` (`*/x/`, `/*/x/`,
+#' `/**/x$`, `*/x/$`), so not `/*/` or `/*/*` alone, `/*.css` or
+#' `*?next=`. It pairs the Allow with each non-empty
+#' Disallow the same crawlers have that is led by `/` or `*` and holds no
+#' `?` and no final `$`. The path the Disallow blocks is its value with each
+#' `*` written `x`, and the query URL is that path, `?q=` and the path the
+#' Allow names, its inner `*` written `x`. A value with a dot segment, a `%`
+#' that starts no escape or a byte no URL carries is left out, as for
+#' `rule_end_anchor_query`. Google's matcher makes the decisions over every
+#' rule of the crawler's merged groups: the Allow must decide the query URL
+#' while the path stays disallowed, every crawler the group names agreeing
+#' on the line that blocks the path, on the whole-value merge and on
+#' Google's merge; read again with every Allow of this shape left out, that
+#' line must block the query URL too, so an Allow of another shape that
+#' opens it (`Allow: /c?`) silences the row. The row names that line, which
+#' may be another Disallow (`/c$`). The pairs of each Allow are read in
+#' line order up to the first that gives a row, within a fixed amount of
+#' work; an Allow shorter than a Disallow cannot win over it. The
+#' package's Yandex matcher gives a tie of pattern lengths to the
+#' Disallow, where Google gives it to the Allow. An Allow such as
+#' `*/x?p=` can also get `rule_query_parameter_position`; both rows stand. A
+#' body cut at `max_bytes` is not checked, and a
+#' `User-agent: __usage_ai-training` group gets no row.
+#'
 #' On a document holding a NUL byte, `wildcard_rules_not_inherited`,
 #' `disallow_tied_by_allow`, `duplicate_rule`,
 #' `rule_query_parameter_position`, `rule_slash_pair`, `rule_slash_split`,
-#' `rule_end_anchor_query` and the AI-training codes follow Google's
+#' `rule_end_anchor_query`, `allow_reopens_through_query` and the
+#' AI-training codes follow Google's
 #' reading: the parser and Google's matcher end a line at its
 #' first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
 #' byte, so each such message says it is Google's reading, unless every NUL
@@ -1891,6 +1931,24 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       add_diagnostic(
         NA_integer_, "info", "rule_check_stopped", NA_character_,
         slash_stop_message("end_anchor", attr(found, "stopped"))
+      )
+    }
+    # An Allow led by `*` or `/*` that names a path and so also matches
+    # inside a query, reopening a URL a Disallow blocks (ROBO-micbpqbc). A
+    # later rule could decide the witness, so a cut body is skipped too.
+    found <- allow_reopens_diagnostics(groups, written = written)
+    if (nrow(found) > 0L) {
+      add_chunk(
+        found$line, "info", "allow_reopens_through_query", found$directive,
+        vapply(raw_lines[found$line], render_validation_line, "",
+               USE.NAMES = FALSE),
+        paste0(found$message, nul_reading)
+      )
+    }
+    if (!is.null(attr(found, "stopped"))) {
+      add_diagnostic(
+        NA_integer_, "info", "rule_check_stopped", NA_character_,
+        slash_stop_message("allow_reopen", attr(found, "stopped"))
       )
     }
   }
@@ -4647,13 +4705,17 @@ slash_stop <- function(rules, at, checked) {
 }
 
 # The rule_check_stopped row's text, for the split check (`kind`
-# "split"), the pair check ("pair") or the end-anchor check
-# ("end_anchor"), in plain words with the file's own counts and its
-# earliest skipped value.
+# "split"), the pair check ("pair"), the end-anchor check ("end_anchor")
+# or the reopen check ("allow_reopen"), in plain words with the file's own
+# counts and its earliest skipped value.
 slash_stop_message <- function(kind, stop) {
   if (kind == "end_anchor") {
     return(paste(end_anchor_stop_intro(stop),
                  slash_stop_counts(stop, "have the same problem")))
+  }
+  if (kind == "allow_reopen") {
+    return(paste(reopen_stop_intro(stop),
+                 slash_stop_counts(stop, "do the same")))
   }
   shown <- slash_shown(stop$value)
   rules <- if (stop$found == 1L) "1 rule" else sprintf("%d rules", stop$found)
@@ -4875,12 +4937,20 @@ slash_split_diagnostics <- function(groups, written = NULL, budget = NULL) {
 # Returns list(line, ok, checked, spent): `ok` where every reading's `ok`
 # holds, `line` where every reading names the same line (NA otherwise),
 # `checked` the leading candidates every reading read, and `spent` the work
-# done.
+# done. `differ` and `group` as witness_pair_reading() takes them. With
+# `share`, Google's merge rereads only where it differs
+# (witness_pair_shared()).
 witness_pair_readings <- function(groups, at, short, long, decides,
-                                  written = NULL, budget = Inf) {
+                                  written = NULL, budget = Inf,
+                                  differ = TRUE, group = NULL,
+                                  share = FALSE) {
   agents <- groups$agents
   keys <- list(agents$uncut)
   if (!all(agents$uncut == agents$key)) {
+    if (share) {
+      return(witness_pair_shared(groups, at, short, long, decides, written,
+                                 budget, differ, group))
+    }
     keys <- c(keys, list(agents$key))
   }
   line <- NULL
@@ -4889,7 +4959,7 @@ witness_pair_readings <- function(groups, at, short, long, decides,
   spent <- 0
   for (key in keys) {
     read <- witness_pair_reading(groups, at, key, short, long, decides,
-                                 written, budget - spent)
+                                 written, budget - spent, differ, group)
     spent <- spent + read$spent
     ok <- ok & read$ok
     if (is.null(line)) {
@@ -4904,14 +4974,83 @@ witness_pair_readings <- function(groups, at, short, long, decides,
   list(line = line, ok = ok, checked = checked, spent = spent)
 }
 
+# witness_pair_readings() when some value is cut, Google's merge reading
+# only the candidates whose group's crawler classes differ between the two
+# merges (merge_differs()): elsewhere each class holds the same groups on
+# both, so the bodies and decisions are the same, and the whole-value
+# reading stands for both. The whole-value reading gets the share of
+# `budget` its candidates make of all the candidates both read, and
+# Google's what it leaves, so neither merge starves the other.
+witness_pair_shared <- function(groups, at, short, long, decides, written,
+                                budget, differ, group) {
+  if (is.null(group)) {
+    group <- groups$rules$group[at]
+  }
+  n <- length(at)
+  redo <- which(merge_differs(groups, group))
+  share <- if (n == 0L) budget else budget * n / (n + length(redo))
+  whole <- witness_pair_reading(groups, at, groups$agents$uncut, short, long,
+                                decides, written, share, differ, group)
+  out <- list(line = whole$line, ok = whole$ok, checked = whole$read,
+              spent = whole$spent)
+  redo <- redo[redo <= whole$read]
+  if (length(redo) == 0L) {
+    return(out)
+  }
+  google <- witness_pair_reading(groups, at[redo], groups$agents$key,
+                                 short[redo], long[redo], decides, written,
+                                 budget - whole$spent, differ, group[redo])
+  out$spent <- out$spent + google$spent
+  out$ok[redo] <- out$ok[redo] & google$ok
+  line <- out$line[redo]
+  line[is.na(google$line) | is.na(line) | line != google$line] <- NA_integer_
+  out$line[redo] <- line
+  if (google$read < length(redo)) {
+    out$checked <- min(out$checked, redo[[google$read + 1L]] - 1L)
+  }
+  out
+}
+
+# For each of the groups `group`, whether its crawler classes hold other
+# groups on the whole-value merge (`agents$uncut`) than on Google's
+# (`agents$key`), classes built as validation_token_expander() builds them.
+# Counted from the (group, class) pairs, linear in the User-agent lines.
+merge_differs <- function(groups, group) {
+  agents <- groups$agents
+  signatures <- function(key) {
+    token <- ifelse(agents$global, "*", key)
+    keep <- nzchar(token)
+    owner <- agents$group[keep]
+    token <- token[keep]
+    signature <- vapply(split(owner, token), function(g) {
+      paste(unique(g), collapse = " ")
+    }, "")
+    list(group = owner, signature = unname(signature[token]))
+  }
+  whole <- signatures(agents$uncut)
+  google <- signatures(agents$key)
+  known <- unique(c(whole$signature, google$signature))
+  classes <- function(s) {
+    id <- match(s$signature, known)
+    vapply(split(id, s$group), function(x) {
+      paste(sort(unique(x)), collapse = " ")
+    }, "")
+  }
+  id <- as.character(group)
+  a <- classes(whole)[id]
+  b <- classes(google)[id]
+  unname(xor(is.na(a), is.na(b)) | (!is.na(a) & !is.na(b) & a != b))
+}
+
 # Two paths per candidate in `at` (indexes of `groups$rules`): `short`, a
 # prefix of `long`, and the one named by `decides` ("short" or "long") the
 # candidate must decide. A (candidate, class) row is `ok` when the candidate
 # is the line that decides that path and the other path gets the other
-# decision. Returns list(ok, line, spent, read): `ok`, per candidate, where
-# every class the group names (validation_token_expander() on `key`) is
-# ok; `line`, where they are and also agree on the file line that decides
-# the other path (0 when no rule matches it), that line, NA otherwise;
+# decision, or, with `differ = FALSE`, the same decision. Returns
+# list(ok, line, spent, read): `ok`, per candidate, where every class the
+# group names (validation_token_expander() on `key`) is ok; `line`, where
+# they are and also agree on the file line that decides the other path
+# (0 when no rule matches it), that line, NA otherwise;
 # `spent` the work done, and `read` how many leading candidates were read
 # whole. Each row is read under a body of the class's rules that can match
 # `long` (slash_split_bodies()): a rule that matches `short` can match
@@ -4920,19 +5059,25 @@ witness_pair_readings <- function(groups, at, short, long, decides,
 # the whole group. One batch call reads every row. Candidates are read in
 # line order while their rows and the rules of their classes
 # (slash_read_plan()), then their body lines, fit `budget`; the rest stay
-# NA and not ok.
+# NA and not ok. `group`, when given, names each candidate's group to read
+# the classes of in place of its own: the removal read of
+# allow_reopens_diagnostics() reads a Disallow under its Allow's crawlers.
 witness_pair_reading <- function(groups, at, key, short, long, decides,
-                                 written = NULL, budget = Inf) {
+                                 written = NULL, budget = Inf,
+                                 differ = TRUE, group = NULL) {
   rules <- groups$rules
+  if (is.null(group)) {
+    group <- rules$group[at]
+  }
   expand <- validation_token_expander(groups, key)
   unread <- list(ok = rep(FALSE, length(at)),
                  line = rep(NA_integer_, length(at)))
   # An empty rule decides nothing; left in, Google's matcher could name its
   # line for a URL no other rule matches, with the same decision.
   live <- which(!rules$empty)
-  plan <- slash_read_plan(expand, rules$group[at], rules$group[live], budget)
+  plan <- slash_read_plan(expand, group, rules$group[live], budget)
   spent <- plan$spent
-  rows <- expand(rules$group[at[seq_len(plan$n)]])
+  rows <- expand(group[seq_len(plan$n)])
   if (length(rows$owner) == 0L) {
     return(c(unread, list(spent = spent, read = plan$n)))
   }
@@ -4958,16 +5103,17 @@ witness_pair_reading <- function(groups, at, key, short, long, decides,
   read <- wildcard_witness_decide(body$bodies, rep(seq_along(o), each = 2L),
                                   paths)
   c(witness_pair_verdict(unread, read, body, rules$line, rules$line[at], o,
-                         decides),
+                         decides, differ),
     list(spent = spent, read = read_n))
 }
 
 # The `ok` and `line` of witness_pair_reading() from `read`, the batch's
 # decisions on the (short, long) path pairs of rows `o` (their candidates,
 # whose file lines are `cand_line`), and `body`, the witness bodies
-# (`line` the file line of each rule).
+# (`line` the file line of each rule). `differ`: whether the two paths
+# must get different decisions (TRUE) or the same one (FALSE).
 witness_pair_verdict <- function(out, read, body, line, cand_line, o,
-                                 decides) {
+                                 decides, differ = TRUE) {
   file_line <- function(k) {
     j <- read$line[k]
     found <- integer(length(j))
@@ -4981,7 +5127,7 @@ witness_pair_verdict <- function(out, read, body, line, cand_line, o,
   other <- if (decides == "long") first else first + 1L
   other_line <- file_line(other)
   ok <- file_line(own) == cand_line[o] &
-    read$allowed[first] != read$allowed[first + 1L]
+    (read$allowed[first] != read$allowed[first + 1L]) == differ
   every <- slash_every(o, ok)
   out$ok[every] <- TRUE
   same <- tapply(other_line, o, function(x) all(x == x[[1L]]))
@@ -5098,10 +5244,9 @@ slash_rows_within <- function(near, far, owner, budget) {
     per_row[as.integer(rownames(sums))] <- sums[, 1L]
   }
   cum <- c(0, cumsum(per_row))
+  far_upto <- slash_postings_upto(far)
   cost <- function(e) {
-    cum[[e + 1L]] + sum(vapply(far$found, function(p) {
-      findInterval(e, p)
-    }, 0L))
+    cum[[e + 1L]] + far_upto(e)
   }
   if (cost(n) <= budget) {
     return(list(rows = n, spent = cost(n)))
@@ -5117,6 +5262,45 @@ slash_rows_within <- function(near, far, owner, budget) {
   list(rows = e, spent = cost(e))
 }
 
+# For the fragment hits `far`, a function of a row `e`: how many of all the
+# rules' postings are rows up to `e`. Rules sharing a (class, gram) share
+# its posting, which is counted once and weighted by those rules: the
+# setup is linear in the distinct postings, and each call is one search,
+# not one per rule, so the halving in slash_rows_within() never costs the
+# rules times their postings.
+slash_postings_upto <- function(far) {
+  id <- far$id[!is.na(far$id)]
+  if (length(id) == 0L) {
+    return(function(e) 0)
+  }
+  weight <- tabulate(id, length(far$index))
+  used <- which(weight > 0L)
+  rows <- unlist(far$index[used], use.names = FALSE)
+  each <- rep(as.numeric(weight[used]), lengths(far$index[used]))
+  o <- order(rows)
+  rows <- rows[o]
+  total <- c(0, cumsum(each[o]))
+  function(e) {
+    total[[findInterval(e, rows, checkSorted = FALSE, checkNA = FALSE) + 1L]]
+  }
+}
+
+# How many rows of each rule's posting in `far` are up to `last`, found
+# once per distinct posting (slash_postings_upto()).
+slash_posting_lengths <- function(far, last) {
+  lens <- integer(length(far$found))
+  hit <- !is.na(far$id)
+  if (!any(hit)) {
+    return(lens)
+  }
+  used <- unique(far$id[hit])
+  upto <- vapply(far$index[used], function(p) {
+    findInterval(last, p, checkSorted = FALSE, checkNA = FALSE)
+  }, 0L)
+  lens[hit] <- upto[match(far$id[hit], used)]
+  lens
+}
+
 # The (row, rule) pairs of slash_split_bodies() for rows up to `last`: the
 # head hits, and the fragment postings cut at `last`, kept where the path
 # starts with the rule's head.
@@ -5124,7 +5308,7 @@ slash_pairs_upto <- function(near, far, paths, last) {
   k <- near$row <= last
   near_row <- rep(near$row[k], lengths(near$found[k]))
   near_rule <- unlist(near$found[k], use.names = FALSE)
-  lens <- vapply(far$found, function(p) findInterval(last, p), 0L)
+  lens <- slash_posting_lengths(far, last)
   far_row <- unlist(Map(function(p, l) p[seq_len(l)], far$found, lens),
                     use.names = FALSE)
   far_row <- as.integer(far_row)
@@ -5185,16 +5369,21 @@ slash_head_hits <- function(rule, rule_class, head, paths, class) {
 
 # Where rules with a later fragment can match, unbuilt: for each rule, in
 # `found`, the rows (ascending) whose path, in the rule's class, holds the
-# fragment's first three bytes (slash_gram_index()); with `rule` and `head`.
+# fragment's first three bytes (slash_gram_index()); with `rule` and `head`,
+# and, for counting, `index`, the distinct postings, and `id`, each rule's
+# place in it (NA for none).
 slash_fragment_hits <- function(rule, rule_class, head, frag, paths, class) {
   if (length(rule) == 0L) {
-    return(list(found = list(), rule = integer(), head = character()))
+    return(list(found = list(), rule = integer(), head = character(),
+                index = list(), id = integer()))
   }
   gram <- substr(frag, 1L, 3L)
   index <- slash_gram_index(paths, class, sort(unique(nchar(gram, "bytes"))))
-  found <- index[match(paste(rule_class, gram, sep = "\n"), names(index))]
+  id <- match(paste(rule_class, gram, sep = "\n"), names(index))
+  found <- index[id]
   found[lengths(found) == 0L] <- list(integer())
-  list(found = unname(found), rule = rule, head = head)
+  list(found = unname(found), rule = rule, head = head,
+       index = unname(index), id = id)
 }
 
 # The rows of each (class, run of `sizes` bytes) the paths hold, as a list
@@ -5410,14 +5599,23 @@ end_anchor_candidates <- function(rules) {
   hit <- which(
     rules$type == "disallow" &
       grepl("^[/*][^?$]*[$]$", value, useBytes = TRUE) &
-      !endsWith(value, "*$") &
-      !grepl("[\001-\040\177]", value, useBytes = TRUE)
+      !endsWith(value, "*$")
   )
-  control <- end_anchor_controls(value[hit])
-  dot <- grepl("/([.]|%2E){1,2}(/|$)", control, useBytes = TRUE)
-  stray <- grepl("%", gsub("%[0-9A-Fa-f]{2}", "", control, useBytes = TRUE),
+  hit[url_safe_path(value[hit], end_anchor_controls(value[hit]))]
+}
+
+# Whether each rule `value`, written as the URL path `path`, gives a path a
+# crawler can send as is: `value` holds no space, tab, other control byte
+# or DEL (rule_inner_whitespace, rule_control_character), and `path` no `.`
+# or `..` segment, written as is or as `%2E` (URL normalization would
+# remove it), and no `%` that starts no two-hex-digit escape
+# (rule_invalid_percent_escape: no correctly encoded URL carries it).
+url_safe_path <- function(value, path) {
+  odd <- grepl("[\001-\040\177]", value, useBytes = TRUE)
+  dot <- grepl("/([.]|%2E){1,2}(/|$)", path, useBytes = TRUE)
+  stray <- grepl("%", gsub("%[0-9A-Fa-f]{2}", "", path, useBytes = TRUE),
                  fixed = TRUE)
-  hit[!dot & !stray]
+  !odd & !dot & !stray
 }
 
 # Each candidate value as a path: without its final `$`, each `*` written
@@ -5482,6 +5680,405 @@ end_anchor_stop_intro <- function(stop) {
     "checks whether the rule blocks '%s' but not '%s'."
   ), rules, query_parameter_cap(stop$value, 40L), shown$control,
   shown$witness)
+}
+
+# An Allow that opens with `*` or `/*` and then names a path (`*/x/`,
+# `/*/x/`, `/**/x$`) also matches inside a URL's query (ROBO-micbpqbc): it
+# can allow `/c?q=/x/` while a Disallow blocks `/c`. Candidates are
+# (Allow, Disallow) pairs (reopen_lists()): the Allow a safe shape-A one
+# (reopen_shape(), url_safe_path() on its literal), the Disallow a control
+# (reopen_controls()) the same crawlers have. The control is the Disallow
+# as a path, and the witness the control, `?q=` and the Allow's literal
+# (reopen_literal()). A pair is reported when, for every crawler class the
+# Allow's group names, merged on the whole User-agent value and on Google's
+# token, the Allow decides the witness, which so comes out allowed, the
+# control is disallowed and every class names the same line deciding it,
+# and, with every shape-A Allow left out, that line decides the control
+# and the witness comes out disallowed too (reopen_reads()). The row names
+# that line, which may be another Disallow than the pair's (`/c$`). The
+# decisions are Google's matcher's, read by witness_pair_readings() within
+# `budget` (slash_budget() on the Allows). Each Allow's pairs are read in
+# Disallow line order and only up to the first that proves
+# (reopen_rounds()), so an Allow whose first pair proves costs one pair
+# however many Disallows its crawlers have. An Allow counts as checked once
+# each pair up to its first reported one finished, in line order up to the
+# first unfinished Allow; that one and every later one get no row, and the
+# stop counts say so. One row per set of crawler classes, on the first
+# User-agent line the check reads of the group holding the earliest Allow
+# (slash_open_rows()), with the first Allow's witness and four more Allows
+# at most, then a count. A cut body is not checked: a later rule could
+# decide the witness. `filter = FALSE` turns
+# off the length filter of reopen_take(), and `chunk = Inf` reads every
+# pair in one round, for the tests. Returns slash_rows() with a
+# `directive` column; when the budget cut Allows, its "stopped" attribute
+# holds slash_stop()'s counts.
+allow_reopens_diagnostics <- function(groups, written = NULL, budget = NULL,
+                                      filter = TRUE, chunk = 1) {
+  groups <- slash_groups(groups)
+  rules <- groups$rules
+  shape <- reopen_shape(rules)
+  allows <- shape[url_safe_path(rules$value[shape],
+                                reopen_literal(rules$value[shape]))]
+  if (length(allows) == 0L) {
+    return(slash_rows(character()))
+  }
+  if (is.null(budget)) {
+    budget <- slash_budget(rules, allows)
+  }
+  lists <- reopen_lists(groups, allows, reopen_controls(rules), filter)
+  state <- reopen_rounds(groups, shape, allows, lists, written, budget, chunk)
+  # Allows count as checked in line order up to the first one whose pairs
+  # did not finish. The rounds read Allows out of line order, so a later
+  # Allow can prove before an earlier one runs out of budget; a row past
+  # the first unfinished Allow would contradict the stop row.
+  finished <- state$status %in% c("hit", "none")
+  checked <- match(FALSE, finished, nomatch = length(allows) + 1L) - 1L
+  hit <- which(state$status == "hit" & seq_along(allows) <= checked)
+  out <- reopen_rows(groups, allows[hit], state$control[hit],
+                     state$line[hit])
+  attr(out, "stopped") <- slash_stop(rules, allows, checked)
+  out
+}
+
+# The Disallows each Allow may pair with, gathered lazily: `key`, per
+# Allow, its set of crawler classes on the whole-value merge
+# (reopen_near()), `gather(i)`, the positions in `controls` (in line
+# order) of the Disallows the classes of Allow `i` hold, with the work
+# that took, and the sizes the length filter compares. A pair's Disallow
+# shares a crawler class with its Allow on the whole-value merge: the row
+# speaks for those crawlers, and a control from another crawler's Disallow
+# would say nothing about theirs. Each set of classes is gathered once, at
+# one unit per group and Disallow gathered, so the work never grows with
+# Allows times Disallows. With no control, nothing is built.
+reopen_lists <- function(groups, allows, controls, filter = TRUE) {
+  d <- controls$at
+  rules <- groups$rules
+  out <- list(d = d, control = controls$control, filter = filter,
+              size = nchar(rules$value[d], "bytes"),
+              a_size = nchar(rules$value[allows], "bytes"))
+  if (length(d) == 0L) {
+    return(out)
+  }
+  near <- reopen_near(groups, rules$group[c(allows, d)])
+  by_group <- split(seq_along(d), rules$group[d])
+  out$key <- near$key(rules$group[allows])
+  out$gather <- function(i) {
+    near_groups <- near$groups(rules$group[allows[[i]]])
+    pos <- as.integer(unlist(by_group[as.character(near_groups)],
+                             use.names = FALSE))
+    list(pos = sort(pos), spent = length(near_groups) + length(pos))
+  }
+  out
+}
+
+# The next pairs of Allow `i` from its list `pos` past `cursor`, at most
+# `want`, as list(idx, cursor, spent): the places in `pos` taken, the new
+# cursor and the entries passed. A perf filter only: Google ranks matching
+# rules by pattern length and an Allow wins a tie, and a Disallow matches
+# the witness as it matches the control, a prefix of it, so an Allow
+# shorter than a Disallow its crawlers have can never decide the witness;
+# such a Disallow is passed over. At most four entries per pair wanted,
+# and `limit`, are passed in one call, and each entry passed counts as
+# work.
+reopen_take <- function(lists, i, pos, cursor, want, limit = Inf) {
+  rest <- min(length(pos) - cursor, limit)
+  if (!lists$filter) {
+    n <- min(rest, want)
+    return(list(idx = cursor + seq_len(n), cursor = cursor + n, spent = n))
+  }
+  idx <- cursor + seq_len(min(rest, 4 * want))
+  ok <- idx[lists$size[pos[idx]] <= lists$a_size[[i]]]
+  if (length(ok) >= want) {
+    ok <- ok[seq_len(want)]
+    end <- ok[[length(ok)]]
+  } else {
+    end <- cursor + length(idx)
+  }
+  list(idx = ok, cursor = end, spent = end - cursor)
+}
+
+# Reads the Allows' pairs in rounds: round `r` takes up to `chunk` times
+# 2^(r - 1) more pairs of each Allow still pending (reopen_take()), in
+# Allow order, and reads them (reopen_reads()). Each round has what is left
+# of `budget`: half for the lists, the takes and the first reading, the
+# rest for the removal read. An Allow's first proving pair ends it
+# ("hit"), as does a list read through with none ("none"; the next
+# round's take finds it so, at no cost). A pair the
+# round's share could not take or read is taken again in the next round,
+# with what the round left; a round that moves no Allow on and gathers no
+# list ends the reading, and the Allows still pending are "open". The
+# chunks double, and a round that runs out of its share leaves at most
+# half of what it had, so the rounds number at most about log2 of the
+# longest list plus log2 of `budget`. Returns, per Allow, `status` and,
+# for a hit, its pair's `control` and `line`, the line deciding the
+# control.
+reopen_rounds <- function(groups, shape, allows, lists, written, budget,
+                          chunk = 1) {
+  n <- length(allows)
+  status <- rep("pending", n)
+  control <- rep(NA_character_, n)
+  line <- rep(NA_integer_, n)
+  if (length(lists$d) == 0L) {
+    status[] <- "none"
+    return(list(status = status, control = control, line = line))
+  }
+  cursor <- integer(n)
+  held <- list()
+  spent <- 0
+  want <- chunk
+  repeat {
+    pending <- which(status == "pending")
+    if (length(pending) == 0L) {
+      break
+    }
+    left <- budget - spent
+    was <- list(status, cursor, names(held))
+    take <- reopen_round_take(lists, pending, cursor, held, want, left / 2)
+    held <- take$held
+    cursor <- take$cursor
+    status[take$none] <- "none"
+    pairs <- take$pairs
+    read <- reopen_reads(groups, shape, allows, pairs, written,
+                         left - take$spent, left / 2 - take$spent)
+    spent <- spent + take$spent + read$spent
+    # Per Allow of the round, its first pair that did not finish or
+    # proved: a proof ends it, and an unfinished pair is taken again.
+    stops <- which(!read$done | read$ok)
+    owners <- unique(pairs$allow)
+    first <- stops[match(owners, pairs$allow[stops])]
+    found <- !is.na(first)
+    proved <- found & read$ok[first]
+    hit <- owners[proved]
+    status[hit] <- "hit"
+    control[hit] <- pairs$control[first[proved]]
+    line[hit] <- read$line[first[proved]]
+    again <- found & !proved
+    cursor[owners[again]] <- pairs$idx[first[again]] - 1L
+    if (identical(list(status, cursor, names(held)), was)) {
+      status[status == "pending"] <- "open"
+      break
+    }
+    want <- want * 2
+  }
+  list(status = status, control = control, line = line)
+}
+
+# One round's takes for the pending Allows `pending`, in order, within
+# `budget`: each gathers its list once per set of classes (`held`, by
+# reopen_lists()$key) and takes its next `want` pairs (reopen_take()), as
+# far as `budget` goes. The first Allow whose
+# list does not fit takes nothing, nor does any later one; one whose list
+# is read through with nothing taken is `none`. Returns the pairs as
+# list(allow, at, control, idx), `idx` each pair's place in its Allow's
+# list, with `held`, `cursor`, `none` and `spent`.
+reopen_round_take <- function(lists, pending, cursor, held, want, budget) {
+  allow <- list()
+  idx <- list()
+  pos <- list()
+  none <- integer()
+  spent <- 0
+  for (j in seq_along(pending)) {
+    i <- pending[[j]]
+    key <- lists$key[[i]]
+    cost <- 0
+    list_pos <- held[[key]]
+    if (is.null(list_pos)) {
+      found <- lists$gather(i)
+      cost <- found$spent
+      list_pos <- found$pos
+    }
+    room <- floor(budget - spent - cost)
+    if (room < min(1, length(list_pos) - cursor[[i]])) {
+      break
+    }
+    got <- reopen_take(lists, i, list_pos, cursor[[i]], want, room)
+    held[[key]] <- list_pos
+    spent <- spent + cost + got$spent
+    cursor[[i]] <- got$cursor
+    if (length(got$idx) == 0L && got$cursor >= length(list_pos)) {
+      none <- c(none, i)
+    }
+    allow[[j]] <- rep(i, length(got$idx))
+    idx[[j]] <- got$idx
+    pos[[j]] <- list_pos[got$idx]
+  }
+  pos <- as.integer(unlist(pos, use.names = FALSE))
+  list(pairs = list(allow = as.integer(unlist(allow, use.names = FALSE)),
+                    at = lists$d[pos], control = lists$control[pos],
+                    idx = as.integer(unlist(idx, use.names = FALSE))),
+       held = held, cursor = cursor, none = none, spent = spent)
+}
+
+# Indexes of `rules` that are shape-A Allows: a pattern led by `*` or `/*`
+# (wildcard_allow_prefix() "" or "/") whose rest after the leading run of
+# `*` starts with `/` and names at least one more byte before any final
+# run of `*` and `$`. Not `/*/`, `/*/$` or `/*/*` alone, which name no path
+# (a final `*` names no byte, so `/*/*` matches what `/*/` matches), nor
+# `/*.css` or `*?next=`, which name no path from its start.
+reopen_shape <- function(rules) {
+  value <- rules$value
+  rest <- sub("^/?[*]+", "", value, useBytes = TRUE)
+  named <- sub("[*]*[$]?$", "", rest, useBytes = TRUE)
+  which(rules$type == "allow" & grepl("^/?[*]", value, useBytes = TRUE) &
+          startsWith(rest, "/") & nchar(named, "bytes") >= 2L)
+}
+
+# The path each shape-A Allow names, as the witness ends: the value after
+# its leading `/` and run of `*`, without a final `$`, each later `*`
+# written `x`.
+reopen_literal <- function(value) {
+  rest <- sub("[$]$", "", sub("^/?[*]+", "", value, useBytes = TRUE),
+              useBytes = TRUE)
+  gsub("*", "x", rest, fixed = TRUE, useBytes = TRUE)
+}
+
+# The Disallows that give controls, as list(at, control): `at` indexes
+# `rules`, each a non-empty Disallow led by `/` or `*`, with no `?` and no
+# final `$` (a final `$` could not match the witness), and `control` its
+# value as a path (end_anchor_controls()). One whose control fails
+# url_safe_path() gives none.
+reopen_controls <- function(rules) {
+  value <- rules$value
+  at <- which(rules$type == "disallow" &
+                grepl("^[/*][^?]*$", value, useBytes = TRUE) &
+                !endsWith(value, "$"))
+  control <- end_anchor_controls(value[at])
+  safe <- url_safe_path(value[at], control)
+  list(at = at[safe], control = control[safe])
+}
+
+# The crawler classes of the groups `wanted` on the whole-value merge
+# (validation_token_expander()), as functions of group ids: `key`, one
+# string per set of classes, and `groups`, for one group, every group
+# sharing a class with it, itself included. The work comes from the
+# (group, class) pairs, which grow with the User-agent lines.
+reopen_near <- function(groups, wanted) {
+  wanted <- unique(wanted)
+  pairs <- validation_token_expander(groups, groups$agents$uncut)(wanted)
+  by_class <- split(wanted[pairs$owner], pairs$class)
+  classes <- split(pairs$class, factor(pairs$owner, seq_along(wanted)))
+  key <- vapply(classes, function(x) paste(sort(x), collapse = " "), "",
+                USE.NAMES = FALSE)
+  list(
+    key = function(g) paste0("#", key[match(g, wanted)]),
+    groups = function(g) {
+      held <- classes[[match(g, wanted)]]
+      unique(unlist(by_class[as.character(held)], use.names = FALSE))
+    }
+  )
+}
+
+# The two readings of the pairs (list(allow, at, control), `allow`
+# indexing `allows`), sharing `budget`: the first, within `first` (half of
+# it by default), so the second always has the rest for what the first
+# passed, of the Allow deciding the witness and the control getting the
+# other decision; the second, for the pairs that pass it, within what is
+# left, on a copy of `groups` with every
+# shape-A Allow (`shape`) left out of every body (flagged empty), of the
+# line the first named deciding the control and the witness getting the
+# same decision, under the Allow's crawler classes (not those of the line's
+# own group, which can name crawlers the Allow never covers): without such
+# Allows, the witness would be blocked. An
+# Allow of another shape that also opens the witness (`Allow: /c?`) fails
+# it. Returns list(done, ok, line) per pair, with `spent`: `done` whether
+# its readings finished, `ok` whether it passed both, `line` the line
+# deciding its control.
+reopen_reads <- function(groups, shape, allows, pairs, written, budget,
+                         first = budget / 2) {
+  rules <- groups$rules
+  at <- allows[pairs$allow]
+  n <- length(at)
+  witness <- paste0(pairs$control, "?q=", reopen_literal(rules$value[at]))
+  out <- list(done = rep(TRUE, n), ok = logical(n),
+              line = rep(NA_integer_, n), spent = 0)
+  if (n == 0L) {
+    return(out)
+  }
+  first <- witness_pair_readings(groups, at, pairs$control, witness, "long",
+                                 written, first, share = TRUE)
+  out$line <- first$line
+  out$spent <- first$spent
+  read <- seq_len(n) <= first$checked
+  out$done <- read
+  k <- which(read & first$ok & !is.na(first$line))
+  if (length(k) == 0L) {
+    return(out)
+  }
+  removed <- groups
+  removed$rules$empty[shape] <- TRUE
+  second <- witness_pair_readings(
+    removed, match(first$line[k], rules$line), pairs$control[k], witness[k],
+    "short", written, budget - first$spent, differ = FALSE,
+    group = rules$group[at[k]], share = TRUE
+  )
+  read <- seq_along(k) <= second$checked
+  out$done[k] <- read
+  out$ok[k] <- read & second$ok
+  out$spent <- out$spent + second$spent
+  out
+}
+
+# The rows for the reported Allows `at`, each with its pair's `control` and
+# `decider`, the line deciding it: one per set of crawler classes
+# (slash_open_rows()), naming four more Allows at most.
+reopen_rows <- function(groups, at, control, decider) {
+  line <- groups$rules$line[at]
+  message <- function(value, lines, cap) {
+    k <- match(lines[[1L]], line)
+    reopen_message(value[[1L]], lines, cap, control[k], decider[k])
+  }
+  slash_open_rows(groups, at, cap = 4L, message = message)
+}
+
+# One row's text, in short sentences: the Allow `value` on `line[1]`, its
+# control and the line `decider` deciding the control, then the lines of
+# the row's other Allows, `cap` at most, then a count. The witness shows as
+# the control, `?q=` and the Allow's literal, each elided past 40 bytes
+# (query_parameter_cap()), so the text is bounded whatever the file holds.
+# A value is printable ASCII (url_safe_path() leaves out control bytes, and
+# the canonical value escapes the rest), so it shows as is.
+reopen_message <- function(value, line, cap, control, decider) {
+  control <- query_parameter_cap(control, 40L)
+  witness <- paste0(control, "?q=",
+                    query_parameter_cap(reopen_literal(value), 40L))
+  paste0(sprintf(paste0(
+    "The Allow on line %d ('%s') allows '%s'. The Disallow on line %d ",
+    "blocks '%s'. The '*' at the start of the Allow also matches text in ",
+    "the query."
+  ), line[[1L]], query_parameter_cap(value, 40L), witness, decider, control),
+  reopen_same_text(line[-1L], cap),
+  " You may not mean to allow URLs like this.")
+}
+
+# " The Allows on lines 4, 5, 6, 7 and 2 more do the same.": the lines of a
+# row's other Allows, `cap` at most, then a count, or "" when there are
+# none.
+reopen_same_text <- function(lines, cap) {
+  if (length(lines) == 0L) {
+    return("")
+  }
+  if (length(lines) == 1L) {
+    return(sprintf(" The Allow on line %d does the same.", lines))
+  }
+  shown <- utils::head(lines, cap)
+  sprintf(" The Allows on lines %s do the same.",
+          joined_and(as.character(shown), length(lines) - length(shown)))
+}
+
+# The opening of a stopped reopen check's rule_check_stopped row: what it
+# looks for, with the file's count and its earliest skipped value.
+reopen_stop_intro <- function(stop) {
+  rules <- if (stop$found == 1L) {
+    "1 Allow rule that opens with '*' or '/*' and then names a path"
+  } else {
+    sprintf("%d Allow rules that open with '*' or '/*' and then name a path",
+            stop$found)
+  }
+  sprintf(paste0(
+    "This file has %s, such as '%s'. For each one, the validator checks ",
+    "whether it also matches inside a URL's query and so allows a URL that ",
+    "a Disallow blocks without the query."
+  ), rules, query_parameter_cap(stop$value, 40L))
 }
 
 wildcard_inheritance_message <- function(tokens, one_group, missing,

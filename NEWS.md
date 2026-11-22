@@ -1,5 +1,6 @@
 # robotstxtr (development version)
 
+* Validator: new `allow_reopens_through_query` info for an Allow like `*/x/`, which also allows `/c?q=/x/` while a Disallow blocks `/c`; `rule_check_stopped` covers it too (ROBO-micbpqbc).
 * Validator: new `rule_end_anchor_query` info for a Disallow like `/x/edit$`, which blocks `/x/edit` but not `/x/edit?x=1` (RFC 9309 §2.2.3); `rule_check_stopped` covers it too (ROBO-nzcvlsvk).
 * Validator: new `rule_slash_pair` and `rule_slash_split` info codes for a `/x` and `/x/` rule pair or decision split (RFC 9309 §2.2.2); `rule_check_stopped` notes a large file checked only in part (ROBO-roypaoox).
 * Validator: new `rule_query_parameter_position` info for a rule like `/*?sort=`, which may miss URLs where `sort` follows another parameter; silent beside `/*&sort=` (ROBO-fuhcwaom).
