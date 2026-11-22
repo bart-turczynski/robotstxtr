@@ -965,6 +965,12 @@ test_that("ROBO-roypaoox: candidates past the work budget get no row", {
   expect_identical(slash_split_diagnostics(groups, budget = 7)$line, 3L)
   expect_identical(slash_split_diagnostics(groups, budget = 3)$line,
                    integer(0))
+  # A cut value makes two readings, and they share the budget: each costs 3
+  # to plan and 2 to read, so 10 reads both and 9 leaves the second short.
+  groups <- sp_groups("User-agent: Foo web\nDisallow: /\nAllow: /a/\n")
+  expect_identical(slash_split_diagnostics(groups, budget = 10)$line, 3L)
+  expect_identical(slash_split_diagnostics(groups, budget = 9)$line,
+                   integer(0))
   # The pair check reads one row per candidate.
   groups <- sp_groups(paste0("User-agent: *\nDisallow: /a\nDisallow: /a/\n",
                              "Disallow: /b\nDisallow: /b/\n"))
@@ -979,7 +985,7 @@ test_that("ROBO-roypaoox: candidates past the work budget get no row", {
 test_that("ROBO-roypaoox: the checks stay linear on costly shapes", {
   skip_on_cran()
   for (shape in c("gram", "locale", "classes")) {
-    n <- if (shape == "classes") 125L else 500L
+    n <- if (shape == "classes") 250L else 500L
     small <- sp_time_check(sp_shape(shape, n), 1L)
     large <- sp_time_check(sp_shape(shape, 4L * n), 1L)
     expect_lt(large, 8 * max(small, 0.05), label = shape)
