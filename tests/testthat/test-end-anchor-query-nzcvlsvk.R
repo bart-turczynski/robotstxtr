@@ -672,6 +672,11 @@ test_that("ROBO-nzcvlsvk: a value escaped past the buffer keeps its row", {
 ea_nul_twin <- c(charToRaw("User-agent: *\nDisallow: /a$\nDisallow: /a?"),
                  as.raw(0), charToRaw("zz\n"))
 
-test_that("ROBO-nzcvlsvk: today a NUL-cut twin silences the row", {
-  expect_identical(ea_codes(ea_nul_twin), c("nul_byte", "rule_cut_by_nul"))
+test_that("ROBO-nzcvlsvk: a NUL-cut twin silences nothing", {
+  # As for rule_query_parameter_position, the twin Google alone reads is
+  # left out. Not testable on Bing and Yandex: the evaluator takes the body
+  # as a string, which cannot hold the NUL.
+  d <- ea_diag(ea_nul_twin)
+  expect_identical(d$code, c("nul_byte", "rule_cut_by_nul", ea_code))
+  expect_identical(d$message[[3L]], paste0(ea_one_message(2L, "/a"), ea_nul))
 })
