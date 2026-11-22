@@ -407,6 +407,15 @@ test_that("ROBO-roypaoox: only the first line of a type and value is read", {
     sp_pair_message("Disallow", "lines 2 and 5", "/x", "/x/"),
     " This holds for every crawler the group names: 'A' and 'B'."
   ))
+  # Two classes with the other form on the same line name it once.
+  d <- sp_rows(paste0("User-agent: a\nUser-agent: b\nDisallow: /x\n\n",
+                      "User-agent: a\nDisallow: /y\n\n",
+                      "User-agent: a\nUser-agent: b\nDisallow: /x/\n"), sp_pair)
+  expect_identical(d$line, 10L)
+  expect_identical(d$message, paste0(
+    sp_pair_message("Disallow", 3L, "/x", "/x/"),
+    " This holds for every crawler the group names: 'a' and 'b'."
+  ))
   # The pair names the earliest line of the other form.
   d <- sp_rows(paste0("User-agent: *\nDisallow: /x\nDisallow: /x\n",
                       "Disallow: /x/\n"), sp_pair)
