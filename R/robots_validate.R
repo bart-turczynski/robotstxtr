@@ -1794,7 +1794,9 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # rule differently (ROBO-roypaoox). A later Allow could change a decision,
   # so a cut body is skipped.
   if (!body_truncated) {
-    found <- slash_split_diagnostics(groups)
+    found <- slash_split_diagnostics(
+      groups, written = slash_written_keys(raw_lines[groups$rules$line])
+    )
     if (nrow(found) > 0L) {
       add_chunk(
         found$line, "info", "rule_slash_split", found$directive,
@@ -4441,6 +4443,21 @@ slash_groups <- function(groups) {
   groups
 }
 
+# Each rule line's key as written (`Disallow`, `disalow`, `ALLOW`): its
+# bytes from the first one that is not a space or tab up to the first `:`,
+# space, tab or NUL. A witness line built from it and the value is then
+# never longer than the line it copies. Google's parser accepts the same
+# keys on the witness line.
+slash_written_keys <- function(raw_lines) {
+  stop_at <- as.raw(c(0x3a, 0x20, 0x09, 0x00))
+  vapply(raw_lines, function(bytes) {
+    lead <- match(TRUE, !bytes %in% as.raw(c(0x20, 0x09)), nomatch = 1L)
+    bytes <- bytes[lead:length(bytes)]
+    end <- match(TRUE, bytes %in% stop_at, nomatch = length(bytes) + 1L)
+    rawToChar(bytes[seq_len(end - 1L)])
+  }, "", USE.NAMES = FALSE)
+}
+
 # The other form of each candidate value: `P` for `P/`, `P/` for `P`.
 slash_partner <- function(value) {
   slash <- endsWith(value, "/")
@@ -4588,7 +4605,7 @@ slash_crawler_note <- function(agents, group) {
 # same deciding lines; the two merges coincide when no value is cut, and
 # then one reading is made. A cut body is not checked: a later Allow could
 # change a decision. Returns slash_rows() with a `directive` column.
-slash_split_diagnostics <- function(groups) {
+slash_split_diagnostics <- function(groups, written = NULL) {
   groups <- slash_groups(groups)
   rules <- groups$rules
   at <- slash_candidates(rules)
@@ -4601,7 +4618,9 @@ slash_split_diagnostics <- function(groups) {
   if (!all(agents$uncut == agents$key)) {
     keys <- c(keys, list(agents$key))
   }
-  reads <- lapply(keys, function(key) slash_split_reading(groups, at, key))
+  reads <- lapply(keys, function(key) {
+    slash_split_reading(groups, at, key, written)
+  })
   bare_line <- reads[[1L]]
   for (other in reads[-1L]) {
     agree <- !is.na(bare_line) & !is.na(other) & bare_line == other
@@ -4619,7 +4638,7 @@ slash_split_diagnostics <- function(groups) {
 # the class's rules that can match `P/` (slash_split_bodies()); every other
 # rule matches neither URL, and rules keep file order, so ties resolve as in
 # the whole group. One batch call reads every row.
-slash_split_reading <- function(groups, at, key) {
+slash_split_reading <- function(groups, at, key, written = NULL) {
   rules <- groups$rules
   expand <- validation_token_expander(groups, key)
   rows <- expand(rules$group[at])
@@ -4628,7 +4647,7 @@ slash_split_reading <- function(groups, at, key) {
     return(out)
   }
   body <- slash_split_bodies(rules, expand, rules$value[at][rows$owner],
-                             rows$class)
+                             rows$class, written)
   value <- rules$value[at][rows$owner]
   paths <- c(rbind(slash_partner(value), value))
   read <- wildcard_witness_decide(body$bodies, rep(seq_along(value), each = 2L),
@@ -4665,7 +4684,7 @@ slash_split_reading <- function(groups, at, key) {
 # and in the bytes of the paths, plus the (rule, path) pairs the lookups
 # return, which are rules the path's own bytes say may match it, so Google's
 # matcher must read them anyway (ROBO-dbvmxcfw).
-slash_split_bodies <- function(rules, expand, paths, class) {
+slash_split_bodies <- function(rules, expand, paths, class, written = NULL) {
   # An empty rule decides nothing; left in, Google's matcher could name its
   # line for a URL no other rule matches, with the same decision.
   live <- which(!rules$empty)
@@ -4684,10 +4703,16 @@ slash_split_bodies <- function(rules, expand, paths, class) {
   order_by <- order(row, rule)
   row <- row[order_by]
   rule <- rule[order_by]
-  # No space after the colon: a witness line is then never longer than the
-  # line it copies, so a rule written at Google's line buffer stays whole.
-  text <- paste0(ifelse(rules$type[rule] == "allow", "Allow:", "Disallow:"),
-                 rules$value[rule], "\n")
+  # The key as written (`written`, slash_written_keys(), else `Allow` or
+  # `Disallow`) and no space after the colon: a witness line is then never
+  # longer than the line it copies, so a rule written at Google's line
+  # buffer stays whole.
+  key <- if (is.null(written)) {
+    ifelse(rules$type[rule] == "allow", "Allow", "Disallow")
+  } else {
+    written[rule]
+  }
+  text <- paste0(key, ":", rules$value[rule], "\n")
   bodies <- vapply(split(text, factor(row, seq_along(paths))), function(x) {
     paste0("User-agent: witness\n", paste(x, collapse = ""))
   }, "", USE.NAMES = FALSE)

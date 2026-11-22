@@ -685,6 +685,31 @@ test_that("ROBO-roypaoox: a rule written at the line buffer still splits", {
   expect_identical(d$directive, "allow")
 })
 
+test_that("ROBO-roypaoox: a witness line keeps the key as written", {
+  # Google reads the typo `disalow` as Disallow. Written `Disallow`, the
+  # witness line would be a byte longer and lose the value's last `/` at
+  # the line buffer.
+  p <- paste0("/", strrep("a", 16653L), "/")
+  bare <- substr(p, 1L, nchar(p) - 1L)
+  shown <- paste0("/", strrep("a", 35L), "...")
+  d <- sp_rows(paste0("User-agent: *\ndisalow:", p, "\n"), sp_split)
+  expect_identical(d$line, 1L)
+  expect_identical(d$message, sp_open_message(2L, paste0(shown, "/"), shown))
+  # A typo line the witness would cut otherwise: its `z` is kept, so it does
+  # not match the bare URL, and line 2 blocks it.
+  body <- paste0("User-agent: *\nDisallow: /\ndisalow:", bare, "z\nAllow:/",
+                 strrep("a", 16653L), "/\n")
+  d <- sp_rows(body, sp_split)
+  expect_identical(d$line, 4L)
+  expect_identical(d$message,
+                   sp_blocked_message(paste0(shown, "/"), shown, 2L))
+  expect_identical(
+    slash_written_keys(lapply(c("disalow:/x", "  ALLOW : /y", "Allow /z",
+                                "\tDisallow:"), charToRaw)),
+    c("disalow", "ALLOW", "Allow", "Disallow")
+  )
+})
+
 test_that("ROBO-roypaoox: long values are elided in the message", {
   long <- paste0("/", strrep("a", 8000L))
   d <- sp_diag(paste0("User-agent: *\nDisallow: ", long, "/\nDisallow: ",
