@@ -68,6 +68,9 @@ ip_stray <- list(
   "/a%$" = list(ip_new, ip_a("'%$'")),
   "/a%4$" = list(ip_new, ip_a("'%4$'")),
   "/%%25" = list(ip_new, ip_a("'%%2'")),
+  # Near the end a context is shorter, and so distinct: '%%' and '%' are
+  # listed beside '%%%'.
+  "/%%%%%%" = list(ip_new, ip_a("'%%%', '%%', '%'", 3L)),
   "/%2%2e" = list(
     c("rule_escaped_unreserved", ip_new, "rule_lowercase_escape"),
     ip_a("'%2%'")
