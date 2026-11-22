@@ -1850,7 +1850,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # rule differently (ROBO-roypaoox). A later Allow could change a decision,
   # so a cut body is skipped.
   if (!body_truncated) {
-    written <- slash_written_keys(raw_lines[groups$rules$line])
+    written <- slash_written_rules(raw_lines[groups$rules$line])
     found <- slash_split_diagnostics(groups, written = written)
     if (nrow(found) > 0L) {
       add_chunk(
@@ -4524,9 +4524,8 @@ slash_groups <- function(groups) {
 
 # Each rule line's key as written (`Disallow`, `disalow`, `ALLOW`): its
 # bytes from the first one that is not a space or tab up to the first `:`,
-# space, tab or NUL. A witness line built from it and the value is then
-# never longer than the line it copies. Google's parser accepts the same
-# keys on the witness line.
+# space, tab or NUL. Google's parser accepts the same keys on the witness
+# line.
 slash_written_keys <- function(raw_lines) {
   stop_at <- as.raw(c(0x3a, 0x20, 0x09, 0x00))
   vapply(raw_lines, function(bytes) {
@@ -4535,6 +4534,44 @@ slash_written_keys <- function(raw_lines) {
     end <- match(TRUE, bytes %in% stop_at, nomatch = length(bytes) + 1L)
     rawToChar(bytes[seq_len(end - 1L)])
   }, "", USE.NAMES = FALSE)
+}
+
+# Each rule line as a witness line: its key as written
+# (slash_written_keys()), `:`, and the bytes after the key's separator (the
+# spaces, tabs and one `:` after it) as written, up to the first NUL, where
+# Google's parser ends the line. The value keeps its written bytes, not its
+# canonical escapes, so a witness line is never longer than the line it
+# copies and a rule written near Google's line buffer stays whole; Google's
+# matcher escapes the pattern as it does the file's.
+slash_written_rules <- function(raw_lines) {
+  keys <- slash_written_keys(raw_lines)
+  vapply(seq_along(raw_lines), function(i) {
+    bytes <- raw_lines[[i]]
+    bytes <- bytes[seq_len(match(as.raw(0), bytes,
+                                 nomatch = length(bytes) + 1L) - 1L)]
+    lead <- match(TRUE, !bytes %in% as.raw(c(0x20, 0x09)), nomatch = 1L)
+    rest <- slash_drop(bytes, lead - 1L + nchar(keys[[i]], "bytes"))
+    paste0(keys[[i]], ":", rawToChar(slash_after_separator(rest)))
+  }, "")
+}
+
+# `bytes` past their leading spaces and tabs, one `:`, and the spaces and
+# tabs after it.
+slash_after_separator <- function(bytes) {
+  blank <- as.raw(c(0x20, 0x09))
+  past_blank <- function(b) {
+    slash_drop(b, match(TRUE, !b %in% blank, nomatch = length(b) + 1L) - 1L)
+  }
+  bytes <- past_blank(bytes)
+  if (length(bytes) > 0L && bytes[[1L]] == as.raw(0x3a)) {
+    bytes <- past_blank(slash_drop(bytes, 1L))
+  }
+  bytes
+}
+
+# `x` without its first `k` elements.
+slash_drop <- function(x, k) {
+  x[seq_len(max(length(x) - k, 0L)) + k]
 }
 
 # The other form of each candidate value: `P` for `P/`, `P/` for `P`.
@@ -5021,16 +5058,18 @@ slash_split_bodies <- function(rules, held, paths, class, written = NULL,
   order_by <- order(row, rule)
   row <- row[order_by]
   rule <- rule[order_by]
-  # The key as written (`written`, slash_written_keys(), else `Allow` or
-  # `Disallow`) and no space after the colon: a witness line is then never
-  # longer than the line it copies, so a rule written at Google's line
-  # buffer stays whole.
-  key <- if (is.null(written)) {
-    ifelse(rules$type[rule] == "allow", "Allow", "Disallow")
+  # The rule line as written (`written`, slash_written_rules()): its key and
+  # value bytes with no space after the colon, so a witness line is never
+  # longer than the line it copies and a rule written at Google's line
+  # buffer stays whole. Without it, `Allow` or `Disallow` and the canonical
+  # value.
+  line <- if (is.null(written)) {
+    paste0(ifelse(rules$type[rule] == "allow", "Allow", "Disallow"), ":",
+           rules$value[rule])
   } else {
     written[rule]
   }
-  text <- paste0(key, ":", rules$value[rule], "\n")
+  text <- paste0(line, "\n")
   kept <- seq_len(within$rows)
   bodies <- vapply(split(text, factor(row, kept)), function(x) {
     paste0("User-agent: witness\n", paste(x, collapse = ""))

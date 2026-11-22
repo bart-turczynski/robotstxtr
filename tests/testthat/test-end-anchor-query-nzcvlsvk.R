@@ -648,9 +648,23 @@ ea_long_utf8 <- function(n) {
   paste0("User-agent: *\nDisallow: /", strrep(intToUtf8(233L), n), "$\n")
 }
 
-test_that("ROBO-nzcvlsvk: today a value escaped past the buffer is silent", {
+test_that("ROBO-nzcvlsvk: a value escaped past the buffer keeps its row", {
   expect_identical(ea_codes(ea_long_utf8(10L)), ea_code)
-  expect_identical(ea_codes(ea_long_utf8(3000L)), character(0))
+  # The witness line copies the written bytes, so it stays inside the
+  # buffer as its source line does.
+  d <- ea_diag(ea_long_utf8(3000L))
+  expect_identical(d$code, ea_code)
+  # Elided with each escape whole (query_parameter_cap()).
+  shown <- paste0("/", strrep("%C3%A9", 5L), "%C3...")
+  expect_identical(d$message, ea_one_message(2L, shown))
+  expect_identical(
+    slash_written_rules(lapply(c("Disallow: /a$", "  disalow :/b", "Allow /c",
+                                 "Disallow:\t/d # e"), charToRaw)),
+    c("Disallow:/a$", "disalow:/b", "Allow:/c", "Disallow:/d # e")
+  )
+  expect_identical(slash_written_rules(list(c(charToRaw("Disallow: /a"),
+                                              as.raw(0), charToRaw("z")))),
+                   "Disallow:/a")
 })
 
 # A twin a NUL cuts: Google reads `Disallow: /a?`, which blocks the
