@@ -5388,7 +5388,7 @@ end_anchor_fillers <- function() {
 end_anchor_candidates <- function(rules) {
   value <- rules$value
   hit <- which(
-    rules$type == "disallow" & !rules$empty &
+    rules$type == "disallow" &
       grepl("^[/*][^?$]*[$]$", value, useBytes = TRUE) &
       !endsWith(value, "*$") &
       !grepl("[\001-\040\177]", value, useBytes = TRUE)
