@@ -11,7 +11,7 @@ engine_contract_id_v1 <- function() {
 }
 
 # 2026-11-22.1: on the google and rfc9309 backends a `robots_product_token`
-# outside the RFC 9309 product-token grammar (section 2.2.1: ASCII letters,
+# outside the RFC 9309 identifier rule (section 2.2.1: ASCII letters,
 # `_` and `-`) is refused as input, `not_evaluated` / `input_invalid` with
 # `robots_invalid_product_token`, before any fetch; those two backends'
 # `matcher_capability` entries publish `product_token_grammar`
@@ -445,7 +445,7 @@ validate_crawler_tokens_v1 <- function(entry, backend) {
 
 # A published `product_token_grammar` (ROBO-mtmkpwuf): exactly the
 # `arbitrary_valid` and `rfc9309` backends publish it, with the one value
-# `rfc9309_product_token`, and no bounded backend does. The facades screen
+# `rfc9309_identifier`, and no bounded backend does. The facades screen
 # the token on the backends that publish it
 # (product_token_grammar_backends_v1()).
 validate_token_grammar_v1 <- function(entry, backend) {
@@ -458,7 +458,7 @@ validate_token_grammar_v1 <- function(entry, backend) {
     ))
   }
   if (published &&
-        !identical(entry$product_token_grammar, "rfc9309_product_token")) {
+        !identical(entry$product_token_grammar, "rfc9309_identifier")) {
     capability_abort_v1(sprintf(
       "backend %s publishes an unknown product_token_grammar.", backend
     ))
@@ -501,10 +501,12 @@ capability_abort_v1 <- function(detail) {
 # entry; `rfc9309` is unavailable AND unbounded, so it publishes no profile
 # table for the second reason, not the first.
 #
-# Those two publish `product_token_grammar = "rfc9309_product_token"`
-# instead (ROBO-mtmkpwuf): the token must be one or more ASCII letters, `_`
-# or `-` (RFC 9309 section 2.2.1). The v1 facades refuse a token outside it
-# on those backends before any fetch: Google cuts each file `User-agent`
+# Those two publish `product_token_grammar = "rfc9309_identifier"`
+# instead (ROBO-mtmkpwuf): the token must be an RFC 9309 `identifier`, one
+# or more ASCII letters, `_` or `-` (section 2.2.1; its `product-token` is
+# `identifier / "*"`, and `*` names no crawler). The v1 facades refuse any
+# other token on those backends before any fetch: Google cuts each file
+# `User-agent`
 # value at its first other character and compares the cut value with the
 # token as given, so such a token can never name a group.
 engine_backend_capability_v1 <- function() {
@@ -524,7 +526,7 @@ engine_backend_capability_v1 <- function() {
         "the token names."
       ),
       crawler_tokens = google_crawler_tokens_v1(),
-      product_token_grammar = "rfc9309_product_token"
+      product_token_grammar = "rfc9309_identifier"
     ),
     yandex = list(
       token_policy = "bounded_profiles",
@@ -557,7 +559,7 @@ engine_backend_capability_v1 <- function() {
         "RFC 9309 behavior is available only under the rfc9309 backend; ",
         "no other backend may be relabeled as RFC 9309 semantics."
       ),
-      product_token_grammar = "rfc9309_product_token"
+      product_token_grammar = "rfc9309_identifier"
     )
   )
 }
@@ -717,7 +719,7 @@ engine_policy_table_v1 <- function() {
 #' Google's crawler documentation in `crawler_tokens`; for `google` and
 #' `rfc9309`, since schema revision `2026-11-22.1`, the token grammar the v1
 #' facades screen in `product_token_grammar`, always
-#' `"rfc9309_product_token"`: one or more ASCII letters, `_` or `-`),
+#' `"rfc9309_identifier"`: one or more ASCII letters, `_` or `-`),
 #' the separately inspectable vendored-matcher identity fields
 #' (`matcher_identity`, e.g. library/payload/profile/corpus/evidence/
 #' profile-source for the Yandex backend), status-policy table, and supported
@@ -915,7 +917,7 @@ expand_product_token_v1 <- function(token, n) {
   )
 }
 
-# The RFC 9309 product-token grammar (section 2.2.1, ROBO-mtmkpwuf) as a
+# The RFC 9309 identifier rule (section 2.2.1, ROBO-mtmkpwuf) as a
 # PCRE class: the letters are listed, not ranged, since outside the C
 # locale a range such as `A-Z` can match more than ASCII. The patterns run
 # with `useBytes = TRUE`, so a latin1-marked or invalid UTF-8 token is read
@@ -949,8 +951,9 @@ product_token_valid_v1 <- function(token, backend) {
 }
 
 # The input-stage message for a refused token row. An NA or empty token is
-# "missing or empty". Any other refused token is outside the grammar: the
-# message names the leading run of grammar bytes, when there is one, as a
+# "missing or empty". Any other refused token is not an RFC 9309
+# `identifier`: the message names its leading run of identifier bytes, when
+# there is one, as a
 # hint only, since a prefix need not name the intended crawler. The token
 # itself is never echoed: it may be invalid UTF-8 or latin1, and
 # `robots_product_token` already carries it.
@@ -2102,7 +2105,7 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #'
 #' Since schema revision `2026-11-22.1`, a row on the `google` or `rfc9309`
 #' backend whose token is not one or more ASCII letters, `_` or `-` (the
-#' product-token grammar of RFC 9309 section 2.2.1, published as
+#' `identifier` rule of RFC 9309 section 2.2.1, published as
 #' `matcher_capability$<backend>$product_token_grammar`) is refused under
 #' every ruleset: `matcher_status = "not_evaluated"`,
 #' `reason = "input_invalid"`, `error_stage = "input"` and
@@ -2111,8 +2114,10 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' its first other character and compares the cut value with the token as
 #' given, so such a token (`Googlebot/2.1`, a full HTTP `User-Agent` string,
 #' a leading or trailing space, `*`, digits, a letter outside ASCII) could
-#' never name a group and would silently read `User-agent: *`. The token is
-#' not trimmed or rewritten: `error_message` names the leading valid part
+#' never name a group and would silently read `User-agent: *`. RFC 9309's
+#' `product-token` is `identifier / "*"`, but `*` names no crawler, so a
+#' caller's token must be an `identifier`. The token is not trimmed or
+#' rewritten: `error_message` names the leading valid part
 #' (`Googlebot` for `Googlebot/2.1`) as a hint only. The `yandex` and `bing`
 #' backends keep their own refusals, and [allowed_by_robots_text()] and
 #' [allowed_by_robots_url()] read any token as before.
@@ -2268,7 +2273,7 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #'   never sent as a header. A character vector of length one or `length(url)`.
 #'   The Google backend accepts any valid Google robots product token and
 #'   yields Google semantics for it; on the `"google"` and `"rfc9309"`
-#'   backends a token outside the RFC 9309 grammar (ASCII letters, `_` and
+#'   backends a token outside the RFC 9309 identifier rule (ASCII letters, `_` and
 #'   `-`) leaves its row refused as input (see Details). Under the
 #'   `"google"` ruleset, a token in
 #'   `matcher_capability$google$crawler_tokens` also selects its group as
@@ -2360,7 +2365,7 @@ robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
 #' result is not a claim of compatibility with the named crawler.
 #'
 #' A row on the `google` or `rfc9309` backend whose token is outside the
-#' RFC 9309 product-token grammar is refused as input, as in
+#' RFC 9309 identifier rule is refused as input, as in
 #' [robots_evaluate_text_v1()], before any fetch: no request is made for it,
 #' and an origin whose `/robots.txt` would answer 404 does not turn it into
 #' `allow_all`. A valid row on the same origin is fetched as before.

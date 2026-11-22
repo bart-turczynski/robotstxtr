@@ -26,7 +26,7 @@ robots_evaluate_url_v1(
 never sent as a header. A character vector of length one or \code{length(url)}.
 The Google backend accepts any valid Google robots product token and
 yields Google semantics for it; on the \code{"google"} and \code{"rfc9309"}
-backends a token outside the RFC 9309 grammar (ASCII letters, \verb{_} and
+backends a token outside the RFC 9309 identifier rule (ASCII letters, \verb{_} and
 \code{-}) leaves its row refused as input (see Details). Under the
 \code{"google"} ruleset, a token in
 \code{matcher_capability$google$crawler_tokens} also selects its group as
@@ -123,7 +123,7 @@ as in \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}; for any
 result is not a claim of compatibility with the named crawler.
 
 A row on the \code{google} or \code{rfc9309} backend whose token is outside the
-RFC 9309 product-token grammar is refused as input, as in
+RFC 9309 identifier rule is refused as input, as in
 \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}, before any fetch: no request is made for it,
 and an origin whose \verb{/robots.txt} would answer 404 does not turn it into
 \code{allow_all}. A valid row on the same origin is fetched as before.

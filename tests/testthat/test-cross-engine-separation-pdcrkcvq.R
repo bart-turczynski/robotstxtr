@@ -348,7 +348,7 @@ test_that("T1 an arbitrary valid token yields Google semantics", {
   expect_identical(x$results$reason, "rule_disallow")
   expect_identical(x$results$matched_rule_type, "disallow")
 
-  # "Valid" is the RFC 9309 grammar: a version suffix is outside it, so the
+  # "Valid" is the RFC 9309 identifier rule: a version suffix is outside it, so the
   # row is refused as input (ROBO-mtmkpwuf).
   x <- robots_evaluate_text_v1(
     "user-agent: *\ndisallow: /private",

@@ -1,4 +1,4 @@
-# ROBO-mtmkpwuf: a robots product token outside the RFC 9309 grammar
+# ROBO-mtmkpwuf: a robots product token outside the RFC 9309 identifier rule
 # (section 2.2.1: ASCII letters, `_` and `-`) on the google and rfc9309
 # backends.
 #
@@ -258,8 +258,8 @@ test_that("google and rfc9309 publish the grammar; bounded backends do not", {
   for (contract in list(robots_engine_contract_v1(),
                         robots_engine_contract_v2())) {
     cap <- contract$matcher_capability
-    expect_identical(cap$google$product_token_grammar, "rfc9309_product_token")
-    expect_identical(cap$rfc9309$product_token_grammar, "rfc9309_product_token")
+    expect_identical(cap$google$product_token_grammar, "rfc9309_identifier")
+    expect_identical(cap$rfc9309$product_token_grammar, "rfc9309_identifier")
     expect_null(cap$yandex$product_token_grammar)
     expect_null(cap$bing$product_token_grammar)
     expect_identical(contract$schema_revision, "2026-11-22.1")
@@ -278,7 +278,7 @@ test_that("the validator refuses a misplaced or unknown grammar", {
   expect_error(validate_backend_capability_v1(missing),
                class = "robotstxtr_matcher_capability_invariant")
   bounded <- cap
-  bounded$yandex$product_token_grammar <- "rfc9309_product_token"
+  bounded$yandex$product_token_grammar <- "rfc9309_identifier"
   expect_error(validate_backend_capability_v1(bounded),
                class = "robotstxtr_matcher_capability_invariant")
   unknown <- cap

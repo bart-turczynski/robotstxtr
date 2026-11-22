@@ -79,7 +79,7 @@ bug. Since ROBO-fbbmvbob the v1 path, under the `google` ruleset, follows
 Google's crawler tokens, so on the catalog's `grp-googlebot-image-fallback`
 (token `Googlebot-Image`) it parts from the reference by design, while
 `allowed_by_robots_text()` still agrees (class 11). Since ROBO-mtmkpwuf the
-v1 path refuses a token outside the RFC 9309 product-token grammar (ASCII
+v1 path refuses a token outside the RFC 9309 identifier rule (ASCII
 letters, `_` and `-`) as input and decides nothing, recorded as `NA`: the
 catalog's `grp-digit-in-token` as `Bot2` (class 12) and the class fixture
 `err-star-token` (token `*`). `allowed_by_robots_text()` still agrees on
@@ -338,7 +338,7 @@ reference disallow, `py`, `pro`, `rs`, `js`, `rtx`, `spb` allow; as
 `foo` prefixes `foobot`, class 11). `grp-digit-in-token` (`User-agent: Bot2`): as `Bot2`,
 reference allow and **every library disallows**; as `Bot`, reference
 disallow and every library but `jv` allows. Since ROBO-mtmkpwuf the v1 path
-refuses the token `Bot2` (outside the RFC 9309 grammar) and decides
+refuses the token `Bot2` (outside the RFC 9309 identifier rule) and decides
 nothing; `allowed_by_robots_text()` keeps the reference's allow.
 
 Documented intent: robots-parser 3.0.1 `Robots.js` `formatUserAgent`
@@ -526,7 +526,7 @@ behavior) is in class 1.
 
 | Library | Input | What happens |
 |---|---|---|
-| `jv` | the token `*` (`err-star-token`) | `IllegalArgumentException`: "Parameter 'robotNames': the wildcard user-agent ('*') should not be included". An API constraint: every other token runs. robotstxtr's v1 path refuses `*` as input too, as outside the RFC 9309 grammar (ROBO-mtmkpwuf), and records `NA`; `allowed_by_robots_text()` answers. |
+| `jv` | the token `*` (`err-star-token`) | `IllegalArgumentException`: "Parameter 'robotNames': the wildcard user-agent ('*') should not be included". An API constraint: every other token runs. robotstxtr's v1 path refuses `*` as input too, as outside the RFC 9309 identifier rule (ROBO-mtmkpwuf), and records `NA`; `allowed_by_robots_text()` answers. |
 | `go` | `Crawl-delay: soon` (`err-crawl-delay-text`) | the whole parse fails ("strconv.ParseFloat: parsing "soon": invalid syntax"), so no URL gets an answer |
 | `go` | a rule before any `User-agent` (`rule-before-agent`, catalog `grp-rule-before-user-agent`, and `enc-bom-doubled`, whose BOM hides the `User-agent` line) | the whole parse fails ("Disallow before User-agent") |
 | `rtx` | a line whose field name is empty (`:` or `: x`) as the first field line (`err-empty-field`: `:` / `User-agent: *` / `Disallow: /x`; `:` alone also triggers it) | "'names' attribute [2] must be the same length as the vector [0]", from `robotstxt`'s own parser; `spb` reads the same body |

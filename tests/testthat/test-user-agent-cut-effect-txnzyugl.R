@@ -60,7 +60,7 @@ cx_other <- paste0("Only Google's parser shortens the value, and Google's ",
                    "how the named crawler's own parser reads it is unknown.")
 
 # Google's matcher's own reading of the token, through the legacy text path:
-# the v1 facades refuse a token outside the RFC 9309 grammar (`Spinn3r`,
+# the v1 facades refuse a token outside the RFC 9309 identifier rule (`Spinn3r`,
 # `MJ12bot`) as input before the matcher sees it (ROBO-mtmkpwuf).
 cx_decide <- function(body, url, token) {
   allowed <- allowed_by_robots_text(

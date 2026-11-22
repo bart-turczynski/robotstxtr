@@ -263,7 +263,7 @@ failed <- FALSE
 # began to end a line at its first NUL as upstream does
 # (design/engine-profiles.md section 5b, class 5, resolved); all three
 # UTF-16 bodies must now agree. Since ROBO-mtmkpwuf the v1 path refuses a
-# token outside the RFC 9309 grammar as input and answers "NA": Bot2 and
+# token outside the RFC 9309 identifier rule as input and answers "NA": Bot2 and
 # `*`.
 expected_split <- data.frame(
   id = c("grp-googlebot-image-fallback", "grp-googlebot-image-fallback",

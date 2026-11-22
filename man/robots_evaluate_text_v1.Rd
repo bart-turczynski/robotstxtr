@@ -29,7 +29,7 @@ and one marked \code{Encoding = "bytes"} is used verbatim.}
 never sent as a header. A character vector of length one or \code{length(url)}.
 The Google backend accepts any valid Google robots product token and
 yields Google semantics for it; on the \code{"google"} and \code{"rfc9309"}
-backends a token outside the RFC 9309 grammar (ASCII letters, \verb{_} and
+backends a token outside the RFC 9309 identifier rule (ASCII letters, \verb{_} and
 \code{-}) leaves its row refused as input (see Details). Under the
 \code{"google"} ruleset, a token in
 \code{matcher_capability$google$crawler_tokens} also selects its group as
@@ -81,7 +81,7 @@ as \code{robots_engine_contract_v1()$matcher_capability}.
 
 Since schema revision \code{2026-11-22.1}, a row on the \code{google} or \code{rfc9309}
 backend whose token is not one or more ASCII letters, \verb{_} or \code{-} (the
-product-token grammar of RFC 9309 section 2.2.1, published as
+\code{identifier} rule of RFC 9309 section 2.2.1, published as
 \verb{matcher_capability$<backend>$product_token_grammar}) is refused under
 every ruleset: \code{matcher_status = "not_evaluated"},
 \code{reason = "input_invalid"}, \code{error_stage = "input"} and
@@ -90,8 +90,10 @@ error raised. Google's matcher cuts each \code{User-agent} value in the file at
 its first other character and compares the cut value with the token as
 given, so such a token (\code{Googlebot/2.1}, a full HTTP \code{User-Agent} string,
 a leading or trailing space, \code{*}, digits, a letter outside ASCII) could
-never name a group and would silently read \verb{User-agent: *}. The token is
-not trimmed or rewritten: \code{error_message} names the leading valid part
+never name a group and would silently read \verb{User-agent: *}. RFC 9309's
+\code{product-token} is \code{identifier / "*"}, but \code{*} names no crawler, so a
+caller's token must be an \code{identifier}. The token is not trimmed or
+rewritten: \code{error_message} names the leading valid part
 (\code{Googlebot} for \code{Googlebot/2.1}) as a hint only. The \code{yandex} and \code{bing}
 backends keep their own refusals, and \code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}} and
 \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} read any token as before.

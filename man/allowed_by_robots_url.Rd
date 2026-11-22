@@ -153,8 +153,8 @@ after upstream \code{MaybeEscapePattern} canonicalization).
 
 The user agent selects its group as in \code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}}: no
 parent-token fallback and no exemption from \code{*}, unlike the \code{google}
-ruleset of \code{\link[=robots_evaluate_url_v1]{robots_evaluate_url_v1()}}. A user agent outside the RFC 9309
-product-token grammar (ASCII letters, \verb{_} and \code{-}), such as
+ruleset of \code{\link[=robots_evaluate_url_v1]{robots_evaluate_url_v1()}}. A user agent that is not an
+RFC 9309 \code{identifier} (ASCII letters, \verb{_} and \code{-}), such as
 \code{"Googlebot/2.1"}, is fetched for and matched as given, so it silently
 reads \verb{User-agent: *}, where \code{\link[=robots_evaluate_url_v1]{robots_evaluate_url_v1()}} refuses it on the
 \code{google} and \code{rfc9309} backends before any fetch.

@@ -856,17 +856,20 @@ unbounded; it publishes no profile table for the second reason, not the first.
 
 Its set is not closed, but it has a grammar. Since schema revision
 `2026-11-22.1` (ROBO-mtmkpwuf) both backends publish
-`product_token_grammar = "rfc9309_product_token"`: one or more of the
-ASCII letters, `_` and `-`, and nothing else (RFC 9309 §2.2.1, "MUST
-contain only uppercase and lowercase letters ('a-z' and 'A-Z'),
-underscores ('_'), and hyphens ('-')"). The bytes are compared as bytes, so
-a letter outside ASCII, a latin1 byte or invalid UTF-8 is outside it. The
-contract validator refuses the field on a bounded backend, its absence on
-an `arbitrary_valid` or `rfc9309` one, and any other value.
+`product_token_grammar = "rfc9309_identifier"`: the token must be an RFC
+9309 `identifier`, one or more of the ASCII letters, `_` and `-`, and
+nothing else (§2.2.1, "MUST contain only uppercase and lowercase letters
+('a-z' and 'A-Z'), underscores ('_'), and hyphens ('-')"). The ABNF's
+`product-token` is `identifier / "*"`, but `*` names the wildcard group,
+not a crawler, so a caller's own token must be an `identifier`. The bytes
+are compared as bytes, so a letter outside ASCII, a latin1 byte or invalid
+UTF-8 is not one. The contract validator refuses the field on a bounded
+backend, its absence on an `arbitrary_valid` or `rfc9309` one, and any
+other value.
 
 The v1 facades screen the token against it on those two backends, under
-every ruleset, as they screen an empty token: a row whose token is outside
-the grammar is `policy_status` and `matcher_status` `not_evaluated`,
+every ruleset, as they screen an empty token: a row whose token is not an
+`identifier` is `policy_status` and `matcher_status` `not_evaluated`,
 `reason` and `policy_reason` `input_invalid`, `error_stage = "input"`,
 `error_class = "robots_invalid_product_token"`, with no source and no
 decision. `robots_evaluate_url_v1()` screens before the fetch, so the row
@@ -874,7 +877,7 @@ makes no request and an origin that would answer 404 does not turn it into
 `allow_all`; a valid row on the same origin is fetched as before. An
 `rfc9309`-backend row so refused moves from `capability_unavailable` to
 `input_invalid`. The reason is Google's matcher: it cuts each file
-`User-agent` value at its first character outside the grammar
+`User-agent` value at its first character outside `[A-Za-z_-]`
 (`ExtractUserAgent`) and compares the cut value with the caller's token as
 given, so such a token (`Googlebot/2.1`, a full HTTP `User-Agent` string, a
 leading or trailing space, `*`, digits) can never name a group and silently
@@ -883,7 +886,8 @@ callers (`src/robots.cc`), but `AllowedByRobots` does not apply it;
 refusing is this package's policy. The
 token is never trimmed or rewritten. `error_message` says the token is
 outside the grammar and is the robots.txt group token, not the HTTP
-`User-Agent` string, and names the leading run of grammar bytes, when there
+`User-Agent` string, and names the leading run of identifier bytes, when
+there
 is one, as a hint only (`Googlebot` for `Googlebot/2.1`, `archive` for
 `archive.org_bot`); it never echoes the token, which `robots_product_token`
 carries. An `NA` or empty token keeps "Robots product token is missing or

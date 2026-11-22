@@ -405,7 +405,7 @@ gf_expected <- list(
             NA, NA, "input_unknown", "input_invalid"),
   gf_expect(4L, c("in-schemeless-url", "in-ftp-url"), gf_url_paths,
             NA, NA, "input_unknown", "input_invalid"),
-  # A caller token outside the RFC 9309 grammar (a version, a space): the
+  # A caller token outside the RFC 9309 identifier rule (a version, a space): the
   # v1 paths refuse it as input on the google backend under every ruleset
   # (ROBO-mtmkpwuf); the legacy paths read it as given and agree.
   gf_expect(4L, c("ua-caller-version", "ua-caller-version-own",

@@ -89,7 +89,7 @@ resolve_profile_looks_like_crawler <- function(token, accepted) {
 #'   whose `token_policy` is not `"bounded_profiles"` there is no closed set to
 #'   resolve against, so the profile columns are `NA` and the token is returned
 #'   unchanged. This holds for a `google` or `rfc9309` token outside the
-#'   RFC 9309 product-token grammar too, although [robots_evaluate_text_v1()]
+#'   RFC 9309 identifier rule too, although [robots_evaluate_text_v1()]
 #'   and [robots_evaluate_url_v1()] refuse such a token on those backends.
 #'
 #'   `group_selection` is `"exact_else_wildcard"` when the profile falls back to

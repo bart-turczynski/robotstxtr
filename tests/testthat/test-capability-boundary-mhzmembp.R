@@ -23,8 +23,8 @@ test_that("matcher_capability publishes the token/semantics boundary", {
   expect_identical(cap$rfc9309$matcher_semantics, "rfc9309")
   # The two unbounded backends publish the token grammar the v1 facades
   # screen (ROBO-mtmkpwuf); the bounded ones do not.
-  expect_identical(cap$google$product_token_grammar, "rfc9309_product_token")
-  expect_identical(cap$rfc9309$product_token_grammar, "rfc9309_product_token")
+  expect_identical(cap$google$product_token_grammar, "rfc9309_identifier")
+  expect_identical(cap$rfc9309$product_token_grammar, "rfc9309_identifier")
   expect_null(cap$yandex$product_token_grammar)
   expect_null(cap$bing$product_token_grammar)
 

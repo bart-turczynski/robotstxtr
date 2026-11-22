@@ -19,7 +19,7 @@ crawler tokens whose group selection the \code{google} ruleset takes from
 Google's crawler documentation in \code{crawler_tokens}; for \code{google} and
 \code{rfc9309}, since schema revision \code{2026-11-22.1}, the token grammar the v1
 facades screen in \code{product_token_grammar}, always
-\code{"rfc9309_product_token"}: one or more ASCII letters, \verb{_} or \code{-}),
+\code{"rfc9309_identifier"}: one or more ASCII letters, \verb{_} or \code{-}),
 the separately inspectable vendored-matcher identity fields
 (\code{matcher_identity}, e.g. library/payload/profile/corpus/evidence/
 profile-source for the Yandex backend), status-policy table, and supported

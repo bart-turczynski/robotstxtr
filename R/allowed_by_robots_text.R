@@ -38,7 +38,7 @@
 #' AI-training policy token `__usage_ai-training`, which `*` never covers
 #' (an Internet-Draft, draft-kelley-aipref-training-preference-signal-00).
 #'
-#' A `user_agent` outside the RFC 9309 product-token grammar (ASCII
+#' A `user_agent` that is not an RFC 9309 `identifier` (ASCII
 #' letters, `_` and `-`), such as `"Googlebot/2.1"` or a full HTTP
 #' `User-Agent` string, is matched as given and can never equal a file's
 #' cut `User-agent` value, so it silently reads `User-agent: *`; the v1

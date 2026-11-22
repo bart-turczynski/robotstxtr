@@ -265,7 +265,7 @@ test_that("the token matches whole and ASCII case-insensitively", {
   }
   r <- ct_eval(ct_star_only, "https://x.com/page", "AdsBot-Google-Mobilex")
   expect_identical(r$url_decision, "disallow")
-  # A token outside the RFC 9309 grammar never reaches the layer: the v1
+  # A token outside the RFC 9309 identifier rule never reaches the layer: the v1
   # facades refuse it as input (ROBO-mtmkpwuf).
   bad <- rawToChar(c(charToRaw("Googlebot-"), as.raw(0xff), charToRaw("Image")))
   for (token in c("Googlebot-Image/1.0", "Googlebot Image", bad)) {
