@@ -825,9 +825,10 @@ upper-cases a lower-case escape as Google does, while the package's
 Yandex matcher compares it as written, and also lets an Allow \verb{/x} win
 over a Disallow \verb{/x$} for \verb{/x}. A rule that gets \code{rule_cut_by_nul} takes
 part with its value cut at the NUL, as Google's parser reads it. A body
-cut at \code{max_bytes} is not checked: a later Disallow could block the query URL. The check reads its candidates
-within a fixed amount of work, as the slash checks do, and a
-\verb{User-agent: __usage_ai-training} group gets no row.
+cut at \code{max_bytes} is not checked: a later Disallow could block the
+query URL. The check reads its candidates within a fixed amount of work,
+as the slash checks do, and a \verb{User-agent: __usage_ai-training} group
+gets no row.
 
 On a document holding a NUL byte, \code{wildcard_rules_not_inherited},
 \code{disallow_tied_by_allow}, \code{duplicate_rule},

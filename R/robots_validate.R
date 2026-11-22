@@ -816,9 +816,10 @@ validation_unsupported <- c(
 #' Yandex matcher compares it as written, and also lets an Allow `/x` win
 #' over a Disallow `/x$` for `/x`. A rule that gets `rule_cut_by_nul` takes
 #' part with its value cut at the NUL, as Google's parser reads it. A body
-#' cut at `max_bytes` is not checked: a later Disallow could block the query URL. The check reads its candidates
-#' within a fixed amount of work, as the slash checks do, and a
-#' `User-agent: __usage_ai-training` group gets no row.
+#' cut at `max_bytes` is not checked: a later Disallow could block the
+#' query URL. The check reads its candidates within a fixed amount of work,
+#' as the slash checks do, and a `User-agent: __usage_ai-training` group
+#' gets no row.
 #'
 #' On a document holding a NUL byte, `wildcard_rules_not_inherited`,
 #' `disallow_tied_by_allow`, `duplicate_rule`,
