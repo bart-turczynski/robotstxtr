@@ -5401,10 +5401,14 @@ end_anchor_candidates <- function(rules) {
 }
 
 # Each candidate value as a path: without its final `$`, each `*` written
-# `filler`, led by `/`.
+# `filler` (one for all, or one per value), led by `/`.
 end_anchor_controls <- function(value, filler = "x") {
-  x <- gsub("*", filler, sub("[$]$", "", value, useBytes = TRUE),
-            fixed = TRUE, useBytes = TRUE)
+  filler <- rep_len(filler, length(value))
+  x <- sub("[$]$", "", value, useBytes = TRUE)
+  for (f in unique(filler)) {
+    k <- filler == f
+    x[k] <- gsub("*", f, x[k], fixed = TRUE, useBytes = TRUE)
+  }
   ifelse(startsWith(x, "/"), x, paste0("/", x))
 }
 

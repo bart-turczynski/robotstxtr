@@ -717,6 +717,14 @@ test_that("ROBO-nzcvlsvk: a rule matching the filler gets the next pair", {
   expect_identical(d$message, ea_list_message(paste0(
     ea_blocks(2L, "/a", "?y=2"), " and ", ea_blocks(3L, "/b")
   )))
+  # Each control writes its own filler for `*`.
+  d <- ea_diag(paste0("User-agent: *\nDisallow: /*/a$\nDisallow: /*/b$\n",
+                      "Disallow: /x/a\n"))
+  expect_identical(d$message, ea_list_message(paste0(
+    ea_blocks(2L, "/y/a", "?y=2"), " and ", ea_blocks(3L, "/x/b")
+  )))
+  expect_identical(end_anchor_controls(c("/*/a$", "*b$"), c("y", "z")),
+                   c("/y/a", "/zb"))
   # Every backend decides each pair as the row says.
   for (backend in names(ea_engines)) {
     expect_identical(
