@@ -301,7 +301,8 @@ Verdict: UNEVIDENCED, on the same sources as class 7.
 differs only beside a short `Allow`: `Allow: /` / `Disallow: *%*`, path `/%24`,
 is `disallow rule_disallow 3` on Google and Bing and `allow rule_allow 2` on
 Yandex. That is class 10 (`*%*` counts one byte for Yandex and ties `/`), and
-it is pinned there.
+it is pinned there. The validator warns on `*%*`, `/%` and `/a%zz` alike
+(`rule_invalid_percent_escape`, ROBO-rswdwrnp).
 
 ### 10. Yandex rule length ignores `*` and a final `$` (yandex)
 
