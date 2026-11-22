@@ -8,6 +8,8 @@
 
 * Validator: `user_agent_cut` and `unknown_directive` name a look-alike character (a Unicode hyphen, Cyrillic or Greek letter) by code point and give its ASCII spelling; such a `user_agent_cut` row warns (ROBO-wtixhwlo).
 
+* `robots_evaluate_text_v1()` and `robots_evaluate_url_v1()` refuse a `robots_product_token` outside `[A-Za-z_-]` on the `google` and `rfc9309` backends, before any fetch, instead of reading `User-agent: *` (RFC 9309 §2.2.1) (ROBO-mtmkpwuf).
+
 * Validator: wildcard, joined-group, empty-Disallow and stacked-token rows naming a User-agent value Google's matcher cuts add a sentence pointing to its `user_agent_cut` row (ROBO-zqyqbudf).
 
 * Fetch: `robots_fetch()`, `robots_validate_url()` and `allowed_by_robots_url()` take `destination_robots = FALSE`; `TRUE` also reads a cross-site redirect destination's own robots.txt, reported apart, never applied to the origin (ROBO-ybhwztid).

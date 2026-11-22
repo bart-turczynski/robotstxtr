@@ -262,11 +262,14 @@ failed <- FALSE
 # BOM was a split until ROBO-pvqrfvol, when robotstxtr's Google backend
 # began to end a line at its first NUL as upstream does
 # (design/engine-profiles.md section 5b, class 5, resolved); all three
-# UTF-16 bodies must now agree.
+# UTF-16 bodies must now agree. Since ROBO-mtmkpwuf the v1 path refuses a
+# token outside the RFC 9309 grammar as input and answers "NA": Bot2 and
+# `*`.
 expected_split <- data.frame(
-  id = c("grp-googlebot-image-fallback", "grp-googlebot-image-fallback"),
-  path = c("/x", "/y"),
-  token = c("Googlebot-Image", "Googlebot-Image")
+  id = c("grp-googlebot-image-fallback", "grp-googlebot-image-fallback",
+         "grp-digit-in-token", "err-star-token"),
+  path = c("/x", "/y", "/x", "/x"),
+  token = c("Googlebot-Image", "Googlebot-Image", "Bot2", "*")
 )
 key <- function(x) paste(x$id, x$path, x$token, sep = "\r")
 splits <- cases$robotstxtr_v1 != cases$google_ref

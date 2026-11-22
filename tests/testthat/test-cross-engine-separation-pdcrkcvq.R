@@ -313,7 +313,7 @@ test_that("M1 matcher revisions and schema stay pinned", {
   expect_identical(
     registry$yandex$revision, robotstxtr:::yandex_matcher_revision_v1()
   )
-  expect_identical(engine_schema_revision_v1(), "2026-11-21.2")
+  expect_identical(engine_schema_revision_v1(), "2026-11-22.1")
 })
 
 test_that("M2 PROVENANCE and NOTICE pin the Google commits", {
@@ -338,7 +338,7 @@ test_that("M2 PROVENANCE and NOTICE pin the Google commits", {
 test_that("T1 an arbitrary valid token yields Google semantics", {
   x <- robots_evaluate_text_v1(
     "user-agent: *\ndisallow: /private",
-    "https://example.com/private", "some-crawler/1.0", "google", "google"
+    "https://example.com/private", "some-crawler", "google", "google"
   )
 
   # A real Google decision from the google reason vocabulary, not an error/
@@ -347,6 +347,14 @@ test_that("T1 an arbitrary valid token yields Google semantics", {
   expect_identical(x$results$url_decision, "disallow")
   expect_identical(x$results$reason, "rule_disallow")
   expect_identical(x$results$matched_rule_type, "disallow")
+
+  # "Valid" is the RFC 9309 grammar: a version suffix is outside it, so the
+  # row is refused as input (ROBO-mtmkpwuf).
+  x <- robots_evaluate_text_v1(
+    "user-agent: *\ndisallow: /private",
+    "https://example.com/private", "some-crawler/1.0", "google", "google"
+  )
+  expect_identical(x$results$reason, "input_invalid")
 })
 
 # ---------------------------------------------------------------------------
@@ -358,7 +366,7 @@ test_that("DATA-ONLY Yandex active, schema bumped, Google live", {
     engine_matcher_availability_v1()[["yandex"]],
     "available"
   )
-  expect_identical(engine_schema_revision_v1(), "2026-11-21.2")
+  expect_identical(engine_schema_revision_v1(), "2026-11-22.1")
 
   registry <- engine_matcher_registry_v1()
   expect_identical(registry$google$availability, "available")

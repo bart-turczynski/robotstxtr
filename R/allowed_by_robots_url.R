@@ -53,7 +53,11 @@
 #'
 #' The user agent selects its group as in [allowed_by_robots_text()]: no
 #' parent-token fallback and no exemption from `*`, unlike the `google`
-#' ruleset of [robots_evaluate_url_v1()].
+#' ruleset of [robots_evaluate_url_v1()]. A user agent outside the RFC 9309
+#' product-token grammar (ASCII letters, `_` and `-`), such as
+#' `"Googlebot/2.1"`, is fetched for and matched as given, so it silently
+#' reads `User-agent: *`, where [robots_evaluate_url_v1()] refuses it on the
+#' `google` and `rfc9309` backends before any fetch.
 #'
 #' A robots.txt over 512,000 bytes (Google's documented 500 KiB limit) is read
 #' differently by each Google entry point (`design/engine-profiles.md`

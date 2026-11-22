@@ -21,6 +21,12 @@ test_that("matcher_capability publishes the token/semantics boundary", {
   expect_identical(cap$bing$matcher_semantics, "bing")
   expect_identical(cap$rfc9309$token_policy, "rfc9309")
   expect_identical(cap$rfc9309$matcher_semantics, "rfc9309")
+  # The two unbounded backends publish the token grammar the v1 facades
+  # screen (ROBO-mtmkpwuf); the bounded ones do not.
+  expect_identical(cap$google$product_token_grammar, "rfc9309_product_token")
+  expect_identical(cap$rfc9309$product_token_grammar, "rfc9309_product_token")
+  expect_null(cap$yandex$product_token_grammar)
+  expect_null(cap$bing$product_token_grammar)
 
   # Google note: the crawler-aware layer is the google ruleset's, read from
   # Google's documentation for the listed tokens (ROBO-fbbmvbob); outside
@@ -74,5 +80,5 @@ test_that("Yandex is active: available, registered, schema bumped", {
   # Google backend is untouched and the schema revision is the activation one.
   expect_identical(registry$google$availability, "available")
   expect_type(registry$google$callable, "closure")
-  expect_identical(engine_schema_revision_v1(), "2026-11-21.2")
+  expect_identical(engine_schema_revision_v1(), "2026-11-22.1")
 })

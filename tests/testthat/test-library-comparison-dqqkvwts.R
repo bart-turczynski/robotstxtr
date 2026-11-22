@@ -17,9 +17,11 @@
 # "others" in a comment means every library not named. robotstxtr agrees
 # with the reference on every row here, the three UTF-16 bodies included:
 # since ROBO-pvqrfvol its Google matcher ends each line at its first NUL, as
-# the reference does. run.R's expected-split list names only the catalog's
+# the reference does. run.R's expected-split list names the catalog's
 # grp-googlebot-image-fallback rows, where the v1 path's crawler-token layer
-# parts from the reference by design (ROBO-fbbmvbob).
+# parts from the reference by design (ROBO-fbbmvbob), and the two rows whose
+# token v1 refuses as outside the RFC 9309 grammar, Bot2 and `*`, recorded
+# as "NA" (ROBO-mtmkpwuf).
 #
 # The bodies are the committed fixtures: the class fixtures in
 # fixtures/library-comparison-dqqkvwts/ (manifest.csv there records every
@@ -105,17 +107,27 @@ lc_expect <- function(body, path, want, token = "FooBot", v1 = want) {
   )
 }
 
+# A recorded answer as a decision: "NA" is a row the v1 path refuses as
+# input and decides nothing on (a token outside the RFC 9309 grammar,
+# ROBO-mtmkpwuf).
+lc_decision <- function(x) {
+  switch(x, "1" = "allow", "0" = "disallow", "NA" = NA_character_)
+}
+
 test_that("every class fixture row: robotstxtr's recorded answer", {
   m <- lc_class_manifest
-  expect_true(all(m$robotstxtr %in% c("0", "1")))
-  # No class fixture is a split from the reference (the doc's Result).
-  expect_identical(m$robotstxtr, m$google_ref)
+  expect_true(all(m$robotstxtr %in% c("0", "1", "NA")))
+  # No class fixture is a split from the reference (the doc's Result), save
+  # the `*` token, which v1 refuses as input.
+  decided <- m$robotstxtr != "NA"
+  expect_identical(m$robotstxtr[decided], m$google_ref[decided])
+  expect_identical(m$token[!decided], "*")
   for (k in seq_len(nrow(m))) {
-    want <- if (m$robotstxtr[[k]] == "1") "allow" else "disallow"
     expect_identical(
       lc_answer(lc_text(lc_read_bytes(lc_class_dir, m$body_file[[k]])),
                 m$path[[k]], m$token[[k]]),
-      c(v1 = want, text = want),
+      c(v1 = lc_decision(m$robotstxtr[[k]]),
+        text = lc_decision(m$google_ref[[k]])),
       info = paste(m$id[[k]], m$token[[k]], m$path[[k]])
     )
   }
@@ -141,23 +153,26 @@ test_that("every catalog row: the recorded answers (ROBO-tanodypz)", {
                                  c("id", "class", "body_file", "path",
                                    "token")))
   for (col in libs) {
-    # Only a library raises an error; the reference and robotstxtr answer.
-    ok <- if (col %in% c("google_ref", "robotstxtr")) c("0", "1") else
-      c("0", "1", "ERR")
+    # Only a library raises an error; the reference answers, and robotstxtr
+    # answers or refuses the token as input ("NA", ROBO-mtmkpwuf).
+    ok <- switch(col, google_ref = c("0", "1"),
+                 robotstxtr = c("0", "1", "NA"), c("0", "1", "ERR"))
     expect_true(all(rec[[col]] %in% ok), info = col)
   }
+  # The one row v1 refuses: the token Bot2, outside the RFC 9309 grammar.
+  expect_identical(rec$token[rec$robotstxtr == "NA"], "Bot2")
   # The reference's answer is the catalog's Google decision.
   expect_identical(rec$google_ref,
                    ifelse(catalog$google_decision == "allow", "1", "0"))
-  decision <- function(x) if (x == "1") "allow" else "disallow"
   for (k in seq_len(nrow(rec))) {
     # The legacy path agrees with the reference on every row; v1 parts from
-    # it only where the crawler-token layer applies (ROBO-fbbmvbob).
+    # it where the crawler-token layer applies (ROBO-fbbmvbob) and where it
+    # refuses the token (ROBO-mtmkpwuf).
     body <- lc_text(lc_read_bytes(lc_edge_dir, catalog$body_file[[k]]))
     expect_identical(
       lc_answer(body, catalog$path[[k]], catalog$token[[k]]),
-      c(v1 = decision(rec$robotstxtr[[k]]),
-        text = decision(rec$google_ref[[k]])),
+      c(v1 = lc_decision(rec$robotstxtr[[k]]),
+        text = lc_decision(rec$google_ref[[k]])),
       info = paste(rec$id[[k]], rec$token[[k]], rec$path[[k]])
     )
   }
@@ -316,9 +331,11 @@ test_that("class 12: Google cuts a file's User-agent value", {
   lc_expect(body, "/x", "disallow", token = "Foo")
   lc_expect(body, "/x", "allow", token = "FooBot")
   # Bot2: as Bot2, reference allow; every library disallows. As Bot,
-  # reference disallow; every library but jv allows.
+  # reference disallow; every library but jv allows. v1 refuses the token
+  # Bot2 as outside the RFC 9309 grammar and decides nothing
+  # (ROBO-mtmkpwuf); the legacy path keeps the reference's answer.
   body <- lc_catalog("grp-digit-in-token")
-  lc_expect(body, "/x", "allow", token = "Bot2")
+  lc_expect(body, "/x", "allow", token = "Bot2", v1 = NA_character_)
   lc_expect(body, "/x", "disallow", token = "Bot")
 })
 
@@ -458,8 +475,10 @@ test_that("class 25: a Latin-1 byte in a rule", {
 
 test_that("errors: the inputs a library refuses", {
   # A `*` token: reference disallow; jv ERR (IllegalArgumentException,
-  # robotNames may not hold `*`); others disallow.
-  lc_expect(lc_fixture("err-star-token"), "/x", "disallow", token = "*")
+  # robotNames may not hold `*`); others disallow. v1 refuses the token `*`
+  # as outside the RFC 9309 grammar (ROBO-mtmkpwuf).
+  lc_expect(lc_fixture("err-star-token"), "/x", "disallow", token = "*",
+            v1 = NA_character_)
   # A non-numeric Crawl-delay: reference disallow; go ERR (the whole parse
   # fails); others disallow.
   lc_expect(lc_fixture("err-crawl-delay-text"), "/x", "disallow")

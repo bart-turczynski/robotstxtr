@@ -72,6 +72,13 @@ for one the group's Allow reopens). None is reported for the
 AI-training policy token \verb{__usage_ai-training}, which \code{*} never covers
 (an Internet-Draft, draft-kelley-aipref-training-preference-signal-00).
 
+A \code{user_agent} outside the RFC 9309 product-token grammar (ASCII
+letters, \verb{_} and \code{-}), such as \code{"Googlebot/2.1"} or a full HTTP
+\code{User-Agent} string, is matched as given and can never equal a file's
+cut \code{User-agent} value, so it silently reads \verb{User-agent: *}; the v1
+facades refuse such a token on the \code{google} and \code{rfc9309} backends
+instead.
+
 Match metadata is fully populated on the text path. \code{matched_line} carries
 the upstream one-based matching line (or \code{NA} when no rule matched). For a
 matched row, \code{matched_rule_type} and \code{matched_rule_value} are correlated from

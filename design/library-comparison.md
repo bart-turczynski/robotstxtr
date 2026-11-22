@@ -78,8 +78,12 @@ library answer on a class fixture changed. No class below is a robotstxtr
 bug. Since ROBO-fbbmvbob the v1 path, under the `google` ruleset, follows
 Google's crawler tokens, so on the catalog's `grp-googlebot-image-fallback`
 (token `Googlebot-Image`) it parts from the reference by design, while
-`allowed_by_robots_text()` still agrees (class 11). Those two rows are the
-runner's expected-split list.
+`allowed_by_robots_text()` still agrees (class 11). Since ROBO-mtmkpwuf the
+v1 path refuses a token outside the RFC 9309 product-token grammar (ASCII
+letters, `_` and `-`) as input and decides nothing, recorded as `NA`: the
+catalog's `grp-digit-in-token` as `Bot2` (class 12) and the class fixture
+`err-star-token` (token `*`). `allowed_by_robots_text()` still agrees on
+both. Those four rows are the runner's expected-split list.
 
 Every answer on the catalog rows is recorded too, in
 `tests/testthat/fixtures/library-comparison-dqqkvwts/catalog-answers.csv`
@@ -333,7 +337,9 @@ reference disallow, `py`, `pro`, `rs`, `js`, `rtx`, `spb` allow; as
 `FooBot`, reference allow, `go` disallows (its value ends at the space, and
 `foo` prefixes `foobot`, class 11). `grp-digit-in-token` (`User-agent: Bot2`): as `Bot2`,
 reference allow and **every library disallows**; as `Bot`, reference
-disallow and every library but `jv` allows.
+disallow and every library but `jv` allows. Since ROBO-mtmkpwuf the v1 path
+refuses the token `Bot2` (outside the RFC 9309 grammar) and decides
+nothing; `allowed_by_robots_text()` keeps the reference's allow.
 
 Documented intent: robots-parser 3.0.1 `Robots.js` `formatUserAgent`
 "removing any version numbers" (so `js` agrees on the version form);
@@ -506,7 +512,7 @@ the reference, robotstxtr siding with the reference. Each was investigated:
 
 | Class | Row | Verdict and source |
 |---|---|---|
-| 12 | `User-agent: Bot2`, token `Bot2` | Deliberate. Upstream `ExtractUserAgent` keeps `[A-Za-z_-]` only, and RFC 9309 §2.2.1 allows only letters, `_` and `-` in a product token, so `Bot2` is not a valid token. The validator reports `user_agent_cut`, naming `Bot` (ROBO-zvhrayhx); it is info, since no Google crawler reads `Bot` (ROBO-txnzyugl). |
+| 12 | `User-agent: Bot2`, token `Bot2` | Deliberate. Upstream `ExtractUserAgent` keeps `[A-Za-z_-]` only, and RFC 9309 §2.2.1 allows only letters, `_` and `-` in a product token, so `Bot2` is not a valid token. The validator reports `user_agent_cut`, naming `Bot` (ROBO-zvhrayhx); it is info, since no Google crawler reads `Bot` (ROBO-txnzyugl). As a caller token, the v1 path refuses `Bot2` as input (ROBO-mtmkpwuf); `allowed_by_robots_text()` sides with the reference. |
 | 14 | `Disallow: /a%3cb`, path `/a%3cb` | Deliberate fidelity to upstream (`MaybeEscapePattern` upper-cases the rule's escape, never the URL's). The validator warns (`rule_lowercase_escape`). |
 | 15 | `Disallow: /caf%C3%A9`, raw `é` in the URL | Deliberate: a caller contract. The matcher never escapes the URL, and `allowed_by_robots_text()` leaves supplying an escaped URL to the caller (`design/edge-case-catalog.md`, `enc-nonascii-rule-raw-url`). RFC 9309 §2.2.2 escapes both sides, as every library does. |
 | 16 | `Disallow: /a b`, path `/a%20b` | Deliberate fidelity to upstream (`MaybeEscapePattern` escapes non-ASCII bytes only). A space is not valid in an RFC 9309 path pattern (§2.2). The validator warns (`rule_inner_whitespace`). |
@@ -520,7 +526,7 @@ behavior) is in class 1.
 
 | Library | Input | What happens |
 |---|---|---|
-| `jv` | the token `*` (`err-star-token`) | `IllegalArgumentException`: "Parameter 'robotNames': the wildcard user-agent ('*') should not be included". An API constraint: every other token runs. |
+| `jv` | the token `*` (`err-star-token`) | `IllegalArgumentException`: "Parameter 'robotNames': the wildcard user-agent ('*') should not be included". An API constraint: every other token runs. robotstxtr's v1 path refuses `*` as input too, as outside the RFC 9309 grammar (ROBO-mtmkpwuf), and records `NA`; `allowed_by_robots_text()` answers. |
 | `go` | `Crawl-delay: soon` (`err-crawl-delay-text`) | the whole parse fails ("strconv.ParseFloat: parsing "soon": invalid syntax"), so no URL gets an answer |
 | `go` | a rule before any `User-agent` (`rule-before-agent`, catalog `grp-rule-before-user-agent`, and `enc-bom-doubled`, whose BOM hides the `User-agent` line) | the whole parse fails ("Disallow before User-agent") |
 | `rtx` | a line whose field name is empty (`:` or `: x`) as the first field line (`err-empty-field`: `:` / `User-agent: *` / `Disallow: /x`; `:` alone also triggers it) | "'names' attribute [2] must be the same length as the vector [0]", from `robotstxt`'s own parser; `spb` reads the same body |

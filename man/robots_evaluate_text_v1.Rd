@@ -28,7 +28,10 @@ and one marked \code{Encoding = "bytes"} is used verbatim.}
 \verb{User-agent:} group label, NOT an HTTP \code{User-Agent} crawler identity. It is
 never sent as a header. A character vector of length one or \code{length(url)}.
 The Google backend accepts any valid Google robots product token and
-yields Google semantics for it. Under the \code{"google"} ruleset, a token in
+yields Google semantics for it; on the \code{"google"} and \code{"rfc9309"}
+backends a token outside the RFC 9309 grammar (ASCII letters, \verb{_} and
+\code{-}) leaves its row refused as input (see Details). Under the
+\code{"google"} ruleset, a token in
 \code{matcher_capability$google$crawler_tokens} also selects its group as
 Google documents for that crawler (see Details); any other token, or any
 other ruleset, is not a prediction of the named crawler. The
@@ -75,6 +78,23 @@ robots product token and returns Google parsing/matching semantics for it.
 The Yandex and Bing backends are bounded to their supported vendor profiles
 only and never generalize to arbitrary tokens. This boundary is published
 as \code{robots_engine_contract_v1()$matcher_capability}.
+
+Since schema revision \code{2026-11-22.1}, a row on the \code{google} or \code{rfc9309}
+backend whose token is not one or more ASCII letters, \verb{_} or \code{-} (the
+product-token grammar of RFC 9309 section 2.2.1, published as
+\verb{matcher_capability$<backend>$product_token_grammar}) is refused under
+every ruleset: \code{matcher_status = "not_evaluated"},
+\code{reason = "input_invalid"}, \code{error_stage = "input"} and
+\code{error_class = "robots_invalid_product_token"}, one row each, with no
+error raised. Google's matcher cuts each \code{User-agent} value in the file at
+its first other character and compares the cut value with the token as
+given, so such a token (\code{Googlebot/2.1}, a full HTTP \code{User-Agent} string,
+a leading or trailing space, \code{*}, digits, a letter outside ASCII) could
+never name a group and would silently read \verb{User-agent: *}. The token is
+not trimmed or rewritten: \code{error_message} names the leading valid part
+(\code{Googlebot} for \code{Googlebot/2.1}) as a hint only. The \code{yandex} and \code{bing}
+backends keep their own refusals, and \code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}} and
+\code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} read any token as before.
 
 Under the \code{google} ruleset with the \code{google} backend, the result is also a
 crawler-aware layer above the matcher for the Google crawler tokens

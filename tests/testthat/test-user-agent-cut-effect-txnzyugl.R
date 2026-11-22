@@ -59,12 +59,14 @@ cx_other <- paste0("Only Google's parser shortens the value, and Google's ",
                    "crawlers do not go by it, so nothing changes for them; ",
                    "how the named crawler's own parser reads it is unknown.")
 
-cx_decide <- function(body, url, token, ruleset = "google") {
-  robots_evaluate_text_v1(
-    robots_txt = body, url = paste0("https://example.com", url),
-    robots_product_token = token, robots_policy_ruleset = ruleset,
-    matcher_backend = "google"
-  )$results$url_decision
+# Google's matcher's own reading of the token, through the legacy text path:
+# the v1 facades refuse a token outside the RFC 9309 grammar (`Spinn3r`,
+# `MJ12bot`) as input before the matcher sees it (ROBO-mtmkpwuf).
+cx_decide <- function(body, url, token) {
+  allowed <- allowed_by_robots_text(
+    body, paste0("https://example.com", url), token
+  )$results$allowed
+  ifelse(allowed, "allow", "disallow")
 }
 
 test_that("severity follows whether a Google crawler reads the cut", {
