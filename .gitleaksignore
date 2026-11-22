@@ -1,0 +1,3 @@
+# gitleaks false positives, one fingerprint per line (file:rule:line).
+# An MD5 digest of a synthetic fixture name in the matcher seam pin, not a key.
+tests/testthat/fixtures/matcher-seam-pin-bukqpjli.csv:generic-api-key:102

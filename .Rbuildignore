@@ -76,3 +76,5 @@
 # fleet-ci's t2-sanitizers job installs the dependencies into
 # $CI_PROJECT_DIR/.fleet-lib and then runs `R CMD build .` there.
 ^\.fleet-lib$
+# The gitleaks false-positive list: repository tooling, not package content.
+^\.gitleaksignore$
