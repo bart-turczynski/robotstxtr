@@ -167,7 +167,8 @@ validation_unsupported <- c(
 #'     A pattern not led by \code{/} or \code{*}; it never matches. A full
 #'     \code{http} or \code{https} URL gets a message naming the path and
 #'     query to write instead; under [robots_validate_url()] it also says
-#'     when the URL's origin differs from the robots.txt origin. \cr
+#'     when the URL's origin differs from the robots.txt origin, only when
+#'     the URL's host is ASCII. \cr
 #'   \code{rule_cut_by_comment} \tab warning \tab
 #'     A \code{#} with no space or tab before it starts a comment inside an
 #'     Allow or Disallow value, cutting the rule at the \code{#}. A vertical
