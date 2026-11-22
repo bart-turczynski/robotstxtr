@@ -982,6 +982,90 @@ test_that("ROBO-roypaoox: candidates past the work budget get no row", {
   expect_identical(slash_budget(groups$rules, 1:4), 32 * 8 + 20000)
 })
 
+# The counts a check that stopped hands out, as slash_stop() builds them.
+sp_stopped <- function(found, checked, value) {
+  list(found = found, checked = checked, skipped = found - checked,
+       value = value)
+}
+
+test_that("ROBO-roypaoox: a check that stops says so, with its counts", {
+  groups <- sp_groups("User-agent: Foo\nDisallow: /\nAllow: /a/\nAllow: /b/\n")
+  expect_null(attr(slash_split_diagnostics(groups), "stopped"))
+  expect_null(attr(slash_split_diagnostics(groups, budget = 9), "stopped"))
+  stop <- attr(slash_split_diagnostics(groups, budget = 8), "stopped")
+  expect_identical(stop, sp_stopped(2L, 1L, "/b/"))
+  # One skipped: singular forms.
+  expect_identical(slash_stop_message("split", stop), paste0(
+    "This file has 2 rules whose path ends in '/', such as '/b/'. For each ",
+    "one, the validator checks whether crawlers treat '/b' and '/b/' ",
+    "differently. This file is too large to check them all quickly, so only ",
+    "the first was checked, in line order. The other 1 was skipped, and it ",
+    "may have the same problem."
+  ))
+  stop <- attr(slash_split_diagnostics(groups, budget = 3), "stopped")
+  expect_identical(stop, sp_stopped(2L, 0L, "/a/"))
+  expect_identical(slash_stop_message("split", stop), paste0(
+    "This file has 2 rules whose path ends in '/', such as '/a/'. For each ",
+    "one, the validator checks whether crawlers treat '/a' and '/a/' ",
+    "differently. This file is too large to check them all quickly, so none ",
+    "of them were checked. All 2 were skipped, and some of them may have ",
+    "the same problem."
+  ))
+  # A single rule, none checked.
+  one <- sp_groups("User-agent: Foo\nDisallow: /a/\n")
+  stop <- attr(slash_split_diagnostics(one, budget = 0), "stopped")
+  expect_identical(stop, sp_stopped(1L, 0L, "/a/"))
+  expect_identical(slash_stop_message("split", stop), paste0(
+    "This file has 1 rule whose path ends in '/', such as '/a/'. For each ",
+    "one, the validator checks whether crawlers treat '/a' and '/a/' ",
+    "differently. This file is too large to check it quickly, so it was not ",
+    "checked. It was skipped, and it may have the same problem."
+  ))
+  # The pair check, plural.
+  groups <- sp_groups(paste0("User-agent: *\nDisallow: /a\nDisallow: /a/\n",
+                             "Disallow: /b\nDisallow: /b/\nDisallow: /c\n"))
+  expect_null(attr(slash_pair_diagnostics(groups), "stopped"))
+  stop <- attr(slash_pair_diagnostics(groups, budget = 3), "stopped")
+  expect_identical(stop, sp_stopped(5L, 3L, "/b/"))
+  expect_identical(slash_stop_message("pair", stop), paste0(
+    "This file has 5 rules that may come in pairs like '/b' and '/b/'. For ",
+    "each one, the validator checks whether the same crawlers have both ",
+    "forms. This file is too large to check them all quickly, so only the ",
+    "first 3 were checked, in line order. The other 2 were skipped, and ",
+    "some of them may be part of such a pair."
+  ))
+  # A normal file gets no such row.
+  for (name in names(sp_fixtures)) {
+    expect_false("rule_slash_check_stopped" %in% sp_codes(sp_body(name)),
+                 label = name)
+  }
+})
+
+test_that("ROBO-roypaoox: a file too large for the checks gets the rows", {
+  d <- sp_diag(sp_shape("classes", 250L))
+  stop <- d[d$code == "rule_slash_check_stopped", , drop = FALSE]
+  expect_identical(stop$line, c(NA_integer_, NA_integer_))
+  expect_identical(stop$severity, c("info", "info"))
+  expect_identical(stop$directive, c(NA_character_, NA_character_))
+  expect_identical(stop$raw_text, c(NA_character_, NA_character_))
+  expect_identical(stop$message, c(
+    paste0(
+      "This file has 750 rules that may come in pairs like '/d137' and ",
+      "'/d137/'. For each one, the validator checks whether the same ",
+      "crawlers have both forms. This file is too large to check them all ",
+      "quickly, so only the first 272 were checked, in line order. The other ",
+      "478 were skipped, and some of them may be part of such a pair."
+    ),
+    paste0(
+      "This file has 250 rules whose path ends in '/', such as '/d1/'. For ",
+      "each one, the validator checks whether crawlers treat '/d1' and ",
+      "'/d1/' differently. This file is too large to check them all ",
+      "quickly, so none of them were checked. All 250 were skipped, and some ",
+      "of them may have the same problem."
+    )
+  ))
+})
+
 test_that("ROBO-roypaoox: the checks stay linear on costly shapes", {
   skip_on_cran()
   for (shape in c("gram", "locale", "classes")) {

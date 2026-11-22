@@ -374,7 +374,15 @@ validation_unsupported <- c(
 #'     one row per group of crawlers, on its first User-agent line, listing
 #'     five rules at most, then a count. On a file whose rules and crawlers
 #'     would make the check costly, candidates past a fixed amount of work,
-#'     linear in the file's rules, get no row. \cr
+#'     linear in the file's rules, get no row, and
+#'     \code{rule_slash_check_stopped} says so. \cr
+#'   \code{rule_slash_check_stopped} \tab info \tab
+#'     The file is too large for \code{rule_slash_pair} or
+#'     \code{rule_slash_split} to check every candidate quickly, so the check
+#'     read only the first ones, in line order. The message gives the counts
+#'     found, checked and skipped and names the earliest skipped rule; the
+#'     skipped ones may have the same problem. At most one row per check,
+#'     for the whole file (no line). \cr
 #'   \code{missing_user_agent} \tab error \tab
 #'     Allow or Disallow rules exist but no line names a non-empty
 #'     User-agent. \cr
@@ -767,7 +775,9 @@ validation_unsupported <- c(
 #' `rule_slash_pair`, which a later line cannot undo, but not
 #' `rule_slash_split`, which a later Allow could change. Both checks read
 #' their candidates in line order within a fixed amount of work, linear in
-#' the file's rules and candidates, and a candidate past it gets no row. A
+#' the file's rules and candidates; when a check stops before the last one,
+#' one `rule_slash_check_stopped` row says how many it found, checked and
+#' skipped, and names the earliest skipped rule. A
 #' `User-agent: __usage_ai-training` group gets neither: it states a training
 #' preference, not crawl access.
 #'
@@ -1794,6 +1804,13 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       paste0(found$message, nul_reading)
     )
   }
+  # A check that stopped at its work budget says so, once, for the file.
+  if (!is.null(attr(found, "stopped"))) {
+    add_diagnostic(
+      NA_integer_, "info", "rule_slash_check_stopped", NA_character_,
+      slash_stop_message("pair", attr(found, "stopped"))
+    )
+  }
   # A crawler decides the bare URL `P` and the slash URL `P/` of a literal
   # rule differently (ROBO-roypaoox). A later Allow could change a decision,
   # so a cut body is skipped.
@@ -1807,6 +1824,12 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         vapply(raw_lines[found$line], render_validation_line, "",
                USE.NAMES = FALSE),
         paste0(found$message, nul_reading)
+      )
+    }
+    if (!is.null(attr(found, "stopped"))) {
+      add_diagnostic(
+        NA_integer_, "info", "rule_slash_check_stopped", NA_character_,
+        slash_stop_message("split", attr(found, "stopped"))
       )
     }
   }
@@ -4503,6 +4526,68 @@ slash_within <- function(cost, budget) {
   cumsum(cost) <= budget
 }
 
+# What a check that stopped at its budget reports: `found` candidates (the
+# rules at `at`), the first `checked` of them read in line order, the rest
+# `skipped`, and `value`, the earliest skipped one. NULL when every
+# candidate was read.
+slash_stop <- function(rules, at, checked) {
+  if (checked >= length(at)) {
+    return(NULL)
+  }
+  list(found = length(at), checked = checked,
+       skipped = length(at) - checked,
+       value = rules$value[[at[[checked + 1L]]]])
+}
+
+# The rule_slash_check_stopped row's text, for the split check (`kind`
+# "split") or the pair check ("pair"), in plain words with the file's own
+# counts and its earliest skipped value.
+slash_stop_message <- function(kind, stop) {
+  shown <- slash_shown(stop$value)
+  rules <- if (stop$found == 1L) "1 rule" else sprintf("%d rules", stop$found)
+  intro <- if (kind == "split") {
+    sprintf(paste0(
+      "This file has %s whose path ends in '/', such as '%s'. For each one, ",
+      "the validator checks whether crawlers treat '%s' and '%s' differently."
+    ), rules, shown$slash, shown$bare, shown$slash)
+  } else {
+    sprintf(paste0(
+      "This file has %s that may come in pairs like '%s' and '%s'. For each ",
+      "one, the validator checks whether the same crawlers have both forms."
+    ), rules, shown$bare, shown$slash)
+  }
+  problem <- if (kind == "split") "have the same problem" else
+    "be part of such a pair"
+  paste(intro, slash_stop_counts(stop, problem))
+}
+
+# The counting sentences of slash_stop_message(), singular or plural.
+slash_stop_counts <- function(stop, problem) {
+  them <- if (stop$found == 1L) "it" else "them all"
+  done <- if (stop$checked == 0L && stop$found == 1L) {
+    "it was not checked"
+  } else if (stop$checked == 0L) {
+    "none of them were checked"
+  } else if (stop$checked == 1L) {
+    "only the first was checked, in line order"
+  } else {
+    sprintf("only the first %d were checked, in line order", stop$checked)
+  }
+  rest <- if (stop$checked == 0L && stop$skipped == 1L) {
+    sprintf("It was skipped, and it may %s.", problem)
+  } else if (stop$checked == 0L) {
+    sprintf("All %d were skipped, and some of them may %s.", stop$skipped,
+            problem)
+  } else if (stop$skipped == 1L) {
+    sprintf("The other 1 was skipped, and it may %s.", problem)
+  } else {
+    sprintf("The other %d were skipped, and some of them may %s.",
+            stop$skipped, problem)
+  }
+  sprintf("This file is too large to check %s quickly, so %s. %s", them,
+          done, rest)
+}
+
 # The rows whose owner (an index of `at`) passes `ok` on every row; owners
 # with no row (a group no crawler class reads) never pass.
 slash_every <- function(owner, ok) {
@@ -4522,7 +4607,8 @@ slash_every <- function(owner, ok) {
 # are read in line order, one (candidate, class) row each, while the rows
 # fit `budget` (slash_budget()); later ones get no row: their other form
 # sits on an earlier line, so every line read has what it needs. Returns a
-# data frame of `line`, `type` and `message`, in line order.
+# data frame of `line`, `type` and `message`, in line order; when the
+# budget cut candidates, its "stopped" attribute holds slash_stop()'s counts.
 slash_pair_diagnostics <- function(groups, budget = NULL) {
   groups <- slash_groups(groups)
   rules <- groups$rules
@@ -4534,7 +4620,9 @@ slash_pair_diagnostics <- function(groups, budget = NULL) {
     budget <- slash_budget(rules, at)
   }
   expand <- validation_token_expander(groups, groups$agents$uncut)
-  at <- at[slash_within(slash_class_counts(expand, rules$group[at]), budget)]
+  read <- slash_within(slash_class_counts(expand, rules$group[at]), budget)
+  stop <- slash_stop(rules, at, sum(read))
+  at <- at[read]
   rows <- expand(rules$group[at])
   o <- rows$owner
   line <- rules$line[at]
@@ -4551,7 +4639,7 @@ slash_pair_diagnostics <- function(groups, budget = NULL) {
   lead <- vapply(seq_along(at), function(i) {
     slash_pair_lead(rules$type[[at[[i]]]], sort(unique(earlier[[i]])))
   }, "")
-  slash_rows(
+  found <- slash_rows(
     rules$type[at],
     line = rules$line[at],
     message = paste0(
@@ -4559,6 +4647,8 @@ slash_pair_diagnostics <- function(groups, budget = NULL) {
       slash_crawler_note(groups$agents, rules$group[at])
     )
   )
+  attr(found, "stopped") <- stop
+  found
 }
 
 slash_rows <- function(type, line = integer(), message = character(),
@@ -4645,7 +4735,8 @@ slash_crawler_note <- function(agents, group) {
 # change a decision. The readings share `budget` (slash_budget()): each
 # reads candidates in line order while its (candidate, class) rows and
 # witness body lines fit what is left, and a candidate past it gets no row.
-# Returns slash_rows() with a `directive` column.
+# Returns slash_rows() with a `directive` column; when the budget cut
+# candidates, its "stopped" attribute holds slash_stop()'s counts.
 slash_split_diagnostics <- function(groups, written = NULL, budget = NULL) {
   groups <- slash_groups(groups)
   rules <- groups$rules
@@ -4663,10 +4754,12 @@ slash_split_diagnostics <- function(groups, written = NULL, budget = NULL) {
     keys <- c(keys, list(agents$key))
   }
   reads <- list()
+  checked <- length(at)
   for (key in keys) {
     read <- slash_split_reading(groups, at, key, written, budget)
     budget <- budget - read$spent
     reads <- c(reads, list(read$line))
+    checked <- min(checked, read$read)
   }
   bare_line <- reads[[1L]]
   for (other in reads[-1L]) {
@@ -4674,7 +4767,10 @@ slash_split_diagnostics <- function(groups, written = NULL, budget = NULL) {
     bare_line[!agree] <- NA_integer_
   }
   found <- !is.na(bare_line)
-  slash_split_rows(groups, at[found], bare_line[found])
+  out <- slash_split_rows(groups, at[found], bare_line[found])
+  # A candidate is checked when every reading read it.
+  attr(out, "stopped") <- slash_stop(rules, at, checked)
+  out
 }
 
 # For each candidate in `at` (indexes of `groups$rules`, values `P/`), the
@@ -4687,7 +4783,8 @@ slash_split_diagnostics <- function(groups, written = NULL, budget = NULL) {
 # the whole group. One batch call reads every row. Candidates are read in
 # line order while their rows and the rules of their classes
 # (slash_read_plan()), then their body lines, fit `budget`; the rest stay
-# NA. Returns list(line, spent), `spent` the work done.
+# NA. Returns list(line, spent, read): `spent` the work done, `read` how
+# many leading candidates were read whole.
 slash_split_reading <- function(groups, at, key, written = NULL,
                                 budget = Inf) {
   rules <- groups$rules
@@ -4700,7 +4797,7 @@ slash_split_reading <- function(groups, at, key, written = NULL,
   spent <- plan$spent
   rows <- expand(rules$group[at[seq_len(plan$n)]])
   if (length(rows$owner) == 0L) {
-    return(list(line = out, spent = spent))
+    return(list(line = out, spent = spent, read = plan$n))
   }
   value <- rules$value[at][rows$owner]
   held <- list(rule = live[plan$held$owner], class = plan$held$class)
@@ -4708,8 +4805,17 @@ slash_split_reading <- function(groups, at, key, written = NULL,
                              rows$owner, budget - spent)
   spent <- spent + body$spent
   kept <- seq_len(body$rows)
+  # Whole candidates only: all of the plan's, or those up to the last owner
+  # kept (candidates before the first owner name no class).
+  read_n <- if (body$rows == length(rows$owner)) {
+    plan$n
+  } else if (body$rows == 0L) {
+    rows$owner[[1L]] - 1L
+  } else {
+    rows$owner[[body$rows]]
+  }
   if (length(kept) == 0L) {
-    return(list(line = out, spent = spent))
+    return(list(line = out, spent = spent, read = read_n))
   }
   rows <- lapply(rows, `[`, kept)
   value <- value[kept]
@@ -4732,7 +4838,7 @@ slash_split_reading <- function(groups, at, key, written = NULL,
   hit <- intersect(slash_every(rows$owner, ok),
                    as.integer(names(same)[same]))
   out[hit] <- bare_line[match(hit, rows$owner)]
-  list(line = out, spent = spent)
+  list(line = out, spent = spent, read = read_n)
 }
 
 # How many candidates (their groups `cand_group`, in line order) one
