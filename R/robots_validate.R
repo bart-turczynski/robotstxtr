@@ -4183,13 +4183,13 @@ query_parameter_position_diagnostics <- function(groups, skip = integer(),
 # and `=`. So a `*` between that `?` and the `=` (`/*?*sort=`), a first `?`
 # with no `name=` after it (`/p?`, `/items*?`) and a later `?`
 # (`/items?back=?sort=`) do not make a candidate; a `?` after the `=` does
-# not matter (`/p?q=?` and `/p?q=*?` are candidates). A value
-# whose path before the first `?` holds a `.` or `..` segment, literal or
-# escaped as `%2E` in either case, wherever it sits (after a `*` too), is
+# not matter (`/p?q=?` and `/p?q=*?` are candidates). A value whose path
+# before the first `?` holds a `.` or `..` segment, literal or escaped as
+# `%2E` (written in either case), wherever it sits (after a `*` too), is
 # skipped: URL normalization removes such a segment from the control path
-# before matching (rule_dot_segment, ROBO-rnjfbhvn, reports the literal ones
-# outside a `*`). Two regexes with no nested quantifier keep the cost linear
-# (ROBO-dbvmxcfw).
+# before matching (rule_dot_segment, ROBO-rnjfbhvn, reports the literal
+# ones outside a `*`). Single passes with no nested quantifier keep the
+# cost linear (ROBO-dbvmxcfw).
 query_parameter_candidates <- function(rules, skip) {
   value <- rules$value
   hit <- which(
@@ -4197,10 +4197,11 @@ query_parameter_candidates <- function(rules, skip) {
       grepl("^[^?]*[?][A-Za-z0-9_.-]+=", value, useBytes = TRUE) &
       !rules$line %in% skip
   )
-  # The path before the first `?`.
+  # The path before the first `?`. The canonical value upper-cases every
+  # escape, so a written `%2e` reads `%2E` here and one case is enough.
   path <- substr(value[hit], 1L,
                  regexpr("?", value[hit], fixed = TRUE, useBytes = TRUE) - 1L)
-  dot <- grepl("/([.]|%2[Ee]){1,2}(/|$)", path, useBytes = TRUE)
+  dot <- grepl("/([.]|%2E){1,2}(/|$)", path, useBytes = TRUE)
   hit[!dot]
 }
 
