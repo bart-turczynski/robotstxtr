@@ -252,3 +252,596 @@ test_that("ROBO-micbpqbc: every backend decides the control and witness", {
     }
   }
 })
+
+# The lines of each fixture's new rows; a fixture not named gets none.
+ar_rows <- list(
+  positive = 1L, global = 1L, slash_led = 1L, stars = 1L, star_dollar = 1L,
+  wild_disallow = 1L, cause_short = 1L, two_cause = 1L, decider = 1L,
+  fourth = 1L, tie = 1L, ai_anchor = 2L, adsbot = 1L, repeated = 1L,
+  seven = 1L, two_crawlers = 1L, overlap = 1L
+)
+
+test_that("ROBO-micbpqbc: each fixture's new rows are all the change", {
+  expect_true(all(names(ar_rows) %in% names(ar_fixtures)))
+  for (name in names(ar_fixtures)) {
+    d <- ar_diag(ar_body(name))
+    rows <- ar_rows[[name]]
+    if (is.null(rows)) {
+      rows <- integer(0)
+    }
+    # The check's rows come after every row the file had before.
+    expect_identical(d$code, c(ar_fixtures[[name]]$today,
+                               rep(ar_code, length(rows))), label = name)
+    expect_identical(d$line[d$code == ar_code], rows, label = name)
+  }
+})
+
+ar_why <- paste0(" An Allow that opens with '*' or '/*' matches any text ",
+                 "before the path it names, a URL's query included, so the ",
+                 "site may not mean to allow such URLs.")
+
+# The row of one Allow on line `line` (`value`) whose witness is `control`,
+# `?q=` and `literal`, `decider` the line deciding the control.
+ar_one <- function(line, value, control, literal, decider, others = "") {
+  witness <- paste0(control, "?q=", literal)
+  sprintf(paste0(
+    "The Allow on line %d ('%s') also matches inside a query: it allows ",
+    "'%s', while the Disallow on line %d blocks '%s'. Without this ",
+    "Allow%s, '%s' would be blocked.%s"
+  ), line, value, witness, decider, control, others, witness, ar_why)
+}
+
+ar_item <- function(line, value, control, literal, decider) {
+  sprintf("line %d ('%s') allows '%s?q=%s' while line %d blocks '%s'", line,
+          value, control, literal, decider, control)
+}
+
+ar_list <- function(listed) {
+  paste0("These Allows also match inside a query, each allowing a URL with ",
+         "a query while a Disallow blocks the URL without it: ", listed,
+         ". Without these Allows and any other Allows that open with '*' ",
+         "or '/*', those URLs would be blocked.", ar_why)
+}
+
+ar_note <- function(names) {
+  sprintf(" This holds for every crawler the group names: %s.", names)
+}
+
+ar_nul <- paste0(" This is Google's reading, which ends each line at its ",
+                 "first NUL; Bing and Yandex read the NUL as an ordinary ",
+                 "byte.")
+
+ar_sitemap <- function(line = 3L, decider = 2L, control = "/my/",
+                       value = "*/sitemap_output/") {
+  ar_one(line, value, control, "/sitemap_output/", decider)
+}
+
+test_that("ROBO-micbpqbc: one info row on the group's User-agent line", {
+  x <- robots_validate_text(ar_body("global"))
+  d <- x$diagnostics[x$diagnostics$code == ar_code, , drop = FALSE]
+  expect_identical(d$severity, "info")
+  expect_identical(d$directive, "user-agent")
+  expect_identical(d$raw_text, "User-agent: *")
+  expect_identical(d$message, ar_sitemap())
+  expect_identical(x$documents$validation_status, "valid")
+  # No security, error or indexing wording; "may" where the site decides.
+  expect_false(grepl("secur|error|index|bypass|broken", d$message))
+  expect_match(d$message, "the site may not mean", fixed = TRUE)
+  m <- function(name) {
+    d <- ar_diag(ar_body(name))
+    d$message[d$code == ar_code]
+  }
+  expect_identical(m("slash_led"), ar_sitemap(value = "/*/sitemap_output/"))
+  # A run of `*` and a final `$` leave the literal; a `*`-led Disallow is
+  # written `x`.
+  expect_identical(m("stars"), ar_one(3L, "/**/x$", "/my", "/x", 2L))
+  expect_identical(m("star_dollar"), ar_one(3L, "*/x/$", "/my", "/x/", 2L))
+  expect_identical(m("wild_disallow"), ar_sitemap(control = "/x/my/"))
+  # Ties go to the Allow; a `?` in the literal stays as written.
+  expect_identical(m("tie"), ar_one(3L, "*/ss/", "/abc/", "/ss/", 2L))
+  expect_identical(m("overlap"), ar_one(3L, "*/x?p=", "/my/", "/x?p=", 2L))
+  expect_identical(m("two_crawlers"), paste0(
+    ar_one(4L, "*/sx/", "/my/", "/sx/", 3L), ar_note("'Foo' and 'Bar'")
+  ))
+})
+
+test_that("ROBO-micbpqbc: the row names the line deciding the control", {
+  # `/my/$` is longer than `/my/` and decides the control; it is no control
+  # itself (a final `$`).
+  d <- ar_diag(ar_body("decider"))
+  expect_identical(d$message, ar_sitemap(4L, 3L))
+  # Three Disallows fail and the fourth proves: every pair is read.
+  d <- ar_diag(ar_body("fourth"))
+  expect_identical(d$message[d$code == ar_code],
+                   ar_sitemap(9L, 5L, "/d/"))
+})
+
+test_that("ROBO-micbpqbc: the removal read leaves out every shape-A Allow", {
+  # Each Allow alone, and both: the longer one also matches the shorter
+  # one's witness, and both are listed.
+  expect_identical(ar_diag(ar_body("positive"))$message[[2L]], ar_sitemap())
+  expect_identical(ar_diag(ar_body("cause_short"))$message[[2L]],
+                   ar_one(3L, "*/output/", "/my/", "/output/", 2L))
+  expect_identical(ar_diag(ar_body("two_cause"))$message[[2L]], ar_list(
+    paste0(ar_item(3L, "*/sitemap_output/", "/my/", "/sitemap_output/", 2L),
+           " and ", ar_item(4L, "*/output/", "/my/", "/output/", 2L))
+  ))
+  # `*/b/` opens `/my/?q=/a/b/` too, but gets no row of its own: the
+  # `/*q=/b/` Disallow blocks its own witness. The row names it as left out
+  # with the Allow; without it left out, `*/b/` would keep the witness
+  # open.
+  d <- ar_diag(paste0("User-agent: Foo\nDisallow: /my/\nAllow: */a/b/\n",
+                      "Allow: */b/\nDisallow: /*q=/b/\n"))
+  expect_identical(d$message[d$code == ar_code], ar_one(
+    3L, "*/a/b/", "/my/", "/a/b/", 2L,
+    " and the other Allow that opens with '*' or '/*' (line 4)"
+  ))
+  # An Allow of another shape opens the witness: no row.
+  expect_false(ar_code %in% ar_codes(ar_body("non_a_opener")))
+  # Others are listed, five at most, then a count.
+  d <- ar_diag(paste0("User-agent: Foo\nDisallow: /abcdefgh/\n",
+                      "Allow: */a_long_name/\n",
+                      paste0("Allow: */", letters[1:7], "/\n",
+                             collapse = "")))
+  expect_identical(d$message[d$code == ar_code], ar_one(
+    3L, "*/a_long_name/", "/abcdefgh/", "/a_long_name/", 2L,
+    paste0(" and the other Allows that open with '*' or '/*' (lines 4, 5, ",
+           "6, 7, 8 and 2 more)")
+  ))
+  for (backend in names(ar_engines)) {
+    body <- paste0("User-agent: %s\nDisallow: /my/\nAllow: */a/b/\n",
+                   "Allow: */b/\nDisallow: /*q=/b/\n")
+    expect_identical(ar_decide(body, c("/my/", "/my/?q=/a/b/", "/my/?q=/b/"),
+                               backend),
+                     c(ar_opened, "disallow"), label = backend)
+    # A tie of pattern lengths, which the package's Yandex matcher gives
+    # the Disallow.
+    expect_identical(
+      ar_decide("User-agent: %s\nDisallow: /my/\nAllow: */b/\n",
+                c("/my/", "/my/?q=/a/b/"), backend),
+      if (backend == "yandex") ar_closed else ar_opened, label = backend
+    )
+  }
+})
+
+test_that("ROBO-micbpqbc: rows group by crawler set, five Allows listed", {
+  d <- ar_diag(ar_body("seven"))
+  listed <- vapply(1:5, function(i) {
+    v <- paste0("/", letters[i], "x/")
+    ar_item(i + 2L, paste0("*", v), "/my/", v, 2L)
+  }, "")
+  expect_identical(d$message[d$code == ar_code], ar_list(paste0(
+    paste(listed[1:4], collapse = ", "), ", ", listed[[5L]], " and 2 more"
+  )))
+  # Merged repeated groups give one row.
+  d <- ar_diag(ar_body("repeated"))
+  expect_identical(d$message[d$code == ar_code], ar_list(paste0(
+    ar_item(3L, "*/a/", "/my/", "/a/", 2L), " and ",
+    ar_item(6L, "*/b/", "/my/", "/b/", 2L)
+  )))
+  # The AI-training token's group gets no row; the row sits on the first
+  # User-agent line the check reads.
+  expect_identical(ar_codes(ar_body("ai")), "ai_training_preference")
+  d <- ar_diag(ar_body("ai_anchor"))
+  expect_identical(d$raw_text[d$code == ar_code], "User-agent: Foo")
+  # A crawler that ignores `*` is judged on its own group.
+  d <- ar_diag(ar_body("adsbot"))
+  expect_identical(d$line[d$code == ar_code], 1L)
+})
+
+# The reading of each merge, as the shared reader gives it.
+ar_groups <- function(body) {
+  if (is.character(body)) {
+    body <- charToRaw(body)
+  }
+  validation_groups(as.data.frame(robotstxtr_validation_parse_(body),
+                                  stringsAsFactors = FALSE))
+}
+
+ar_ok <- function(body, key) {
+  groups <- ar_groups(body)
+  at <- reopen_shape(groups$rules)[[1L]]
+  witness_pair_reading(groups, at, groups$agents[[key]], "/my/",
+                       "/my/?q=/s/", "long")$ok
+}
+
+test_that("ROBO-micbpqbc: every class on both merges must agree", {
+  # `B` blocks the witness with a longer rule, or opens it with an Allow
+  # of another shape: no row for the group naming A and B.
+  shared <- "User-agent: A\nUser-agent: B\nDisallow: /my/\nAllow: */s/\n"
+  expect_identical(ar_codes(shared), c(ar_split, ar_code))
+  for (rule in c("Disallow: /my/?q=", "Allow: /my/?")) {
+    body <- paste0(shared, "\nUser-agent: B\n", rule, "\n")
+    expect_false(ar_code %in% ar_codes(body), label = rule)
+  }
+  # Google's merge reads `Foo web` and `Foo blog` as one crawler; the
+  # whole-value merge keeps them apart.
+  fails <- paste0("User-agent: Foo web\nDisallow: /my/\nAllow: */s/\n\n",
+                  "User-agent: Foo blog\nDisallow: /my/?q=\n")
+  expect_true(ar_ok(fails, "uncut"))
+  expect_false(ar_ok(fails, "key"))
+  expect_false(ar_code %in% ar_codes(fails))
+  both <- paste0("User-agent: Foo web\nDisallow: /my/\nAllow: */s/\n\n",
+                 "User-agent: Foo blog\nDisallow: /b\n")
+  expect_true(ar_ok(both, "uncut"))
+  expect_true(ar_ok(both, "key"))
+  expect_true(ar_code %in% ar_codes(both))
+  # A Disallow only another crawler has is no control for this one.
+  expect_false(ar_code %in% ar_codes(ar_body("cross_group")))
+  expect_false(ar_code %in% ar_codes(ar_body("star_group")))
+})
+
+test_that("ROBO-micbpqbc: the scans make each exclusion", {
+  shape <- c("*/x/", "/*/x/", "/**/x$", "*/x/$", "**/a", "*/x?p=", "/*/a*b")
+  not_shape <- c("/*/", "/*/$", "*/", "/*.css", "*?next=", "/my/*x", "/x/*/y",
+                 "*", "/*", "*/$", "x*/y")
+  groups <- ar_groups(paste0("User-agent: *\n",
+                             paste0("Allow: ", c(shape, not_shape), "\n",
+                                    collapse = ""),
+                             "Allow:\nDisallow: */x/\n"))
+  expect_identical(groups$rules$value[seq_along(shape)], shape)
+  expect_identical(reopen_shape(groups$rules), seq_along(shape))
+  expect_identical(reopen_literal(shape),
+                   c("/x/", "/x/", "/x", "/x/", "/a", "/x?p=", "/axb"))
+  controls <- c("/a", "/a/", "*/b", "/a*b", "/a%41", "/a.b", "/a/x..")
+  misses <- c("/a?", "/a/$", "/a$", "/a/./", "/a/..", "/a/%2E/", "/a%4",
+              "/a%", "x", "")
+  groups <- ar_groups(paste0("User-agent: *\n",
+                             paste0("Disallow: ", c(controls, misses), "\n",
+                                    collapse = ""),
+                             "Allow: /a/\n"))
+  found <- reopen_controls(groups$rules)
+  expect_identical(found$at, seq_along(controls))
+  expect_identical(found$control,
+                   c("/a", "/a/", "/x/b", "/axb", "/a%41", "/a.b", "/a/x.."))
+  # The URL-safety scan, shared with rule_end_anchor_query.
+  expect_identical(
+    url_safe_path(c("/a", "/a b", "/a", "/a", "/a", "/a"),
+                  c("/a", "/a b", "/a/./", "/a/%2e%2E", "/a%4", "/a%41")),
+    c(TRUE, FALSE, FALSE, TRUE, FALSE, TRUE)
+  )
+  # No shape-A Allow: an empty frame before any expander is built.
+  local({
+    local_mocked_bindings(validation_token_expander = function(...) {
+      stop("expander built")
+    })
+    found <- allow_reopens_diagnostics(ar_groups(
+      "User-agent: *\nDisallow: /a/\nAllow: /a/b\n"
+    ))
+    expect_identical(nrow(found), 0L)
+    expect_named(found, c("line", "type", "message", "directive"))
+    # Shape-A Allows but no control: no pair, and no expander either.
+    found <- allow_reopens_diagnostics(ar_groups(
+      "User-agent: *\nDisallow: /a$\nDisallow: /*?b=\nAllow: */c/\n"
+    ))
+    expect_identical(nrow(found), 0L)
+    expect_null(attr(found, "stopped"))
+  })
+})
+
+# Bytes no URL a crawler sends carries, built in code inside an Allow and a
+# Disallow.
+ar_odd_bytes <- list(space = as.raw(0x20), tab = as.raw(0x09),
+                     control = as.raw(0x01), del = as.raw(0x7f))
+
+test_that("ROBO-micbpqbc: a value no URL carries gets no row", {
+  for (name in names(ar_odd_bytes)) {
+    byte <- ar_odd_bytes[[name]]
+    allow <- c(charToRaw("User-agent: *\nDisallow: /my/\nAllow: */a"), byte,
+               charToRaw("b/\n"))
+    disallow <- c(charToRaw("User-agent: *\nDisallow: /a"), byte,
+                  charToRaw("b/\nAllow: */s/\n"))
+    expect_false(ar_code %in% ar_codes(allow), label = name)
+    expect_false(ar_code %in% ar_codes(disallow), label = name)
+  }
+  for (name in c("dot_disallow", "dot_allow", "dot_escaped_allow",
+                 "stray_disallow", "stray_allow")) {
+    expect_false(ar_code %in% ar_codes(ar_body(name)), label = name)
+  }
+})
+
+# A body cut at max_bytes, whose cut line could have decided the witness.
+ar_cut_text <- paste0("User-agent: *\nDisallow: /my/\nAllow: */s/\n",
+                      "Disallow: /later-", strrep("x", 200L), "\n")
+
+test_that("ROBO-micbpqbc: a cut body is skipped, a NUL body is Google's", {
+  body <- charToRaw(ar_cut_text)[seq_len(45L)]
+  x <- validate_document_bytes(body, "s", "supplied", max_bytes = 45L,
+                               body_truncated = TRUE)
+  expect_false(ar_code %in% x$diagnostics$code)
+  # The same bytes, not marked cut, get the row.
+  x <- validate_document_bytes(body, "s", "supplied")
+  expect_identical(x$diagnostics$message[x$diagnostics$code == ar_code],
+                   ar_one(3L, "*/s/", "/my/", "/s/", 2L))
+  # An Allow and a Disallow a NUL cuts take part as Google cuts them, and
+  # the row says it is Google's reading. Not testable on Bing and Yandex:
+  # the evaluator takes a string, which cannot hold the NUL.
+  allow <- c(charToRaw("User-agent: *\nDisallow: /my/\nAllow: */s/"),
+             as.raw(0), charToRaw("zz\n"))
+  d <- ar_diag(allow)
+  expect_identical(d$code, c("nul_byte", "rule_cut_by_nul", ar_split, ar_code))
+  expect_identical(d$message[[4L]],
+                   paste0(ar_one(3L, "*/s/", "/my/", "/s/", 2L), ar_nul))
+  disallow <- c(charToRaw("User-agent: *\nDisallow: /my/"), as.raw(0),
+                charToRaw("zz\nAllow: */s/\n"))
+  d <- ar_diag(disallow)
+  expect_identical(d$message[d$code == ar_code],
+                   paste0(ar_one(3L, "*/s/", "/my/", "/s/", 2L), ar_nul))
+  # The length filter reads the Allow as Google cuts it: `*/s/` is shorter
+  # than `/abcde/`, whatever the NUL cuts off.
+  short <- c(charToRaw("User-agent: *\nDisallow: /abcde/\nAllow: */s/"),
+             as.raw(0), charToRaw(strrep("z", 20L)), charToRaw("\n"))
+  expect_false(ar_code %in% ar_codes(short))
+})
+
+test_that("ROBO-micbpqbc: the length filter changes no row", {
+  # A tie gives a row, one byte shorter none, with the filter on or off.
+  for (filter in c(TRUE, FALSE)) {
+    found <- allow_reopens_diagnostics(ar_groups(ar_body("tie")),
+                                       filter = filter)
+    expect_identical(found$line, 1L, label = filter)
+    found <- allow_reopens_diagnostics(ar_groups(ar_body("shorter")),
+                                       filter = filter)
+    expect_identical(nrow(found), 0L, label = filter)
+  }
+  # Seeded synthetic files: the same rows with the filter on and off.
+  disallows <- c("/a/", "/ab/", "/abc/", "/a", "/*/a/", "/b/x/", "/abcdefg/",
+                 "/a/?q=/b/", "/a/$", "/b/")
+  allows <- c("*/b/", "*/ab/", "/*/b/x/", "*/abc/$", "*/b", "/a/?", "*/a/b/",
+              "/**/bb/", "/b/")
+  agents <- c("*", "Foo", "Bar", "Foo web")
+  set.seed(20261122)
+  rows <- 0L
+  for (i in 1:40) {
+    body <- paste(vapply(1:3, function(g) {
+      ua <- paste0("User-agent: ", sample(agents, sample(1:2, 1L)), "\n",
+                   collapse = "")
+      rules <- c(paste0("Disallow: ", sample(disallows, 3L)),
+                 paste0("Allow: ", sample(allows, 2L)))
+      paste0(ua, paste0(sample(rules), "\n", collapse = ""))
+    }, ""), collapse = "\n")
+    groups <- ar_groups(body)
+    on <- allow_reopens_diagnostics(groups, budget = Inf)
+    off <- allow_reopens_diagnostics(groups, budget = Inf, filter = FALSE)
+    expect_identical(on, off, label = body)
+    rows <- rows + nrow(on)
+  }
+  # The files do report: the comparison is not vacuous.
+  expect_gt(rows, 10L)
+})
+
+# The counts a check that stopped hands out, as slash_stop() builds them.
+ar_stopped <- function(found, checked, value) {
+  list(found = found, checked = checked, skipped = found - checked,
+       value = value)
+}
+
+ar_stop_text <- function(found, value, done) {
+  rules <- if (found == 1L) {
+    "1 Allow rule that opens with '*' or '/*' and then names a path"
+  } else {
+    sprintf("%d Allow rules that open with '*' or '/*' and then name a path",
+            found)
+  }
+  paste0(
+    "This file has ", rules, ", such as '", value, "'. For each one, the ",
+    "validator checks whether it also matches inside a URL's query and so ",
+    "allows a URL that a Disallow blocks without the query. This file is ",
+    "too large to check ", done
+  )
+}
+
+test_that("ROBO-micbpqbc: Allows past the work budget get no row", {
+  # The pair list counts 2 (a group and a Disallow gathered) and 3 (one
+  # row and two body lines) against the first reading's half; the first
+  # reading costs 5 (a row, the class's two rules, two body lines), and the
+  # removal read 3 of the rest.
+  groups <- ar_groups("User-agent: Foo\nDisallow: /my/\nAllow: */s/\n")
+  for (budget in list(NULL, 10)) {
+    found <- allow_reopens_diagnostics(groups, budget = budget)
+    expect_identical(found$line, 1L)
+    expect_null(attr(found, "stopped"))
+  }
+  found <- allow_reopens_diagnostics(groups, budget = 9)
+  expect_identical(nrow(found), 0L)
+  stop <- attr(found, "stopped")
+  expect_identical(stop, ar_stopped(1L, 0L, "*/s/"))
+  expect_identical(slash_stop_message("allow_reopen", stop), paste0(
+    ar_stop_text(1L, "*/s/", "it quickly, so it was not checked."),
+    " It was skipped, and it may do the same."
+  ))
+  # Allows are checked in line order: the second runs out.
+  groups <- ar_groups("User-agent: Foo\nDisallow: /my/\nAllow: */s/\nAllow: */t/\n")
+  found <- allow_reopens_diagnostics(groups, budget = 12)
+  expect_identical(found$message, ar_one(
+    3L, "*/s/", "/my/", "/s/", 2L,
+    " and the other Allow that opens with '*' or '/*' (line 4)"
+  ))
+  stop <- attr(found, "stopped")
+  expect_identical(stop, ar_stopped(2L, 1L, "*/t/"))
+  expect_identical(slash_stop_message("allow_reopen", stop), paste0(
+    ar_stop_text(2L, "*/t/", paste0(
+      "them all quickly, so only the first was checked, in line order."
+    )),
+    " The other 1 was skipped, and it may do the same."
+  ))
+  # The removal read reads the decider's crawlers, here three classes, at
+  # 11: from 12 the pair list (6) and the first reading (5) fit their half,
+  # the removal read runs out, and the Allow is not checked.
+  groups <- ar_groups(paste0("User-agent: Foo\nUser-agent: Bar\n",
+                             "User-agent: Baz\nDisallow: /my/\n\n",
+                             "User-agent: Foo\nAllow: */s/\n\n",
+                             "User-agent: Bar\nDisallow: /zz?\n\n",
+                             "User-agent: Baz\nDisallow: /zz?\n"))
+  for (budget in c(12, 15)) {
+    found <- allow_reopens_diagnostics(groups, budget = budget)
+    expect_identical(nrow(found), 0L, label = budget)
+    expect_identical(attr(found, "stopped"), ar_stopped(1L, 0L, "*/s/"))
+  }
+  found <- allow_reopens_diagnostics(groups, budget = 16)
+  expect_identical(found$line, 6L)
+  expect_null(attr(found, "stopped"))
+  # A normal file gets no such row.
+  for (name in names(ar_fixtures)) {
+    expect_false("rule_check_stopped" %in% ar_codes(ar_body(name)),
+                 label = name)
+  }
+})
+
+# Shapes where the pairs alone would grow with Disallows times Allows:
+# `n` Disallows and `n` long shape-A Allows in one group, whose literals
+# share a gram with every witness (`cross`), Allows named like the
+# Disallows (`gram`), one group naming `n` crawlers that each have a group
+# of their own (`classes`), and pairs in one group beside a cut value, so
+# both merges are read (`cut`).
+ar_shape <- function(shape, n) {
+  k <- seq_len(n)
+  switch(
+    shape,
+    cross = paste0("User-agent: *\n",
+                   paste0("Disallow: /d", k, "/\n", collapse = ""),
+                   paste0("Allow: */aaaaaa", k, "/\n", collapse = "")),
+    gram = paste0("User-agent: *\n",
+                  paste0("Disallow: /page", k, "/\n", collapse = ""),
+                  paste0("Allow: */page", k, "x/\n", collapse = "")),
+    classes = paste0(paste0("User-agent: bot", k, "\n", collapse = ""),
+                     paste0("Allow: */a", k, "x/\nDisallow: /d", k, "/\n",
+                            collapse = ""), "\n",
+                     paste0("User-agent: bot", k, "\nDisallow: /z", k, "\n",
+                            collapse = "\n")),
+    cut = paste0("User-agent: *\n",
+                 paste0("Disallow: /d", k, "/\nAllow: */a", k, "x/\n",
+                        collapse = ""),
+                 "\nUser-agent: Foo web\nDisallow: /g/\nAllow: */gx/\n")
+  )
+}
+
+test_that("ROBO-micbpqbc: a file too large for the check gets the row", {
+  d <- ar_diag(ar_shape("cross", 100L))
+  stop <- d[d$code == "rule_check_stopped", , drop = FALSE]
+  expect_identical(stop$line, NA_integer_)
+  expect_identical(stop$severity, "info")
+  expect_identical(stop$directive, NA_character_)
+  expect_identical(stop$message, paste0(
+    ar_stop_text(100L, "*/aaaaaa2/", paste0(
+      "them all quickly, so only the first was checked, in line order."
+    )),
+    " The other 99 were skipped, and some of them may do the same."
+  ))
+  # The first Allow keeps its row; none past it.
+  expect_identical(d$line[d$code == ar_code], 1L)
+  expect_match(d$message[d$code == ar_code],
+               "The Allow on line 102 ('*/aaaaaa1/')", fixed = TRUE)
+})
+
+# Best of five runs, so a loaded machine cannot fail the ratio
+# (test-cut-note-zqyqbudf.R).
+ar_best <- function(expr_fn) {
+  min(vapply(1:5, function(i) system.time(expr_fn())[["elapsed"]], 0))
+}
+
+ar_time_check <- function(body) {
+  groups <- ar_groups(body)
+  ar_best(function() allow_reopens_diagnostics(groups))
+}
+
+test_that("ROBO-micbpqbc: the check stays linear on costly shapes", {
+  skip_on_cran()
+  # Each shape stops at the budget rather than growing.
+  for (shape in c("cross", "gram", "classes", "cut")) {
+    found <- allow_reopens_diagnostics(ar_groups(ar_shape(shape, 400L)))
+    expect_false(is.null(attr(found, "stopped")), label = shape)
+  }
+  for (shape in c("cross", "gram", "classes", "cut")) {
+    small <- ar_time_check(ar_shape(shape, 100L))
+    large <- ar_time_check(ar_shape(shape, 400L))
+    expect_lt(large, 8 * max(small, 0.05), label = shape)
+  }
+  # The whole validator too.
+  small <- ar_best(function() robots_validate_text(ar_shape("cross", 100L)))
+  large <- ar_best(function() robots_validate_text(ar_shape("cross", 400L)))
+  expect_lt(large, 8 * max(small, 0.05))
+})
+
+# Sets the locale categories for the calling test, restored on exit; skips
+# when one is not installed (as pt_local_locale() in
+# test-product-token-grammar-mtmkpwuf.R).
+ar_local_locale <- function(locale, env = parent.frame()) {
+  for (category in c("LC_CTYPE", "LC_COLLATE")) {
+    old <- Sys.getlocale(category)
+    do.call(base::on.exit,
+            list(bquote(Sys.setlocale(.(category), .(old))), TRUE, FALSE),
+            envir = env)
+    set <- suppressWarnings(Sys.setlocale(category, locale))
+    if (!nzchar(set)) {
+      testthat::skip(sprintf("locale %s is not installed", locale))
+    }
+  }
+}
+
+# A latin1 byte, a UTF-8 character and an invalid UTF-8 lead byte in the
+# Allow's literal, and an upper-case `I` in the values and the crawler
+# token, which tr_TR.UTF-8 folds otherwise.
+ar_edge <- function() {
+  for (byte in list(as.raw(0xe9), as.raw(c(0xc3, 0xa9)), as.raw(0xc3))) {
+    body <- c(charToRaw("User-agent: *\nDisallow: /my/\nAllow: */caf"), byte,
+              charToRaw("/\n"))
+    escaped <- paste0("/caf", paste(sprintf("%%%02X", as.integer(byte)),
+                                    collapse = ""), "/")
+    d <- ar_diag(body)
+    expect_identical(d$message[d$code == ar_code],
+                     ar_one(3L, paste0("*", escaped), "/my/", escaped, 2L))
+  }
+  d <- ar_diag(paste0("User-agent: IndexBot\nDisallow: /INFO/\n",
+                      "Allow: */IMAGES/\n\nUser-agent: indexbot\n",
+                      "Allow: /x\n"))
+  expect_identical(d$message[d$code == ar_code],
+                   ar_one(3L, "*/IMAGES/", "/INFO/", "/IMAGES/", 2L))
+}
+
+test_that("ROBO-micbpqbc: edge inputs in the session's locale", {
+  ar_edge()
+  # Google's matcher compares the escaped witness; the package's Bing and
+  # Yandex matchers compare the byte as written.
+  body <- "User-agent: %s\nDisallow: /my/\nAllow: */café/\n"
+  expect_identical(ar_decide(body, c("/my/", "/my/?q=/caf%C3%A9/"), "google"),
+                   ar_opened)
+  for (backend in c("bing", "yandex")) {
+    expect_identical(ar_decide(body, c("/my/", "/my/?q=/café/"),
+                               backend), ar_opened, label = backend)
+  }
+  # Empty values give no pair.
+  expect_false(ar_code %in% ar_codes(ar_body("empty_allow")))
+  expect_false(ar_code %in% ar_codes("User-agent: *\nDisallow:\nAllow: */s/\n"))
+  expect_identical(ar_codes(""), "no_rules")
+})
+
+for (locale in c("C", "en_US.UTF-8", "tr_TR.UTF-8")) {
+  test_that(paste("ROBO-micbpqbc: edge inputs under", locale), {
+    ar_local_locale(locale)
+    ar_edge()
+  })
+}
+
+test_that("ROBO-micbpqbc: a rule at the line buffer keeps its row", {
+  # `Allow:` and no space fill the 16,663-byte line buffer: a witness line
+  # written `Allow: ` would lose the final `/`.
+  long <- strrep("a", 16663L - nchar("Allow:*//"))
+  d <- ar_diag(sprintf("User-agent: *\nDisallow: /my/\nAllow:*/%s/\n", long))
+  value <- paste0("*/", strrep("a", 34L), "...")
+  literal <- paste0("/", strrep("a", 35L), "...")
+  expect_identical(d$message[d$code == ar_code],
+                   ar_one(3L, value, "/my/", literal, 2L))
+  expect_lt(nchar(d$message[d$code == ar_code]), 500L)
+})
+
+test_that("ROBO-micbpqbc: robots_validate_url() gives the same rows", {
+  local_fake_ssrfr(function(req) {
+    fake_response(200L, url = req$url, body = ar_body("global"))
+  })
+  x <- robots_validate_url("https://e.example/page")
+  d <- x$diagnostics
+  expect_identical(d$code, c(ar_split, ar_code))
+  expect_identical(d$message, ar_diag(ar_body("global"))$message)
+  expect_identical(x$documents$validation_status, "valid")
+})
