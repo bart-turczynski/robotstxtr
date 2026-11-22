@@ -27,14 +27,18 @@ sp_redirect <- paste0(" A server redirect between the two URLs changes what ",
 sp_pair_message <- function(type, earlier, other, this) {
   bare <- if (endsWith(this, "/")) other else this
   slash <- if (endsWith(this, "/")) this else other
-  if (!is.character(earlier)) {
-    earlier <- paste("line", earlier)
+  # One earlier line as a number; several as the written list ("lines 2 and
+  # 5"), which takes the plural noun and verb.
+  lead <- if (is.character(earlier)) {
+    sprintf("The %ss on %s have", type, earlier)
+  } else {
+    sprintf("The %s on line %d has", type, earlier)
   }
   sprintf(paste0(
-    "The %s on %s has '%s' and this one '%s': '%s' also matches every ",
-    "path '%s' matches, and also '%s' itself and the paths that go on from ",
-    "it without a '/' (RFC 9309 section 2.2.2)."
-  ), type, earlier, other, this, bare, slash, bare)
+    "%s '%s' and this one '%s': '%s' also matches every path '%s' matches, ",
+    "and also '%s' itself and the paths that go on from it without a '/' ",
+    "(RFC 9309 section 2.2.2)."
+  ), lead, other, this, bare, slash, bare)
 }
 
 sp_blocked_message <- function(slash, bare, line) {
@@ -418,6 +422,26 @@ test_that("ROBO-roypaoox: only the first line of a type and value is read", {
     sp_pair_message("Disallow", "lines 2 and 5", "/x", "/x/"),
     " This holds for every crawler the group names: 'A' and 'B'."
   ))
+  # Six classes, each with its own `/x`: five lines, then a count, never a
+  # range of lines.
+  k <- 1:6
+  body <- paste0(paste0("User-agent: c", k, "\nDisallow: /x\nDisallow: /f", k,
+                        "\n", collapse = ""),
+                 paste0("User-agent: c", k, "\n", collapse = ""),
+                 "Disallow: /x/\n")
+  d <- sp_rows(body, sp_pair)
+  expect_identical(d$line, 25L)
+  expect_identical(d$message, paste0(
+    sp_pair_message("Disallow", "lines 2, 5, 8, 11, 14 and 1 more", "/x",
+                    "/x/"),
+    " This holds for every crawler the group names: 'c1', 'c2', 'c3', ",
+    "'c4', 'c5' and 1 more."
+  ))
+  expect_false(grepl("rules)", d$message, fixed = TRUE))
+  expect_identical(slash_pair_lead("allow", c(2L, 5L)),
+                   "The Allows on lines 2 and 5 have")
+  expect_identical(slash_pair_lead("disallow", 7L),
+                   "The Disallow on line 7 has")
   # Two classes with the other form on the same line name it once.
   d <- sp_rows(paste0("User-agent: a\nUser-agent: b\nDisallow: /x\n\n",
                       "User-agent: a\nDisallow: /y\n\n",

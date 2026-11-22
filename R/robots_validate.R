@@ -4469,7 +4469,7 @@ slash_every <- function(owner, ok) {
 # crawlers (ROBO-roypaoox). `P` also matches every path `P/` matches (RFC
 # 9309 section 2.2.2), and the bare URL `P` and paths that go on without
 # `/` too. The row sits on the later line and names each class's first line
-# of the other form (every distinct one, joined_rule_lines()); it is reported
+# of the other form (every distinct one, slash_pair_lead()); it is reported
 # only when, for every crawler class its group names, the line is the first
 # of its type and value and the other form sits on an earlier line. Groups
 # merge on the whole User-agent value (`agents$uncut`), so a pair that only
@@ -4496,15 +4496,16 @@ slash_pair_diagnostics <- function(groups) {
   hit <- sort(slash_every(o, ok))
   # Each class names its own first line of the other form; where classes
   # differ, every such line is named, so the claim holds for each crawler.
-  earlier <- vapply(split(other[o %in% hit], o[o %in% hit]), function(x) {
-    joined_rule_lines(sort(unique(x)))
-  }, "")
+  earlier <- split(other[o %in% hit], o[o %in% hit])
   at <- at[hit]
+  lead <- vapply(seq_along(at), function(i) {
+    slash_pair_lead(rules$type[[at[[i]]]], sort(unique(earlier[[i]])))
+  }, "")
   slash_rows(
     rules$type[at],
     line = rules$line[at],
     message = paste0(
-      slash_pair_message(rules$type[at], rules$value[at], earlier),
+      slash_pair_message(rules$value[at], lead),
       slash_crawler_note(groups$agents, rules$group[at])
     )
   )
@@ -4526,18 +4527,30 @@ slash_shown <- function(value) {
   list(bare = bare, slash = paste0(bare, "/"))
 }
 
+# The opening of a pair row: "The Disallow on line 2 has" for one earlier
+# line, "The Disallows on lines 2, 5 and 8 have" for more, five lines at
+# most, then a count.
+slash_pair_lead <- function(type, lines, cap = 5L) {
+  noun <- if (type == "allow") "Allow" else "Disallow"
+  if (length(lines) == 1L) {
+    return(sprintf("The %s on line %d has", noun, lines))
+  }
+  shown <- utils::head(lines, cap)
+  sprintf("The %ss on lines %s have", noun,
+          joined_and(as.character(shown), length(lines) - length(shown)))
+}
+
 # The pair row's text: what each form matches, calling neither redundant.
-slash_pair_message <- function(type, value, earlier) {
+slash_pair_message <- function(value, lead) {
   shown <- slash_shown(value)
   slash <- endsWith(value, "/")
   this <- ifelse(slash, shown$slash, shown$bare)
   other <- ifelse(slash, shown$bare, shown$slash)
   sprintf(paste0(
-    "The %s on %s has '%s' and this one '%s': '%s' also matches every ",
-    "path '%s' matches, and also '%s' itself and the paths that go on from ",
-    "it without a '/' (RFC 9309 section 2.2.2)."
-  ), ifelse(type == "allow", "Allow", "Disallow"), earlier, other, this,
-  shown$bare, shown$slash, shown$bare)
+    "%s '%s' and this one '%s': '%s' also matches every path '%s' matches, ",
+    "and also '%s' itself and the paths that go on from it without a '/' ",
+    "(RFC 9309 section 2.2.2)."
+  ), lead, other, this, shown$bare, shown$slash, shown$bare)
 }
 
 # " This holds for every crawler the group names: ..." for a group naming
