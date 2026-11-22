@@ -627,8 +627,8 @@ test_that("ROBO-roypaoox: a body cut at max_bytes gets the pair, no split", {
 test_that("ROBO-roypaoox: a rule written at the line buffer still splits", {
   # `Allow:` and no space: the line fills Google's line buffer, so a witness
   # line that added a space would lose the rule's last byte.
-  body <- paste0("User-agent: Foo\nDisallow: /\nAllow:/", strrep("a", 16655L),
-                 "/\n")
+  body <- sprintf("User-agent: Foo\nDisallow: /\nAllow:/%s/\n",
+                  strrep("a", 16655L))
   d <- sp_rows(body, sp_split)
   expect_identical(d$line, 3L)
   expect_identical(d$directive, "allow")
