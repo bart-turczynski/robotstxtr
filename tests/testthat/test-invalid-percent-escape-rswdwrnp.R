@@ -29,20 +29,20 @@ ip_body <- function(...) {
 
 ip_new <- "rule_invalid_percent_escape"
 
-ip_a <- function(listed, n = 1L) {
+ip_a <- function(listed) {
   paste0(
-    "Pattern holds ", listed, if (n == 1L) ", a '%'" else ", each a '%'",
-    " that starts no two-hex-digit escape. The package's Google, Bing and ",
-    "Yandex matchers compare it as a literal '%', so this rule matches only ",
-    "URLs that carry the raw '%', which correctly encoded URLs never do. ",
+    "Pattern holds ", listed, ": '%' that starts no two-hex-digit escape. ",
+    "The package's Google, Bing and Yandex matchers compare it as a ",
+    "literal '%', so this rule matches only URLs that carry the raw '%', ",
+    "which correctly encoded URLs never do. ",
     "Write '%25' for a literal '%'."
   )
 }
 
-ip_b <- function(listed, n = 1L, lower = FALSE) {
+ip_b <- function(listed, lower = FALSE) {
   paste0(
-    "Pattern holds ", listed, if (n == 1L) ", a '%'" else ", each a '%'",
-    " cut short by a '*' or by the pattern's end. The package's Google, ",
+    "Pattern holds ", listed, ": '%' cut short by a '*' or by the ",
+    "pattern's end. The package's Google, ",
     "Bing and Yandex matchers compare the pattern as written, so the rule ",
     "matches any URL with a percent-escape that begins there, as a final ",
     "'%' matches '%20' and '%25' alike.",
@@ -54,10 +54,9 @@ ip_b <- function(listed, n = 1L, lower = FALSE) {
   )
 }
 
-ip_lead_a <- function(listed, n = 1L) {
+ip_lead_a <- function(listed) {
   paste0(
-    "Pattern holds ", listed, if (n == 1L) ", a '%'" else ", each a '%'",
-    " that starts no two-hex-digit escape."
+    "Pattern holds ", listed, ": '%' that starts no two-hex-digit escape."
   )
 }
 
@@ -70,9 +69,9 @@ ip_ph_named <- function(name) {
 }
 
 # A placeholder all three matchers compare as written.
-ip_ph <- function(listed, n, name) {
+ip_ph <- function(listed, name) {
   paste0(
-    ip_lead_a(listed, n), ip_ph_named(name),
+    ip_lead_a(listed), ip_ph_named(name),
     " The package's Google, Bing and Yandex matchers compare it as written, ",
     "so the rule matches only a URL that carries the raw placeholder. Write ",
     "'%25' for a literal '%'."
@@ -80,9 +79,9 @@ ip_ph <- function(listed, n, name) {
 }
 
 # A placeholder led by a lower-case escape, which Google and Bing upper-case.
-ip_ph_upper <- function(listed, n, name, esc, upper) {
+ip_ph_upper <- function(listed, name, esc, upper) {
   paste0(
-    ip_lead_a(listed, n), ip_ph_named(name),
+    ip_lead_a(listed), ip_ph_named(name),
     " Google's and Bing's matchers upper-case its '", esc, "' as an escape, ",
     "so they match '", upper, "' and not the placeholder as written; the ",
     "package's Yandex matcher compares it as written. Write '%25' for a ",
@@ -93,13 +92,13 @@ ip_ph_upper <- function(listed, n, name, esc, upper) {
 # Shapes with a stray `%`: their codes and the new row's message.
 ip_stray <- list(
   "/*hashid=%subscriber_hash%" = list(
-    ip_new, ip_ph("'%su', '%'", 2L, "%subscriber_hash%")
+    ip_new, ip_ph("'%su', '%'", "%subscriber_hash%")
   ),
   "/x?d=%date%" = list(
     c(ip_new, "rule_lowercase_escape"),
-    ip_ph_upper("'%'", 1L, "%date%", "%da", "%DAte%")
+    ip_ph_upper("'%'", "%date%", "%da", "%DAte%")
   ),
-  "/x?d=%DAte%" = list(ip_new, ip_ph("'%'", 1L, "%DAte%")),
+  "/x?d=%DAte%" = list(ip_new, ip_ph("'%'", "%DAte%")),
   "/a%4g" = list(ip_new, ip_a("'%4g'")),
   # test-escaped-unreserved-gaczsrgj.R's eu_clean held these two, which now
   # get only this code: no rule_escaped_unreserved.
@@ -110,31 +109,31 @@ ip_stray <- list(
   "/%%25" = list(ip_new, ip_a("'%%2'")),
   # Near the end a context is shorter, and so distinct: '%%' and '%' are
   # listed beside '%%%'.
-  "/%%%%%%" = list(ip_new, ip_a("'%%%', '%%', '%'", 3L)),
+  "/%%%%%%" = list(ip_new, ip_a("'%%%', '%%', '%'")),
   "/%2%2e" = list(
     c("rule_escaped_unreserved", ip_new, "rule_lowercase_escape"),
     ip_a("'%2%'")
   ),
   "/a/./%zz" = list(c("rule_dot_segment", ip_new), ip_a("'%zz'")),
   "/[% name %]" = list(
-    c("rule_inner_whitespace", ip_new), ip_a("'% n', '%]'", 2L)
+    c("rule_inner_whitespace", ip_new), ip_a("'% n', '%]'")
   ),
-  "/a%zz%" = list(ip_new, ip_ph("'%zz', '%'", 2L, "%zz%")),
+  "/a%zz%" = list(ip_new, ip_ph("'%zz', '%'", "%zz%")),
   "/a%" = list(ip_new, ip_b("'%'")),
   "/a%4" = list(ip_new, ip_b("'%4'")),
   "/a%F" = list(ip_new, ip_b("'%F'")),
   # A lower-case digit matches only lower-case escapes.
   "/a%f" = list(ip_new, ip_b("'%f'", lower = TRUE)),
   "/a%f*" = list(ip_new, ip_b("'%f*'", lower = TRUE)),
-  "/a%F*b%f" = list(ip_new, ip_b("'%F*', '%f'", 2L, lower = TRUE)),
+  "/a%F*b%f" = list(ip_new, ip_b("'%F*', '%f'", lower = TRUE)),
   "/a%*" = list(ip_new, ip_b("'%*'")),
   "/a%4*" = list(ip_new, ip_b("'%4*'")),
   "*%*" = list(ip_new, ip_b("'%*'")),
-  "/a%*b%" = list(ip_new, ip_b("'%*b', '%'", 2L)),
+  "/a%*b%" = list(ip_new, ip_b("'%*b', '%'")),
   # Shaped like a placeholder, so named, though `%cd` is an escape.
   "/ab%cd%" = list(
     c(ip_new, "rule_lowercase_escape"),
-    ip_ph_upper("'%'", 1L, "%cd%", "%cd", "%CD%")
+    ip_ph_upper("'%'", "%cd%", "%cd", "%CD%")
   )
 )
 
@@ -236,7 +235,7 @@ test_that("ROBO-rswdwrnp: raw non-ASCII bytes are quoted as written", {
   # (canonical `/a%b%C3%A9`) names none.
   x <- robots_validate_text(ip_body("User-agent: *\nDisallow: /", e_acute,
                                     "%subscriber%\n"))$diagnostics
-  expect_identical(ip_message(x), ip_ph("'%su', '%'", 2L, "%subscriber%"))
+  expect_identical(ip_message(x), ip_ph("'%su', '%'", "%subscriber%"))
   x <- robots_validate_text(ip_body("User-agent: *\nDisallow: /a%b", e_acute,
                                     "\n"))$diagnostics
   expect_identical(ip_message(x), ip_a("'%b\\xC3'"))
@@ -257,32 +256,32 @@ test_that("ROBO-rswdwrnp: distinct `%` are listed once, up to ten", {
   ten <- paste0("/", paste0("%", letters[7:16], "-", collapse = ""))
   expect_identical(
     ip_message(ip_rows(ten)),
-    ip_a(toString(sprintf("'%%%s-'", letters[7:16])), 10L)
+    ip_a(toString(sprintf("'%%%s-'", letters[7:16])))
   )
   eleven <- paste0("/", paste0("%", letters[7:17], "-", collapse = ""))
   expect_identical(
     ip_message(ip_rows(eleven)),
     ip_a(paste0(toString(sprintf("'%%%s-'", letters[7:16])),
-                ", and 1 more"), 11L)
+                ", and 1 more"))
   )
   # The class (a) `%` that sets the message is listed first, never hidden.
   mixed <- paste0("/", paste0("%", 0:9, "*", collapse = ""), "%zz")
   expect_identical(
     ip_message(ip_rows(mixed)),
     ip_a(paste0("'%zz', ", toString(sprintf("'%%%d*'", 0:8)),
-                ", and 1 more"), 11L)
+                ", and 1 more"))
   )
   # Among class (b) items, value order holds.
   expect_identical(ip_message(ip_rows("/%*a%4*b%")),
-                   ip_b("'%*a', '%4*', '%'", 3L))
+                   ip_b("'%*a', '%4*', '%'"))
 })
 
 test_that("ROBO-rswdwrnp: the placeholder wording", {
   expect_identical(
-    ip_message(ip_rows("/a%_x1%b")), ip_ph("'%_x', '%b'", 2L, "%_x1%")
+    ip_message(ip_rows("/a%_x1%b")), ip_ph("'%_x', '%b'", "%_x1%")
   )
   expect_identical(
-    ip_message(ip_rows("/a?u=%a%")), ip_ph("'%a%', '%'", 2L, "%a%")
+    ip_message(ip_rows("/a?u=%a%")), ip_ph("'%a%', '%'", "%a%")
   )
   # A name led by two hex digits is named too, on the value as written; the
   # parser upper-cases its escape.
@@ -291,19 +290,19 @@ test_that("ROBO-rswdwrnp: the placeholder wording", {
                     substring(name, 3L), "%")
     expect_identical(
       ip_message(ip_rows(paste0("/x?d=%", name, "%"))),
-      ip_ph_upper("'%'", 1L, paste0("%", name, "%"),
+      ip_ph_upper("'%'", paste0("%", name, "%"),
                   paste0("%", substr(name, 1L, 2L)), upper),
       label = name
     )
   }
   expect_identical(
     ip_message(ip_rows("/%ab%zz")),
-    ip_ph_upper("'%zz'", 1L, "%ab%", "%ab", "%AB%")
+    ip_ph_upper("'%zz'", "%ab%", "%ab", "%AB%")
   )
   # A closing `%` that starts a valid escape closes no placeholder.
   expect_identical(ip_message(ip_rows("/%x%41")), ip_a("'%x%'"))
   expect_identical(ip_message(ip_rows("/%x%41%y%")),
-                   ip_ph("'%x%', '%y%', '%'", 3L, "%y%"))
+                   ip_ph("'%x%', '%y%', '%'", "%y%"))
   # The (b) value with no placeholder keeps the (b) message.
   expect_identical(ip_message(ip_rows("/x?d=%")), ip_b("'%'"))
   # `[% name %]` is not detected here (ROBO-areyzfoy).

@@ -4658,8 +4658,8 @@ rule_invalid_percent_escape_message <- function(bytes, stray, open) {
     lower <- any(bytes[pmin(stray + 1L, n)] %in% charToRaw("abcdef") &
                    stray < n)
     return(paste0(
-      "Pattern holds ", listed, if (k == 1L) ", a '%'" else ", each a '%'",
-      " cut short by a '*' or by the pattern's end. The package's Google, ",
+      "Pattern holds ", listed, ": '%' cut short by a '*' or by the ",
+      "pattern's end. The package's Google, ",
       "Bing and Yandex matchers compare the pattern as written, so the rule ",
       "matches any URL with a percent-escape that begins there, as a final ",
       "'%' matches '%20' and '%25' alike.",
@@ -4671,8 +4671,7 @@ rule_invalid_percent_escape_message <- function(bytes, stray, open) {
     ))
   }
   lead <- paste0(
-    "Pattern holds ", listed, if (k == 1L) ", a '%'" else ", each a '%'",
-    " that starts no two-hex-digit escape."
+    "Pattern holds ", listed, ": '%' that starts no two-hex-digit escape."
   )
   if (!is.null(placeholder)) {
     return(paste0(
