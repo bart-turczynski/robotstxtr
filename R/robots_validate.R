@@ -4727,7 +4727,8 @@ slash_crawler_note <- function(agents, group) {
 # `P` stays allowed (one row per set of crawler classes, anchored on the
 # first User-agent line of the group holding the earliest listed rule, five
 # rules at most, then a count). Every rule of a class takes part in the
-# decisions, which are Google's matcher's (slash_split_reading()). A row is
+# decisions, which are Google's matcher's (slash_split_reading(), read
+# through witness_pair_readings()). A row is
 # reported only where every class the group names, merged on the whole
 # User-agent value and on Google's token, gives the same decisions and the
 # same deciding lines; the two merges coincide when no value is cut, and
@@ -4748,48 +4749,82 @@ slash_split_diagnostics <- function(groups, written = NULL, budget = NULL) {
   if (is.null(budget)) {
     budget <- slash_budget(rules, at)
   }
+  value <- rules$value[at]
+  read <- witness_pair_readings(groups, at, slash_partner(value), value,
+                                "long", written, budget)
+  found <- !is.na(read$line)
+  out <- slash_split_rows(groups, at[found], read$line[found])
+  attr(out, "stopped") <- slash_stop(rules, at, read$checked)
+  out
+}
+
+# witness_pair_reading() on the whole-value merge (`agents$uncut`) and, when
+# some value is cut, on Google's key too, the readings sharing `budget`.
+# Returns list(line, ok, checked): `ok` where every reading's `ok` holds,
+# `line` where every reading names the same line (NA otherwise), and
+# `checked` the leading candidates every reading read.
+witness_pair_readings <- function(groups, at, short, long, decides,
+                                  written = NULL, budget = Inf) {
   agents <- groups$agents
   keys <- list(agents$uncut)
   if (!all(agents$uncut == agents$key)) {
     keys <- c(keys, list(agents$key))
   }
-  reads <- list()
+  line <- NULL
+  ok <- rep(TRUE, length(at))
   checked <- length(at)
   for (key in keys) {
-    read <- slash_split_reading(groups, at, key, written, budget)
+    read <- witness_pair_reading(groups, at, key, short, long, decides,
+                                 written, budget)
     budget <- budget - read$spent
-    reads <- c(reads, list(read$line))
+    ok <- ok & read$ok
+    if (is.null(line)) {
+      line <- read$line
+    } else {
+      agree <- !is.na(line) & !is.na(read$line) & line == read$line
+      line[!agree] <- NA_integer_
+    }
+    # A candidate is checked when every reading read it.
     checked <- min(checked, read$read)
   }
-  bare_line <- reads[[1L]]
-  for (other in reads[-1L]) {
-    agree <- !is.na(bare_line) & !is.na(other) & bare_line == other
-    bare_line[!agree] <- NA_integer_
-  }
-  found <- !is.na(bare_line)
-  out <- slash_split_rows(groups, at[found], bare_line[found])
-  # A candidate is checked when every reading read it.
-  attr(out, "stopped") <- slash_stop(rules, at, checked)
-  out
+  list(line = line, ok = ok, checked = checked)
 }
 
 # For each candidate in `at` (indexes of `groups$rules`, values `P/`), the
 # file line that decides the bare URL `P` (0 when no rule matches it) when
 # every class the group names (validation_token_expander() on `key`) has
 # the candidate decide `P/`, decides `P` the other way, and agrees on that
-# line; NA otherwise. Each (candidate, class) row is read under a body of
-# the class's rules that can match `P/` (slash_split_bodies()); every other
-# rule matches neither URL, and rules keep file order, so ties resolve as in
+# line; NA otherwise. witness_pair_reading() reads it, `P` the short path.
+slash_split_reading <- function(groups, at, key, written = NULL,
+                                budget = Inf) {
+  value <- groups$rules$value[at]
+  witness_pair_reading(groups, at, key, slash_partner(value), value, "long",
+                       written, budget)
+}
+
+# Two paths per candidate in `at` (indexes of `groups$rules`): `short`, a
+# prefix of `long`, and the one named by `decides` ("short" or "long") the
+# candidate must decide. A (candidate, class) row is `ok` when the candidate
+# is the line that decides that path and the other path gets the other
+# decision. Returns list(ok, line, spent, read): `ok`, per candidate, where
+# every class the group names (validation_token_expander() on `key`) is
+# ok; `line`, where they are and also agree on the file line that decides
+# the other path (0 when no rule matches it), that line, NA otherwise;
+# `spent` the work done, and `read` how many leading candidates were read
+# whole. Each row is read under a body of the class's rules that can match
+# `long` (slash_split_bodies()): a rule that matches `short` can match
+# `long` too once the filter drops its final `$`, so every other rule
+# matches neither path, and rules keep file order, so ties resolve as in
 # the whole group. One batch call reads every row. Candidates are read in
 # line order while their rows and the rules of their classes
 # (slash_read_plan()), then their body lines, fit `budget`; the rest stay
-# NA. Returns list(line, spent, read): `spent` the work done, `read` how
-# many leading candidates were read whole.
-slash_split_reading <- function(groups, at, key, written = NULL,
-                                budget = Inf) {
+# NA and not ok.
+witness_pair_reading <- function(groups, at, key, short, long, decides,
+                                 written = NULL, budget = Inf) {
   rules <- groups$rules
   expand <- validation_token_expander(groups, key)
-  out <- rep(NA_integer_, length(at))
+  unread <- list(ok = rep(FALSE, length(at)),
+                 line = rep(NA_integer_, length(at)))
   # An empty rule decides nothing; left in, Google's matcher could name its
   # line for a URL no other rule matches, with the same decision.
   live <- which(!rules$empty)
@@ -4797,12 +4832,11 @@ slash_split_reading <- function(groups, at, key, written = NULL,
   spent <- plan$spent
   rows <- expand(rules$group[at[seq_len(plan$n)]])
   if (length(rows$owner) == 0L) {
-    return(list(line = out, spent = spent, read = plan$n))
+    return(c(unread, list(spent = spent, read = plan$n)))
   }
-  value <- rules$value[at][rows$owner]
   held <- list(rule = live[plan$held$owner], class = plan$held$class)
-  body <- slash_split_bodies(rules, held, value, rows$class, written,
-                             rows$owner, budget - spent)
+  body <- slash_split_bodies(rules, held, long[rows$owner], rows$class,
+                             written, rows$owner, budget - spent)
   spent <- spent + body$spent
   kept <- seq_len(body$rows)
   # Whole candidates only: all of the plan's, or those up to the last owner
@@ -4815,30 +4849,43 @@ slash_split_reading <- function(groups, at, key, written = NULL,
     rows$owner[[body$rows]]
   }
   if (length(kept) == 0L) {
-    return(list(line = out, spent = spent, read = read_n))
+    return(c(unread, list(spent = spent, read = read_n)))
   }
-  rows <- lapply(rows, `[`, kept)
-  value <- value[kept]
-  paths <- c(rbind(slash_partner(value), value))
-  read <- wildcard_witness_decide(body$bodies, rep(seq_along(value), each = 2L),
+  o <- rows$owner[kept]
+  paths <- c(rbind(short[o], long[o]))
+  read <- wildcard_witness_decide(body$bodies, rep(seq_along(o), each = 2L),
                                   paths)
+  c(witness_pair_verdict(unread, read, body, rules$line, rules$line[at], o,
+                         decides),
+    list(spent = spent, read = read_n))
+}
+
+# The `ok` and `line` of witness_pair_reading() from `read`, the batch's
+# decisions on the (short, long) path pairs of rows `o` (their candidates,
+# whose file lines are `cand_line`), and `body`, the witness bodies
+# (`line` the file line of each rule).
+witness_pair_verdict <- function(out, read, body, line, cand_line, o,
+                                 decides) {
   file_line <- function(k) {
     j <- read$line[k]
     found <- integer(length(j))
     hit <- j > 1L
-    found[hit] <- rules$line[body$rule[body$start[(k[hit] + 1L) %/% 2L] +
-                                         j[hit] - 2L]]
+    found[hit] <- line[body$rule[body$start[(k[hit] + 1L) %/% 2L] +
+                                   j[hit] - 2L]]
     found
   }
-  bare <- seq(1L, length(paths), by = 2L)
-  bare_line <- file_line(bare)
-  ok <- file_line(bare + 1L) == rules$line[at][rows$owner] &
-    read$allowed[bare] != read$allowed[bare + 1L]
-  same <- tapply(bare_line, rows$owner, function(x) all(x == x[[1L]]))
-  hit <- intersect(slash_every(rows$owner, ok),
-                   as.integer(names(same)[same]))
-  out[hit] <- bare_line[match(hit, rows$owner)]
-  list(line = out, spent = spent, read = read_n)
+  first <- seq(1L, 2L * length(o), by = 2L)
+  own <- if (decides == "long") first + 1L else first
+  other <- if (decides == "long") first else first + 1L
+  other_line <- file_line(other)
+  ok <- file_line(own) == cand_line[o] &
+    read$allowed[first] != read$allowed[first + 1L]
+  every <- slash_every(o, ok)
+  out$ok[every] <- TRUE
+  same <- tapply(other_line, o, function(x) all(x == x[[1L]]))
+  hit <- intersect(every, as.integer(names(same)[same]))
+  out$line[hit] <- other_line[match(hit, o)]
+  out
 }
 
 # How many candidates (their groups `cand_group`, in line order) one
@@ -4877,8 +4924,9 @@ slash_read_plan <- function(expand, cand_group, live_group, budget) {
                    class = unlist(classes, use.names = FALSE)))
 }
 
-# The witness bodies of slash_split_reading(), one per row (`paths` the
-# slash URLs, `class` the rows' classes, `held` the (rule, class) pairs a
+# The witness bodies of witness_pair_reading(), one per row (`paths` the
+# longer path of each pair, such as the slash URL `P/`, `class` the rows'
+# classes, `held` the (rule, class) pairs a
 # body may draw on, `rule` indexing `rules`): `bodies`, and `rule` (indexes
 # of `rules`, row after row in file order) with `start`, each row's first
 # position in `rule`. A rule joins a row's body when it can match `P/` (and
@@ -4987,9 +5035,10 @@ slash_pairs_upto <- function(near, far, paths, last) {
 # split for slash_split_bodies(): `head`, the literal bytes before the first
 # `*`, and `frag`, the longest literal run after it ("" when none). An
 # Allow ending in `/index.htm...` is cut after its last `/`, which Google's
-# matcher also reads as that path with `$`; only a final `$` anchors, and a
-# `$` or `%` elsewhere is a literal byte, which no candidate holds
-# (slash_candidates()), so a head or fragment holding one matches none.
+# matcher also reads as that path with `$`; only a final `$` anchors. A `$`
+# elsewhere, a `?` and a `%` are literal bytes to Google's matcher, which
+# compares the path and query byte by byte, so a head or fragment holding
+# one is kept only for a path that holds it too.
 slash_rule_parts <- function(type, value) {
   pattern <- value
   index <- type == "allow" & grepl("/index[.]htm[^/]*$", value, useBytes = TRUE)
