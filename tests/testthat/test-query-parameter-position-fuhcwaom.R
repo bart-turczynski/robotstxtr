@@ -234,11 +234,17 @@ test_that("ROBO-fuhcwaom: every backend decides the control and example", {
         c("allow", "disallow"), label = label
       )
     }
-    # A `*` can reach a later `?`, so this path is matched.
+    # A `*` can reach a later `?`, so this path is matched, as a Disallow
+    # and as an Allow under a fixture-only `Disallow: /`.
     expect_identical(
       qp_decide("User-agent: *\nDisallow: /items/*?sort=\n",
-                "/items/x?a=?sort=a", backend),
+                "/items/x?a=?sort=1", backend),
       "disallow", label = backend
+    )
+    expect_identical(
+      qp_decide("User-agent: *\nDisallow: /\nAllow: /items/*?sort=\n",
+                "/items/x?a=?sort=1", backend),
+      "allow", label = backend
     )
   }
 })
