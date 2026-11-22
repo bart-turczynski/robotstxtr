@@ -5365,10 +5365,9 @@ end_anchor_reads <- function(groups, at, written, budget) {
     budget <- budget - read$spent
     pair[todo[read$ok]] <- k
     finished[todo[read$ok]] <- TRUE
-    # The next pair reads only the candidates this one read and left. A
-    # candidate this pair did not reach would not fit the next one either,
-    # which pays at least the same plan on less budget, so the cut also
-    # keeps a candidate from being reported on a later pair alone.
+    # The next pair reads only the candidates this one read and left: one
+    # this pair did not reach within the budget stays unfinished, so a
+    # later pair never reports it without the earlier pairs' readings.
     done <- seq_len(read$checked)
     todo <- todo[done][!read$ok[done]]
     # A perf shortcut only: with no candidate left, a later pair reads
