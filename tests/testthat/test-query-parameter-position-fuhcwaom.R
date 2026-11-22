@@ -445,6 +445,9 @@ test_that("ROBO-fuhcwaom: edge inputs", {
   expect_identical(qp_codes("Disallow: /search?page=\n"),
                    c("rule_without_user_agent", "missing_user_agent"))
   expect_identical(qp_lines("User-agent:\nDisallow: /*?q=\n"), integer(0))
+  # Without a `*` before the `?` too, where no twin could silence it.
+  expect_identical(qp_lines("User-agent:\nDisallow: /search?page=\n"),
+                   integer(0))
   expect_identical(
     qp_lines(paste0("User-agent:\nDisallow: /*?q=\n\n",
                     "User-agent: *\nDisallow: /*?q=\n")),
