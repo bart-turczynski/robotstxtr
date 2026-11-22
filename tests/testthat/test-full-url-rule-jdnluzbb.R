@@ -280,12 +280,23 @@ fu_url <- function(shape, backend) {
   if (length(shape$url) == 1L) shape$url else shape$url[[backend]]
 }
 
+# The pattern the validator's message names, read back from the message.
+fu_suggested <- function(value) {
+  message <- fu_message(fu_rows(value))
+  hit <- regmatches(
+    message, regexec("instead: '(.*?)'[.](?: |$)", message, perl = TRUE)
+  )[[1L]]
+  hit[[2L]]
+}
+
 test_that("ROBO-jdnluzbb: the pattern matches the URL on every engine", {
   for (name in names(fu_shapes)) {
     shape <- fu_shapes[[name]]
+    pattern <- fu_suggested(shape$value)
+    expect_identical(pattern, shape$pattern, label = name)
     for (backend in names(fu_engines)) {
       url <- trimws(fu_url(shape, backend))
-      expect_identical(fu_decision(shape$pattern, url, backend), "disallow",
+      expect_identical(fu_decision(pattern, url, backend), "disallow",
                        label = paste(name, backend))
       expect_identical(fu_decision(shape$value, url, backend), "allow",
                        label = paste(name, backend))
