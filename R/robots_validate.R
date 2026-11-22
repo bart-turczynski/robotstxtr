@@ -4416,11 +4416,12 @@ query_parameter_render <- function(x) {
 # in `//`, and with no `.` or `..` segment anywhere, the unbounded end
 # included (`/a/.`): URL normalization would remove it from the bare URL
 # (ROBO-rnjfbhvn). A non-ASCII byte is escaped in the canonical value, so
-# such a value holds `%` and is no candidate. Empty values are skipped.
+# such a value holds `%` and is no candidate. An empty value is not led by
+# `/`, so it is none either.
 slash_candidates <- function(rules) {
   value <- rules$value
   which(
-    !rules$empty & startsWith(value, "/") & value != "/" &
+    startsWith(value, "/") & value != "/" &
       !grepl("[^!-~]|[*$?%]|//$", value, useBytes = TRUE) &
       !grepl("/[.][.]?(/|$)", value, useBytes = TRUE)
   )

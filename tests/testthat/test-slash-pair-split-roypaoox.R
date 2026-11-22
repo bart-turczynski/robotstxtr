@@ -366,6 +366,26 @@ test_that("ROBO-roypaoox: every crawler class the group names must agree", {
   expect_identical(sp_rows(sp_body("stacked"), sp_split)$line, integer(0))
   d <- sp_rows(sp_body("stacked"), sp_pair)
   expect_identical(d$message, sp_pair_message("Disallow", 3L, "/x/", "/x"))
+  # One class of the group has the pair, the other not: no row.
+  expect_identical(
+    sp_codes(paste0("User-agent: A\nDisallow: /x/\n\nUser-agent: A\n",
+                    "User-agent: B\nDisallow: /x\n")),
+    "user_agent_repeated_group"
+  )
+  # One class splits, the other has `/x/` decided by its own `Allow: /x/$`:
+  # the same bare decision, no row.
+  expect_identical(
+    sp_codes(paste0("User-agent: A\nUser-agent: B\nDisallow: /x/\n\n",
+                    "User-agent: B\nAllow: /x/$\n")),
+    "user_agent_repeated_group"
+  )
+  # Both classes split, but different lines block `/x`: no row, as the
+  # message names one line.
+  expect_identical(
+    sp_codes(paste0("User-agent: A\nUser-agent: B\nDisallow: /\n",
+                    "Allow: /x/\n\nUser-agent: B\nDisallow: /x\n")),
+    "user_agent_repeated_group"
+  )
   # `*` never merges into a named crawler: no pair across them.
   expect_identical(sp_rows(sp_body("across_crawlers"), sp_pair)$line,
                    integer(0))
