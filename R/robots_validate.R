@@ -164,7 +164,11 @@ validation_unsupported <- c(
 #'     first NUL ends the line, so the directive imposes no restriction and
 #'     the text after the NUL is ignored. \cr
 #'   \code{rule_missing_leading_slash} \tab warning \tab
-#'     A pattern not led by \code{/} or \code{*}; it never matches. \cr
+#'     A pattern not led by \code{/} or \code{*}; it never matches. A full
+#'     \code{http} or \code{https} URL gets a message naming the path and
+#'     query to write instead; under [robots_validate_url()] it also says
+#'     when the URL's origin differs from the robots.txt origin, only when
+#'     the URL's host is ASCII. \cr
 #'   \code{rule_cut_by_comment} \tab warning \tab
 #'     A \code{#} with no space or tab before it starts a comment inside an
 #'     Allow or Disallow value, cutting the rule at the \code{#}. A vertical
@@ -1453,8 +1457,31 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         "Sitemap directive has an empty value."
       )
     }
+    # A rule value written as a full URL names the path to write
+    # (ROBO-jdnluzbb). One read of the value as written serves this and the
+    # stray-% check below. A value cut at the line buffer keeps the plain
+    # message; one a `#` cut inside the buffer, on a longer line, does not.
+    full_url <- NULL
+    if (type %in% c("allow", "disallow")) {
+      written <- rule_written_value(raw_lines[[line]], line == 1L,
+                                    parsed$missing_colon[[i]])
+      if (!isTRUE(attr(written, "buffer_cut"))) {
+        # A NUL or a glued `#` that cut the value: its rule_cut_by_nul or
+        # rule_cut_by_comment row explains the cut.
+        cut <- (nul_counts[[line]] > 0L &&
+                  rule_cut_by_nul(raw_lines[[line]])) ||
+          (parsed$has_comment[[i]] && nzchar(value) &&
+             rule_cut_by_comment(raw_lines[[line]]))
+        full_url <- rule_full_url_message(written, robots_url, cut)
+      }
+    }
     for (found in directive_value_diagnostics(type, value)) {
-      add_diagnostic(line, "warning", found$code, type, found$message)
+      message <- found$message
+      if (!is.null(full_url) &&
+            identical(found$code, "rule_missing_leading_slash")) {
+        message <- full_url
+      }
+      add_diagnostic(line, "warning", found$code, type, message)
     }
     # Google upper-cases a rule's escapes but never the URL's, so a
     # lower-case one misses the path written (ROBO-kormmfyg). The parser's
@@ -1464,8 +1491,6 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     if (type %in% c("allow", "disallow")) {
       # A `%` that starts no escape (ROBO-rswdwrnp), after the value's other
       # warnings; the placeholder is read on the value as written.
-      written <- rule_written_value(raw_lines[[line]], line == 1L,
-                                    parsed$missing_colon[[i]])
       percent <- rule_invalid_percent_escape_diagnostic(
         written,
         nul_counts[[line]] > 0L && rule_cut_by_nul(raw_lines[[line]])
@@ -4583,14 +4608,167 @@ rule_invalid_percent_escape_diagnostic <- function(written, nul_cut = FALSE) {
 # value (rule_raw_value()) with the trailing blanks the parser trims removed
 # (StripWhitespaceSlowly() and AsciiIsSpace(), src/robots.cc), so a final
 # `%` stays final. Leading blanks are kept: no `%` check reads them, as a
-# context starts at its `%` and a placeholder at its own.
+# context starts at its `%` and a placeholder at its own. rule_raw_value()'s
+# `buffer_cut` attribute is kept: TRUE when the value ends at the line
+# buffer, not when a `#` cut it first (ROBO-jdnluzbb).
 rule_written_value <- function(line_bytes, first_line, missing_colon) {
   bytes <- rule_raw_value(line_bytes, first_line, missing_colon)
   keep <- which(!bytes %in% as.raw(c(0x20, 0x09, 0x0a, 0x0b, 0x0c, 0x0d)))
   if (length(keep) == 0L) {
     return(raw(0L))
   }
-  bytes[seq_len(keep[[length(keep)]])]
+  out <- bytes[seq_len(keep[[length(keep)]])]
+  attr(out, "buffer_cut") <- attr(bytes, "buffer_cut")
+  out
+}
+
+# ROBO-jdnluzbb: the rule_missing_leading_slash message for a value written
+# as a full http(s) URL, naming the path and query to write instead, or NULL
+# when the value is no such URL. `written` is rule_written_value()'s bytes;
+# `robots_url` is the robots.txt requested, NA for supplied text. `cut` is
+# TRUE when a NUL or a glued `#` cut the value: what the author wrote is
+# then unknown, so the plain message stays. The path loses its dot
+# segments, as an RFC 3986 client's request does; its case, its escapes
+# and the query stay as written.
+rule_full_url_message <- function(written, robots_url = NA_character_,
+                                  cut = FALSE) {
+  url <- if (cut) NULL else rule_full_url_bytes(written)
+  if (is.null(url)) {
+    return(NULL)
+  }
+  # The origin is read on the scheme and authority alone: rurl's parse cost
+  # grows faster than the path's length, and the path is checked above. It
+  # is normalized as destination_origin() does, so a root dot is no other
+  # origin.
+  split <- url_split_rfc3986_v1(url)
+  origin <- destination_origin(rawToChar(c(
+    split$scheme, charToRaw("//"), split$authority, charToRaw("/")
+  )))
+  if (is.na(origin)) {
+    return(NULL)
+  }
+  path <- rule_full_url_path(split$path, length(split$query) == 0L)
+  pattern <- c(path$path, split$query)
+  wide <- any(as.integer(pattern) >= 0x80L)
+  # The ASCII bytes a WHATWG URL parser percent-encodes in the path, and in
+  # the query (space, `#` and `?` cannot reach here as path bytes).
+  path_set <- charToRaw("\"<>`{}")
+  query_set <- charToRaw("\"<>")
+  encoded <- any(path$path %in% path_set) || any(split$query %in% query_set)
+  suggestion <- paste0(rule_full_url_escape(path$path, path_set),
+                       rule_full_url_escape(split$query, query_set))
+  paste0(
+    "Pattern does not start with '/' or '*'; URL paths always start ",
+    "with '/', so this rule never matches. The value is a full URL; write ",
+    "its path and query instead: '", suggestion, "'.",
+    if (path$dots) " Dot segments removed (RFC 3986 section 5.2.4).",
+    if (encoded) {
+      paste0(" Characters a WHATWG URL parser percent-encodes written as ",
+             "upper-case %XX escapes.")
+    },
+    if (wide) " Non-ASCII bytes written as upper-case %XX escapes.",
+    rule_full_url_scope(suggestion),
+    rule_full_url_origin(origin, robots_url, split$authority)
+  )
+}
+
+# The path to suggest, `/` when empty, and whether dot segments were removed
+# from it. A final `$` with no query after it is the end anchor, so it is
+# set aside while dot segments are removed (`/a/b/..$` gives `/a/$`). A `*`
+# matches any bytes, `/` and `.` among them, so dot segments are removed
+# only from the segments before the one holding the first `*`; the rest
+# stays as written (`/*/../a` stays `/*/../a`). A non-empty path here
+# starts with `/`, as it follows an authority.
+rule_full_url_path <- function(path, last) {
+  anchor <- last && length(path) > 0L && path[[length(path)]] == as.raw(0x24)
+  if (anchor) {
+    path <- path[-length(path)]
+  }
+  rest <- raw(0L)
+  star <- match(as.raw(0x2a), path)
+  if (!is.na(star)) {
+    keep <- max(which(path[seq_len(star - 1L)] == as.raw(0x2f)))
+    rest <- path[(keep + 1L):length(path)]
+    path <- path[seq_len(keep)]
+  }
+  out <- remove_dot_segments_v1(path)
+  dots <- !identical(out, path)
+  if (length(out) == 0L) {
+    out <- charToRaw("/")
+  }
+  list(path = c(out, rest, if (anchor) as.raw(0x24)), dots = dots)
+}
+
+# The URL in `written` without its leading blanks, or NULL: not led by
+# `http://` or `https://` (ASCII, any case), holding a blank or control byte
+# (rule_inner_whitespace and rule_control_character say why), or not UTF-8.
+# A value led by an invisible character is left to the plain message.
+rule_full_url_bytes <- function(written) {
+  lead <- which(!written %in% as.raw(c(0x20, 0x09, 0x0a, 0x0b, 0x0c, 0x0d)))
+  if (length(lead) == 0L) {
+    return(NULL)
+  }
+  url <- written[lead[[1L]]:length(written)]
+  # A fast path only: robots_origin() runs the same scheme guard, but this
+  # one skips the byte scans and the rurl parse for every other value.
+  head <- rawToChar(url[seq_len(min(8L, length(url)))])
+  if (!grepl("^[Hh][Tt][Tt][Pp][Ss]?://", head, useBytes = TRUE)) {
+    return(NULL)
+  }
+  bad <- c(validation_control_bytes, as.raw(c(0x20, 0x09, 0x0b, 0x0c, 0x7f)))
+  if (any(url %in% bad) || !validUTF8(rawToChar(url))) {
+    return(NULL)
+  }
+  url
+}
+
+# `bytes` as text, each non-ASCII byte as the parser's upper-case `%XX`,
+# and each byte of `set` likewise.
+rule_full_url_escape <- function(bytes, set = raw(0L)) {
+  if (length(bytes) == 0L) {
+    return("")
+  }
+  chars <- rawToChar(bytes, multiple = TRUE)
+  wide <- as.integer(bytes) >= 0x80L | bytes %in% set
+  chars[wide] <- sprintf("%%%02X", as.integer(bytes[wide]))
+  paste(chars, collapse = "")
+}
+
+# What the suggested pattern matches: a pattern with no `*` and no final `$`
+# matches as a prefix, and `/` matches every URL. The package's Google, Bing
+# and Yandex matchers read `/$` as the root path with no query.
+rule_full_url_scope <- function(suggestion) {
+  if (grepl("*", suggestion, fixed = TRUE) || endsWith(suggestion, "$")) {
+    return(NULL)
+  }
+  paste0(
+    " Without wildcards or an end anchor, this pattern matches any path ",
+    "and query beginning with it. A trailing '$' requires matching through ",
+    "the end of the path and query.",
+    if (identical(suggestion, "/")) {
+      paste0(" The pattern '/' matches every URL, so it applies to the ",
+             "whole site; '/$' limits it to the home page, without a query.")
+    }
+  )
+}
+
+# A sentence when the value's origin (scheme, host, effective port) is not
+# the robots.txt's; `origin` is destination_origin() of the value. Both drop
+# a trailing root dot from the host. An authority holding a non-ASCII byte
+# gets no sentence: robots_origin() does not fold the case of a non-ASCII
+# host, and would show it in punycode, not as written.
+rule_full_url_origin <- function(origin, robots_url, authority = raw(0L)) {
+  served <- destination_origin(robots_url)
+  if (is.na(served) || identical(served, origin) ||
+        any(as.integer(authority) >= 0x80L)) {
+    return(NULL)
+  }
+  strip <- function(key) sub("/robots[.]txt$", "", key)
+  paste0(
+    " Without its scheme and host, the rule applies on the origin this ",
+    "robots.txt serves, ", strip(served), ", not on ", strip(origin),
+    ", the one written in the value."
+  )
 }
 
 # A `%name%` template placeholder, read on the value as written. A closing
