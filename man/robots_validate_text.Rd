@@ -810,7 +810,9 @@ two-hex-digit escape, which no correctly encoded URL carries, or a space,
 a tab, another control byte or DEL, which no URL a crawler sends carries.
 The path the rule blocks is the
 value without the \code{$}, each \code{*} written \code{x}, and the query URL is that
-path with \code{?x=1} added. Google's matcher makes the decisions over every
+path with \code{?x=1} added; where another rule matches those filler bytes,
+the check tries \code{y} with \code{?y=2}, then \code{z} with \code{?z=3}, and the row shows
+the pair it found. Google's matcher makes the decisions over every
 rule of the crawler's merged groups, so a second rule that blocks the
 query URL (\verb{Disallow: /x/edit?}, \verb{Disallow: /*?}), or an Allow that wins
 the path, silences the row. A row is reported only where every crawler

@@ -168,13 +168,13 @@ test_that("ROBO-nzcvlsvk: each fixture's new rows are all the change", {
 
 ea_why <- function(rule = "the rule") {
   paste0(" A final '$' ends the match at the end of the path and query ",
-         "together, so a query such as '?x=1' takes the URL out of ", rule,
+         "together, so the query shown takes the URL out of ", rule,
          ". The site may serve the same page with a query.")
 }
 
-ea_one_message <- function(line, control) {
-  sprintf("The Disallow on line %d blocks '%s' but not '%s?x=1'.%s", line,
-          control, control, ea_why())
+ea_one_message <- function(line, control, query = "?x=1") {
+  sprintf("The Disallow on line %d blocks '%s' but not '%s%s'.%s", line,
+          control, control, query, ea_why())
 }
 
 ea_list_message <- function(listed) {
@@ -182,8 +182,8 @@ ea_list_message <- function(listed) {
          "added: ", listed, ".", ea_why("each rule"))
 }
 
-ea_blocks <- function(line, control) {
-  sprintf("line %d blocks '%s' but not '%s?x=1'", line, control, control)
+ea_blocks <- function(line, control, query = "?x=1") {
+  sprintf("line %d blocks '%s' but not '%s%s'", line, control, control, query)
 }
 
 ea_note <- function(names) {
@@ -691,9 +691,42 @@ ea_filler <- list(
 # `Disallow: /x/` alone also blocks `/x/` and not `/x` (ROBO-roypaoox).
 ea_filler_today <- list(path = "rule_slash_split", query = character(0))
 
-test_that("ROBO-nzcvlsvk: today a rule matching the filler silences the row", {
+test_that("ROBO-nzcvlsvk: a rule matching the filler gets the next pair", {
+  # Each row shows the pair it read: `y` and `?y=2`.
+  shown <- list(path = ea_one_message(2L, "/y/edit", "?y=2"),
+                query = ea_one_message(2L, "/a", "?y=2"))
   for (name in names(ea_filler)) {
-    body <- gsub("%s", "Foo", ea_filler[[name]], fixed = TRUE)
-    expect_identical(ea_codes(body), ea_filler_today[[name]], label = name)
+    d <- ea_diag(gsub("%s", "Foo", ea_filler[[name]], fixed = TRUE))
+    expect_identical(d$code, c(ea_filler_today[[name]], ea_code),
+                     label = name)
+    expect_identical(d$message[d$code == ea_code], shown[[name]],
+                     label = name)
+  }
+  # The pair after it, when `y` is matched too; a rule matching all three
+  # silences the row.
+  expect_identical(
+    ea_diag("User-agent: *\nDisallow: /a$\nDisallow: /*x=\nDisallow: /*y=\n")$
+      message,
+    ea_one_message(2L, "/a", "?z=3")
+  )
+  expect_identical(
+    ea_codes("User-agent: *\nDisallow: /a$\nDisallow: /*=\n"), character(0)
+  )
+  # A list shows each rule with its own pair.
+  d <- ea_diag("User-agent: *\nDisallow: /a$\nDisallow: /b$\nDisallow: /a?x\n")
+  expect_identical(d$message, ea_list_message(paste0(
+    ea_blocks(2L, "/a", "?y=2"), " and ", ea_blocks(3L, "/b")
+  )))
+  # Every backend decides each pair as the row says.
+  for (backend in names(ea_engines)) {
+    expect_identical(
+      ea_decide(ea_filler$path, c("/y/edit", "/y/edit?y=2", "/x/edit"),
+                backend),
+      c(ea_blocked, "disallow"), label = backend
+    )
+    expect_identical(
+      ea_decide(ea_filler$query, c("/a", "/a?y=2", "/a?x=1"), backend),
+      c(ea_blocked, "disallow"), label = backend
+    )
   }
 })

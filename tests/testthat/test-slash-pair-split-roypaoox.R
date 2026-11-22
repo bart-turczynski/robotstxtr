@@ -419,7 +419,7 @@ test_that("ROBO-roypaoox: a line with a pair and a split row", {
     sp_blocked_message("/x/", "/x", 3L),
     paste0("The Disallow on line 3 blocks '/x' but not '/x?x=1'. A final ",
            "'$' ends the match at the end of the path and query together, ",
-           "so a query such as '?x=1' takes the URL out of the rule. The ",
+           "so the query shown takes the URL out of the rule. The ",
            "site may serve the same page with a query.")
   ))
   expect_false(identical(d$message[[1L]], d$message[[2L]]))

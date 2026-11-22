@@ -801,7 +801,9 @@ validation_unsupported <- c(
 #' a tab, another control byte or DEL, which no URL a crawler sends carries.
 #' The path the rule blocks is the
 #' value without the `$`, each `*` written `x`, and the query URL is that
-#' path with `?x=1` added. Google's matcher makes the decisions over every
+#' path with `?x=1` added; where another rule matches those filler bytes,
+#' the check tries `y` with `?y=2`, then `z` with `?z=3`, and the row shows
+#' the pair it found. Google's matcher makes the decisions over every
 #' rule of the crawler's merged groups, so a second rule that blocks the
 #' query URL (`Disallow: /x/edit?`, `Disallow: /*?`), or an Allow that wins
 #' the path, silences the row. A row is reported only where every crawler
@@ -4858,9 +4860,10 @@ slash_split_diagnostics <- function(groups, written = NULL, budget = NULL) {
 
 # witness_pair_reading() on the whole-value merge (`agents$uncut`) and, when
 # some value is cut, on Google's key too, the readings sharing `budget`.
-# Returns list(line, ok, checked): `ok` where every reading's `ok` holds,
-# `line` where every reading names the same line (NA otherwise), and
-# `checked` the leading candidates every reading read.
+# Returns list(line, ok, checked, spent): `ok` where every reading's `ok`
+# holds, `line` where every reading names the same line (NA otherwise),
+# `checked` the leading candidates every reading read, and `spent` the work
+# done.
 witness_pair_readings <- function(groups, at, short, long, decides,
                                   written = NULL, budget = Inf) {
   agents <- groups$agents
@@ -4871,10 +4874,11 @@ witness_pair_readings <- function(groups, at, short, long, decides,
   line <- NULL
   ok <- rep(TRUE, length(at))
   checked <- length(at)
+  spent <- 0
   for (key in keys) {
     read <- witness_pair_reading(groups, at, key, short, long, decides,
-                                 written, budget)
-    budget <- budget - read$spent
+                                 written, budget - spent)
+    spent <- spent + read$spent
     ok <- ok & read$ok
     if (is.null(line)) {
       line <- read$line
@@ -4885,7 +4889,7 @@ witness_pair_readings <- function(groups, at, short, long, decides,
     # A candidate is checked when every reading read it.
     checked <- min(checked, read$read)
   }
-  list(line = line, ok = ok, checked = checked)
+  list(line = line, ok = ok, checked = checked, spent = spent)
 }
 
 # For each candidate in `at` (indexes of `groups$rules`, values `P/`), the
@@ -5295,15 +5299,22 @@ slash_open_message <- function(value, line, cap) {
 # A Disallow whose pattern ends in `$` and holds no `?` blocks its path but
 # not the same path with a query added (ROBO-nzcvlsvk): the `$` ends the
 # match at the end of the path and query together. The control is the
-# value as a path (end_anchor_controls()), the witness the control with
-# `?x=1` added. A candidate (end_anchor_candidates()) is reported only when,
+# value as a path (end_anchor_controls()), each `*` written as a filler
+# byte, and the witness the control with a query added: `x` and `?x=1`
+# first, then `y` and `?y=2`, then `z` and `?z=3` (end_anchor_fillers())
+# for a candidate the earlier pair left unreported, so another rule that
+# happens to match one filler (`Disallow: /x/`, `Disallow: /*x=`) does not
+# silence it. Each pair is read whole, and the row shows the pair that
+# passed. A candidate (end_anchor_candidates()) is reported only when,
 # for every crawler class its group names, merged on the whole User-agent
 # value and on Google's token, it is the line that decides the control,
 # so the control is disallowed, and the witness comes out allowed: every
 # rule of the class takes part, so a second rule that blocks the witness
 # or an Allow that wins the control silences it. The decisions are Google's
 # matcher's, read by witness_pair_readings() within `budget`
-# (slash_budget()) in line order; a candidate past it gets no row. One row
+# (slash_budget()) in line order, the later pairs on what the first left;
+# a candidate past it gets no row, and the stop counts are the first
+# pair's. One row
 # per set of crawler classes, on the first User-agent line the check reads
 # of the group holding the earliest one (slash_open_rows()). A cut body is
 # not checked: a later Disallow could block the witness. Returns
@@ -5326,12 +5337,41 @@ end_anchor_diagnostics <- function(groups, written = NULL, budget = NULL,
   # Read as an empty rule, which decides nothing.
   cut <- rules$line %in% nul_cut & !seq_len(nrow(rules)) %in% at
   groups$rules$empty[cut] <- TRUE
-  control <- end_anchor_controls(rules$value[at])
-  read <- witness_pair_readings(groups, at, control, paste0(control, "?x=1"),
-                                "short", written, budget)
-  out <- slash_open_rows(groups, at[read$ok], message = end_anchor_message)
-  attr(out, "stopped") <- slash_stop(rules, at, read$checked)
+  fill <- end_anchor_fillers()
+  pair <- rep(NA_integer_, length(at))
+  todo <- seq_along(at)
+  checked <- NULL
+  for (k in seq_along(fill$path)) {
+    control <- end_anchor_controls(rules$value[at[todo]], fill$path[[k]])
+    read <- witness_pair_readings(groups, at[todo], control,
+                                  paste0(control, fill$query[[k]]), "short",
+                                  written, budget)
+    budget <- budget - read$spent
+    if (k == 1L) {
+      checked <- read$checked
+    }
+    pair[todo[read$ok]] <- k
+    # The next pair reads only the candidates this one read and left.
+    done <- seq_len(read$checked)
+    todo <- todo[done][!read$ok[done]]
+    if (length(todo) == 0L) {
+      break
+    }
+  }
+  hit <- which(!is.na(pair))
+  hit_line <- rules$line[at[hit]]
+  message <- function(value, line, cap) {
+    end_anchor_message(value, line, cap, pair[hit][match(line, hit_line)])
+  }
+  out <- slash_open_rows(groups, at[hit], message = message)
+  attr(out, "stopped") <- slash_stop(rules, at, checked)
   out
+}
+
+# The filler pairs, in the order tried: the byte each `*` of the control is
+# written as, and the query the witness adds.
+end_anchor_fillers <- function() {
+  list(path = c("x", "y", "z"), query = c("?x=1", "?y=2", "?z=3"))
 }
 
 # Indexes of `rules` that are rule_end_anchor_query candidates: a non-empty
@@ -5361,25 +5401,30 @@ end_anchor_candidates <- function(rules) {
 }
 
 # Each candidate value as a path: without its final `$`, each `*` written
-# `x`, led by `/` (query_parameter_lead()).
-end_anchor_controls <- function(value) {
-  query_parameter_lead(sub("[$]$", "", value, useBytes = TRUE))
+# `filler`, led by `/`.
+end_anchor_controls <- function(value, filler = "x") {
+  x <- gsub("*", filler, sub("[$]$", "", value, useBytes = TRUE),
+            fixed = TRUE, useBytes = TRUE)
+  ifelse(startsWith(x, "/"), x, paste0("/", x))
 }
 
-# The control and witness as the messages show them: the control elided as
-# query_parameter_cap() elides past 40 bytes and rendered as `raw_text` is,
-# and the witness the same text with `?x=1` after it.
-end_anchor_shown <- function(value) {
-  control <- query_parameter_render(
-    query_parameter_cap(end_anchor_controls(value), 40L)
-  )
-  list(control = control, witness = paste0(control, "?x=1"))
+# The control and witness of filler pair `pair` (end_anchor_fillers()) as
+# the messages show them: the control elided as query_parameter_cap()
+# elides past 40 bytes and rendered as `raw_text` is, and the witness the
+# same text with the pair's query after it.
+end_anchor_shown <- function(value, pair = 1L) {
+  fill <- end_anchor_fillers()
+  control <- query_parameter_render(query_parameter_cap(
+    end_anchor_controls(value, fill$path[pair]), 40L
+  ))
+  list(control = control, witness = paste0(control, fill$query[pair]))
 }
 
-# One row's text for the Disallows `value` on lines `line`: one names its
-# line, more are listed, five at most, then a count.
-end_anchor_message <- function(value, line, cap) {
-  shown <- end_anchor_shown(value)
+# One row's text for the Disallows `value` on lines `line`, each shown with
+# its filler pair `pair`: one names its line, more are listed, five at
+# most, then a count.
+end_anchor_message <- function(value, line, cap, pair = 1L) {
+  shown <- end_anchor_shown(value, pair)
   blocks <- sprintf("blocks '%s' but not '%s'", shown$control, shown$witness)
   if (length(value) == 1L) {
     return(sprintf("The Disallow on line %d %s.%s", line, blocks,
@@ -5396,7 +5441,7 @@ end_anchor_message <- function(value, line, cap) {
 
 end_anchor_why <- function(rule) {
   paste0(" A final '$' ends the match at the end of the path and query ",
-         "together, so a query such as '?x=1' takes the URL out of ", rule,
+         "together, so the query shown takes the URL out of ", rule,
          ". The site may serve the same page with a query.")
 }
 
