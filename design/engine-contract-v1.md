@@ -884,10 +884,11 @@ leading or trailing space, `*`, digits) can never name a group and silently
 read `*`. Upstream ships `RobotsMatcher::IsValidUserAgentToObey()` for
 callers (`src/robots.cc`), but `AllowedByRobots` does not apply it;
 refusing is this package's policy. The
-token is never trimmed or rewritten. `error_message` says the token is
-outside the grammar and is the robots.txt group token, not the HTTP
-`User-Agent` string, and names the leading run of identifier bytes, when
-there
+token is never trimmed or rewritten. `error_message` says the token is not
+an RFC 9309 identifier, that a crawler's own product token must be one and
+`*` names no crawler, and that it is the robots.txt group token, not the
+HTTP `User-Agent` string, and names the leading run of identifier bytes,
+when there
 is one, as a hint only (`Googlebot` for `Googlebot/2.1`, `archive` for
 `archive.org_bot`); it never echoes the token, which `robots_product_token`
 carries. An `NA` or empty token keeps "Robots product token is missing or

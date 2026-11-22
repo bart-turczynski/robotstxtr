@@ -50,12 +50,13 @@ pt_expect_refused <- function(r, label = NULL) {
   expect_true(all(is.na(r$source_id)), label = label)
 }
 
-pt_grammar_message <- "outside the RFC 9309 product-token grammar"
+pt_grammar_message <- "is not an RFC 9309 identifier (section 2.2.1"
 
 test_that("Googlebot/2.1 on google/google is refused, with a hint", {
   r <- pt_text("Googlebot/2.1")
   pt_expect_refused(r)
   expect_match(r$error_message, pt_grammar_message, fixed = TRUE)
+  expect_match(r$error_message, "and `*` names no crawler", fixed = TRUE)
   expect_match(r$error_message, "not the HTTP `User-Agent` string",
                fixed = TRUE)
   expect_match(r$error_message, "leading valid part is \"Googlebot\"",

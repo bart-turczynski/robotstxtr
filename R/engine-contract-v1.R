@@ -972,9 +972,10 @@ product_token_error_message_v1 <- function(token) {
     ""
   )
   out[present] <- paste0(
-    "Robots product token is outside the RFC 9309 product-token grammar ",
-    "(section 2.2.1: ASCII letters, `_` and `-` only). It is the robots.txt ",
-    "`User-agent:` group token, not the HTTP `User-Agent` string.",
+    "Robots product token is not an RFC 9309 identifier (section 2.2.1: ",
+    "ASCII letters, `_` and `-` only): a crawler's own product token must ",
+    "be one, and `*` names no crawler. It is the robots.txt `User-agent:` ",
+    "group token, not the HTTP `User-Agent` string.",
     hint_text
   )
   out
