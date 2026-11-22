@@ -91,6 +91,10 @@ fu_shapes <- list(
   dollar = fu_shape(
     "https://e.example/a$", "/a$", scope = "", url = "https://e.example/a"
   ),
+  # An inner `$` is literal, and keeps its own row.
+  inner_dollar = fu_shape(
+    "https://e.example/a$b", "/a$b", codes = c(fu_slash, "rule_inner_dollar")
+  ),
   encoded = fu_shape("https://e.example/caf%C3%A9", "/caf%C3%A9"),
   # The default normalization never encodes, so the URL is evaluated as
   # crawlers send it, percent-encoded.
@@ -145,6 +149,28 @@ test_that("ROBO-jdnluzbb: a full-URL value names the path to write", {
     expect_identical(fu_message(rows), fu_shapes[[name]]$message,
                      label = name)
   }
+})
+
+test_that("ROBO-jdnluzbb: the line's other rows keep their own messages", {
+  for (name in names(fu_shapes)) {
+    rows <- fu_rows(fu_shapes[[name]]$value)
+    others <- rows$message[rows$code != fu_slash]
+    expect_false(any(grepl("The value is a full URL", others, fixed = TRUE)),
+                 label = name)
+  }
+  rows <- fu_rows("https://e.example/a$b")
+  expect_identical(
+    rows$message[rows$code == "rule_inner_dollar"],
+    paste0("'$' marks the end of the URL only as the last character; here ",
+           "it matches a literal '$'.")
+  )
+  rows <- fu_rows("https://e.example/a/%2E/b")
+  expect_identical(
+    rows$message[rows$code == "rule_escaped_unreserved"],
+    paste0("'%2E' escapes the unreserved character '.'. Google matches it ",
+           "only against '%2E' in the URL, never against '.', though RFC ",
+           "9309 section 2.2.2 decodes it.")
+  )
 })
 
 test_that("ROBO-jdnluzbb: an Allow value gets the same message", {
