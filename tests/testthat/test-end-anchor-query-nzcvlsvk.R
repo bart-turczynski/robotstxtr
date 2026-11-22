@@ -722,11 +722,28 @@ test_that("ROBO-nzcvlsvk: a witness line reads as its file line", {
 ea_nul_twin <- c(charToRaw("User-agent: *\nDisallow: /a$\nDisallow: /a?"),
                  as.raw(0), charToRaw("zz\n"))
 
-test_that("ROBO-nzcvlsvk: a NUL-cut twin silences nothing", {
-  # As for rule_query_parameter_position, the twin Google alone reads is
-  # left out. Not testable on Bing and Yandex: the evaluator takes the body
-  # as a string, which cannot hold the NUL.
-  d <- ea_diag(ea_nul_twin)
+test_that("ROBO-nzcvlsvk: a NUL-cut rule takes part as Google cuts it", {
+  # The row speaks for Google's reading, so a rule is read with its value
+  # cut at the NUL. Bing and Yandex are checked on the body Google reads,
+  # cut at the NUL, since the evaluator takes a string, which cannot hold
+  # it.
+  expect_identical(ea_codes(ea_nul_twin), c("nul_byte", "rule_cut_by_nul"))
+  # `Allow: /a$` ties the candidate for `/a`, and the Allow wins.
+  tie <- c(charToRaw("User-agent: *\nDisallow: /a$\nAllow: /a$"), as.raw(0),
+           charToRaw("zz\n"))
+  expect_identical(ea_codes(tie), c("nul_byte", "rule_cut_by_nul",
+                                    "disallow_tied_by_allow"))
+  for (backend in names(ea_engines)) {
+    expect_identical(
+      ea_decide("User-agent: %s\nDisallow: /a$\nDisallow: /a?\n",
+                c("/a", "/a?x=1"), backend),
+      c("disallow", "disallow"), label = backend
+    )
+  }
+  # A candidate a NUL cuts after its `$` is Google's `/a$`: it keeps its
+  # row, which says it is Google's reading.
+  d <- ea_diag(c(charToRaw("User-agent: *\nDisallow: /a$"), as.raw(0),
+                 charToRaw("zz\n")))
   expect_identical(d$code, c("nul_byte", "rule_cut_by_nul", ea_code))
   expect_identical(d$message[[3L]], paste0(ea_one_message(2L, "/a"), ea_nul))
 })

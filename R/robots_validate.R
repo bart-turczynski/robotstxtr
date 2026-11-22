@@ -814,11 +814,9 @@ validation_unsupported <- c(
 #' package's Bing and Yandex matchers compare such a byte as written. Bing
 #' upper-cases a lower-case escape as Google does, while the package's
 #' Yandex matcher compares it as written, and also lets an Allow `/x` win
-#' over a Disallow `/x$` for `/x`. Another rule that gets `rule_cut_by_nul`
-#' takes no part in the decisions: the NUL cuts it on Google's reading only,
-#' and the rule Bing and Yandex read is another. A body cut at `max_bytes` is
-#' not checked: a
-#' later Disallow could block the query URL. The check reads its candidates
+#' over a Disallow `/x$` for `/x`. A rule that gets `rule_cut_by_nul` takes
+#' part with its value cut at the NUL, as Google's parser reads it. A body
+#' cut at `max_bytes` is not checked: a later Disallow could block the query URL. The check reads its candidates
 #' within a fixed amount of work, as the slash checks do, and a
 #' `User-agent: __usage_ai-training` group gets no row.
 #'
@@ -1878,9 +1876,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     }
     # A `$`-anchored Disallow that the same path with a query added escapes
     # (ROBO-nzcvlsvk). A later Disallow could block the witness, so a cut
-    # body is skipped too. A rule a NUL cuts silences nothing, as above.
-    found <- end_anchor_diagnostics(groups, written = written,
-                                    nul_cut = nul_cut)
+    # body is skipped too. A rule a NUL cuts is read as Google cuts it.
+    found <- end_anchor_diagnostics(groups, written = written)
     if (nrow(found) > 0L) {
       add_chunk(
         found$line, "info", "rule_end_anchor_query", found$directive,
@@ -5316,12 +5313,11 @@ slash_open_message <- function(value, line, cap) {
 # of the group holding the earliest one (slash_open_rows()). A cut body is
 # not checked: a later Disallow could block the witness. Returns
 # slash_rows() with a `directive` column; when the budget cut candidates,
-# its "stopped" attribute holds slash_stop()'s counts. Another rule on a
-# line in `nul_cut` (a NUL cut its value on Google's reading only, so Bing
-# and Yandex read another rule) takes no part in the decisions, as
-# query_parameter_kept() leaves such a twin out: it silences nothing.
-end_anchor_diagnostics <- function(groups, written = NULL, budget = NULL,
-                                   nul_cut = integer()) {
+# its "stopped" attribute holds slash_stop()'s counts. A rule a NUL cuts
+# takes part with its value cut at the NUL, as Google's parser reads it,
+# so the decisions are Google's reading, which the row's NUL sentence
+# names.
+end_anchor_diagnostics <- function(groups, written = NULL, budget = NULL) {
   groups <- slash_groups(groups)
   rules <- groups$rules
   at <- end_anchor_candidates(rules)
@@ -5331,9 +5327,6 @@ end_anchor_diagnostics <- function(groups, written = NULL, budget = NULL,
   if (is.null(budget)) {
     budget <- slash_budget(rules, at)
   }
-  # Read as an empty rule, which decides nothing.
-  cut <- rules$line %in% nul_cut & !seq_len(nrow(rules)) %in% at
-  groups$rules$empty[cut] <- TRUE
   fill <- end_anchor_fillers()
   pair <- rep(NA_integer_, length(at))
   todo <- seq_along(at)

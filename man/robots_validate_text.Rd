@@ -823,11 +823,9 @@ as its upper-case \verb{\%XX} escape, the form Google's matcher compares; the
 package's Bing and Yandex matchers compare such a byte as written. Bing
 upper-cases a lower-case escape as Google does, while the package's
 Yandex matcher compares it as written, and also lets an Allow \verb{/x} win
-over a Disallow \verb{/x$} for \verb{/x}. Another rule that gets \code{rule_cut_by_nul}
-takes no part in the decisions: the NUL cuts it on Google's reading only,
-and the rule Bing and Yandex read is another. A body cut at \code{max_bytes} is
-not checked: a
-later Disallow could block the query URL. The check reads its candidates
+over a Disallow \verb{/x$} for \verb{/x}. A rule that gets \code{rule_cut_by_nul} takes
+part with its value cut at the NUL, as Google's parser reads it. A body
+cut at \code{max_bytes} is not checked: a later Disallow could block the query URL. The check reads its candidates
 within a fixed amount of work, as the slash checks do, and a
 \verb{User-agent: __usage_ai-training} group gets no row.
 
