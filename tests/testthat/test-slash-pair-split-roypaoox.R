@@ -215,6 +215,11 @@ sp_groups <- function(body) {
   ))
 }
 
+# The bare-URL lines one reading gives the candidates in `at`.
+sp_reading <- function(groups, at, key) {
+  slash_split_reading(groups, at, key)$line
+}
+
 test_that("ROBO-roypaoox: each fixture's codes and lines", {
   for (name in names(sp_fixtures)) {
     d <- sp_diag(sp_body(name))
@@ -524,21 +529,21 @@ test_that("ROBO-roypaoox: a row needs the whole-value merge too", {
   # `cut_split_uncut` and not `cut_split_google`; Google's merge the reverse.
   groups <- sp_groups(sp_body("cut_split_uncut"))
   at <- 3L
-  expect_identical(slash_split_reading(groups, at, groups$agents$uncut), 5L)
-  expect_identical(slash_split_reading(groups, at, groups$agents$key),
+  expect_identical(sp_reading(groups, at, groups$agents$uncut), 5L)
+  expect_identical(sp_reading(groups, at, groups$agents$key),
                    NA_integer_)
   groups <- sp_groups(sp_body("cut_split_google"))
   at <- 2L
-  expect_identical(slash_split_reading(groups, at, groups$agents$uncut),
+  expect_identical(sp_reading(groups, at, groups$agents$uncut),
                    NA_integer_)
-  expect_identical(slash_split_reading(groups, at, groups$agents$key), 2L)
+  expect_identical(sp_reading(groups, at, groups$agents$key), 2L)
   # Both readings split, but a different line blocks `/x`: line 5 on the
   # whole value, line 2 on Google's merge. No row.
   body <- paste0("User-agent: Foo web\nDisallow: /x\n\n",
                  "User-agent: Foo blog\nDisallow: /\nAllow: /x/\n")
   groups <- sp_groups(body)
-  expect_identical(slash_split_reading(groups, 3L, groups$agents$uncut), 5L)
-  expect_identical(slash_split_reading(groups, 3L, groups$agents$key), 2L)
+  expect_identical(sp_reading(groups, 3L, groups$agents$uncut), 5L)
+  expect_identical(sp_reading(groups, 3L, groups$agents$key), 2L)
   expect_identical(sp_rows(body, sp_split)$line, integer(0))
   # The same whole value, in another ASCII case, merges on both readings.
   expect_identical(sp_rows(sp_body("same_value"), sp_pair)$line, 5L)
@@ -846,9 +851,10 @@ test_that("ROBO-roypaoox: the kept rules decide as all of them", {
       wildcard_witness_body(rules, rep(TRUE, nrow(rules))), c(1L, 1L),
       c(slash_partner(rules$value[at[[1L]]]), rules$value[at[[1L]]])
     )
-    body <- slash_split_bodies(
-      rules, validation_token_expander(groups), rules$value[at[[1L]]], 1L
-    )
+    live <- which(!rules$empty)
+    pairs <- validation_token_expander(groups)(rules$group[live])
+    held <- list(rule = live[pairs$owner], class = pairs$class)
+    body <- slash_split_bodies(rules, held, rules$value[at[[1L]]], 1L)
     kept <- wildcard_witness_decide(
       body$bodies, c(1L, 1L),
       c(slash_partner(rules$value[at[[1L]]]), rules$value[at[[1L]]])
@@ -923,6 +929,61 @@ test_that("ROBO-roypaoox: the split is linear beside wildcard rules", {
   small <- sp_time_check(sp_wild(250L), 2L)
   large <- sp_time_check(sp_wild(1000L), 2L)
   expect_lt(large, 8 * max(small, 0.05))
+})
+
+# Shapes where the witness reads alone would grow faster than the input:
+# rules whose later fragment shares its first bytes with every candidate
+# (`gram`, `locale`), and one group naming `n` crawlers that each have a
+# group of their own, so every candidate is read once per class (`classes`).
+sp_shape <- function(shape, n) {
+  k <- seq_len(n)
+  switch(
+    shape,
+    gram = paste0("User-agent: *\n",
+                  paste0("Disallow: /page", k, "/\n", collapse = ""),
+                  paste0("Disallow: /*page", k, "-print\n", collapse = "")),
+    locale = paste0("User-agent: *\n",
+                    paste0("Disallow: /c", k, "/\n", collapse = ""),
+                    paste0("Disallow: /*/c", k, "/\n", collapse = "")),
+    classes = paste0(paste0("User-agent: bot", k, "\n", collapse = ""),
+                     paste0("Disallow: /d", k, "/\nDisallow: /d", k, "\n",
+                            collapse = ""), "\n",
+                     paste0("User-agent: bot", k, "\nDisallow: /z", k, "\n",
+                            collapse = "\n"))
+  )
+}
+
+test_that("ROBO-roypaoox: candidates past the work budget get no row", {
+  # Each Allow is one (candidate, class) read, the first also pays once for
+  # its class's three rules, and each has a two-line witness body
+  # (`Disallow: /` and itself): 4 and 1 to plan, then 2 and 2 to read.
+  # Candidates are read in line order.
+  groups <- sp_groups("User-agent: Foo\nDisallow: /\nAllow: /a/\nAllow: /b/\n")
+  expect_identical(slash_split_diagnostics(groups)$line, 3:4)
+  expect_identical(slash_split_diagnostics(groups, budget = 9)$line, 3:4)
+  expect_identical(slash_split_diagnostics(groups, budget = 8)$line, 3L)
+  expect_identical(slash_split_diagnostics(groups, budget = 7)$line, 3L)
+  expect_identical(slash_split_diagnostics(groups, budget = 3)$line,
+                   integer(0))
+  # The pair check reads one row per candidate.
+  groups <- sp_groups(paste0("User-agent: *\nDisallow: /a\nDisallow: /a/\n",
+                             "Disallow: /b\nDisallow: /b/\n"))
+  expect_identical(slash_pair_diagnostics(groups)$line, c(3L, 5L))
+  expect_identical(slash_pair_diagnostics(groups, budget = 4)$line,
+                   c(3L, 5L))
+  expect_identical(slash_pair_diagnostics(groups, budget = 3)$line, 3L)
+  # The default: 32 units per rule and per candidate, plus 20,000.
+  expect_identical(slash_budget(groups$rules, 1:4), 32 * 8 + 20000)
+})
+
+test_that("ROBO-roypaoox: the checks stay linear on costly shapes", {
+  skip_on_cran()
+  for (shape in c("gram", "locale", "classes")) {
+    n <- if (shape == "classes") 125L else 500L
+    small <- sp_time_check(sp_shape(shape, n), 1L)
+    large <- sp_time_check(sp_shape(shape, 4L * n), 1L)
+    expect_lt(large, 8 * max(small, 0.05), label = shape)
+  }
 })
 
 # A split and a pair whose values carry the length, inside the 16,663-byte

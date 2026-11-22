@@ -381,7 +381,9 @@ server redirect between them makes matter. An Allow that opens
 \code{P/} while \code{P} stays disallowed is anchored on the Allow
 line; Disallows that block \code{P/} while \code{P} stays allowed get
 one row per group of crawlers, on its first User-agent line, listing
-five rules at most, then a count. \cr
+five rules at most, then a count. On a file whose rules and crawlers
+would make the check costly, candidates past a fixed amount of work,
+linear in the file's rules, get no row. \cr
 \code{missing_user_agent} \tab error \tab
 Allow or Disallow rules exist but no line names a non-empty
 User-agent. \cr
@@ -772,7 +774,9 @@ only Google's cut merge forms gets no row; \code{rule_slash_split} is
 reported only where the whole-value merge and Google's merge give the
 same decisions and deciding lines. A body cut at \code{max_bytes} gets
 \code{rule_slash_pair}, which a later line cannot undo, but not
-\code{rule_slash_split}, which a later Allow could change. A
+\code{rule_slash_split}, which a later Allow could change. Both checks read
+their candidates in line order within a fixed amount of work, linear in
+the file's rules and candidates, and a candidate past it gets no row. A
 \verb{User-agent: __usage_ai-training} group gets neither: it states a training
 preference, not crawl access.
 
