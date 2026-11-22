@@ -4623,10 +4623,13 @@ rule_full_url_message <- function(written, robots_url = NA_character_) {
     return(NULL)
   }
   # The origin is read on the scheme and authority alone: rurl's parse cost
-  # grows faster than the path's length, and the path is checked above.
+  # grows faster than the path's length, and the path is checked above. It
+  # is normalized as destination_origin() does, so a root dot is no other
+  # origin.
   split <- url_split_rfc3986_v1(url)
-  origin <- robots_origin(rawToChar(c(split$scheme, charToRaw("//"),
-                                      split$authority, charToRaw("/"))))
+  origin <- destination_origin(rawToChar(c(
+    split$scheme, charToRaw("//"), split$authority, charToRaw("/")
+  )))
   if (is.na(origin)) {
     return(NULL)
   }
@@ -4697,9 +4700,10 @@ rule_full_url_scope <- function(suggestion) {
 }
 
 # A sentence when the value's origin (scheme, host, effective port) is not
-# the robots.txt's; `origin` is robots_origin() of the value.
+# the robots.txt's; `origin` is destination_origin() of the value. Both drop
+# a trailing root dot from the host.
 rule_full_url_origin <- function(origin, robots_url) {
-  served <- robots_origin(robots_url)
+  served <- destination_origin(robots_url)
   if (is.na(served) || identical(served, origin)) {
     return(NULL)
   }

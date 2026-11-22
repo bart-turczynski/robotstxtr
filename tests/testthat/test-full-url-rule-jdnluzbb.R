@@ -414,6 +414,24 @@ test_that("ROBO-jdnluzbb: the same origin, however written, is not named", {
   )
 })
 
+test_that("ROBO-jdnluzbb: a trailing root dot is the same origin", {
+  # As destination_origin() reads it, in both directions.
+  expect_identical(fu_served("https://e.example./a"), fu_new("/a"))
+  expect_identical(fu_served("https://e.example.:8443/a",
+                             target = "https://e.example:8443/p"),
+                   fu_new("/a"))
+  expect_identical(
+    fu_served("https://e.example/a", target = "https://e.example./p"),
+    fu_new("/a")
+  )
+  # A root dot on another host still names it, without the dot.
+  expect_identical(
+    fu_served("https://other.example./a"),
+    fu_new("/a", origin = fu_origin("https://e.example",
+                                    "https://other.example"))
+  )
+})
+
 test_that("ROBO-jdnluzbb: supplied text names no origin", {
   expect_identical(fu_message(fu_rows("https://other.example/a")),
                    fu_new("/a"))
