@@ -516,9 +516,20 @@ test_that("ROBO-micbpqbc: every class on both merges must agree", {
 })
 
 test_that("ROBO-micbpqbc: the scans make each exclusion", {
-  shape <- c("*/x/", "/*/x/", "/**/x$", "*/x/$", "**/a", "*/x?p=", "/*/a*b")
+  shape <- c("*/x/", "/*/x/", "/**/x$", "*/x/$", "**/a", "*/x?p=", "/*/a*b",
+             "/*/a*")
+  # A final run of `*` names no byte: `/*/*` matches what `/*/` matches.
   not_shape <- c("/*/", "/*/$", "*/", "/*.css", "*?next=", "/my/*x", "/x/*/y",
-                 "*", "/*", "*/$", "x*/y")
+                 "*", "/*", "*/$", "x*/y", "/*/*", "/*/**", "*/*$")
+  expect_false(ar_code %in% ar_codes("User-agent: *\nDisallow: /c\nAllow: /*/*\n"))
+  for (backend in names(ar_engines)) {
+    paths <- c("/c", "/c?q=/x", "/c/x", "/cx")
+    expect_identical(
+      ar_decide("User-agent: %s\nDisallow: /c\nAllow: /*/*\n", paths, backend),
+      ar_decide("User-agent: %s\nDisallow: /c\nAllow: /*/\n", paths, backend),
+      label = backend
+    )
+  }
   groups <- ar_groups(paste0("User-agent: *\n",
                              paste0("Allow: ", c(shape, not_shape), "\n",
                                     collapse = ""),
@@ -526,7 +537,7 @@ test_that("ROBO-micbpqbc: the scans make each exclusion", {
   expect_identical(groups$rules$value[seq_along(shape)], shape)
   expect_identical(reopen_shape(groups$rules), seq_along(shape))
   expect_identical(reopen_literal(shape),
-                   c("/x/", "/x/", "/x", "/x/", "/a", "/x?p=", "/axb"))
+                   c("/x/", "/x/", "/x", "/x/", "/a", "/x?p=", "/axb", "/ax"))
   controls <- c("/a", "/a/", "*/b", "/a*b", "/a%41", "/a.b", "/a/x..")
   misses <- c("/a?", "/a/$", "/a$", "/a/./", "/a/..", "/a/%2E/", "/a%4",
               "/a%", "x", "")

@@ -834,8 +834,9 @@ validation_unsupported <- c(
 #'
 #' `allow_reopens_through_query` reads an Allow whose pattern is led by `*`
 #' or `/*` and whose rest after that run of `*` is a path: a `/` and at
-#' least one more byte (`*/x/`, `/*/x/`, `/**/x$`, `*/x/$`), so not `/*/`
-#' alone, `/*.css` or `*?next=`. It pairs the Allow with each non-empty
+#' least one more byte before any final `*` or `$` (`*/x/`, `/*/x/`,
+#' `/**/x$`, `*/x/$`), so not `/*/` or `/*/*` alone, `/*.css` or
+#' `*?next=`. It pairs the Allow with each non-empty
 #' Disallow the same crawlers have that is led by `/` or `*` and holds no
 #' `?` and no final `$`. The path the Disallow blocks is its value with each
 #' `*` written `x`, and the query URL is that path, `?q=` and the path the
@@ -5616,14 +5617,15 @@ allow_reopens_diagnostics <- function(groups, written = NULL, budget = NULL,
 # Indexes of `rules` that are shape-A Allows: a pattern led by `*` or `/*`
 # (wildcard_allow_prefix() "" or "/") whose rest after the leading run of
 # `*` starts with `/` and names at least one more byte before any final
-# `$`. Not `/*/` or `/*/$` alone, which name no path, nor `/*.css` or
-# `*?next=`, which name no path from its start.
+# run of `*` and `$`. Not `/*/`, `/*/$` or `/*/*` alone, which name no path
+# (a final `*` names no byte, so `/*/*` matches what `/*/` matches), nor
+# `/*.css` or `*?next=`, which name no path from its start.
 reopen_shape <- function(rules) {
   value <- rules$value
   rest <- sub("^/?[*]+", "", value, useBytes = TRUE)
+  named <- sub("[*]*[$]?$", "", rest, useBytes = TRUE)
   which(rules$type == "allow" & grepl("^/?[*]", value, useBytes = TRUE) &
-          startsWith(rest, "/") &
-          nchar(sub("[$]$", "", rest, useBytes = TRUE), "bytes") >= 2L)
+          startsWith(rest, "/") & nchar(named, "bytes") >= 2L)
 }
 
 # The path each shape-A Allow names, as the witness ends: the value after

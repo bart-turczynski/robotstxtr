@@ -843,8 +843,9 @@ gets no row.
 
 \code{allow_reopens_through_query} reads an Allow whose pattern is led by \code{*}
 or \verb{/*} and whose rest after that run of \code{*} is a path: a \code{/} and at
-least one more byte (\verb{*/x/}, \verb{/*/x/}, \verb{/**/x$}, \verb{*/x/$}), so not \verb{/*/}
-alone, \verb{/*.css} or \verb{*?next=}. It pairs the Allow with each non-empty
+least one more byte before any final \code{*} or \code{$} (\verb{*/x/}, \verb{/*/x/},
+\verb{/**/x$}, \verb{*/x/$}), so not \verb{/*/} or \verb{/*/*} alone, \verb{/*.css} or
+\verb{*?next=}. It pairs the Allow with each non-empty
 Disallow the same crawlers have that is led by \code{/} or \code{*} and holds no
 \verb{?} and no final \code{$}. The path the Disallow blocks is its value with each
 \code{*} written \code{x}, and the query URL is that path, \verb{?q=} and the path the
