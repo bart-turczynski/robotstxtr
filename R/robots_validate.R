@@ -4649,12 +4649,22 @@ rule_full_url_message <- function(written, robots_url = NA_character_,
   path <- rule_full_url_path(split$path, length(split$query) == 0L)
   pattern <- c(path$path, split$query)
   wide <- any(as.integer(pattern) >= 0x80L)
-  suggestion <- rule_full_url_escape(pattern)
+  # The ASCII bytes a WHATWG URL parser percent-encodes in the path, and in
+  # the query (space, `#` and `?` cannot reach here as path bytes).
+  path_set <- charToRaw("\"<>`{}")
+  query_set <- charToRaw("\"<>")
+  encoded <- any(path$path %in% path_set) || any(split$query %in% query_set)
+  suggestion <- paste0(rule_full_url_escape(path$path, path_set),
+                       rule_full_url_escape(split$query, query_set))
   paste0(
     "Pattern does not start with '/' or '*'; URL paths always start ",
     "with '/', so this rule never matches. The value is a full URL; write ",
     "its path and query instead: '", suggestion, "'.",
     if (path$dots) " Dot segments removed (RFC 3986 section 5.2.4).",
+    if (encoded) {
+      paste0(" Characters a WHATWG URL parser percent-encodes written as ",
+             "upper-case %XX escapes.")
+    },
     if (wide) " Non-ASCII bytes written as upper-case %XX escapes.",
     rule_full_url_scope(suggestion),
     rule_full_url_origin(origin, robots_url)
@@ -4711,10 +4721,14 @@ rule_full_url_bytes <- function(written) {
   url
 }
 
-# `bytes` as text, each non-ASCII byte as the parser's upper-case `%XX`.
-rule_full_url_escape <- function(bytes) {
+# `bytes` as text, each non-ASCII byte as the parser's upper-case `%XX`,
+# and each byte of `set` likewise.
+rule_full_url_escape <- function(bytes, set = raw(0L)) {
+  if (length(bytes) == 0L) {
+    return("")
+  }
   chars <- rawToChar(bytes, multiple = TRUE)
-  wide <- as.integer(bytes) >= 0x80L
+  wide <- as.integer(bytes) >= 0x80L | bytes %in% set
   chars[wide] <- sprintf("%%%02X", as.integer(bytes[wide]))
   paste(chars, collapse = "")
 }

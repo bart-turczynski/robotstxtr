@@ -46,6 +46,11 @@ fu_dots <- " Dot segments removed (RFC 3986 section 5.2.4)."
 
 fu_wide <- " Non-ASCII bytes written as upper-case %XX escapes."
 
+fu_ascii <- paste0(
+  " Characters a WHATWG URL parser percent-encodes written as upper-case ",
+  "%XX escapes."
+)
+
 # The message naming `pattern`, with the notes and scope sentence given.
 fu_new <- function(pattern, scope = fu_prefix, notes = "", origin = "") {
   paste0(
@@ -109,6 +114,20 @@ fu_shapes <- list(
     notes = fu_wide, url = "https://e.example/a?q=%C3%A9"
   ),
   quote = fu_shape("https://e.example/a'b", "/a'b"),
+  # Bytes a WHATWG parser percent-encodes are written as crawlers send
+  # them: in the path " < > ` { }, in the query " < > only.
+  whatwg_brace = fu_shape(
+    "https://e.example/a\"b{c}", "/a%22b%7Bc%7D",
+    notes = fu_ascii, url = "https://e.example/a%22b%7Bc%7D"
+  ),
+  whatwg_path = fu_shape(
+    "https://e.example/a\"b{c}<d>`e", "/a%22b%7Bc%7D%3Cd%3E%60e",
+    notes = fu_ascii, url = "https://e.example/a%22b%7Bc%7D%3Cd%3E%60e"
+  ),
+  whatwg_query = fu_shape(
+    "https://e.example/a?q=\"x\"{y}", "/a?q=%22x%22{y}",
+    notes = fu_ascii, url = "https://e.example/a?q=%22x%22{y}"
+  ),
   dots = fu_shape("https://e.example/a/./b/../c", "/a/c", notes = fu_dots),
   dots_query = fu_shape(
     "https://e.example/a/./b?x=/./", "/a/b?x=/./", notes = fu_dots
