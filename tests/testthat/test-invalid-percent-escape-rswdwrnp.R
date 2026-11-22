@@ -29,23 +29,41 @@ ip_body <- function(...) {
 
 ip_new <- "rule_invalid_percent_escape"
 
-ip_a <- function(listed) {
+ip_a <- function(listed, nul = FALSE) {
   paste0(
     "Pattern holds ", listed, ": '%' that starts no two-hex-digit escape. ",
     "The package's Google, Bing and Yandex matchers compare it as a ",
     "literal '%', so this rule matches only URLs that carry the raw '%', ",
-    "which correctly encoded URLs never do. ",
-    "Write '%25' for a literal '%'."
+    "which correctly encoded URLs never do.",
+    if (nul) ip_nul_split,
+    " Write '%25' for a literal '%'."
   )
 }
 
-ip_b <- function(listed, lower = FALSE) {
+# A NUL that cuts the value splits the engines (ROBO-xuusttbp).
+ip_nul_split <- paste0(
+  " Google's matcher ends the rule at the NUL; the package's Bing and ",
+  "Yandex matchers read the NUL as a byte of the rule."
+)
+
+ip_b <- function(listed, lower = FALSE, nul = FALSE) {
   paste0(
     "Pattern holds ", listed, ": '%' cut short by a '*' or by the ",
-    "pattern's end. The package's Google, ",
-    "Bing and Yandex matchers compare the pattern as written, so the rule ",
-    "matches any URL with a percent-escape that begins there, as a final ",
-    "'%' matches '%20' and '%25' alike.",
+    "pattern's end.",
+    if (nul) {
+      paste0(
+        " Google's matcher ends the rule at the NUL and compares the rest as ",
+        "written, so it matches any URL with a percent-escape that begins ",
+        "there, as a final '%' matches '%20' and '%25' alike; the package's ",
+        "Bing and Yandex matchers read the NUL as a byte of the rule."
+      )
+    } else {
+      paste0(
+        " The package's Google, Bing and Yandex matchers compare the pattern ",
+        "as written, so the rule matches any URL with a percent-escape that ",
+        "begins there, as a final '%' matches '%20' and '%25' alike."
+      )
+    },
     if (lower) {
       paste0(" A lower-case hex digit there matches only lower-case escapes, ",
              "which RFC 3986 section 2.1 advises against.")
@@ -327,6 +345,56 @@ test_that("ROBO-rswdwrnp: a `%` the parser never reads as a rule is silent", {
     robots_validate_text("User-agent: bot%zz\nDisallow: /\n")$diagnostics$code,
     "user_agent_cut"
   )
+})
+
+# A rule line whose value a NUL cuts: `pre`, a NUL, then `post`.
+ip_nul_body <- function(pre, post) {
+  ip_body("User-agent: *\nDisallow: ", pre, as.raw(0), paste0(post, "\n"))
+}
+
+# Each matcher's decision on each path for a raw body. An R string cannot
+# hold a NUL, so the matchers are called on the bytes (test-validator-nul-
+# reading-xuusttbp.R).
+ip_nul_decisions <- function(body, paths) {
+  urls <- paste0("https://example.com", paths)
+  list(
+    google = vapply(urls, function(u) {
+      match_google_v1(body, u, "FooBot")$url_decision
+    }, "", USE.NAMES = FALSE),
+    bing = vapply(urls, function(u) {
+      match_bing_v1(list(body), u, "bingbot")$url_decision
+    }, "", USE.NAMES = FALSE),
+    yandex = vapply(urls, function(u) {
+      match_yandex_v1(list(body), u, "Yandex")$url_decision
+    }, "", USE.NAMES = FALSE)
+  )
+}
+
+test_that("ROBO-rswdwrnp: a NUL that cuts the value splits the engines", {
+  # Class (b) on Google's reading only: the message says so.
+  body <- ip_nul_body("/a%", "zz")
+  x <- robots_validate_text(body)$diagnostics
+  expect_identical(x$code, c("nul_byte", "rule_cut_by_nul", ip_new))
+  expect_identical(ip_message(x), ip_b("'%'", nul = TRUE))
+  paths <- c("/a%20b", "/a%25", "/a%", "/b")
+  expect_identical(ip_nul_decisions(body, paths), list(
+    google = c("disallow", "disallow", "disallow", "allow"),
+    bing = rep("allow", 4L),
+    yandex = rep("allow", 4L)
+  ))
+  # Class (a) before the NUL: the raw `%` on Google, and the split named.
+  body <- ip_nul_body("/a%zz", "x")
+  expect_identical(ip_message(robots_validate_text(body)$diagnostics),
+                   ip_a("'%zz'", nul = TRUE))
+  expect_identical(
+    ip_nul_decisions(body, c("/a%zz", "/a%25zz")),
+    list(google = c("disallow", "allow"), bing = c("allow", "allow"),
+         yandex = c("allow", "allow"))
+  )
+  # A NUL in a comment cuts nothing, so no split is named.
+  body <- ip_body("User-agent: *\nDisallow: /a% #c", as.raw(0), "x\n")
+  expect_identical(ip_message(robots_validate_text(body)$diagnostics),
+                   ip_b("'%'"))
 })
 
 # A value whose last kept byte, the line buffer's 16,663rd, is a `%`.

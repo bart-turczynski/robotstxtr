@@ -224,7 +224,9 @@ two hex digits, as in \code{\%A9\%}, is an escape and no placeholder. A
 before a \code{*} matches any escape it begins, which may be meant,
 and gets its own message; the matchers compare the digit's case, so a
 lower-case digit matches only lower-case escapes, which RFC 3986
-section 2.1 advises against. One per rule line, naming up to ten
+section 2.1 advises against. When a NUL cuts the value, the message
+says that Google ends the rule there while Bing and Yandex read the
+NUL as a byte of the rule. One per rule line, naming up to ten
 \code{\%} with the two bytes after each, quoted as written in the
 file; a control or non-ASCII byte is shown by its hex code. \cr
 \code{rule_lowercase_escape} \tab warning \tab

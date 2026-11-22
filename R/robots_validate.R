@@ -215,7 +215,9 @@ validation_unsupported <- c(
 #'     before a \code{*} matches any escape it begins, which may be meant,
 #'     and gets its own message; the matchers compare the digit's case, so a
 #'     lower-case digit matches only lower-case escapes, which RFC 3986
-#'     section 2.1 advises against. One per rule line, naming up to ten
+#'     section 2.1 advises against. When a NUL cuts the value, the message
+#'     says that Google ends the rule there while Bing and Yandex read the
+#'     NUL as a byte of the rule. One per rule line, naming up to ten
 #'     \code{\%} with the two bytes after each, quoted as written in the
 #'     file; a control or non-ASCII byte is shown by its hex code. \cr
 #'   \code{rule_lowercase_escape} \tab warning \tab
@@ -1463,7 +1465,10 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       # warnings; the placeholder is read on the value as written.
       written <- rule_written_value(raw_lines[[line]], line == 1L,
                                     parsed$missing_colon[[i]])
-      percent <- rule_invalid_percent_escape_diagnostic(written)
+      percent <- rule_invalid_percent_escape_diagnostic(
+        written,
+        nul_counts[[line]] > 0L && rule_cut_by_nul(raw_lines[[line]])
+      )
       if (!is.null(percent)) {
         add_diagnostic(line, "warning", percent$code, type, percent$message)
       }
@@ -4551,8 +4556,9 @@ rule_dot_segment_diagnostic <- function(value) {
 # class (b) when it, or it and one hex digit, ends the value or stands before
 # a `*`: the matchers then match any escape it begins. Every other stray `%`
 # is class (a), a final `$` included. One byte pass and one placeholder regex
-# keep the cost linear (ROBO-dbvmxcfw). Returns a finding or NULL.
-rule_invalid_percent_escape_diagnostic <- function(written) {
+# keep the cost linear (ROBO-dbvmxcfw). `nul_cut` is TRUE when a NUL cut the
+# value, which only Google's matcher does. Returns a finding or NULL.
+rule_invalid_percent_escape_diagnostic <- function(written, nul_cut = FALSE) {
   bytes <- written
   n <- length(bytes)
   hex <- charToRaw("0123456789ABCDEFabcdef")
@@ -4567,7 +4573,7 @@ rule_invalid_percent_escape_diagnostic <- function(written) {
   list(
     code = "rule_invalid_percent_escape",
     message = rule_invalid_percent_escape_message(
-      bytes, stray, open
+      bytes, stray, open, nul_cut
     )
   )
 }
@@ -4634,8 +4640,8 @@ rule_placeholder_sentences <- function(name) {
 # 0x20, DEL or a non-ASCII byte is written \xNN, so the message stays ASCII.
 # `open` is TRUE for each stray `%` of class (b). A value holding a `%name%`
 # placeholder gets the class (a) lead and the placeholder sentences, whatever
-# its class.
-rule_invalid_percent_escape_message <- function(bytes, stray, open) {
+# its class. `nul_cut` is TRUE when a NUL cut the value (rule_cut_by_nul).
+rule_invalid_percent_escape_message <- function(bytes, stray, open, nul_cut) {
   n <- length(bytes)
   stray <- stray[order(open)]
   open <- all(open)
@@ -4663,10 +4669,7 @@ rule_invalid_percent_escape_message <- function(bytes, stray, open) {
                    stray < n)
     return(paste0(
       "Pattern holds ", listed, ": '%' cut short by a '*' or by the ",
-      "pattern's end. The package's Google, ",
-      "Bing and Yandex matchers compare the pattern as written, so the rule ",
-      "matches any URL with a percent-escape that begins there, as a final ",
-      "'%' matches '%20' and '%25' alike.",
+      "pattern's end.", rule_percent_open_sentence(nul_cut),
       if (lower) {
         paste0(" A lower-case hex digit there matches only lower-case ",
                "escapes, which RFC 3986 section 2.1 advises against.")
@@ -4677,16 +4680,45 @@ rule_invalid_percent_escape_message <- function(bytes, stray, open) {
   lead <- paste0(
     "Pattern holds ", listed, ": '%' that starts no two-hex-digit escape."
   )
+  nul <- if (nul_cut) rule_percent_nul_sentence else ""
   if (!is.null(placeholder)) {
     return(paste0(
-      lead, rule_placeholder_sentences(placeholder),
+      lead, rule_placeholder_sentences(placeholder), nul,
       " Write '%25' for a literal '%'."
     ))
   }
   paste0(
     lead, " The package's Google, Bing and Yandex matchers compare it as a ",
     "literal '%', so this rule matches only URLs that carry the raw '%', ",
-    "which correctly encoded URLs never do. Write '%25' for a literal '%'."
+    "which correctly encoded URLs never do.", nul,
+    " Write '%25' for a literal '%'."
+  )
+}
+
+# The engines split at a NUL that cuts the value (rule_cut_by_nul,
+# ROBO-xuusttbp): Google ends the rule there, while Bing and Yandex read the
+# NUL as a byte of the rule.
+rule_percent_nul_sentence <- paste0(
+  " Google's matcher ends the rule at the NUL; the package's Bing and ",
+  "Yandex matchers read the NUL as a byte of the rule."
+)
+
+# What the matchers do with a cut-short escape. A NUL that cuts the value
+# ends the rule only on Google's reading, so then only Google is said to
+# match any escape there.
+rule_percent_open_sentence <- function(nul_cut) {
+  if (nul_cut) {
+    return(paste0(
+      " Google's matcher ends the rule at the NUL and compares the rest as ",
+      "written, so it matches any URL with a percent-escape that begins ",
+      "there, as a final '%' matches '%20' and '%25' alike; the package's ",
+      "Bing and Yandex matchers read the NUL as a byte of the rule."
+    ))
+  }
+  paste0(
+    " The package's Google, Bing and Yandex matchers compare the pattern as ",
+    "written, so the rule matches any URL with a percent-escape that begins ",
+    "there, as a final '%' matches '%20' and '%25' alike."
   )
 }
 
