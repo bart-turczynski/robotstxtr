@@ -214,8 +214,11 @@ though RFC 9309 section 2.2.2 decodes it. One per rule line. \cr
 A pattern holds a \code{\%} that starts no two-hex-digit escape. The
 package's Google, Bing and Yandex matchers compare it as written, and
 a URL writes a literal \code{\%} as \code{\%25}, so the rule matches
-only URLs that carry the raw \code{\%}; a value such as
-\code{\%name\%} is named as an unfilled template placeholder. A
+only URLs that carry the raw \code{\%}. A value holding a
+\code{\%name\%} placeholder, read as written in the file, gets that
+message with the placeholder named, whatever the hex digits: Google
+and Bing upper-case a name led by an escape, so \code{\%date\%} matches
+\code{\%DAte\%} there and \code{\%date\%} on Yandex. A
 \code{\%}, or \code{\%} and one hex digit, at the pattern's end or
 before a \code{*} matches any escape it begins, which may be meant,
 and gets its own message. One per rule line, naming up to ten

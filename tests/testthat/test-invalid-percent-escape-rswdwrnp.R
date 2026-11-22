@@ -50,16 +50,52 @@ ip_b <- function(listed, n = 1L) {
   )
 }
 
-ip_placeholder <- function(name) {
-  paste0(" '", name, "' looks like an unfilled template placeholder.")
+ip_lead_a <- function(listed, n = 1L) {
+  paste0(
+    "Pattern holds ", listed, if (n == 1L) ", a '%'" else ", each a '%'",
+    " that starts no two-hex-digit escape."
+  )
+}
+
+ip_ph_named <- function(name) {
+  paste0(
+    " '", name, "' looks like an unfilled template placeholder: the rule ",
+    "matches no filled-in value, nor the placeholder with each '%' written ",
+    "'%25'."
+  )
+}
+
+# A placeholder all three matchers compare as written.
+ip_ph <- function(listed, n, name) {
+  paste0(
+    ip_lead_a(listed, n), ip_ph_named(name),
+    " The package's Google, Bing and Yandex matchers compare it as written, ",
+    "so the rule matches only a URL that carries the raw placeholder. Write ",
+    "'%25' for a literal '%'."
+  )
+}
+
+# A placeholder led by a lower-case escape, which Google and Bing upper-case.
+ip_ph_upper <- function(listed, n, name, esc, upper) {
+  paste0(
+    ip_lead_a(listed, n), ip_ph_named(name),
+    " Google's and Bing's matchers upper-case its '", esc, "' as an escape, ",
+    "so they match '", upper, "' and not the placeholder as written; the ",
+    "package's Yandex matcher compares it as written. Write '%25' for a ",
+    "literal '%'."
+  )
 }
 
 # Shapes with a stray `%`: their codes and the new row's message.
 ip_stray <- list(
   "/*hashid=%subscriber_hash%" = list(
-    ip_new,
-    paste0(ip_a("'%su', '%'", 2L), ip_placeholder("%subscriber_hash%"))
+    ip_new, ip_ph("'%su', '%'", 2L, "%subscriber_hash%")
   ),
+  "/x?d=%date%" = list(
+    c(ip_new, "rule_lowercase_escape"),
+    ip_ph_upper("'%'", 1L, "%date%", "%da", "%DAte%")
+  ),
+  "/x?d=%DAte%" = list(ip_new, ip_ph("'%'", 1L, "%DAte%")),
   "/a%4g" = list(ip_new, ip_a("'%4g'")),
   # test-escaped-unreserved-gaczsrgj.R's eu_clean held these two, which now
   # get only this code: no rule_escaped_unreserved.
@@ -79,9 +115,7 @@ ip_stray <- list(
   "/[% name %]" = list(
     c("rule_inner_whitespace", ip_new), ip_a("'% n', '%]'", 2L)
   ),
-  "/a%zz%" = list(
-    ip_new, paste0(ip_a("'%zz', '%'", 2L), ip_placeholder("%zz%"))
-  ),
+  "/a%zz%" = list(ip_new, ip_ph("'%zz', '%'", 2L, "%zz%")),
   "/a%" = list(ip_new, ip_b("'%'")),
   "/a%4" = list(ip_new, ip_b("'%4'")),
   "/a%F" = list(ip_new, ip_b("'%F'")),
@@ -89,7 +123,11 @@ ip_stray <- list(
   "/a%4*" = list(ip_new, ip_b("'%4*'")),
   "*%*" = list(ip_new, ip_b("'%*'")),
   "/a%*b%" = list(ip_new, ip_b("'%*b', '%'", 2L)),
-  "/ab%cd%" = list(c(ip_new, "rule_lowercase_escape"), ip_b("'%'"))
+  # Shaped like a placeholder, so named, though `%cd` is an escape.
+  "/ab%cd%" = list(
+    c(ip_new, "rule_lowercase_escape"),
+    ip_ph_upper("'%'", 1L, "%cd%", "%cd", "%CD%")
+  )
 )
 
 # Shapes with no stray `%`, each with the codes it got before the check.
@@ -178,11 +216,15 @@ test_that("ROBO-rswdwrnp: raw non-ASCII bytes are read in canonical form", {
   x <- robots_validate_text(latin)$diagnostics
   expect_identical(x$code, ip_new)
   expect_identical(x$message, ip_a("'%%C'"))
-  # A placeholder after a canonical escape is still named.
-  expect_identical(
-    ip_message(ip_rows("/%C3%subscriber%")),
-    paste0(ip_a("'%su', '%'", 2L), ip_placeholder("%subscriber%"))
-  )
+  # The placeholder is read as written: a raw e-acute before it, which the
+  # parser writes `%C3%A9`, leaves it named, and `/a%b` before a raw e-acute
+  # (canonical `/a%b%C3%A9`) names none.
+  x <- robots_validate_text(ip_body("User-agent: *\nDisallow: /", e_acute,
+                                    "%subscriber%\n"))$diagnostics
+  expect_identical(ip_message(x), ip_ph("'%su', '%'", 2L, "%subscriber%"))
+  x <- robots_validate_text(ip_body("User-agent: *\nDisallow: /a%b", e_acute,
+                                    "\n"))$diagnostics
+  expect_identical(ip_message(x), ip_a("'%b%'"))
 })
 
 test_that("ROBO-rswdwrnp: a control byte after a `%` is written \\xNN", {
@@ -210,15 +252,29 @@ test_that("ROBO-rswdwrnp: distinct `%` are listed once, up to ten", {
 
 test_that("ROBO-rswdwrnp: the placeholder wording", {
   expect_identical(
-    ip_message(ip_rows("/a%_x1%b")),
-    paste0(ip_a("'%_x', '%b'", 2L), ip_placeholder("%_x1%"))
+    ip_message(ip_rows("/a%_x1%b")), ip_ph("'%_x', '%b'", 2L, "%_x1%")
   )
   expect_identical(
-    ip_message(ip_rows("/a?u=%a%")),
-    paste0(ip_a("'%a%', '%'", 2L), ip_placeholder("%a%"))
+    ip_message(ip_rows("/a?u=%a%")), ip_ph("'%a%', '%'", 2L, "%a%")
   )
-  # A name led by two hex digits is an escape, so no placeholder.
-  expect_identical(ip_message(ip_rows("/%ab%zz")), ip_a("'%zz'"))
+  # A name led by two hex digits is named too, on the value as written; the
+  # parser upper-cases its escape.
+  for (name in c("date", "deal_id", "feed", "face")) {
+    upper <- paste0("%", chartr("adef", "ADEF", substr(name, 1L, 2L)),
+                    substring(name, 3L), "%")
+    expect_identical(
+      ip_message(ip_rows(paste0("/x?d=%", name, "%"))),
+      ip_ph_upper("'%'", 1L, paste0("%", name, "%"),
+                  paste0("%", substr(name, 1L, 2L)), upper),
+      label = name
+    )
+  }
+  expect_identical(
+    ip_message(ip_rows("/%ab%zz")),
+    ip_ph_upper("'%zz'", 1L, "%ab%", "%ab", "%AB%")
+  )
+  # The (b) value with no placeholder keeps the (b) message.
+  expect_identical(ip_message(ip_rows("/x?d=%")), ip_b("'%'"))
   # `[% name %]` is not detected here (ROBO-areyzfoy).
   expect_no_match(ip_message(ip_rows("/[% name %]")), "placeholder")
 })
@@ -290,9 +346,10 @@ test_that("ROBO-rswdwrnp: the check stays linear (ROBO-dbvmxcfw)", {
 # The helper on one value, 20 calls per run so a cost that grows with the
 # value's length clears the floor; best of five, as ip_time().
 ip_time_value <- function(value) {
+  written <- charToRaw(value)
   min(vapply(1:5, function(i) {
     system.time(for (k in 1:20) {
-      rule_invalid_percent_escape_diagnostic(value)
+      rule_invalid_percent_escape_diagnostic(value, written)
     })[["elapsed"]]
   }, 0))
 }
@@ -347,6 +404,21 @@ test_that("ROBO-rswdwrnp: a class (a) `%` matches only the raw `%`", {
               backend)$url_decision,
       "allow", label = backend
     )
+  }
+})
+
+test_that("ROBO-rswdwrnp: a hex-led placeholder on each matcher", {
+  paths <- c("/x?d=%date%", "/x?d=%DAte%20", "/x?d=%25date%25", "/x?d=abc")
+  # Google and Bing upper-case `%da`; Yandex compares it as written. None
+  # matches a filled-in value or the placeholder written with `%25`.
+  want <- list(
+    google = c("allow", "disallow", "allow", "allow"),
+    bing = c("allow", "disallow", "allow", "allow"),
+    yandex = c("disallow", "allow", "allow", "allow")
+  )
+  for (backend in names(ip_engines)) {
+    expect_identical(ip_eval("/x?d=%date%", paths, backend)$url_decision,
+                     want[[backend]], label = backend)
   }
 })
 
