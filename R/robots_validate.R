@@ -725,7 +725,8 @@ validation_unsupported <- c(
 #' the path without the addition and misses the example. The example is
 #' built from the canonical value, so an escape shows in upper case, and
 #' its parameter name, the text before the `?` and the text after the `=`
-#' are each cut to their first 36 characters and "..." past 40. A
+#' are each cut to their first 36 characters and "..." past 40, or one or
+#' two fewer where the cut would split a `%XX` escape. A
 #' lower-case-escape twin gets no row, and a body cut at `max_bytes` is not
 #' checked: a twin past the cut could silence the rule.
 #'
@@ -4303,7 +4304,7 @@ query_parameter_lead <- function(x) {
 # elides an agent name, so the message stays bounded however long the
 # value is; the `?a=1&name=` run always shows.
 query_parameter_message <- function(type, paths, cap = 40L) {
-  shown <- function(x) query_parameter_render(ai_training_name(x, cap))
+  shown <- function(x) query_parameter_render(query_parameter_cap(x, cap))
   name <- ai_training_name(paths$name, cap)
   example <- paste0(
     shown(query_parameter_lead(paths$head)), "?", paths$filler, "&", name,
@@ -4319,6 +4320,19 @@ query_parameter_message <- function(type, paths, cap = 40L) {
   sprintf(paste0("Pattern holds '?%s=', which matches '%s' only where a '?' ",
                  "stands right before it, so ", effect),
           name, name, name, example)
+}
+
+# ai_training_name()'s elision (the first `cap - 4` bytes and "..." past
+# `cap`), backed off one or two bytes where the cut would split a `%XX`
+# escape, so an escape shows whole or not at all.
+query_parameter_cap <- function(x, cap) {
+  k <- cap - 4L
+  keep <- rep(k, length(x))
+  keep[substr(x, k - 1L, k - 1L) == "%"] <- k - 2L
+  keep[substr(x, k, k) == "%"] <- k - 1L
+  long <- nchar(x, "bytes") > cap
+  x[long] <- paste0(substr(x[long], 1L, keep[long]), "...")
+  x
 }
 
 # Values as `raw_text` renders a line: printable ASCII as is, other bytes as

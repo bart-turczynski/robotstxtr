@@ -734,7 +734,8 @@ with the same head cannot match the example either: the pattern matches
 the path without the addition and misses the example. The example is
 built from the canonical value, so an escape shows in upper case, and
 its parameter name, the text before the \verb{?} and the text after the \code{=}
-are each cut to their first 36 characters and "..." past 40. A
+are each cut to their first 36 characters and "..." past 40, or one or
+two fewer where the cut would split a \verb{\%XX} escape. A
 lower-case-escape twin gets no row, and a body cut at \code{max_bytes} is not
 checked: a twin past the cut could silence the rule.
 

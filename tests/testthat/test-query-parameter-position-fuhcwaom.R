@@ -626,6 +626,21 @@ test_that("ROBO-fuhcwaom: the quoted example is capped", {
   expect_identical(d$code, qp_code)
   expect_identical(d$message,
                    qp_message(shown, paste0("/p?a=1&", shown, "=1")))
+  # The cut never splits an escape: a `%` at the 36th or 35th byte goes
+  # with its escape; one at the 34th keeps it whole.
+  expect_identical(
+    query_parameter_cap(paste0(strrep("a", c(35L, 34L, 33L)), "%2F",
+                               strrep("b", 10L)), 40L),
+    c(paste0(strrep("a", 35L), "..."), paste0(strrep("a", 34L), "..."),
+      paste0(strrep("a", 33L), "%2F..."))
+  )
+  expect_identical(query_parameter_cap(strrep("a", 40L), 40L),
+                   strrep("a", 40L))
+  part <- paste0(strrep("a", 34L), "%2F", strrep("b", 10L))
+  d <- qp_diag(paste0("User-agent: *\nDisallow: /", part, "?q=", part, "\n"))
+  expect_identical(d$message, qp_message("q", paste0(
+    "/", strrep("a", 34L), "...?a=1&q=", strrep("a", 34L), "..."
+  )))
 })
 
 test_that("ROBO-fuhcwaom: a body cut at max_bytes is not checked", {
