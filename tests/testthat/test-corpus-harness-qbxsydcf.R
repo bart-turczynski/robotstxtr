@@ -151,14 +151,33 @@ test_that("synthetic size bodies straddle the 512,000-byte boundary", {
   expect_named(h$size_variants(body_of("short")), "full")
 })
 
-test_that("the combos offer `*` on google, which the facade refuses", {
-  # PIN (ROBO-mtmkpwuf): today the grid keeps `*` on the google backend,
-  # where every such row is refused as input and decides nothing.
+test_that("the combos leave out tokens the backend's grammar refuses", {
+  # The v1 facades refuse a token that is not an RFC 9309 identifier on a
+  # backend that publishes `product_token_grammar` (ROBO-mtmkpwuf), so a
+  # `*` row there would decide nothing: the grid lists it in `pairs` only.
   h <- load_harness()
-  out <- h$evaluation_combos(robots_engine_contract_v1(),
-                             robots_resolve_matcher_profile_v1)
+  contract <- robots_engine_contract_v1()
+  out <- h$evaluation_combos(contract, robots_resolve_matcher_profile_v1)
   g <- out$combos[out$combos$backend == "google", , drop = FALSE]
-  expect_true("*" %in% g$token)
+  expect_false("*" %in% g$token)
+  expect_true(all(c("Googlebot", "Googlebot-Image") %in% g$token))
+  star <- out$pairs[out$pairs$token == "*", , drop = FALSE]
+  expect_identical(star$grammar_ok[star$backend %in% c("google", "rfc9309")],
+                   c(FALSE, FALSE))
+  # A backend that publishes no grammar admits any token; the bounded ones
+  # still refuse `*` through the resolver.
+  expect_true(all(star$grammar_ok[star$backend %in% c("yandex", "bing")]))
+  # The grid follows the published field, not a list of backend names.
+  without <- contract
+  without$matcher_capability$google$product_token_grammar <- NULL
+  out <- h$evaluation_combos(without, robots_resolve_matcher_profile_v1)
+  expect_true("*" %in% out$combos$token[out$combos$backend == "google"])
+  unknown <- contract
+  unknown$matcher_capability$google$product_token_grammar <- "other"
+  expect_refusal(
+    h$evaluation_combos(unknown, robots_resolve_matcher_profile_v1),
+    "unknown product_token_grammar"
+  )
 })
 
 test_that("the narrow grid keeps each backend's first named token", {
