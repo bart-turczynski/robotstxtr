@@ -217,9 +217,13 @@ sp_groups <- function(body) {
   ))
 }
 
-# The bare-URL lines one reading gives the candidates in `at`.
+# The bare-URL lines one reading gives the candidates in `at`: the shared
+# reader, with the bare URL `P` the short path and the candidate deciding
+# the slash URL `P/`.
 sp_reading <- function(groups, at, key) {
-  slash_split_reading(groups, at, key)$line
+  value <- groups$rules$value[at]
+  witness_pair_reading(groups, at, key, slash_partner(value), value,
+                       "long")$line
 }
 
 test_that("ROBO-roypaoox: each fixture's codes and lines", {

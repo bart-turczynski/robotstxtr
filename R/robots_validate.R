@@ -4827,8 +4827,8 @@ slash_crawler_note <- function(agents, group) {
 # `P` stays allowed (one row per set of crawler classes, anchored on the
 # first User-agent line of the group holding the earliest listed rule, five
 # rules at most, then a count). Every rule of a class takes part in the
-# decisions, which are Google's matcher's (slash_split_reading(), read
-# through witness_pair_readings()). A row is
+# decisions, which are Google's matcher's (witness_pair_readings(), with
+# `P` the short path and `P/` the long one the candidate decides). A row is
 # reported only where every class the group names, merged on the whole
 # User-agent value and on Google's token, gives the same decisions and the
 # same deciding lines; the two merges coincide when no value is cut, and
@@ -4890,18 +4890,6 @@ witness_pair_readings <- function(groups, at, short, long, decides,
     checked <- min(checked, read$read)
   }
   list(line = line, ok = ok, checked = checked, spent = spent)
-}
-
-# For each candidate in `at` (indexes of `groups$rules`, values `P/`), the
-# file line that decides the bare URL `P` (0 when no rule matches it) when
-# every class the group names (validation_token_expander() on `key`) has
-# the candidate decide `P/`, decides `P` the other way, and agrees on that
-# line; NA otherwise. witness_pair_reading() reads it, `P` the short path.
-slash_split_reading <- function(groups, at, key, written = NULL,
-                                budget = Inf) {
-  value <- groups$rules$value[at]
-  witness_pair_reading(groups, at, key, slash_partner(value), value, "long",
-                       written, budget)
 }
 
 # Two paths per candidate in `at` (indexes of `groups$rules`): `short`, a
