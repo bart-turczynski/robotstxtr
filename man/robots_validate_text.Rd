@@ -402,7 +402,9 @@ An Allow that opens with \code{*} or \code{/*} and then names a path
 the Allow decides the query URL while the path stays blocked, and
 with every such Allow left out the query URL would be blocked too,
 under every rule the crawlers have. One row per group of crawlers, on
-its first User-agent line, listing five Allows at most, then a count.
+its first User-agent line: the first Allow with the URL it allows and
+the Disallow that blocks the path, then the lines of the other
+Allows, four at most, then a count.
 Past a fixed amount of work, as for \code{rule_slash_split}, Allows
 get no row and \code{rule_check_stopped} says so. \cr
 \code{rule_check_stopped} \tab info \tab

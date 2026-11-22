@@ -393,7 +393,9 @@ validation_unsupported <- c(
 #'     the Allow decides the query URL while the path stays blocked, and
 #'     with every such Allow left out the query URL would be blocked too,
 #'     under every rule the crawlers have. One row per group of crawlers, on
-#'     its first User-agent line, listing five Allows at most, then a count.
+#'     its first User-agent line: the first Allow with the URL it allows and
+#'     the Disallow that blocks the path, then the lines of the other
+#'     Allows, four at most, then a count.
 #'     Past a fixed amount of work, as for \code{rule_slash_split}, Allows
 #'     get no row and \code{rule_check_stopped} says so. \cr
 #'   \code{rule_check_stopped} \tab info \tab
@@ -5703,8 +5705,9 @@ end_anchor_stop_intro <- function(stop) {
 # first unfinished Allow; that one and every later one get no row, and the
 # stop counts say so. One row per set of crawler classes, on the first
 # User-agent line the check reads of the group holding the earliest Allow
-# (slash_open_rows()), five Allows at most, then a count. A cut body is not
-# checked: a later rule could decide the witness. `filter = FALSE` turns
+# (slash_open_rows()), with the first Allow's witness and four more Allows
+# at most, then a count. A cut body is not checked: a later rule could
+# decide the witness. `filter = FALSE` turns
 # off the length filter of reopen_take(), and `chunk = Inf` reads every
 # pair in one round, for the tests. Returns slash_rows() with a
 # `directive` column; when the budget cut Allows, its "stopped" attribute
@@ -5731,7 +5734,7 @@ allow_reopens_diagnostics <- function(groups, written = NULL, budget = NULL,
   finished <- state$status %in% c("hit", "none")
   checked <- match(FALSE, finished, nomatch = length(allows) + 1L) - 1L
   hit <- which(state$status == "hit" & seq_along(allows) <= checked)
-  out <- reopen_rows(groups, shape, allows[hit], state$control[hit],
+  out <- reopen_rows(groups, allows[hit], state$control[hit],
                      state$line[hit])
   attr(out, "stopped") <- slash_stop(rules, allows, checked)
   out
@@ -5944,15 +5947,14 @@ reopen_controls <- function(rules) {
   list(at = at[safe], control = control[safe])
 }
 
-# The crawler classes of the groups `wanted` on a merge (`key`,
-# validation_token_expander(); the whole-value merge by default), as
-# functions of group ids: `key`, one string per set of classes, and
-# `groups`, for one group, every group sharing a class with it, itself
-# included. The work comes from the (group, class) pairs, which grow with
-# the User-agent lines.
-reopen_near <- function(groups, wanted, key = groups$agents$uncut) {
+# The crawler classes of the groups `wanted` on the whole-value merge
+# (validation_token_expander()), as functions of group ids: `key`, one
+# string per set of classes, and `groups`, for one group, every group
+# sharing a class with it, itself included. The work comes from the
+# (group, class) pairs, which grow with the User-agent lines.
+reopen_near <- function(groups, wanted) {
   wanted <- unique(wanted)
-  pairs <- validation_token_expander(groups, key)(wanted)
+  pairs <- validation_token_expander(groups, groups$agents$uncut)(wanted)
   by_class <- split(wanted[pairs$owner], pairs$class)
   classes <- split(pairs$class, factor(pairs$owner, seq_along(wanted)))
   key <- vapply(classes, function(x) paste(sort(x), collapse = " "), "",
@@ -6018,100 +6020,49 @@ reopen_reads <- function(groups, shape, allows, pairs, written, budget,
 
 # The rows for the reported Allows `at`, each with its pair's `control` and
 # `decider`, the line deciding it: one per set of crawler classes
-# (slash_open_rows()).
-reopen_rows <- function(groups, shape, at, control, decider) {
-  rules <- groups$rules
-  line <- rules$line[at]
-  others <- reopen_others(groups, shape, at)
+# (slash_open_rows()), naming four more Allows at most.
+reopen_rows <- function(groups, at, control, decider) {
+  line <- groups$rules$line[at]
   message <- function(value, lines, cap) {
-    k <- match(lines, line)
-    reopen_message(value, lines, cap, control[k], decider[k], others[k])
+    k <- match(lines[[1L]], line)
+    reopen_message(value[[1L]], lines, cap, control[k], decider[k])
   }
-  slash_open_rows(groups, at, message = message)
+  slash_open_rows(groups, at, cap = 4L, message = message)
 }
 
-# For each Allow `at`, the lines of the other shape-A Allows (`shape`) its
-# crawler classes hold on the whole-value merge or on Google's
-# (reopen_near()): the second reading left out every shape-A Allow, and
-# those are the ones a crawler of the Allow's group obeys, on either merge.
-# Gathered once per set of classes.
-reopen_others <- function(groups, shape, at) {
-  rules <- groups$rules
-  if (length(at) == 0L) {
-    return(list())
-  }
-  wanted <- rules$group[c(at, shape)]
-  whole <- reopen_near(groups, wanted)
-  google <- reopen_near(groups, wanted, groups$agents$key)
-  by_group <- split(rules$line[shape], rules$group[shape])
-  g <- rules$group[at]
-  key <- paste(whole$key(g), google$key(g))
-  held <- list()
-  out <- vector("list", length(at))
-  for (i in seq_along(at)) {
-    if (is.null(held[[key[[i]]]])) {
-      near <- union(whole$groups(g[[i]]), google$groups(g[[i]]))
-      found <- by_group[as.character(near)]
-      held[[key[[i]]]] <- sort(unlist(found, use.names = FALSE))
-    }
-    out[[i]] <- setdiff(held[[key[[i]]]], rules$line[at[[i]]])
-  }
-  out
-}
-
-# One row's text for the Allows `value` on lines `line`, each with its
-# control, the line `decider` deciding the control and `others`, the lines
-# of the other shape-A Allows left out with it: one names its lines, more
-# are listed, five at most, then a count. Each witness shows as the
-# control, `?q=` and the Allow's literal, each elided past 40 bytes
-# (query_parameter_cap()). A value is printable ASCII (url_safe_path()
-# leaves out control bytes, and the canonical value escapes the rest), so
-# it shows as is.
-reopen_message <- function(value, line, cap, control, decider, others) {
-  shown <- query_parameter_cap(value, 40L)
+# One row's text, in short sentences: the Allow `value` on `line[1]`, its
+# control and the line `decider` deciding the control, then the lines of
+# the row's other Allows, `cap` at most, then a count. The witness shows as
+# the control, `?q=` and the Allow's literal, each elided past 40 bytes
+# (query_parameter_cap()), so the text is bounded whatever the file holds.
+# A value is printable ASCII (url_safe_path() leaves out control bytes, and
+# the canonical value escapes the rest), so it shows as is.
+reopen_message <- function(value, line, cap, control, decider) {
   control <- query_parameter_cap(control, 40L)
   witness <- paste0(control, "?q=",
                     query_parameter_cap(reopen_literal(value), 40L))
-  if (length(value) == 1L) {
-    return(sprintf(paste0(
-      "The Allow on line %d ('%s') also matches inside a query: it allows ",
-      "'%s', while the Disallow on line %d blocks '%s'. Without this ",
-      "Allow%s, '%s' would be blocked.%s"
-    ), line, shown, witness, decider, control,
-    reopen_others_text(others[[1L]], cap), witness, reopen_why()))
-  }
-  k <- utils::head(seq_along(value), cap)
-  paste0(
-    "These Allows also match inside a query, each allowing a URL with a ",
-    "query while a Disallow blocks the URL without it: ",
-    joined_and(sprintf("line %d ('%s') allows '%s' while line %d blocks '%s'",
-                       line[k], shown[k], witness[k], decider[k],
-                       control[k]),
-               length(value) - length(k)),
-    ". Without these Allows and any other Allows that open with '*' or ",
-    "'/*', those URLs would be blocked.", reopen_why()
-  )
+  paste0(sprintf(paste0(
+    "The Allow on line %d ('%s') allows '%s'. The Disallow on line %d ",
+    "blocks '%s'. The '*' at the start of the Allow also matches text in ",
+    "the query."
+  ), line[[1L]], query_parameter_cap(value, 40L), witness, decider, control),
+  reopen_same_text(line[-1L], cap),
+  " You may not mean to allow URLs like this.")
 }
 
-# " and the other Allows that open with '*' or '/*' (lines 4 and 9)", five
-# lines at most, then a count, or "" when there are none.
-reopen_others_text <- function(lines, cap) {
+# " The Allows on lines 4, 5, 6, 7 and 2 more do the same.": the lines of a
+# row's other Allows, `cap` at most, then a count, or "" when there are
+# none.
+reopen_same_text <- function(lines, cap) {
   if (length(lines) == 0L) {
     return("")
   }
   if (length(lines) == 1L) {
-    return(sprintf(" and the other Allow that opens with '*' or '/*' (line %d)",
-                   lines))
+    return(sprintf(" The Allow on line %d does the same.", lines))
   }
   shown <- utils::head(lines, cap)
-  sprintf(" and the other Allows that open with '*' or '/*' (lines %s)",
+  sprintf(" The Allows on lines %s do the same.",
           joined_and(as.character(shown), length(lines) - length(shown)))
-}
-
-reopen_why <- function() {
-  paste0(" An Allow that opens with '*' or '/*' matches any text before the ",
-         "path it names, a URL's query included, so the site may not mean ",
-         "to allow such URLs.")
 }
 
 # The opening of a stopped reopen check's rule_check_stopped row: what it
