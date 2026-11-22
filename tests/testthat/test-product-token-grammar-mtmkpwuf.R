@@ -178,15 +178,43 @@ test_that("latin1 and invalid UTF-8 tokens are refused with no warning", {
   expect_match(r$error_message, "leading valid part is \"G\",", fixed = TRUE)
 })
 
-test_that("the grammar does not widen with the collation locale", {
-  withr::local_locale(c(LC_COLLATE = "en_US.UTF-8"))
+# Whether this machine has `locale` for LC_CTYPE; the session's is restored.
+pt_locale_available <- function(locale) {
+  old <- Sys.getlocale("LC_CTYPE")
+  on.exit(Sys.setlocale("LC_CTYPE", old))
+  nzchar(suppressWarnings(Sys.setlocale("LC_CTYPE", locale)))
+}
+
+# The screen in one locale: a letter outside ASCII and an invalid UTF-8
+# byte are refused with no warning, and ASCII tokens, `I` and `i` among
+# them (the Turkish case pair), are kept.
+pt_expect_locale_screen <- function() {
   expect_no_warning(
     r <- pt_text(c("Gooģlebot", rawToChar(as.raw(c(0x47, 0xff)))))
   )
   pt_expect_refused(r)
   expect_no_warning(r <- pt_text(rawToChar(as.raw(c(0x47, 0xff)))))
   pt_expect_refused(r)
-  expect_identical(pt_text("Googlebot")$matcher_status, "evaluated")
+  expect_no_warning(r <- pt_text("İbot"))
+  pt_expect_refused(r)
+  ok <- pt_text(c("Googlebot", "IBOT", "ibot", "google_extended"))
+  expect_identical(ok$matcher_status, rep("evaluated", 4L))
+}
+
+test_that("the grammar does not widen with the collation locale", {
+  withr::local_locale(c(LC_COLLATE = "en_US.UTF-8"))
+  pt_expect_locale_screen()
+})
+
+test_that("the grammar is the same in the C locale", {
+  withr::local_locale(c(LC_CTYPE = "C", LC_COLLATE = "C"))
+  pt_expect_locale_screen()
+})
+
+test_that("the grammar is the same in a Turkish locale", {
+  skip_if_not(pt_locale_available("tr_TR.UTF-8"), "no tr_TR.UTF-8 locale")
+  withr::local_locale(c(LC_CTYPE = "tr_TR.UTF-8", LC_COLLATE = "tr_TR.UTF-8"))
+  pt_expect_locale_screen()
 })
 
 test_that("an oversized token is screened in one linear pass", {
