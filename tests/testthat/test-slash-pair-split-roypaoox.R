@@ -1036,7 +1036,7 @@ test_that("ROBO-roypaoox: a check that stops says so, with its counts", {
   ))
   # A normal file gets no such row.
   for (name in names(sp_fixtures)) {
-    expect_false("rule_slash_check_stopped" %in% sp_codes(sp_body(name)),
+    expect_false("rule_check_stopped" %in% sp_codes(sp_body(name)),
                  label = name)
   }
 })
@@ -1065,7 +1065,7 @@ test_that("ROBO-roypaoox: the split's checked count on each budget branch", {
 
 test_that("ROBO-roypaoox: a file too large for the checks gets the rows", {
   d <- sp_diag(sp_shape("classes", 250L))
-  stop <- d[d$code == "rule_slash_check_stopped", , drop = FALSE]
+  stop <- d[d$code == "rule_check_stopped", , drop = FALSE]
   expect_identical(stop$line, c(NA_integer_, NA_integer_))
   expect_identical(stop$severity, c("info", "info"))
   expect_identical(stop$directive, c(NA_character_, NA_character_))
