@@ -4566,7 +4566,7 @@ rule_invalid_percent_escape_diagnostic <- function(written) {
   list(
     code = "rule_invalid_percent_escape",
     message = rule_invalid_percent_escape_message(
-      bytes, stray, all(open)
+      bytes, stray, open
     )
   )
 }
@@ -4623,14 +4623,18 @@ rule_placeholder_sentences <- function(name) {
   )
 }
 
-# Each stray `%` with up to two bytes after it, distinct, in order, up to
-# ten, as rule_control_character_message() lists, quoted from the value as
-# written (`bytes`). A byte below 0x20, DEL or a non-ASCII byte is written
-# \xNN, so the message stays ASCII. `open` is TRUE when every stray `%` is
-# class (b). A value holding a `%name%` placeholder gets the class (a) lead
-# and the placeholder sentences, whatever its class.
+# Each stray `%` with up to two bytes after it, distinct, up to ten, as
+# rule_control_character_message() lists, quoted from the value as written
+# (`bytes`). Class (a) items come first, each class in value order, so the
+# `%` that sets the message is never hidden in "and N more". A byte below
+# 0x20, DEL or a non-ASCII byte is written \xNN, so the message stays ASCII.
+# `open` is TRUE for each stray `%` of class (b). A value holding a `%name%`
+# placeholder gets the class (a) lead and the placeholder sentences, whatever
+# its class.
 rule_invalid_percent_escape_message <- function(bytes, stray, open) {
   n <- length(bytes)
+  stray <- stray[order(open)]
+  open <- all(open)
   at <- function(k) {
     ifelse(stray + k <= n, as.integer(bytes[pmin(stray + k, n)]), 256L)
   }

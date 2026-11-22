@@ -265,6 +265,16 @@ test_that("ROBO-rswdwrnp: distinct `%` are listed once, up to ten", {
     ip_a(paste0(toString(sprintf("'%%%s-'", letters[7:16])),
                 ", and 1 more"), 11L)
   )
+  # The class (a) `%` that sets the message is listed first, never hidden.
+  mixed <- paste0("/", paste0("%", 0:9, "*", collapse = ""), "%zz")
+  expect_identical(
+    ip_message(ip_rows(mixed)),
+    ip_a(paste0("'%zz', ", toString(sprintf("'%%%d*'", 0:8)),
+                ", and 1 more"), 11L)
+  )
+  # Among class (b) items, value order holds.
+  expect_identical(ip_message(ip_rows("/%*a%4*b%")),
+                   ip_b("'%*a', '%4*', '%'", 3L))
 })
 
 test_that("ROBO-rswdwrnp: the placeholder wording", {
