@@ -4934,13 +4934,20 @@ slash_split_diagnostics <- function(groups, written = NULL, budget = NULL) {
 # Returns list(line, ok, checked, spent): `ok` where every reading's `ok`
 # holds, `line` where every reading names the same line (NA otherwise),
 # `checked` the leading candidates every reading read, and `spent` the work
-# done. `differ` and `group` as witness_pair_reading() takes them.
+# done. `differ` and `group` as witness_pair_reading() takes them. With
+# `share`, Google's merge rereads only where it differs
+# (witness_pair_shared()).
 witness_pair_readings <- function(groups, at, short, long, decides,
                                   written = NULL, budget = Inf,
-                                  differ = TRUE, group = NULL) {
+                                  differ = TRUE, group = NULL,
+                                  share = FALSE) {
   agents <- groups$agents
   keys <- list(agents$uncut)
   if (!all(agents$uncut == agents$key)) {
+    if (share) {
+      return(witness_pair_shared(groups, at, short, long, decides, written,
+                                 budget, differ, group))
+    }
     keys <- c(keys, list(agents$key))
   }
   line <- NULL
@@ -4962,6 +4969,74 @@ witness_pair_readings <- function(groups, at, short, long, decides,
     checked <- min(checked, read$read)
   }
   list(line = line, ok = ok, checked = checked, spent = spent)
+}
+
+# witness_pair_readings() when some value is cut, Google's merge reading
+# only the candidates whose group's crawler classes differ between the two
+# merges (merge_differs()): elsewhere each class holds the same groups on
+# both, so the bodies and decisions are the same, and the whole-value
+# reading stands for both. The whole-value reading gets the share of
+# `budget` its candidates make of all the candidates both read, and
+# Google's what it leaves, so neither merge starves the other.
+witness_pair_shared <- function(groups, at, short, long, decides, written,
+                                budget, differ, group) {
+  if (is.null(group)) {
+    group <- groups$rules$group[at]
+  }
+  n <- length(at)
+  redo <- which(merge_differs(groups, group))
+  share <- if (n == 0L) budget else budget * n / (n + length(redo))
+  whole <- witness_pair_reading(groups, at, groups$agents$uncut, short, long,
+                                decides, written, share, differ, group)
+  out <- list(line = whole$line, ok = whole$ok, checked = whole$read,
+              spent = whole$spent)
+  redo <- redo[redo <= whole$read]
+  if (length(redo) == 0L) {
+    return(out)
+  }
+  google <- witness_pair_reading(groups, at[redo], groups$agents$key,
+                                 short[redo], long[redo], decides, written,
+                                 budget - whole$spent, differ, group[redo])
+  out$spent <- out$spent + google$spent
+  out$ok[redo] <- out$ok[redo] & google$ok
+  line <- out$line[redo]
+  line[is.na(google$line) | is.na(line) | line != google$line] <- NA_integer_
+  out$line[redo] <- line
+  if (google$read < length(redo)) {
+    out$checked <- min(out$checked, redo[[google$read + 1L]] - 1L)
+  }
+  out
+}
+
+# For each of the groups `group`, whether its crawler classes hold other
+# groups on the whole-value merge (`agents$uncut`) than on Google's
+# (`agents$key`), classes built as validation_token_expander() builds them.
+# Counted from the (group, class) pairs, linear in the User-agent lines.
+merge_differs <- function(groups, group) {
+  agents <- groups$agents
+  signatures <- function(key) {
+    token <- ifelse(agents$global, "*", key)
+    keep <- nzchar(token)
+    owner <- agents$group[keep]
+    token <- token[keep]
+    signature <- vapply(split(owner, token), function(g) {
+      paste(unique(g), collapse = " ")
+    }, "")
+    list(group = owner, signature = unname(signature[token]))
+  }
+  whole <- signatures(agents$uncut)
+  google <- signatures(agents$key)
+  known <- unique(c(whole$signature, google$signature))
+  classes <- function(s) {
+    id <- match(s$signature, known)
+    vapply(split(id, s$group), function(x) {
+      paste(sort(unique(x)), collapse = " ")
+    }, "")
+  }
+  id <- as.character(group)
+  a <- classes(whole)[id]
+  b <- classes(google)[id]
+  unname(xor(is.na(a), is.na(b)) | (!is.na(a) & !is.na(b) & a != b))
 }
 
 # Two paths per candidate in `at` (indexes of `groups$rules`): `short`, a
@@ -5763,7 +5838,7 @@ reopen_reads <- function(groups, shape, allows, pairs, written, budget) {
     return(out)
   }
   first <- witness_pair_readings(groups, at, pairs$control, witness, "long",
-                                 written, budget / 2)
+                                 written, budget / 2, share = TRUE)
   out$line <- first$line
   read <- seq_len(n) <= first$checked
   out$done <- read
@@ -5776,7 +5851,7 @@ reopen_reads <- function(groups, shape, allows, pairs, written, budget) {
   second <- witness_pair_readings(
     removed, match(first$line[k], rules$line), pairs$control[k], witness[k],
     "short", written, budget - first$spent, differ = FALSE,
-    group = rules$group[at[k]]
+    group = rules$group[at[k]], share = TRUE
   )
   read <- seq_along(k) <= second$checked
   out$done[k] <- read

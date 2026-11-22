@@ -811,6 +811,44 @@ test_that("ROBO-micbpqbc: a file too large for the check gets the row", {
                "The Allow on line 102 ('*/aaaaaa1/')", fixed = TRUE)
 })
 
+# How many of a body's shape-A Allows the check reads.
+ar_checked <- function(body) {
+  found <- allow_reopens_diagnostics(ar_groups(body))
+  stop <- attr(found, "stopped")
+  if (is.null(stop)) {
+    return(length(reopen_shape(ar_groups(body)$rules)))
+  }
+  stop$checked
+}
+
+test_that("ROBO-micbpqbc: a cut value elsewhere leaves the budget whole", {
+  # One cut value in its own group makes Google's merge differ from the
+  # whole-value one, but not for the group holding the pairs: Google's
+  # merge rereads only the groups whose classes differ, so the pairs are
+  # read once and as many Allows are checked as without the cut value.
+  pairs <- function(n) {
+    k <- seq_len(n)
+    paste0("User-agent: Foo\n",
+           paste0("Disallow: /d", k, "/\n", collapse = ""),
+           paste0("Allow: */a", k, "xxxxxxxx/\n", collapse = ""))
+  }
+  cut <- "\nUser-agent: Mediapartners-Google*\nDisallow: /zz/\n"
+  for (body in list(pairs(50L), ar_shape("cross", 100L))) {
+    plain <- ar_checked(body)
+    with_cut <- ar_checked(paste0(body, cut))
+    expect_gt(with_cut, 0L)
+    expect_gte(with_cut, plain - 1L)
+  }
+  # Where the merges differ, both read: Google's merge reads `Foo extra`
+  # as Foo, whose `/my/?q=` Disallow blocks the witness.
+  body <- paste0("User-agent: Foo extra\nDisallow: /my/\nAllow: */s/\n\n",
+                 "User-agent: Foo\nDisallow: /my/?q=\n")
+  expect_false(ar_code %in% ar_codes(body))
+  groups <- ar_groups(paste0(body, cut))
+  expect_identical(merge_differs(groups, groups$rules$group),
+                   c(TRUE, TRUE, TRUE, FALSE))
+})
+
 # Best of five runs, so a loaded machine cannot fail the ratio
 # (test-cut-note-zqyqbudf.R).
 ar_best <- function(expr_fn) {
