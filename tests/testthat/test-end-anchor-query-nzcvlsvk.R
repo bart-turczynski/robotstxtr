@@ -495,9 +495,9 @@ test_that("ROBO-nzcvlsvk: candidates past the work budget get no row", {
   expect_identical(slash_stop_message("end_anchor", stop), paste0(
     "This file has 2 Disallow rules whose pattern ends in '$' and has no ",
     "'?' before it, such as '/b$'. For each one, the validator checks ",
-    "whether the rule blocks '/b' but not '/b?x=1'. This file is too large to check them all quickly, so ",
-    "only the first was checked, in line order. The other 1 was skipped, ",
-    "and it may have the same problem."
+    "whether the rule blocks '/b' but not '/b?x=1'. This file is too ",
+    "large to check them all quickly, so only the first was checked, in ",
+    "line order. The other 1 was skipped, and it may have the same problem."
   ))
   # The plan fits, but no body line does: none checked.
   found <- end_anchor_diagnostics(groups, budget = 4)
@@ -514,8 +514,9 @@ test_that("ROBO-nzcvlsvk: candidates past the work budget get no row", {
   expect_identical(slash_stop_message("end_anchor", stop), paste0(
     "This file has 1 Disallow rule whose pattern ends in '$' and has no '?' ",
     "before it, such as '/a$'. For each one, the validator checks whether ",
-    "the rule blocks '/a' but not '/a?x=1'. This file is too large to check it quickly, so it was ",
-    "not checked. It was skipped, and it may have the same problem."
+    "the rule blocks '/a' but not '/a?x=1'. This file is too large to ",
+    "check it quickly, so it was not checked. It was skipped, and it may ",
+    "have the same problem."
   ))
   # A normal file gets no such row.
   for (name in names(ea_fixtures)) {
@@ -567,9 +568,9 @@ test_that("ROBO-nzcvlsvk: a file too large for the check gets the row", {
   expect_identical(stop$message, paste0(
     "This file has 250 Disallow rules whose pattern ends in '$' and has no ",
     "'?' before it, such as '/d1$'. For each one, the validator checks ",
-    "whether the rule blocks '/d1' but not '/d1?x=1'. This file is too large to check them all ",
-    "quickly, so none of them were checked. All 250 were skipped, and some ",
-    "of them may have the same problem."
+    "whether the rule blocks '/d1' but not '/d1?x=1'. This file is too ",
+    "large to check them all quickly, so none of them were checked. All ",
+    "250 were skipped, and some of them may have the same problem."
   ))
   expect_false(ea_code %in% d$code)
 })
