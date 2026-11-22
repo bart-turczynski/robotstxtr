@@ -5756,7 +5756,8 @@ reopen_take <- function(lists, i, pos, cursor, want, limit = Inf) {
 # Allow order, and reads them (reopen_reads()). Each round has what is left
 # of `budget`: half for the lists, the takes and the first reading, the
 # rest for the removal read. An Allow's first proving pair ends it
-# ("hit"), as does a list read through with none ("none"). A pair the
+# ("hit"), as does a list read through with none ("none"; the next
+# round's take finds it so, at no cost). A pair the
 # round's share could not take or read is taken again in the next round,
 # with what the round left; a round that moves no Allow on and gathers no
 # list ends the reading, and the Allows still pending are "open". The
@@ -5807,8 +5808,6 @@ reopen_rounds <- function(groups, shape, allows, lists, written, budget,
     line[hit] <- read$line[first[proved]]
     again <- found & !proved
     cursor[owners[again]] <- pairs$idx[first[again]] - 1L
-    done <- owners[!found & cursor[owners] >= take$size[owners]]
-    status[done] <- "none"
     if (identical(list(status, cursor, names(held)), was)) {
       status[status == "pending"] <- "open"
       break
@@ -5825,10 +5824,8 @@ reopen_rounds <- function(groups, shape, allows, lists, written, budget,
 # list does not fit takes nothing, nor does any later one; one whose list
 # is read through with nothing taken is `none`. Returns the pairs as
 # list(allow, at, control, idx), `idx` each pair's place in its Allow's
-# list, with `held`, `cursor`, `size` (each Allow's list length), `none`
-# and `spent`.
+# list, with `held`, `cursor`, `none` and `spent`.
 reopen_round_take <- function(lists, pending, cursor, held, want, budget) {
-  size <- rep(NA_integer_, length(cursor))
   allow <- list()
   idx <- list()
   pos <- list()
@@ -5852,7 +5849,6 @@ reopen_round_take <- function(lists, pending, cursor, held, want, budget) {
     held[[key]] <- list_pos
     spent <- spent + cost + got$spent
     cursor[[i]] <- got$cursor
-    size[[i]] <- length(list_pos)
     if (length(got$idx) == 0L && got$cursor >= length(list_pos)) {
       none <- c(none, i)
     }
@@ -5864,8 +5860,7 @@ reopen_round_take <- function(lists, pending, cursor, held, want, budget) {
   list(pairs = list(allow = as.integer(unlist(allow, use.names = FALSE)),
                     at = lists$d[pos], control = lists$control[pos],
                     idx = as.integer(unlist(idx, use.names = FALSE))),
-       held = held, cursor = cursor, size = size, none = none,
-       spent = spent)
+       held = held, cursor = cursor, none = none, spent = spent)
 }
 
 # Indexes of `rules` that are shape-A Allows: a pattern led by `*` or `/*`
