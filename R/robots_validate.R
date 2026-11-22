@@ -5472,9 +5472,9 @@ end_anchor_stop_intro <- function(stop) {
     sprintf("%d Disallow rules", stop$found)
   shown <- end_anchor_shown(stop$value)
   sprintf(paste0(
-    "This file has %s whose pattern ends in '$' and has no '?' before it, ",
-    "such as '%s'. For each one, the validator checks whether the rule ",
-    "blocks '%s' but not '%s'."
+    "This file has %s that this check reads (a pattern that ends in '$' ",
+    "with no '?' before it), such as '%s'. For each one, the validator ",
+    "checks whether the rule blocks '%s' but not '%s'."
   ), rules, query_parameter_cap(stop$value, 40L), shown$control,
   shown$witness)
 }
