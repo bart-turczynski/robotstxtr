@@ -200,9 +200,10 @@ test_that("ROBO-rswdwrnp: valid escapes keep their codes", {
   }
 })
 
-test_that("ROBO-rswdwrnp: raw non-ASCII bytes are read in canonical form", {
+test_that("ROBO-rswdwrnp: raw non-ASCII bytes are quoted as written", {
   # A raw e-acute (UTF-8 C3 A9), written with escapes to keep this file ASCII.
-  # The parser writes it as `%C3%A9`, a valid escape and no placeholder.
+  # The parser writes it as `%C3%A9`, a valid escape and no placeholder; the
+  # message quotes the bytes as written, as \xNN.
   e_acute <- as.raw(c(0xc3, 0xa9))
   expect_identical(
     robots_validate_text(ip_body("User-agent: *\nDisallow: /", e_acute,
@@ -212,7 +213,7 @@ test_that("ROBO-rswdwrnp: raw non-ASCII bytes are read in canonical form", {
   x <- robots_validate_text(ip_body("User-agent: *\nDisallow: /a%", e_acute,
                                     "\n"))$diagnostics
   expect_identical(x$code, ip_new)
-  expect_identical(x$message, ip_a("'%%C'"))
+  expect_identical(x$message, ip_a("'%\\xC3\\xA9'"))
   # Invalid UTF-8: a lone 0xE9 after a valid escape.
   expect_identical(
     robots_validate_text(ip_body("User-agent: *\nDisallow: /a%2F",
@@ -221,9 +222,15 @@ test_that("ROBO-rswdwrnp: raw non-ASCII bytes are read in canonical form", {
   )
   latin <- "User-agent: *\nDisallow: /a%\xe9\n"
   Encoding(latin) <- "latin1"
+  # A latin1-marked body is read as UTF-8.
   x <- robots_validate_text(latin)$diagnostics
   expect_identical(x$code, ip_new)
-  expect_identical(x$message, ip_a("'%%C'"))
+  expect_identical(x$message, ip_a("'%\\xC3\\xA9'"))
+  # Invalid UTF-8 after a stray `%`.
+  x <- robots_validate_text(ip_body("User-agent: *\nDisallow: /a%",
+                                    as.raw(0xe9), "\n"))$diagnostics
+  expect_identical(x$code, c("invalid_utf8", ip_new))
+  expect_identical(ip_message(x), ip_a("'%\\xE9'"))
   # The placeholder is read as written: a raw e-acute before it, which the
   # parser writes `%C3%A9`, leaves it named, and `/a%b` before a raw e-acute
   # (canonical `/a%b%C3%A9`) names none.
@@ -232,7 +239,9 @@ test_that("ROBO-rswdwrnp: raw non-ASCII bytes are read in canonical form", {
   expect_identical(ip_message(x), ip_ph("'%su', '%'", 2L, "%subscriber%"))
   x <- robots_validate_text(ip_body("User-agent: *\nDisallow: /a%b", e_acute,
                                     "\n"))$diagnostics
-  expect_identical(ip_message(x), ip_a("'%b%'"))
+  expect_identical(ip_message(x), ip_a("'%b\\xC3'"))
+  # Edges the parser trims are not quoted: a trailing tab leaves `%` final.
+  expect_identical(ip_message(ip_rows("/a%\t")), ip_b("'%'"))
 })
 
 test_that("ROBO-rswdwrnp: a control byte after a `%` is written \\xNN", {
@@ -361,7 +370,7 @@ ip_time_value <- function(value) {
   written <- charToRaw(value)
   min(vapply(1:5, function(i) {
     system.time(for (k in 1:20) {
-      rule_invalid_percent_escape_diagnostic(value, written)
+      rule_invalid_percent_escape_diagnostic(written)
     })[["elapsed"]]
   }, 0))
 }

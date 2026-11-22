@@ -215,7 +215,8 @@ validation_unsupported <- c(
 #'     and gets its own message; the matchers compare the digit's case, so a
 #'     lower-case digit matches only lower-case escapes, which RFC 3986
 #'     section 2.1 advises against. One per rule line, naming up to ten
-#'     \code{\%} with the two bytes after each. \cr
+#'     \code{\%} with the two bytes after each, quoted as written in the
+#'     file; a control or non-ASCII byte is shown by its hex code. \cr
 #'   \code{rule_lowercase_escape} \tab warning \tab
 #'     A pattern holds a lower-case percent-escape, such as \code{\%3c}.
 #'     Google upper-cases the escape in a pattern but not in the URL, so a URL
@@ -1461,7 +1462,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       # warnings; the placeholder is read on the value as written.
       written <- rule_written_value(raw_lines[[line]], line == 1L,
                                     parsed$missing_colon[[i]])
-      percent <- rule_invalid_percent_escape_diagnostic(value, written)
+      percent <- rule_invalid_percent_escape_diagnostic(written)
       if (!is.null(percent)) {
         add_diagnostic(line, "warning", percent$code, type, percent$message)
       }
@@ -4539,18 +4540,19 @@ rule_dot_segment_diagnostic <- function(value) {
 
 # ROBO-rswdwrnp: a `%` that starts no two-hex-digit escape. The test is per
 # position, as rfc3986_invalid_classes_v1() (R/url-preprocessing-v1.R) reads
-# a URL's stray `%`, so the validator and the URL note agree. The canonical
-# value is checked: MaybeEscapePattern() copies a stray `%` and writes only
-# valid escapes. A stray `%` is class (b) when it, or it and one hex digit,
-# ends the value or stands before a `*`: the matchers then match any escape
-# it begins. Every other stray `%` is class (a), a final `$` included. A
-# `%name%` placeholder is read on `written`, the value as written in the file
-# (rule_written_value()), since the parser upper-cases a name led by two hex
-# digits (`%date%` becomes `%DAte%`) and escapes a raw non-ASCII byte. One
-# byte pass and one placeholder regex keep the cost linear (ROBO-dbvmxcfw).
-# Returns a finding or NULL.
-rule_invalid_percent_escape_diagnostic <- function(value, written) {
-  bytes <- charToRaw(value)
+# a URL's stray `%`, so the validator and the URL note agree. `written` is
+# the value as written in the file (rule_written_value(), raw bytes), so the
+# message quotes it and the placeholder is read on it: the parser upper-cases
+# a name led by two hex digits (`%date%` becomes `%DAte%`) and escapes a raw
+# non-ASCII byte. The canonical value has the same stray `%` in the same
+# classes: MaybeEscapePattern() copies a stray `%`, keeps an escape one, and
+# writes each escape it adds with a `%`, never a hex digit. A stray `%` is
+# class (b) when it, or it and one hex digit, ends the value or stands before
+# a `*`: the matchers then match any escape it begins. Every other stray `%`
+# is class (a), a final `$` included. One byte pass and one placeholder regex
+# keep the cost linear (ROBO-dbvmxcfw). Returns a finding or NULL.
+rule_invalid_percent_escape_diagnostic <- function(written) {
+  bytes <- written
   n <- length(bytes)
   hex <- charToRaw("0123456789ABCDEFabcdef")
   is_hex <- function(at) at <= n & bytes[pmin(at, n)] %in% hex
@@ -4564,7 +4566,7 @@ rule_invalid_percent_escape_diagnostic <- function(value, written) {
   list(
     code = "rule_invalid_percent_escape",
     message = rule_invalid_percent_escape_message(
-      written, bytes, stray, all(open)
+      bytes, stray, all(open)
     )
   )
 }
@@ -4622,11 +4624,12 @@ rule_placeholder_sentences <- function(name) {
 }
 
 # Each stray `%` with up to two bytes after it, distinct, in order, up to
-# ten, as rule_control_character_message() lists. A byte below 0x20 or DEL
-# is written \xNN. `open` is TRUE when every stray `%` is class (b). A value
-# holding a `%name%` placeholder gets the class (a) lead and the placeholder
-# sentences, whatever its class.
-rule_invalid_percent_escape_message <- function(written, bytes, stray, open) {
+# ten, as rule_control_character_message() lists, quoted from the value as
+# written (`bytes`). A byte below 0x20, DEL or a non-ASCII byte is written
+# \xNN, so the message stays ASCII. `open` is TRUE when every stray `%` is
+# class (b). A value holding a `%name%` placeholder gets the class (a) lead
+# and the placeholder sentences, whatever its class.
+rule_invalid_percent_escape_message <- function(bytes, stray, open) {
   n <- length(bytes)
   at <- function(k) {
     ifelse(stray + k <= n, as.integer(bytes[pmin(stray + k, n)]), 256L)
@@ -4637,7 +4640,7 @@ rule_invalid_percent_escape_message <- function(written, bytes, stray, open) {
   k <- length(first)
   items <- vapply(first[seq_len(min(k, cap))], function(p) {
     ctx <- as.integer(bytes[p:min(p + 2L, n)])
-    shown <- ifelse(ctx < 0x20L | ctx == 0x7fL, sprintf("\\x%02X", ctx),
+    shown <- ifelse(ctx < 0x20L | ctx >= 0x7fL, sprintf("\\x%02X", ctx),
                     rawToChar(as.raw(ctx), multiple = TRUE))
     paste0("'", paste(shown, collapse = ""), "'")
   }, "")
@@ -4645,7 +4648,7 @@ rule_invalid_percent_escape_message <- function(written, bytes, stray, open) {
   if (k > cap) {
     listed <- sprintf("%s, and %d more", listed, k - cap)
   }
-  placeholder <- rule_written_placeholder(written)
+  placeholder <- rule_written_placeholder(bytes)
   if (open && is.null(placeholder)) {
     # The matchers compare a cut-short escape's digit case by case.
     lower <- any(bytes[pmin(stray + 1L, n)] %in% charToRaw("abcdef") &
