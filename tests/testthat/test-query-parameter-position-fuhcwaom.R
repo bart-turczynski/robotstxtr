@@ -45,7 +45,7 @@ qp_hits <- list(
   "*?q=" = c("q", "/x?q=", "/x?a=1&q="),
   "/search?page=*&view=list" = c("page", "/search?page=x&view=list",
                                 "/search?a=1&page=x&view=list"),
-  "/p?a=" = c("a", "/p?a=", "/p?b=1&a="),
+  "/p?a=" = c("a", "/p?a=", "/p?b=2&a="),
   "/p?page_no.x-1=2" = c("page_no.x-1", "/p?page_no.x-1=2",
                          "/p?a=1&page_no.x-1=2"),
   # Only the first `?` counts: the parameter is `back`, never `sort`.
@@ -377,6 +377,38 @@ test_that("ROBO-fuhcwaom: either twin form covers the later position", {
     qp_lines("User-agent: *\nDisallow: /search?page=\nDisallow: /s*&page=\n"),
     2L
   )
+})
+
+# The filler never ends on the head's last byte, so an `&` rule with the
+# same head (no `*` right before the `?`, so no twin) cannot match the
+# example: on every backend, every rule of the group misses it.
+qp_fillers <- list(
+  "/*1?q=" = "/x1?b=2&q=",
+  "/*=1?q=" = "/x=1?b=2&q=",
+  "/*a=1?q=" = "/xa=1?b=2&q=",
+  "/*1?a=" = "/x1?b=2&a=",
+  "/*b=1?a=" = "/xb=1?b=2&a=",
+  "/*2?a=" = "/x2?c=3&a="
+)
+
+test_that("ROBO-fuhcwaom: the example misses the `&` rule beside it", {
+  for (value in names(qp_fillers)) {
+    example <- qp_fillers[[value]]
+    expect_identical(query_parameter_paths(value)$example, example,
+                     label = value)
+    twin <- sub("?", "&", value, fixed = TRUE)
+    body <- paste0("User-agent: *\nDisallow: ", value, "\nDisallow: ", twin,
+                   "\n")
+    d <- qp_diag(body)
+    name <- sub("^[^?]*[?]([^=]*)=.*$", "\\1", value)
+    expect_identical(d$line[d$code == qp_code], 2L, label = value)
+    expect_identical(d$message[d$code == qp_code],
+                     qp_message(name, example), label = value)
+    for (backend in names(qp_engines)) {
+      expect_identical(qp_decide(body, example, backend), "allow",
+                       label = paste(backend, value))
+    }
+  }
 })
 
 test_that("ROBO-fuhcwaom: anything less than the identical twin keeps it", {

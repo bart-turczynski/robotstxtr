@@ -725,9 +725,11 @@ case, so a twin only Google's cut merge supplies
 keeps the row, and \code{*} and named crawlers are
 kept apart. A group no crawler reads, as under an empty \verb{User-agent:}
 line, gets no row, as a rule before any User-agent line gets none. The
-example path writes each \code{*} as \code{x} and adds \verb{a=1&} (or
-\verb{b=1&} for a parameter named \code{a}) after the \verb{?}: the pattern matches the
-path without the addition and misses the example. The example is built
+example path writes each \code{*} as \code{x} and adds \verb{a=1&} after the \verb{?}, or
+\verb{b=2&} or \verb{c=3&} where the parameter is named \code{a} or the last byte
+before the \verb{?} other than \code{*} is \code{1}, so that an \code{&} rule with the same
+head cannot match the example either: the pattern matches the path
+without the addition and misses the example. The example is built
 from the canonical value, so an escape shows in upper case, and its
 parameter name, the text before the \verb{?} and the text after the \code{=} are
 each cut to their first 36 characters and "..." past 40. A

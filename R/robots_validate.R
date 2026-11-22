@@ -716,9 +716,11 @@ validation_unsupported <- c(
 #' keeps the row, and `*` and named crawlers are
 #' kept apart. A group no crawler reads, as under an empty `User-agent:`
 #' line, gets no row, as a rule before any User-agent line gets none. The
-#' example path writes each `*` as `x` and adds `a=1&` (or
-#' `b=1&` for a parameter named `a`) after the `?`: the pattern matches the
-#' path without the addition and misses the example. The example is built
+#' example path writes each `*` as `x` and adds `a=1&` after the `?`, or
+#' `b=2&` or `c=3&` where the parameter is named `a` or the last byte
+#' before the `?` other than `*` is `1`, so that an `&` rule with the same
+#' head cannot match the example either: the pattern matches the path
+#' without the addition and misses the example. The example is built
 #' from the canonical value, so an escape shows in upper case, and its
 #' parameter name, the text before the `?` and the text after the `=` are
 #' each cut to their first 36 characters and "..." past 40. A
@@ -4219,10 +4221,11 @@ query_parameter_kept <- function(groups, at) {
 }
 
 # The witness paths of each candidate value: `control`, the value with each
-# `*` written `x`, and `example`, the same with `a=1&` (`b=1&` when the
-# parameter is `a`) after the first `?`, each led by `/`; `name` is the
-# parameter. The control matches the pattern: each `*` matches its `x` and
-# every other byte itself, and no final `$` anchors it. The example misses:
+# `*` written `x`, and `example`, the same with a filler parameter and `&`
+# (query_parameter_filler(), `a=1&` mostly) after the first `?`, each led
+# by `/`; `name` is the parameter. The control matches the pattern: each
+# `*` matches its `x` and every other byte itself, and no final `$` anchors
+# it. The example misses:
 # the pattern's first `?` cannot sit on the example's first `?`, which is
 # followed by the filler, not by `name=`, nor on a later one, since the
 # pattern's `?` bytes after it would need as many again after that one and
@@ -4241,14 +4244,31 @@ query_parameter_paths <- function(values) {
   start <- as.integer(run)
   end <- start + attr(run, "match.length") - 1L
   name <- substr(values, start + 1L, end - 1L)
-  filler <- ifelse(name == "a", "b", "a")
   # `head` before the `?`, `tail` after the `=`.
   head <- substr(values, 1L, start - 1L)
   tail <- substr(values, end + 1L, nchar(values, "bytes"))
-  example <- paste0(head, "?", filler, "=1&", name, "=", tail)
+  filler <- query_parameter_filler(name, head)
+  example <- paste0(head, "?", filler, "&", name, "=", tail)
   list(name = name, filler = filler, head = head, tail = tail,
        control = query_parameter_lead(values),
        example = query_parameter_lead(example))
+}
+
+# The parameter the example puts first: `a=1`, else `b=2`, else `c=3`, the
+# first whose name differs from the rule's parameter (so the example's
+# first `?` is not followed by `name=`) and whose last byte differs from
+# the last byte of `head` that is not `*`. An `&` rule with the same head
+# (`/*1&q=` beside `/*1?q=`) then cannot match the example by ending its
+# head on the filler's value right before the `&` (`/x1?a=1&q=`). Two
+# conditions rule out two choices at most, so one of three always fits.
+query_parameter_filler <- function(name, head) {
+  literal <- sub("[*]+$", "", head, useBytes = TRUE)
+  n <- nchar(literal, "bytes")
+  last <- substr(literal, n, n)
+  pick <- rep(3L, length(name))
+  pick[name != "b" & last != "2"] <- 2L
+  pick[name != "a" & last != "1"] <- 1L
+  c("a=1", "b=2", "c=3")[pick]
 }
 
 # A pattern as a path: each `*` written `x`, led by `/`.
@@ -4268,7 +4288,7 @@ query_parameter_message <- function(type, paths, cap = 40L) {
   shown <- function(x) query_parameter_render(ai_training_name(x, cap))
   name <- ai_training_name(paths$name, cap)
   example <- paste0(
-    shown(query_parameter_lead(paths$head)), "?", paths$filler, "=1&", name,
+    shown(query_parameter_lead(paths$head)), "?", paths$filler, "&", name,
     "=", shown(gsub("*", "x", paths$tail, fixed = TRUE, useBytes = TRUE))
   )
   effect <- ifelse(
