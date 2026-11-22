@@ -358,6 +358,21 @@ validation_unsupported <- c(
 #'     with that \code{?} written \code{*&}, or written \code{&} when a
 #'     \code{*} stands right before that \code{?} (\code{/*?sort=}, not
 #'     \code{/a*b?sort=}). \cr
+#'   \code{rule_slash_pair} \tab info \tab
+#'     The same crawlers have a literal Allow or Disallow pattern both
+#'     without and with a trailing \code{/} (\code{/notes} and
+#'     \code{/notes/}). The bare pattern also matches every path the slash
+#'     pattern matches, the bare URL and paths that go on without a
+#'     \code{/}. Anchored on the later line; the message names the earlier
+#'     one and calls neither redundant. \cr
+#'   \code{rule_slash_split} \tab info \tab
+#'     A crawler gets a different decision for the bare URL \code{P} than
+#'     for the slash URL \code{P/} of a literal rule \code{P/}, which a
+#'     server redirect between them makes matter. An Allow that opens
+#'     \code{P/} while \code{P} stays disallowed is anchored on the Allow
+#'     line; Disallows that block \code{P/} while \code{P} stays allowed get
+#'     one row per group of crawlers, on its first User-agent line, listing
+#'     five rules at most, then a count. \cr
 #'   \code{missing_user_agent} \tab error \tab
 #'     Allow or Disallow rules exist but no line names a non-empty
 #'     User-agent. \cr
@@ -730,9 +745,30 @@ validation_unsupported <- c(
 #' lower-case-escape twin gets no row, and a body cut at `max_bytes` is not
 #' checked: a twin past the cut could silence the rule.
 #'
+#' `rule_slash_pair` and `rule_slash_split` read only literal patterns: led
+#' by `/`, of printable ASCII other than space, with no `*`, `$`, `?` or
+#' `%`, and no `.` or `..` segment anywhere, the end included (`/a/.`),
+#' since URL normalization would remove it from the bare URL. The root `/`,
+#' a value ending in `//`, and wildcard, `$`-anchored, query, percent-encoded
+#' and dot-segment values are left for a later version; they still take part
+#' in the decisions. Only the first line of each type and value is read for
+#' a crawler, so a `duplicate_rule` repeat is neither a pair's later line
+#' nor a separate split. Google's matcher makes the decisions: for the split,
+#' the rule `P/` must itself decide `P/`, and only the two URLs `P` and `P/`
+#' are compared, so a deeper rule (`Allow: /x/y`) changes nothing. Groups
+#' merge as the matchers merge them, every row keeps the original line
+#' numbers, and a row is reported only where every crawler the group names
+#' agrees. `rule_slash_pair` merges on the whole User-agent value, so a pair
+#' only Google's cut merge forms gets no row; `rule_slash_split` is
+#' reported only where the whole-value merge and Google's merge give the
+#' same decisions and deciding lines. A body cut at `max_bytes` gets
+#' `rule_slash_pair`, which a later line cannot undo, but not
+#' `rule_slash_split`, which a later Allow could change.
+#'
 #' On a document holding a NUL byte, `wildcard_rules_not_inherited`,
 #' `disallow_tied_by_allow`, `duplicate_rule`,
-#' `rule_query_parameter_position` and the AI-training codes follow Google's
+#' `rule_query_parameter_position`, `rule_slash_pair`, `rule_slash_split`
+#' and the AI-training codes follow Google's
 #' reading: the parser and Google's matcher end a line at its
 #' first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
 #' byte, so each such message says it is Google's reading, unless every NUL
@@ -1735,6 +1771,31 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     if (nrow(found) > 0L) {
       add_chunk(
         found$line, "info", "rule_query_parameter_position", found$type,
+        vapply(raw_lines[found$line], render_validation_line, "",
+               USE.NAMES = FALSE),
+        paste0(found$message, nul_reading)
+      )
+    }
+  }
+  # A literal `P` and `P/` of one type for the same crawlers (ROBO-roypaoox).
+  # Later lines cannot undo a pair, so a cut body is checked too.
+  found <- slash_pair_diagnostics(groups)
+  if (nrow(found) > 0L) {
+    add_chunk(
+      found$line, "info", "rule_slash_pair", found$directive,
+      vapply(raw_lines[found$line], render_validation_line, "",
+             USE.NAMES = FALSE),
+      paste0(found$message, nul_reading)
+    )
+  }
+  # A crawler decides the bare URL `P` and the slash URL `P/` of a literal
+  # rule differently (ROBO-roypaoox). A later Allow could change a decision,
+  # so a cut body is skipped.
+  if (!body_truncated) {
+    found <- slash_split_diagnostics(groups)
+    if (nrow(found) > 0L) {
+      add_chunk(
+        found$line, "info", "rule_slash_split", found$directive,
         vapply(raw_lines[found$line], render_validation_line, "",
                USE.NAMES = FALSE),
         paste0(found$message, nul_reading)
@@ -4347,6 +4408,323 @@ query_parameter_render <- function(x) {
     render_validation_line(charToRaw(v))
   }, "", USE.NAMES = FALSE)
   x
+}
+
+# Indexes of `rules` whose canonical value is a literal path pattern for the
+# trailing-slash checks (ROBO-roypaoox): led by `/`, not `/` itself, of
+# printable ASCII other than space, with no `*`, `$`, `?` or `%`, not ending
+# in `//`, and with no `.` or `..` segment anywhere, the unbounded end
+# included (`/a/.`): URL normalization would remove it from the bare URL
+# (ROBO-rnjfbhvn). A non-ASCII byte is escaped in the canonical value, so
+# such a value holds `%` and is no candidate. Empty values are skipped.
+slash_candidates <- function(rules) {
+  value <- rules$value
+  which(
+    !rules$empty & startsWith(value, "/") & value != "/" &
+      !grepl("[^!-~]|[*$?%]|//$", value, useBytes = TRUE) &
+      !grepl("/[.][.]?(/|$)", value, useBytes = TRUE)
+  )
+}
+
+# The other form of each candidate value: `P` for `P/`, `P/` for `P`.
+slash_partner <- function(value) {
+  slash <- endsWith(value, "/")
+  out <- paste0(value, "/")
+  out[slash] <- substr(value[slash], 1L, nchar(value[slash], "bytes") - 1L)
+  out
+}
+
+# For candidate rows `rows` (owner, class) of `rules[at, ]`, whether each is
+# the first line of its type and value in its class: only that line is read,
+# so a repeat (duplicate_rule's) is not a pair's later line. Rows are in
+# owner order, so a key's first row is its first line.
+slash_first <- function(rules, at, rows) {
+  o <- rows$owner
+  key <- paste(rows$class, rules$type[at][o], rules$value[at][o], sep = "\n")
+  match(key, key) == seq_along(key)
+}
+
+# The rows whose owner (an index of `at`) passes `ok` on every row; owners
+# with no row (a group no crawler class reads) never pass.
+slash_every <- function(owner, ok) {
+  setdiff(unique(owner), owner[!ok])
+}
+
+# A literal Allow or Disallow `P` and `P/` of the same type for the same
+# crawlers (ROBO-roypaoox). `P` also matches every path `P/` matches (RFC
+# 9309 section 2.2.2), and the bare URL `P` and paths that go on without
+# `/` too. The row sits on the later line and names the earlier one, the
+# smallest among each class's first line of the other form; it is reported
+# only when, for every crawler class its group names, the line is the first
+# of its type and value and the other form sits on an earlier line. Groups
+# merge on the whole User-agent value (`agents$uncut`), so a pair that only
+# Google's cut merge forms gets no row (its user_agent_cut rows cover it).
+# Later lines cannot undo a pair, so a cut body is checked too. Returns a
+# data frame of `line`, `type` and `message`, in line order.
+slash_pair_diagnostics <- function(groups) {
+  rules <- groups$rules
+  at <- slash_candidates(rules)
+  if (length(at) == 0L) {
+    return(slash_rows(character()))
+  }
+  rows <- validation_token_expander(groups, groups$agents$uncut)(
+    rules$group[at]
+  )
+  o <- rows$owner
+  line <- rules$line[at]
+  key <- paste(rows$class, rules$type[at][o], rules$value[at][o], sep = "\n")
+  other <- line[o][match(paste(rows$class, rules$type[at][o],
+                               slash_partner(rules$value[at])[o],
+                               sep = "\n"), key)]
+  ok <- slash_first(rules, at, rows) & !is.na(other) & other < line[o]
+  hit <- sort(slash_every(o, ok))
+  earlier <- vapply(split(other[o %in% hit], o[o %in% hit]), min, 0L)
+  at <- at[hit]
+  slash_rows(
+    rules$type[at],
+    line = rules$line[at],
+    message = paste0(
+      slash_pair_message(rules$type[at], rules$value[at], earlier),
+      slash_crawler_note(groups$agents, rules$group[at])
+    )
+  )
+}
+
+slash_rows <- function(type, line = integer(), message = character(),
+                       directive = type) {
+  data.frame(line = line, type = type, message = message,
+             directive = directive, stringsAsFactors = FALSE)
+}
+
+# The pair row's text: what each form matches, calling neither redundant.
+slash_pair_message <- function(type, value, earlier) {
+  partner <- slash_partner(value)
+  slash <- endsWith(value, "/")
+  bare <- query_parameter_cap(ifelse(slash, partner, value), 40L)
+  long <- query_parameter_cap(ifelse(slash, value, partner), 40L)
+  sprintf(paste0(
+    "The %s on line %d has '%s' and this one '%s': '%s' also matches every ",
+    "path '%s' matches, and also '%s' itself and paths such as '%sx' ",
+    "(RFC 9309 section 2.2.2)."
+  ), ifelse(type == "allow", "Allow", "Disallow"), earlier,
+  query_parameter_cap(partner, 40L), query_parameter_cap(value, 40L),
+  bare, long, bare, bare)
+}
+
+# " This holds for every crawler the group names: ..." for a group naming
+# more than one crawler (its written values, five at most, then a count),
+# else "". Built once per group: the names come from one split.
+slash_crawler_note <- function(agents, group) {
+  named <- agents$global | nzchar(agents$uncut)
+  by_group <- split(agents$name[named], agents$group[named])
+  wanted <- unique(group)
+  note <- vapply(by_group[as.character(wanted)], function(names) {
+    names <- unique(names)
+    if (length(names) < 2L) {
+      return("")
+    }
+    shown <- sprintf("'%s'", ai_training_name(utils::head(names, 5L)))
+    sprintf(" This holds for every crawler the group names: %s.",
+            joined_and(shown, length(names) - length(shown)))
+  }, "", USE.NAMES = FALSE)
+  note[match(group, wanted)]
+}
+
+# A literal rule `P/` whose crawlers get a different decision for the bare
+# URL `P` than for the slash URL `P/` (ROBO-roypaoox). A candidate must
+# decide `P/` itself in each class, which only the first line of its type
+# and value does (the matcher keeps the first of equal rules, and an Allow
+# wins a tie), so a repeat is no candidate. The direction follows the
+# candidate's type: an Allow opens `P/` while `P`
+# stays disallowed (one row on the Allow line), a Disallow blocks `P/` while
+# `P` stays allowed (one row per set of crawler classes, anchored on the
+# first User-agent line of the group holding the earliest listed rule, five
+# rules at most, then a count). Every rule of a class takes part in the
+# decisions, which are Google's matcher's (slash_split_reading()). A row is
+# reported only where every class the group names, merged on the whole
+# User-agent value and on Google's token, gives the same decisions and the
+# same deciding lines; the two merges coincide when no value is cut, and
+# then one reading is made. A cut body is not checked: a later Allow could
+# change a decision. Returns slash_rows() with a `directive` column.
+slash_split_diagnostics <- function(groups) {
+  rules <- groups$rules
+  at <- slash_candidates(rules)
+  at <- at[endsWith(rules$value[at], "/")]
+  if (length(at) == 0L) {
+    return(slash_rows(character()))
+  }
+  agents <- groups$agents
+  keys <- list(agents$uncut)
+  if (!all(agents$uncut == agents$key)) {
+    keys <- c(keys, list(agents$key))
+  }
+  reads <- lapply(keys, function(key) slash_split_reading(groups, at, key))
+  bare_line <- reads[[1L]]
+  for (other in reads[-1L]) {
+    agree <- !is.na(bare_line) & !is.na(other) & bare_line == other
+    bare_line[!agree] <- NA_integer_
+  }
+  found <- !is.na(bare_line)
+  slash_split_rows(groups, at[found], bare_line[found])
+}
+
+# For each candidate in `at` (indexes of `groups$rules`, values `P/`), the
+# file line that decides the bare URL `P` (0 when no rule matches it) when
+# every class the group names (validation_token_expander() on `key`) has
+# the candidate decide `P/`, decides `P` the other way, and agrees on that
+# line; NA otherwise. Each (candidate, class) row is read under a
+# body of the class's rules that can match `P/`: a rule's literal head (up
+# to its first `*`, `$` or `%`, and for an Allow ending in `/index.htm...`
+# up to its last `/`, which Google's matcher also reads as that path with
+# `$`) must be a prefix of `P/`, and every other rule matches neither URL.
+# Rules keep file order, so ties resolve as in the whole group. One batch
+# call reads every row, and the bodies stay as small as the matching rules,
+# so the cost is linear in the rules (ROBO-dbvmxcfw).
+slash_split_reading <- function(groups, at, key) {
+  rules <- groups$rules
+  expand <- validation_token_expander(groups, key)
+  rows <- expand(rules$group[at])
+  out <- rep(NA_integer_, length(at))
+  if (length(rows$owner) == 0L) {
+    return(out)
+  }
+  body <- slash_split_bodies(rules, expand, rules$value[at][rows$owner],
+                             rows$class)
+  value <- rules$value[at][rows$owner]
+  paths <- c(rbind(slash_partner(value), value))
+  read <- wildcard_witness_decide(body$bodies, rep(seq_along(value), each = 2L),
+                                  paths)
+  file_line <- function(k) {
+    j <- read$line[k]
+    found <- integer(length(j))
+    hit <- j > 1L
+    found[hit] <- rules$line[body$rule[body$start[(k[hit] + 1L) %/% 2L] +
+                                         j[hit] - 2L]]
+    found
+  }
+  bare <- seq(1L, length(paths), by = 2L)
+  bare_line <- file_line(bare)
+  ok <- file_line(bare + 1L) == rules$line[at][rows$owner] &
+    read$allowed[bare] != read$allowed[bare + 1L]
+  same <- tapply(bare_line, rows$owner, function(x) all(x == x[[1L]]))
+  hit <- intersect(slash_every(rows$owner, ok),
+                   as.integer(names(same)[same]))
+  out[hit] <- bare_line[match(hit, rows$owner)]
+  out
+}
+
+# The witness bodies of slash_split_reading(), one per row (`paths` the
+# slash URLs, `class` the rows' classes): `bodies`, and `rule` (indexes of
+# `rules`, row after row in file order) with `start`, each row's first
+# position in `rule`. A row's own rule is always in its body. Rule heads are
+# looked up at the distinct head lengths only, so a long value costs its
+# length, not its length squared.
+slash_split_bodies <- function(rules, expand, paths, class) {
+  live <- which(!rules$empty)
+  value <- rules$value[live]
+  head <- value
+  index <- rules$type[live] == "allow" &
+    grepl("/index[.]htm[^/]*$", value, useBytes = TRUE)
+  head[index] <- sub("index[.]htm[^/]*$", "", value[index], useBytes = TRUE)
+  head <- sub("[*$%].*$", "", head, useBytes = TRUE)
+  held <- expand(rules$group[live])
+  rule_key <- paste(held$class, head[held$owner], sep = "\n")
+  by_key <- split(live[held$owner], factor(rule_key, unique(rule_key)))
+  sizes <- sort(unique(nchar(head, "bytes")))
+  n <- findInterval(nchar(paths, "bytes"), sizes)
+  row <- rep(seq_along(paths), n)
+  size <- sizes[sequence(n)]
+  hit <- match(paste(class[row], substr(paths[row], 1L, size), sep = "\n"),
+               names(by_key))
+  found <- by_key[hit[!is.na(hit)]]
+  row <- rep(row[!is.na(hit)], lengths(found))
+  rule <- unlist(found, use.names = FALSE)
+  order_by <- order(row, rule)
+  row <- row[order_by]
+  rule <- rule[order_by]
+  text <- paste0(ifelse(rules$type[rule] == "allow", "Allow: ", "Disallow: "),
+                 rules$value[rule], "\n")
+  bodies <- vapply(split(text, factor(row, seq_along(paths))), function(x) {
+    paste0("User-agent: witness\n", paste(x, collapse = ""))
+  }, "", USE.NAMES = FALSE)
+  list(bodies = bodies, rule = rule, start = match(seq_along(paths), row))
+}
+
+# The split rows: one per Allow (the bare URL stays disallowed by
+# `bare_line`), and one per set of crawler classes (whole-value merge) for
+# the Disallows (the bare URL stays allowed), in line order.
+slash_split_rows <- function(groups, at, bare_line) {
+  rules <- groups$rules
+  allow <- rules$type[at] == "allow"
+  opened <- at[allow]
+  value <- rules$value[opened]
+  blocked <- slash_rows(
+    rules$type[opened], rules$line[opened],
+    paste0(
+      sprintf(paste0(
+        "This Allow opens the URL '%s', but '%s' stays disallowed by line ",
+        "%d.%s"
+      ), query_parameter_cap(value, 40L),
+      query_parameter_cap(slash_partner(value), 40L), bare_line[allow],
+      slash_redirect()),
+      slash_crawler_note(groups$agents, rules$group[opened])
+    )
+  )
+  found <- rbind(blocked, slash_open_rows(groups, at[!allow]))
+  found <- found[order(found$line), , drop = FALSE]
+  rownames(found) <- NULL
+  found
+}
+
+slash_redirect <- function() {
+  paste0(" A server redirect between the two URLs changes what a crawler ",
+         "reaches.")
+}
+
+# One row per set of crawler classes for Disallows `at` that block `P/` and
+# leave `P` allowed, on the first User-agent line of the group holding the
+# earliest one.
+slash_open_rows <- function(groups, at, cap = 5L) {
+  rules <- groups$rules
+  if (length(at) == 0L) {
+    return(slash_rows(character()))
+  }
+  group <- rules$group[at]
+  wanted <- unique(group)
+  rows <- validation_token_expander(groups, groups$agents$uncut)(wanted)
+  signature <- vapply(split(rows$class, factor(rows$owner,
+                                               seq_along(wanted))),
+                      function(x) paste(sort(x), collapse = " "), "")
+  sets <- split(seq_along(at), factor(signature[match(group, wanted)],
+                                      unique(signature[match(group, wanted)])))
+  first <- vapply(sets, `[[`, 0L, 1L)
+  anchor <- groups$groups$first_line[match(group[first], groups$groups$group)]
+  message <- vapply(sets, function(k) {
+    slash_open_message(rules$value[at[k]], rules$line[at[k]], cap)
+  }, "", USE.NAMES = FALSE)
+  slash_rows(
+    rep("disallow", length(sets)), anchor,
+    paste0(message, slash_crawler_note(groups$agents, group[first])),
+    directive = "user-agent"
+  )
+}
+
+slash_open_message <- function(value, line, cap) {
+  if (length(value) == 1L) {
+    return(sprintf(paste0(
+      "The Disallow on line %d blocks the URL '%s', but '%s' stays ",
+      "allowed.%s"
+    ), line, query_parameter_cap(value, 40L),
+    query_parameter_cap(slash_partner(value), 40L), slash_redirect()))
+  }
+  shown <- utils::head(seq_along(value), cap)
+  listed <- sprintf("'%s' (line %d)", query_parameter_cap(value[shown], 40L),
+                    line[shown])
+  paste0(
+    "These Disallows block the URL that ends in '/', but the URL without ",
+    "it stays allowed: ", joined_and(listed, length(value) - length(shown)),
+    ".", slash_redirect()
+  )
 }
 
 wildcard_inheritance_message <- function(tokens, one_group, missing,
