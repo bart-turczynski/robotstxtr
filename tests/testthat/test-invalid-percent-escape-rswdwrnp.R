@@ -386,10 +386,12 @@ ip_time_value <- function(value) {
 
 test_that("ROBO-rswdwrnp: the check is linear in the value's length", {
   skip_on_cran()
-  # 4,000 and 16,000 bytes, inside the 16,663-byte buffer: distinct stray
-  # contexts, and a run of placeholder-like names.
-  short <- ip_time_value(strrep("/%zx", 1000L))
-  long <- ip_time_value(strrep("/%zx", 4000L))
+  # 4,000 and 16,000 bytes, inside the 16,663-byte buffer: a run of
+  # placeholder-like names whose closing `%` starts the escape `%41`, so the
+  # placeholder regex tries and refuses each; then a run of `%`, every one
+  # stray.
+  short <- ip_time_value(strrep("/%na_me%41", 400L))
+  long <- ip_time_value(strrep("/%na_me%41", 1600L))
   expect_lt(long, 8 * max(short, 0.05))
   short <- ip_time_value(paste0("/", strrep("%", 4000L)))
   long <- ip_time_value(paste0("/", strrep("%", 16000L)))
