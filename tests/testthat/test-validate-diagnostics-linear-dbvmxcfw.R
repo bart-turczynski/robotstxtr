@@ -170,7 +170,7 @@ test_that("the frame of a body on every emission path is pinned", {
   # ROBO-otomgbge: `/typo` (line 9) also matches `/typo2` (line 10); without
   # that row the frame is the one pinned before.
   expect_identical(seam_digest(d, linear_frame_extra(d)),
-                   "bfeb9fb193bcf235925028ad110f89b8")
+                   "24fc9ef260ac076839fc2b71dde76c8e")
   d <- d[d$code != "rule_prefix_sibling", , drop = FALSE]
   rownames(d) <- NULL
   expect_identical(

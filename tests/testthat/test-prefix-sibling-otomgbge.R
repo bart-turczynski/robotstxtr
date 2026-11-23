@@ -123,8 +123,8 @@ ps_one <- function(line, value, siblings, noun = "Disallow") {
     siblings, ", ", listed, " listed separately for the same crawlers. ",
     "A rule with no trailing '/' or '$' matches every path that starts ",
     "with it (RFC 9309 section 2.2.2). If '", value, "' was meant as one ",
-    "path segment, '", value, "/' or '", value, "$' is the narrower ",
-    "spelling."
+    "path segment, '", value, "$' together with '", value, "/' is the ",
+    "narrower spelling."
   )
 }
 
@@ -183,8 +183,9 @@ test_that("ROBO-otomgbge: one row per group, pairs across rules", {
     "('/feed') matches '/feeds' (line 4) and line 5 ('/login') matches ",
     "'/login.php' (line 6). A rule with no trailing '/' or '$' matches every ",
     "path that starts with it (RFC 9309 section 2.2.2). If such a rule was ",
-    "meant as one path segment, end it in '/' or '$'. This holds for every ",
-    "crawler the group names: 'Foo' and 'Bar'."
+    "meant as one path segment, its narrower spelling is the rule ending in ",
+    "'$' together with the rule ending in '/'. This holds for every crawler ",
+    "the group names: 'Foo' and 'Bar'."
   ))
   # Two groups of different crawlers: one row each.
   two <- paste0("User-agent: Foo\nDisallow: /feed\nDisallow: /feeds\n\n",
@@ -199,7 +200,8 @@ test_that("ROBO-otomgbge: one row per group, pairs across rules", {
     "('/a') matches '/ab' (line 3) and line 3 ('/ab') matches '/abc' ",
     "(line 4). A rule with no trailing '/' or '$' matches every path that ",
     "starts with it (RFC 9309 section 2.2.2). If such a rule was meant as ",
-    "one path segment, end it in '/' or '$'."
+    "one path segment, its narrower spelling is the rule ending in '$' ",
+    "together with the rule ending in '/'."
   ))
   # A repeat of the sibling is not named; duplicate_rule reports it.
   dup <- "User-agent: *\nDisallow: /feed\nDisallow: /feeds\nDisallow: /feeds\n"
@@ -222,6 +224,50 @@ test_that("ROBO-otomgbge: every crawler of the sibling's group needs `P`", {
   # Google's merge joins `Foo/1.0` and `Foo`; the whole-value merge does
   # not, so the merges disagree and there is no row.
   expect_false(ps_code %in% ps_codes(ps_fixtures$cut_agent$body))
+})
+
+test_that("ROBO-otomgbge: one row per `P` line, narrower siblings named", {
+  # `P`'s group names `a` and `b`; each sibling sits in a group of one.
+  body <- paste0("User-agent: a\nUser-agent: b\nDisallow: /feed\n\n",
+                 "User-agent: a\nDisallow: /feeds\n\n",
+                 "User-agent: b\nDisallow: /feeds\n")
+  expect_identical(ps_line(body), 3L)
+  expect_identical(ps_message(body), ps_one(
+    3L, "/feed", "'/feeds' (line 6, for 'a') and '/feeds' (line 9, for 'b')"
+  ))
+  # The sibling's group names fewer crawlers than `P`'s: it names them, and
+  # the row names no group.
+  wider <- paste0("User-agent: Foo\nUser-agent: Bar\nDisallow: /feed\n\n",
+                  "User-agent: Foo\nDisallow: /feeds\n")
+  expect_identical(ps_message(wider),
+                   ps_one(3L, "/feed", "'/feeds' (line 6, for 'Foo')"))
+})
+
+test_that("ROBO-otomgbge: long values print apart", {
+  # Past 40 bytes `P` keeps its head and the sibling its tail, so the two,
+  # and `P`'s two narrower spellings, never print alike.
+  p <- paste0("/", strrep("a", 52L))
+  body <- paste0("User-agent: *\nDisallow: ", p, "\nDisallow: ", p, "b\n")
+  head <- paste0("/", strrep("a", 35L), "...")
+  tail <- paste0("...", strrep("a", 35L), "b")
+  expect_identical(ps_message(body),
+                   ps_one(2L, head, paste0("'", tail, "' (line 3)")))
+})
+
+test_that("ROBO-otomgbge: a repeat of `P` that Google's merge joins", {
+  # Google cuts `Bot1`..`Bot3` to `Bot`, so its merge joins the groups and
+  # the first group's `/d1` decides each group's `/d10`: it has `P`'s type
+  # and value, so every group gets its row.
+  body <- paste0("User-agent: Bot", 1:3, "\n",
+                 paste0("Disallow: /d", 1:11, "\n", collapse = ""),
+                 collapse = "\n")
+  expect_identical(ps_line(body), c(2L, 15L, 28L))
+  # One `P` line for every class of the sibling's group: here each class
+  # has its own, so no row names one line for both.
+  apart <- paste0("User-agent: Foo\nDisallow: /feed\n\n",
+                  "User-agent: Bar\nDisallow: /feed\n\n",
+                  "User-agent: Foo\nUser-agent: Bar\nDisallow: /feeds\n")
+  expect_false(ps_code %in% ps_codes(apart))
 })
 
 # The Google, Bing and Yandex decisions and deciding lines for `paths`.
@@ -388,6 +434,21 @@ test_that("ROBO-otomgbge: candidates past the work budget get no row", {
   ))
   expect_null(attr(prefix_sibling_diagnostics(groups, budget = 14),
                    "stopped"))
+  # A pass the budget cannot pay for reads nothing: the lookup costs 2 and
+  # the pass the file's 2 rules, so at 3 no reading is made.
+  groups <- ps_groups("User-agent: Foo\nDisallow: /feed\nDisallow: /feeds\n")
+  calls <- new.env()
+  calls$n <- 0L
+  real <- witness_pair_readings
+  local_mocked_bindings(witness_pair_readings = function(...) {
+    calls$n <- calls$n + 1L
+    real(...)
+  })
+  found <- prefix_sibling_diagnostics(groups, budget = 3)
+  expect_identical(calls$n, 0L)
+  expect_identical(attr(found, "stopped"), ps_stopped(1L, 0L, "/feeds"))
+  found <- prefix_sibling_diagnostics(groups, budget = 7)
+  expect_identical(calls$n, 1L)
   # A long chain of prefixes stops at the default budget with one row and
   # one stop row, in bounded time.
   chain <- paste0("User-agent: *\n",

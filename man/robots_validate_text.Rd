@@ -458,9 +458,11 @@ crawlers' rules list separately with the same type
 (\code{Disallow: /feeds}), which goes on from it without a
 \code{/}. Reported only when, with that line left out, the shorter
 rule decides its path, under every rule the crawlers have. The
-message names \code{P/} and \code{P$} as the narrower spellings and
-calls neither rule wrong. One row per group of crawlers, on the
-shorter rule's line, listing five pairs at most, then a count. Past a
+message names \code{P$} together with \code{P/} as the narrower
+spelling (either one alone drops paths \code{P} matches) and calls
+neither rule wrong. One row per set of crawlers of the shorter
+rule's group, on its line, listing five pairs at most, then a count;
+a sibling listed for fewer crawlers names them. Past a
 fixed amount of work, as for \code{rule_slash_split}, rules get no
 row and \code{rule_check_stopped} says so. \cr
 \code{rule_check_stopped} \tab info \tab
@@ -1000,14 +1002,17 @@ cut at \code{max_bytes} is not checked, and a
 that does not end in \code{/}, and another rule of the same type, \code{M}, also a
 literal, whose value goes on from \code{P} with a byte other than \code{/}
 (\verb{/feed} and \verb{/feeds}, \verb{/login} and \verb{/login.php}). Every crawler \code{M}'s
-group names must have both: the groups merge as the matchers merge them,
-so two groups naming the same crawler count as one, and two naming
-different crawlers give none. \code{P} is the longest such rule; a sibling
+group names must have both. Pairs form on the whole User-agent value
+merge only: two groups with the same value count as one, two naming
+different crawlers give none, and a pair that only Google's cut merge
+joins (\code{Foo/1.0} beside \code{Foo}) gets no row; its \code{user_agent_cut} row
+covers it. \code{P} is the longest such rule; a sibling
 that goes on with \code{/} (\verb{/feed/rss}), one holding \code{*}, \code{$}, \verb{?} or \verb{\%},
 and a pair of opposite type (\verb{Disallow: /search} beside
 \verb{Allow: /searchx}) are not read. Google's matcher reads \code{M}'s path with
 \code{M} left out, over every rule of the crawler's merged groups, on the
-whole-value merge and on Google's merge: \code{P} must decide it, so an Allow
+whole-value merge and on Google's merge: \code{P}, or a rule of the same type
+and value in another of the merged groups, must decide it, so an Allow
 that would take over (\verb{Allow: /feeds} beside the pair) silences the row.
 A later repeat of \code{M} is not named. The check reads its candidates in
 line order within a fixed amount of work, as the slash checks do. A body

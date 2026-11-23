@@ -449,9 +449,11 @@ validation_unsupported <- c(
 #'     (\code{Disallow: /feeds}), which goes on from it without a
 #'     \code{/}. Reported only when, with that line left out, the shorter
 #'     rule decides its path, under every rule the crawlers have. The
-#'     message names \code{P/} and \code{P$} as the narrower spellings and
-#'     calls neither rule wrong. One row per group of crawlers, on the
-#'     shorter rule's line, listing five pairs at most, then a count. Past a
+#'     message names \code{P$} together with \code{P/} as the narrower
+#'     spelling (either one alone drops paths \code{P} matches) and calls
+#'     neither rule wrong. One row per set of crawlers of the shorter
+#'     rule's group, on its line, listing five pairs at most, then a count;
+#'     a sibling listed for fewer crawlers names them. Past a
 #'     fixed amount of work, as for \code{rule_slash_split}, rules get no
 #'     row and \code{rule_check_stopped} says so. \cr
 #'   \code{rule_check_stopped} \tab info \tab
@@ -991,14 +993,17 @@ validation_unsupported <- c(
 #' that does not end in `/`, and another rule of the same type, `M`, also a
 #' literal, whose value goes on from `P` with a byte other than `/`
 #' (`/feed` and `/feeds`, `/login` and `/login.php`). Every crawler `M`'s
-#' group names must have both: the groups merge as the matchers merge them,
-#' so two groups naming the same crawler count as one, and two naming
-#' different crawlers give none. `P` is the longest such rule; a sibling
+#' group names must have both. Pairs form on the whole User-agent value
+#' merge only: two groups with the same value count as one, two naming
+#' different crawlers give none, and a pair that only Google's cut merge
+#' joins (`Foo/1.0` beside `Foo`) gets no row; its `user_agent_cut` row
+#' covers it. `P` is the longest such rule; a sibling
 #' that goes on with `/` (`/feed/rss`), one holding `*`, `$`, `?` or `%`,
 #' and a pair of opposite type (`Disallow: /search` beside
 #' `Allow: /searchx`) are not read. Google's matcher reads `M`'s path with
 #' `M` left out, over every rule of the crawler's merged groups, on the
-#' whole-value merge and on Google's merge: `P` must decide it, so an Allow
+#' whole-value merge and on Google's merge: `P`, or a rule of the same type
+#' and value in another of the merged groups, must decide it, so an Allow
 #' that would take over (`Allow: /feeds` beside the pair) silences the row.
 #' A later repeat of `M` is not named. The check reads its candidates in
 #' line order within a fixed amount of work, as the slash checks do. A body
@@ -7048,7 +7053,8 @@ render_resource_stop_intro <- function(stop) {
 # It is reported only when, for every class `M`'s group names, merged on the
 # whole User-agent value and on Google's token, Google's matcher reads `M`'s
 # path with `M` left out (every rule of its type and value flagged empty, as
-# render_resource_reads() does) and line `P` decides it: so an Allow that
+# render_resource_reads() does) and line `P`, or a rule of its type and
+# value in a group the merge joins, decides it: so an Allow that
 # would take over (`Allow: /feeds` beside the pair, `Allow: /fe*sx` beside
 # `/feed` and `/feedsx`) silences it, and so does a longer rule of the same
 # type. A later repeat of `M` in the class is not reported. Pairs of
@@ -7059,9 +7065,10 @@ render_resource_stop_intro <- function(stop) {
 # rules once; candidates count as checked in line order up to the first one
 # whose reading did not finish, and the stop counts say so. A cut body is
 # not checked: a later rule could decide a path. One row per set of crawler
-# classes (slash_open_sets()), on the first `P` line, naming five pairs at
-# most, then a count. Returns slash_rows(); when the budget cut candidates,
-# its "stopped" attribute holds slash_stop()'s counts.
+# classes of `P`'s group (prefix_sibling_rows()), on the first `P` line,
+# naming five pairs at most, then a count. Returns slash_rows(); when the
+# budget cut candidates, its "stopped" attribute holds slash_stop()'s
+# counts.
 prefix_sibling_diagnostics <- function(groups, written = NULL,
                                        budget = NULL) {
   groups <- slash_groups(groups)
@@ -7081,13 +7088,18 @@ prefix_sibling_diagnostics <- function(groups, written = NULL,
   todo <- which(!is.na(look$stem))
   pass <- prefix_sibling_passes(rules, at)
   left_out <- paste(rules$type, rules$value)
+  # The reading names a deciding rule by its line: each rule reads as the
+  # first line of its type and value, so a repeat of `P` in another group
+  # that Google's cut merge joins, which decides as `P` does, confirms it.
+  same <- groups
+  same$rules$line <- rules$line[match(left_out, left_out)]
   for (k in split(todo, factor(pass[todo], unique(pass[todo])))) {
     # A pass builds its expanders and flags over the file's rules once.
     budget <- budget - nrow(rules)
     if (budget < 0) {
       break
     }
-    removed <- groups
+    removed <- same
     removed$rules$empty[left_out %in% left_out[at[k]]] <- TRUE
     value <- rules$value[at[k]]
     read <- witness_pair_readings(removed, look$stem[k], value, value, "long",
@@ -7233,7 +7245,12 @@ prefix_sibling_passes <- function(rules, at) {
 
 # The rows of prefix_sibling_diagnostics() for the confirmed pairs (`stem`
 # the `P` rules, `sibling` the `M` rules, indexes of `groups$rules`): one
-# per set of crawler classes of the siblings' groups, on its first `P` line.
+# per set of crawler classes of `P`'s group (slash_open_sets()), on its
+# first `P` line, listing every sibling of those `P` lines. Where a
+# sibling's group names other crawlers than `P`'s, each sibling names its
+# group's crawlers, so the row's "for the same crawlers" holds pair by
+# pair; otherwise the row ends with `P`'s group's crawlers
+# (slash_crawler_note()).
 prefix_sibling_rows <- function(groups, stem, sibling) {
   if (length(stem) == 0L) {
     return(slash_rows(character()))
@@ -7242,30 +7259,70 @@ prefix_sibling_rows <- function(groups, stem, sibling) {
   o <- order(rules$line[stem], rules$line[sibling])
   stem <- stem[o]
   sibling <- sibling[o]
-  signature <- slash_open_sets(groups, rules$group[sibling])
+  signature <- slash_open_sets(groups, rules$group[stem])
+  narrow <- signature != slash_open_sets(groups, rules$group[sibling])
   sets <- split(seq_along(stem), factor(signature, unique(signature)))
   first <- vapply(sets, `[[`, 0L, 1L)
+  by_set <- vapply(sets, function(k) any(narrow[k]), NA)
+  who <- prefix_sibling_who(groups$agents, rules$group[sibling])
   text <- vapply(sets, function(k) {
     prefix_sibling_message(rules$type[stem[k]], rules$value[stem[k]],
                            rules$line[stem[k]], rules$value[sibling[k]],
-                           rules$line[sibling[k]])
+                           rules$line[sibling[k]],
+                           if (any(narrow[k])) who[k] else NULL)
   }, "", USE.NAMES = FALSE)
+  note <- slash_crawler_note(groups$agents, rules$group[stem[first]])
+  note[by_set] <- ""
   slash_rows(
-    rules$type[stem[first]], rules$line[stem[first]],
-    paste0(text, slash_crawler_note(groups$agents,
-                                    rules$group[sibling[first]]))
+    rules$type[stem[first]], rules$line[stem[first]], paste0(text, note)
   )
 }
 
+# For each of `group`, the crawlers it names as a list ("'a'", "'a' and
+# 'b'"), five at most, then a count; values the whole-value merge reads as
+# one count once, as first written (slash_crawler_note()).
+prefix_sibling_who <- function(agents, group) {
+  named <- agents$global | nzchar(agents$uncut)
+  id <- paste(agents$group, ifelse(agents$global, "*", agents$uncut),
+              sep = "\n")
+  named <- named & !duplicated(id)
+  by_group <- split(agents$name[named], agents$group[named])
+  wanted <- unique(group)
+  who <- vapply(by_group[as.character(wanted)], function(names) {
+    names <- unique(names)
+    shown <- sprintf("'%s'", ai_training_name(utils::head(names, 5L)))
+    joined_and(shown, length(names) - length(shown))
+  }, "", USE.NAMES = FALSE)
+  who[match(group, wanted)]
+}
+
+# A sibling's value as a row shows it: past `cap` bytes, "..." and its last
+# `cap - 4` bytes. A sibling starts with its `P`, so its tail is what tells
+# the two apart. Values are printable ASCII (slash_candidates()).
+prefix_sibling_tail <- function(x, cap = 40L) {
+  n <- nchar(x, "bytes")
+  long <- n > cap
+  x[long] <- paste0("...", substr(x[long], n[long] - cap + 5L, n[long]))
+  x
+}
+
 # One row's text: each `P` (its type, value and line) and the sibling it
-# matches (value and line), five pairs at most, then a count; the values
-# elided past 40 bytes (query_parameter_cap()). It says what `P` matches
-# and names `P/` and `P$` as the narrower spellings, calling no rule wrong.
+# matches (value and line, and `who`, the sibling's crawlers, when given),
+# five pairs at most, then a count. `P` is elided past 40 bytes
+# (query_parameter_cap()) and its narrower spellings are that text with
+# `$` and with `/` after it; a sibling keeps its tail
+# (prefix_sibling_tail()), so no two of them print alike. It says what `P`
+# matches and names `P$` together with `P/`, as either one alone stops
+# matching paths `P` matches, calling no rule wrong.
 prefix_sibling_message <- function(type, value, line, sib_value, sib_line,
-                                   cap = 5L) {
+                                   who = NULL, cap = 5L) {
   value <- query_parameter_cap(value, 40L)
-  sib <- sprintf("'%s' (line %d)", query_parameter_cap(sib_value, 40L),
-                 sib_line)
+  where <- if (is.null(who)) {
+    sprintf("line %d", sib_line)
+  } else {
+    sprintf("line %d, for %s", sib_line, who)
+  }
+  sib <- sprintf("'%s' (%s)", prefix_sibling_tail(sib_value), where)
   shown <- utils::head(seq_along(sib), cap)
   more <- length(sib) - length(shown)
   rule <- paste0(
@@ -7280,8 +7337,8 @@ prefix_sibling_message <- function(type, value, line, sib_value, sib_line,
               noun, line[[1L]], value[[1L]],
               joined_and(sib[shown], more), listed),
       "separately for the same crawlers.", rule,
-      sprintf(paste0(" If '%s' was meant as one path segment, '%s/' or ",
-                     "'%s$' is the narrower spelling."),
+      sprintf(paste0(" If '%s' was meant as one path segment, '%s$' ",
+                     "together with '%s/' is the narrower spelling."),
               value[[1L]], value[[1L]], value[[1L]])
     ))
   }
@@ -7290,7 +7347,8 @@ prefix_sibling_message <- function(type, value, line, sib_value, sib_line,
   paste0(
     "Rules for the same crawlers also match paths listed separately: ",
     joined_and(pairs, more), ".", rule,
-    " If such a rule was meant as one path segment, end it in '/' or '$'."
+    " If such a rule was meant as one path segment, its narrower spelling ",
+    "is the rule ending in '$' together with the rule ending in '/'."
   )
 }
 

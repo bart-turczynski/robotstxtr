@@ -241,7 +241,7 @@ every script, style or data file of a type a page may need to show its
 content; an exact file such as `/app.js` is not read. An info,
 `rule_prefix_sibling`, notes a rule such as `Disallow: /feed` beside
 `Disallow: /feeds` for the same crawlers: `/feed` already matches `/feeds`,
-and `/feed/` or `/feed$` is the narrower spelling. A
+and `/feed$` together with `/feed/` is the narrower spelling. A
 warning, `html_body`, says the body looks like an HTML page rather than a robots.txt;
 `xml_body` and `json_body` say the same of a body that starts with markup, such
 as an XML error, or looks like a JSON object or array, such as an API error.
