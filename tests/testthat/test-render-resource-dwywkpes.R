@@ -1203,6 +1203,30 @@ test_that("ROBO-dwywkpes: a rule at the line buffer keeps a bounded row", {
   expect_lt(nchar(d$message[d$code == rr_code]), 600L)
 })
 
+test_that("ROBO-dwywkpes: the naming reads each line as written", {
+  # 2,800 two-byte characters: 5,600 bytes as written, 16,800 escaped. Line
+  # 3 (one byte longer than the Allow) blocks /.../x.js by itself; written
+  # escaped, it would pass Google's 16,663-byte line buffer, be cut there
+  # and lose to the Allow, and the row would not name it. (Not testable on
+  # Bing and Yandex: the line buffer is Google's parser's.)
+  name <- strrep(rawToChar(as.raw(c(0xc3, 0xa9))), 2800L)
+  body <- paste0("User-agent: Foo\nDisallow: /", name, "/*.js$\nDisallow: /",
+                 name, "/**.js\nAllow: /", name, "/*.js\n")
+  shown <- paste0("/", strrep("%C3%A9", 5L), "%C3...")
+  expect_identical(rr_message_of(body),
+                   rr_one(2L, shown, shown, rr_same("3", one = TRUE)))
+  url <- paste0("https://e.example/", strrep("%C3%A9", 2800L), "/x.js")
+  lines <- strsplit(body, "\n", fixed = TRUE)[[1L]]
+  for (gone in list(2L, 2:3)) {
+    kept <- lines
+    kept[gone] <- "Disallow:"
+    expect_identical(robots_evaluate_text_v1(
+      paste0(paste(kept, collapse = "\n"), "\n"), url, "Foo", "google",
+      "google"
+    )$results$url_decision, if (length(gone) == 1L) "disallow" else "allow")
+  }
+})
+
 test_that("ROBO-dwywkpes: the row's length is bounded", {
   # 50 Disallows of 200 bytes: each value and witness is cut at 40 bytes
   # and four more lines are named, so the row stays short (one crawler, so
