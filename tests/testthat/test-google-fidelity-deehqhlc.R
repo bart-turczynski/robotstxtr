@@ -158,8 +158,8 @@ test_that("ROBO-deehqhlc: the fixtures reach every path and family", {
   cases <- gf_case_list
   families <- vapply(cases, `[[`, character(1L), "family")
   expect_setequal(families, c(
-    "empty_value", "window", "target", "pattern", "agent", "eol", "utf8",
-    "long", "typo", "input", "nul"
+    "empty_value", "window", "target", "pattern", "index", "agent", "eol",
+    "utf8", "long", "typo", "input", "nul"
   ))
   ids <- vapply(cases, `[[`, character(1L), "id")
   expect_false(anyDuplicated(ids) > 0L)
