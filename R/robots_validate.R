@@ -401,8 +401,10 @@ validation_unsupported <- c(
 #'   \code{rule_render_resource_blocked} \tab info \tab
 #'     A Disallow whose pattern ends in a file type a page may load
 #'     (\code{.js}, \code{.mjs}, \code{.cjs}, \code{.css}, \code{.json},
-#'     \code{.wasm}), such as \code{/*.js}, blocks the scripts, styles or
-#'     data a page may need to show its content. Reported only when the
+#'     \code{.wasm}) for every file of that type, such as \code{/*.js} or
+#'     \code{/assets/*.css}, blocks the scripts, styles or data a page may
+#'     need to show its content; an exact or named file such as
+#'     \code{/app.js} is not read. Reported only when the
 #'     rule decides such a file and, with every such rule left out, the
 #'     file would be allowed, under every rule the crawlers have. One row
 #'     per group of crawlers, on its first User-agent line: the first rule
@@ -876,9 +878,14 @@ validation_unsupported <- c(
 #' `rule_render_resource_blocked` reads a non-empty Disallow whose
 #' canonical value is led by `/` or `*` and ends in `.js`, `.mjs`, `.cjs`,
 #' `.css`, `.json` or `.wasm`, in any case, then only a run of `*`, a final
-#' `$`, or a query with no `/` (`/*.js`, `/cart.js`, `/*.js*$`,
-#' `/a.json?v=*`). The file type must sit in the path, so no `?` comes
-#' before it: `/*?*.js` and `/q?f=*.css` name query text and are left out.
+#' `$`, or a query with no `/`, and only where the rule covers the whole
+#' type: its file name, the text after its last `/` (or the whole value
+#' when it has none) up to the type's dot, is only a run of `*` (`/*.js`,
+#' `/*.js$`, `*.json$`, `/assets/*.css`, `/*.css?*`, `*/*.mjs`). An exact
+#' file (`/push-worker.js`, `/a/b/c.json`) or a named stem
+#' (`/js/main-*.js`, `/*.min.js`) is left out. The file type must sit in
+#' the path, so no `?` comes before it: `/*?*.js` and `/q?f=*.css` name
+#' query text and are left out.
 #' The file it blocks is the value without a final `$` and
 #' the run of `*` before it, each other `*` written `x` (`/*.css*` blocks
 #' `/x.css`); where another rule matches that filler, the check tries `y`,
@@ -886,7 +893,7 @@ validation_unsupported <- c(
 #' byte no URL carries is left out, as for `rule_end_anchor_query`.
 #' Google's matcher makes the decisions over every rule of the crawler's
 #' merged groups: the rule must decide the file, so an Allow that wins it
-#' (`Allow: /*.js`, `Allow: /x.js` beside `Disallow: /x.js`) silences the
+#' (`Allow: /*.js` beside `Disallow: /*.js`) silences the
 #' row, and, read again with every such rule left out, the file must come
 #' out allowed, so a broader rule that blocks it anyway (`Disallow: /`,
 #' `Disallow: /assets/`) silences it too. Beside the rule that decides the
@@ -900,10 +907,10 @@ validation_unsupported <- c(
 #' matcher counts a pattern's length without its `*`, so where an Allow and
 #' a Disallow come close in length and one holds a `*` (`Disallow: /*.js`
 #' beside `Allow: /x.j`), Yandex can decide the file the other way. The
-#' check does not read folder rules
-#' (`Disallow: /js/`), paths with no file type, fonts, images or source
+#' check does not read folder rules (`Disallow: /js/`), endpoints with no
+#' file type (`/api/data`), exact or named files, fonts, images or source
 #' maps. A rule such as `/*.js$` can also get `rule_end_anchor_query`, and
-#' `/a.json?v=*` `rule_query_parameter_position`; both rows stand. A body
+#' `/*.json?v=*` `rule_query_parameter_position`; both rows stand. A body
 #' cut at `max_bytes` is not checked, and a
 #' `User-agent: __usage_ai-training` group gets no row.
 #'
@@ -6239,17 +6246,22 @@ render_resource_diagnostics <- function(groups, written = NULL,
 # Indexes of `rules` that are rule_render_resource_blocked candidates: a
 # non-empty Disallow whose canonical value is led by `/` or `*` and ends in
 # a listed file type, in any case, then only a run of `*`, a final `$`, or
-# a query with no `/` (`/*.js`, `/*.js*$`, `/a.json?v=*`). The type sits
-# in the path, so no `?` comes before it: `/*?*.js` and `/q?f=*.css` name
-# query text, not a file. Not a folder (`/js/`), a longer type (`/a.jsp`)
-# or a path that goes on (`/x.json/y`). Nor one whose witness fails
+# a query with no `/` (`/*.js`, `/*.js*$`, `/*.css?*`). Only a type-wide
+# value: its file name, the text after its last `/` (the whole value when
+# it has none) up to the type's dot, is a run of `*` (`/*.js`,
+# `/assets/*.css`, `*.json$`), so an exact file (`/push-worker.js`) or a
+# named stem (`/js/main-*.js`, `/*.min.js`) is left out. The type sits in
+# the path, so no `?` comes before it: `/*?*.js` and `/q?f=*.css` name
+# query text, not a file. Not a folder (`/js/`), a longer type (`/*.jsp`)
+# or a path that goes on (`/*.json/y`). Nor one whose witness fails
 # url_safe_path(): a dot segment, a stray `%` or a byte no URL carries.
 render_resource_candidates <- function(rules) {
   value <- rules$value
   hit <- which(
     rules$type == "disallow" & !rules$empty &
       grepl(
-        "^[/*][^?]*[.](m?js|cjs|css|json|wasm)([*]*[$]?|[?][^/]*)$", value,
+        paste0("^(([/*][^?]*)?/)?[*]+[.](m?js|cjs|css|json|wasm)",
+               "([*]*[$]?|[?][^/]*)$"), value,
         ignore.case = TRUE, useBytes = TRUE
       )
   )

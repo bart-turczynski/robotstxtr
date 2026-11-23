@@ -1,6 +1,6 @@
 # robotstxtr (development version)
 
-* Validator: new `rule_render_resource_blocked` info for a Disallow like `/*.js` that blocks script, style or data files a page may load; `rule_check_stopped` covers it too (ROBO-dwywkpes).
+* Validator: new `rule_render_resource_blocked` info for a Disallow like `/*.js` or `/assets/*.css` that blocks every script, style or data file of a type a page may load; `rule_check_stopped` covers it too (ROBO-dwywkpes).
 * Validator: new `allow_reopens_through_query` info for an Allow like `*/x/`, which also allows `/c?q=/x/` while a Disallow blocks `/c`; `rule_check_stopped` covers it too (ROBO-micbpqbc).
 * Validator: new `rule_end_anchor_query` info for a Disallow like `/x/edit$`, which blocks `/x/edit` but not `/x/edit?x=1` (RFC 9309 §2.2.3); `rule_check_stopped` covers it too (ROBO-nzcvlsvk).
 * Validator: new `rule_slash_pair` and `rule_slash_split` info codes for a `/x` and `/x/` rule pair or decision split (RFC 9309 §2.2.2); `rule_check_stopped` notes a large file checked only in part (ROBO-roypaoox).

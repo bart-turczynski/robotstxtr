@@ -22,8 +22,8 @@ rr_fixtures <- list(
   # a named group with no such rule.
   shop = list(
     body = paste0(
-      "User-agent: *\nDisallow: /assets/app/*.js\nDisallow: /basket.js\n",
-      "Disallow: /*/basket.js\n\nUser-agent: AdsBot-Google\n",
+      "User-agent: *\nDisallow: /assets/app/*.js\nDisallow: /*.css\n",
+      "Disallow: /*/*.json\n\nUser-agent: AdsBot-Google\n",
       "Disallow: /assets/app/*.js\n\nUser-agent: Googlebot\n",
       "Disallow: /private\n"
     ),
@@ -64,31 +64,31 @@ rr_fixtures <- list(
   ),
   star_tail = list(body = "User-agent: %s\nDisallow: /*.css*\n",
                    today = character(0)),
-  query = list(body = "User-agent: %s\nDisallow: /a.json?v=*\n",
+  query = list(body = "User-agent: %s\nDisallow: /*.json?v=*\n",
                today = "rule_query_parameter_position"),
   # Also rule_end_anchor_query's: both rows stand.
   anchored = list(body = "User-agent: %s\nDisallow: /*.js$\n",
                   today = "rule_end_anchor_query"),
-  comment = list(body = "User-agent: %s\nDisallow: /a.js#x\n",
+  comment = list(body = "User-agent: %s\nDisallow: /*.js#x\n",
                  today = "rule_cut_by_comment"),
   repeated = list(
-    body = paste0("User-agent: %s\nDisallow: /a.js\n\n",
-                  "User-agent: %s\nDisallow: /b.js\n"),
+    body = paste0("User-agent: %s\nDisallow: /*.js\n\n",
+                  "User-agent: %s\nDisallow: /*.css\n"),
     today = "user_agent_repeated_group"
   ),
   identical = list(
-    body = "User-agent: %s\nDisallow: /a.js\nDisallow: /a.js\n",
+    body = "User-agent: %s\nDisallow: /*.js\nDisallow: /*.js\n",
     today = "duplicate_rule"
   ),
   two_crawlers = list(
     body = "User-agent: %s\nUser-agent: Bar\nDisallow: /a/*.mjs\n",
     today = character(0)
   ),
-  ai = list(body = "User-agent: __usage_ai-training\nDisallow: /a.js\n",
+  ai = list(body = "User-agent: __usage_ai-training\nDisallow: /*.js\n",
             today = "ai_training_preference"),
   ai_anchor = list(
     body = paste0("User-agent: __usage_ai-training\nUser-agent: %s\n",
-                  "Disallow: /a.js\n"),
+                  "Disallow: /*.js\n"),
     today = "ai_training_preference"
   ),
   avalanche = list(
@@ -101,9 +101,9 @@ rr_fixtures <- list(
                    today = "rule_slash_split"),
   json_folder = list(body = "User-agent: %s\nDisallow: /json-api/\n",
                      today = "rule_slash_split"),
-  jsp = list(body = "User-agent: %s\nDisallow: /a.jsp\n",
+  jsp = list(body = "User-agent: %s\nDisallow: /*.jsp\n",
              today = character(0)),
-  inner = list(body = "User-agent: %s\nDisallow: /x.json/y\n",
+  inner = list(body = "User-agent: %s\nDisallow: /*.json/y\n",
                today = character(0)),
   ext_folder = list(body = "User-agent: %s\nDisallow: /*.js/\n",
                     today = character(0)),
@@ -118,12 +118,12 @@ rr_fixtures <- list(
   empty = list(body = "User-agent: %s\nDisallow:\n",
                today = "allow_all_disallow"),
   full_url = list(
-    body = "User-agent: %s\nDisallow: https://e.example/a.js\n",
+    body = "User-agent: %s\nDisallow: https://e.example/*.js\n",
     today = "rule_missing_leading_slash"
   ),
-  dot = list(body = "User-agent: %s\nDisallow: /a/./b.js\n",
+  dot = list(body = "User-agent: %s\nDisallow: /a/./*.js\n",
              today = "rule_dot_segment"),
-  stray = list(body = "User-agent: %s\nDisallow: /a%4/b.js\n",
+  stray = list(body = "User-agent: %s\nDisallow: /a%4/*.js\n",
                today = "rule_invalid_percent_escape")
 )
 
@@ -136,13 +136,14 @@ rr_body <- function(name, token = "Foo") {
 }
 
 # The recognition set: each listed file type bare, with `$`, `*`, `*$` and
-# `?*`, and in upper case.
+# `?*`, and in upper case, after a folder or none: a type-wide value, whose
+# file name is a run of `*`.
 rr_types <- c("js", "mjs", "cjs", "css", "json", "wasm")
 rr_suffixes <- c("", "$", "*", "*$", "?*")
 rr_positive <- c(
   as.vector(outer(paste0("/*.", rr_types), rr_suffixes, paste0)),
-  paste0("/A.", chartr("a-z", "A-Z", rr_types)), "/cart.js", "/*/cart.js",
-  "/a.json?v=*", "*.css"
+  paste0("/*.", chartr("a-z", "A-Z", rr_types)), "/assets/*.css",
+  "*/*.mjs", "/*/*.js", "/**.js", "/*.json?v=*", "*.css", "*.json$"
 )
 
 test_that("ROBO-dwywkpes: today's codes on every candidate shape and skip", {
@@ -194,7 +195,7 @@ rr_decisions <- list(
   list("filler", c("/x.js", "/y.js"), c("allow", "disallow")),
   list("filler_all", c("/x.js", "/y.js", "/z.js"), rep("allow", 3L)),
   list("star_tail", c("/x.css", "/x.cssx"), c("disallow", "disallow")),
-  list("query", c("/a.json?v=", "/a.json"), c("disallow", "allow")),
+  list("query", c("/x.json?v=", "/x.json"), c("disallow", "allow")),
   list("two_kinds", c("/x.js", "/assets/x.css", "/x.css"),
        c("disallow", "disallow", "allow")),
   # With every candidate left out, the witness is allowed, unless a
@@ -212,12 +213,17 @@ rr_decisions <- list(
        "disallow", list(yandex = "allow")),
   list(body = "User-agent: %s\nDisallow: /x.js\nAllow: /*.js\n", "/x.js",
        "allow", list(yandex = "disallow")),
+  # `/ab/*.js` (8) ties `/*/**.js` on Google and Bing, the Allow winning on
+  # every filler's file, but counts 7 to the Allow's 6 on Yandex.
+  list(body = "User-agent: %s\nDisallow: /ab/*.js\nAllow: /*/**.js\n",
+       c("/ab/x.js", "/ab/y.js", "/ab/z.js"), rep("allow", 3L),
+       list(yandex = rep("disallow", 3L))),
   # A trailing bare `?` is a literal byte to every matcher: without it the
   # rule does not match, so the witness keeps it.
   list(body = "User-agent: %s\nDisallow: /*.js?\n", c("/x.js?", "/x.js"),
        c("disallow", "allow")),
-  list(body = "User-agent: %s\nDisallow: /a.json?$\n",
-       c("/a.json?", "/a.json"), c("disallow", "allow"))
+  list(body = "User-agent: %s\nDisallow: /*.json?$\n",
+       c("/x.json?", "/x.json"), c("disallow", "allow"))
 )
 
 test_that("ROBO-dwywkpes: every backend decides the witnesses", {
@@ -316,9 +322,9 @@ test_that("ROBO-dwywkpes: one info row on the group's User-agent line", {
   expect_identical(rr_message("star_tail"), rr_one(2L, "/*.css*", "/x.css"))
   expect_identical(rr_message("anchored"), rr_one(2L, "/*.js$", "/x.js"))
   expect_identical(rr_message("query"),
-                   rr_one(2L, "/a.json?v=*", "/a.json?v="))
+                   rr_one(2L, "/*.json?v=*", "/x.json?v="))
   # A comment cut reads the rule as Google's parser does.
-  expect_identical(rr_message("comment"), rr_one(2L, "/a.js", "/a.js"))
+  expect_identical(rr_message("comment"), rr_one(2L, "/*.js", "/x.js"))
   expect_identical(rr_message("two_crawlers"), paste0(
     rr_one(3L, "/a/*.mjs", "/a/x.mjs"), rr_note("'Foo' and 'Bar'")
   ))
@@ -343,9 +349,9 @@ test_that("ROBO-dwywkpes: rows group by crawler set", {
   # decides (the matcher keeps the first), but it blocks the file once the
   # first is gone, so the row names it too.
   expect_identical(rr_message("repeated"),
-                   rr_one(2L, "/a.js", "/a.js", rr_same("5", one = TRUE)))
+                   rr_one(2L, "/*.js", "/x.js", rr_same("5", one = TRUE)))
   expect_identical(rr_message("identical"),
-                   rr_one(2L, "/a.js", "/a.js", rr_same("3", one = TRUE)))
+                   rr_one(2L, "/*.js", "/x.js", rr_same("3", one = TRUE)))
   expect_identical(rr_message("two_kinds"),
                    rr_one(2L, "/*.js", "/x.js", rr_same("3", one = TRUE)))
   # The AI-training token's group gets no row; the row sits on the first
@@ -453,7 +459,7 @@ test_that("ROBO-dwywkpes: the row is Google's reading where Yandex differs", {
   expect_identical(m, rr_one(2L, "/*.js", "/x.js"))
   expect_false(grepl("Google|Bing|Yandex", m))
   expect_false(rr_code %in% rr_codes(
-    "User-agent: Foo\nDisallow: /x.js\nAllow: /*.js\n"
+    "User-agent: Foo\nDisallow: /ab/*.js\nAllow: /*/**.js\n"
   ))
 })
 
@@ -466,10 +472,6 @@ test_that("ROBO-dwywkpes: a filler another rule matches gives way", {
                       "Allow: /y.js\n"))
   expect_identical(d$message[d$code == rr_code],
                    rr_one(2L, "/*.js", "/z.js"))
-  # A rule without `*` has one witness, whatever the filler.
-  expect_false(rr_code %in% rr_codes(
-    "User-agent: Foo\nDisallow: /a.js\nAllow: /a.js\n"
-  ))
 })
 
 # The reading of each merge, as the shared reader gives it.
@@ -482,9 +484,9 @@ rr_groups <- function(body) {
 }
 
 test_that("ROBO-dwywkpes: the scans make each exclusion", {
-  misses <- c("/js/", "/json-api/", "/a.jsp", "/x.json/y", "/*.js/", "/",
-              "/*.woff2", "/*.js.map", "/*.png", "x.js", "/a.js?/b",
-              "/a/./b.js", "/a/%2E%2E/b.js", "/a%4/b.js")
+  misses <- c("/js/", "/json-api/", "/*.jsp", "/*.json/y", "/*.js/", "/",
+              "/*.woff2", "/*.js.map", "/*.png", "x/*.js", "/*.js?/b",
+              "/a/./*.js", "/a/%2E%2E/*.js", "/a%4/*.js", "/.js")
   groups <- rr_groups(paste0("User-agent: *\n",
                              paste0("Disallow: ", c(rr_positive, misses), "\n",
                                     collapse = ""),
@@ -515,6 +517,33 @@ test_that("ROBO-dwywkpes: the scans make each exclusion", {
   })
 })
 
+test_that("ROBO-dwywkpes: only a type-wide value gets a row", {
+  # The file name, after the last `/` (or the whole value) up to the
+  # type's dot, is a run of `*`.
+  for (value in c("/*.js", "/*.js$", "*.json$", "/assets/*.css", "/*.css?*",
+                  "*/*.mjs")) {
+    codes <- rr_codes(sprintf("User-agent: Foo\nDisallow: %s\n", value))
+    expect_true(rr_code %in% codes, label = value)
+  }
+  # An exact file or a named stem gets none, though it blocks a file.
+  for (value in c("/push-worker.js", "/a/b/c.json", "/js/main-*.js",
+                  "/*.app.json", "*/advertising_script.js", "/*.min.js")) {
+    codes <- rr_codes(sprintf("User-agent: Foo\nDisallow: %s\n", value))
+    expect_false(rr_code %in% codes, label = value)
+  }
+  # Such a rule (here the named stem `a*`) is no candidate in the removal
+  # read either: it still blocks the file with every candidate left out, so
+  # no row.
+  body <- "User-agent: Foo\nDisallow: /assets/*.js\nDisallow: /a*.js\n"
+  expect_identical(render_resource_candidates(rr_groups(body)$rules), 1L)
+  expect_false(rr_code %in% rr_codes(body))
+  for (backend in names(rr_engines)) {
+    expect_identical(rr_decide("User-agent: %s\nDisallow: /a*.js\n",
+                               paste0("/assets/", c("x", "y", "z"), ".js"),
+                               backend), rep("disallow", 3L), label = backend)
+  }
+})
+
 test_that("ROBO-dwywkpes: a file type inside the query gets no row", {
   # The type must sit in the path: a `?` before it makes it query text.
   for (value in c("/*?*.js", "/search?q=*.css", "/*?file=*.json",
@@ -523,7 +552,7 @@ test_that("ROBO-dwywkpes: a file type inside the query gets no row", {
     expect_false(rr_code %in% codes, label = value)
   }
   # A query after the type stays in.
-  for (value in c("/a.json?v=*", "/*.js?*", "/x.js?a.css")) {
+  for (value in c("/*.json?v=*", "/*.js?*", "/*.js?a.css")) {
     codes <- rr_codes(sprintf("User-agent: Foo\nDisallow: %s\n", value))
     expect_true(rr_code %in% codes, label = value)
   }
@@ -536,14 +565,14 @@ test_that("ROBO-dwywkpes: a bare trailing `?` stays in the witness", {
   # so above), so dropping it would show a file the rule does not block.
   expect_identical(rr_message_of("User-agent: Foo\nDisallow: /*.js?\n"),
                    rr_one(2L, "/*.js?", "/x.js?"))
-  expect_identical(rr_message_of("User-agent: Foo\nDisallow: /a.json?$\n"),
-                   rr_one(2L, "/a.json?$", "/a.json?"))
+  expect_identical(rr_message_of("User-agent: Foo\nDisallow: /*.json?$\n"),
+                   rr_one(2L, "/*.json?$", "/x.json?"))
 })
 
 test_that("ROBO-dwywkpes: a value no URL carries gets no row", {
   for (byte in list(as.raw(0x20), as.raw(0x09), as.raw(0x01), as.raw(0x7f))) {
     body <- c(charToRaw("User-agent: *\nDisallow: /a"), byte,
-              charToRaw("b.js\n"))
+              charToRaw("b/*.js\n"))
     expect_false(rr_code %in% rr_codes(body), label = as.integer(byte))
   }
   for (name in c("dot", "stray", "full_url", "empty", "slash")) {
@@ -592,8 +621,8 @@ test_that("ROBO-dwywkpes: a removal read cut at the last filler stops", {
       "Disallow: /q2\n\nUser-agent: Foo a\nUser-agent: Foo b\n",
       paste0("Disallow: /r", seq_len(case$r), "\n", collapse = ""),
       "\nUser-agent: Bar\n",
-      paste0("Disallow: /c", seq_len(case$m), ".css\nAllow: /c",
-             seq_len(case$m), ".css\n", collapse = "")
+      paste0("Disallow: /c", seq_len(case$m), "/*.css\nAllow: /c",
+             seq_len(case$m), "/*.css\n", collapse = "")
     ))
     full <- render_resource_diagnostics(groups)
     expect_identical(full$message, paste0(rr_one(3L, "/*.js", "/z.js"),
@@ -657,16 +686,17 @@ test_that("ROBO-dwywkpes: a budget cut while naming gets the stop row", {
   }
   expect_gt(seen$cut, 0L)
   expect_gt(seen$alone, 0L)
-  # The pairs are counted before they are built: twenty reported `/dK.js`
-  # beside twenty `/*aK.js` whose head `/` every witness starts with cost
-  # twenty pairs each, so a budget of 100 takes five; none matches.
+  # The pairs are counted before they are built: twenty reported
+  # `/dK/*.js` beside twenty `/*/aK/*.js` whose head `/` every witness
+  # starts with cost twenty pairs each, so a budget of 100 takes five; none
+  # matches.
   k <- seq_len(20L)
   groups <- slash_groups(rr_groups(paste0(
-    "User-agent: Foo\n", paste0("Disallow: /d", k, ".js\n", collapse = ""),
-    paste0("Disallow: /*a", k, ".js\n", collapse = "")
+    "User-agent: Foo\n", paste0("Disallow: /d", k, "/*.js\n", collapse = ""),
+    paste0("Disallow: /*/a", k, "/*.js\n", collapse = "")
   )))
   at <- render_resource_candidates(groups$rules)
-  witness <- paste0("/d", k, ".js")
+  witness <- paste0("/d", k, "/x.js")
   out <- render_resource_named(groups, at, k, witness, NULL, 100)
   expect_identical(out$n, 5L)
   out <- render_resource_named(groups, at, k, witness, NULL, Inf)
@@ -690,11 +720,11 @@ test_that("ROBO-dwywkpes: a cut body is skipped, a NUL body is Google's", {
   # A Disallow a NUL cuts takes part as Google cuts it, and the row says
   # it is Google's reading. Not testable on Bing and Yandex: the evaluator
   # takes a string, which cannot hold the NUL.
-  cut <- c(charToRaw("User-agent: *\nDisallow: /a.js"), as.raw(0),
+  cut <- c(charToRaw("User-agent: *\nDisallow: /*.js"), as.raw(0),
            charToRaw("zz\n"))
   d <- rr_diag(cut)
   expect_identical(d$code, c("nul_byte", "rule_cut_by_nul", rr_code))
-  expect_identical(d$message[[3L]], paste0(rr_one(2L, "/a.js", "/a.js"),
+  expect_identical(d$message[[3L]], paste0(rr_one(2L, "/*.js", "/x.js"),
                                            rr_nul))
   # A NUL elsewhere: the row is still Google's reading.
   other <- c(charToRaw("User-agent: *\nDisallow: /*.css\nDisallow: /b"),
@@ -785,7 +815,7 @@ test_that("ROBO-dwywkpes: candidates past the work budget get no row", {
   # A filler retry that runs out leaves the candidate unchecked, and no
   # later candidate gets a row past it, though its own reading fit.
   groups <- rr_groups(paste0("User-agent: Foo\nDisallow: /*.js\n",
-                             "Allow: /x.js\nDisallow: /a.css\n"))
+                             "Allow: /x.js\nDisallow: /a/*.css\n"))
   for (budget in 8:24) {
     found <- render_resource_diagnostics(groups, budget = budget)
     if (nrow(found) > 0L) {
@@ -983,7 +1013,7 @@ rr_edge <- function() {
   expect_identical(d$message[d$code == rr_code],
                    rr_one(2L, "/INFO/*.JSON", "/INFO/x.JSON"))
   expect_identical(render_resource_candidates(rr_groups(
-    "User-agent: *\nDisallow: /A.JS\nDisallow: /A.JSI\n"
+    "User-agent: *\nDisallow: /*.JS\nDisallow: /*.JSI\n"
   )$rules), 1L)
 }
 
@@ -1009,21 +1039,21 @@ for (locale in c("C", "en_US.UTF-8", "tr_TR.UTF-8")) {
 
 test_that("ROBO-dwywkpes: a rule at the line buffer keeps a bounded row", {
   # `Disallow:` and no space fill the 16,663-byte line buffer.
-  long <- strrep("a", 16663L - nchar("Disallow:/.js"))
-  d <- rr_diag(sprintf("User-agent: *\nDisallow:/%s.js\n", long))
+  long <- strrep("a", 16663L - nchar("Disallow://*.js"))
+  d <- rr_diag(sprintf("User-agent: *\nDisallow:/%s/*.js\n", long))
   shown <- paste0("/", strrep("a", 35L), "...")
   expect_identical(d$message[d$code == rr_code], rr_one(2L, shown, shown))
   expect_lt(nchar(d$message[d$code == rr_code]), 600L)
 })
 
 test_that("ROBO-dwywkpes: the row's length is bounded", {
-  # 300 Disallows of 200 bytes: each value and witness is cut at 40 bytes
+  # 50 Disallows of 200 bytes: each value and witness is cut at 40 bytes
   # and four more lines are named, so the row stays short (one crawler, so
   # no crawler note).
-  k <- seq_len(300L)
+  k <- seq_len(50L)
   body <- paste0("User-agent: Foo\n",
-                 paste0("Disallow: /", k, strrep("a", 194L - nchar(k)),
-                        ".json\n", collapse = ""))
+                 paste0("Disallow: /", k, strrep("a", 192L - nchar(k)),
+                        "/*.json\n", collapse = ""))
   d <- rr_diag(body)
   m <- d$message[d$code == rr_code]
   expect_length(m, 1L)
@@ -1031,13 +1061,22 @@ test_that("ROBO-dwywkpes: the row's length is bounded", {
   expect_identical(nchar(rr_groups(body)$rules$value[[1L]]), 200L)
   shown <- paste0("/1", strrep("a", 34L), "...")
   expect_identical(m, rr_one(2L, shown, shown,
-                             rr_same("3, 4, 5, 6 and 295 more")))
+                             rr_same("3, 4, 5, 6 and 45 more")))
   expect_lt(nchar(m), 600L)
+  # 300 of them cross (every witness holds each rule's `.json`), so the
+  # budget stops the check, and the row stays bounded.
+  k <- seq_len(300L)
+  body <- paste0("User-agent: Foo\n",
+                 paste0("Disallow: /", k, strrep("a", 192L - nchar(k)),
+                        "/*.json\n", collapse = ""))
+  d <- rr_diag(body)
+  expect_true("rule_check_stopped" %in% d$code)
+  expect_lt(nchar(d$message[d$code == rr_code]), 600L)
   # With a star in each value the bodies cross and the budget stops the
   # check, and the row stays bounded too.
   body <- paste0("User-agent: Foo\n",
-                 paste0("Disallow: /", k, "*", strrep("a", 193L - nchar(k)),
-                        ".json\n", collapse = ""))
+                 paste0("Disallow: /", k, "*", strrep("a", 191L - nchar(k)),
+                        "/*.json\n", collapse = ""))
   d <- rr_diag(body)
   expect_true("rule_check_stopped" %in% d$code)
   expect_lt(nchar(d$message[d$code == rr_code]), 600L)

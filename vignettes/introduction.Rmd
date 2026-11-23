@@ -233,7 +233,8 @@ of the path and query together. An info, `allow_reopens_through_query`, notes
 an Allow such as `*/x/` that also matches inside a query, so it allows
 `/c?q=/x/` while a Disallow blocks `/c`. An info,
 `rule_render_resource_blocked`, notes a Disallow such as `/*.js` that blocks
-scripts, styles or data a page may need to show its content. A
+every script, style or data file of a type a page may need to show its
+content; an exact file such as `/app.js` is not read. A
 warning, `html_body`, says the body looks like an HTML page rather than a robots.txt;
 `xml_body` and `json_body` say the same of a body that starts with markup, such
 as an XML error, or looks like a JSON object or array, such as an API error.
