@@ -242,6 +242,9 @@ content; an exact file such as `/app.js` is not read. A
 warning, `html_body`, says the body looks like an HTML page rather than a robots.txt;
 `xml_body` and `json_body` say the same of a body that starts with markup, such
 as an XML error, or looks like a JSON object or array, such as an API error.
+An error, `compressed_body`, says the body is still gzip, zlib or zstd data,
+such as a file saved by a client that did not decode it; its bytes are not read
+as rules.
 The "Diagnostic codes" section of `?robots_validate_text` lists every code.
 
 ```{r, eval = FALSE}

@@ -1,5 +1,6 @@
 # robotstxtr (development version)
 
+* Validator: new `compressed_body` error for a gzip, zlib or zstd body, which is no longer read as rules; fetch rows gain `content_encoding`, the raw `Content-Encoding` (ROBO-rozvglkd).
 * Validator: new `rule_query_crawl_not_index` info, once per file, for Disallows holding `?`, `=` or `&`: robots.txt controls crawling, not indexing (ROBO-jnnnkyat).
 * Validator: new `rule_render_resource_blocked` info for a Disallow like `/*.js` or `/assets/*.css` that blocks every script, style or data file of a type a page may load; `rule_check_stopped` covers it too (ROBO-dwywkpes).
 * Validator: new `allow_reopens_through_query` info for an Allow like `*/x/`, which also allows `/c?q=/x/` while a Disallow blocks `/c`; `rule_check_stopped` covers it too (ROBO-micbpqbc).

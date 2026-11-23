@@ -524,7 +524,8 @@ Decisions:
 ### Cache headers on legacy fetch rows (ROBO-zleohwyz)
 
 Every `robots_decisions$robots` and `robots_fetches$robots` frame gains seven
-character columns, between `content_flag` and `body_truncated`, in this
+character columns, between `content_flag` (since ROBO-rozvglkd,
+`content_encoding`) and `body_truncated`, in this
 order, under the same "final response" rule and the same legacy-schema scope
 as Retry-After above. Each is the final response's field value, unparsed, as
 ssrfr delivers it, several fields of one name joined with `", "`:
@@ -560,6 +561,33 @@ Decisions:
   make a robots.txt invalid.
 - The fetch stays non-conditional (no `If-None-Match` or
   `If-Modified-Since`) and nothing is cached between calls.
+- The v1/v2 `evidence` frame and the `robots_validate_url()` `documents`
+  frame are unchanged, so the engine schema revision does not move.
+
+### Content-Encoding on legacy fetch rows (ROBO-rozvglkd)
+
+Every `robots_decisions$robots` and `robots_fetches$robots` frame gains one
+character column, `content_encoding`, between `content_flag` and the
+cache-header columns, under the same "final response" rule and legacy-schema
+scope as Retry-After above. It is the final response's `Content-Encoding`
+field value as received, several fields joined with `", "`; `NA` when absent
+or when there is no final response. `robots_fetch()` and
+`allowed_by_robots_url()` fill it; `allowed_by_robots_text()` and
+`as_legacy_robots_decisions_v1()` always write `NA`.
+`robots_compare_fetches()` carries it on `observations` but does not count it
+in `comparison`.
+
+Decisions:
+
+- Raw, and about the response, not the body. libcurl decodes a `gzip` or
+  `deflate` body it asked for, so `content_encoding = "gzip"` does not mean
+  the stored body is compressed. A body still compressed, as when a server
+  compresses a body the fetch asked to be sent uncompressed, is stored as
+  received, and the validator reports it as `compressed_body` from the bytes,
+  not from this column.
+- The `Accept-Encoding` the fetch sent is not recorded: ssrfr chooses it
+  internally (`gzip, deflate` when libcurl has zlib, else `identity`) and
+  does not expose it, so recording it needs an ssrfr change first.
 - The v1/v2 `evidence` frame and the `robots_validate_url()` `documents`
   frame are unchanged, so the engine schema revision does not move.
 
@@ -642,8 +670,8 @@ Decisions:
   512,000-byte window (ROBO-phfbpfiy), this reading of the cut and the
   crawler-token layer (ROBO-fbbmvbob, "Google crawler tokens" above).
 - Every legacy `robots` frame gains a logical `body_truncated` column,
-  between the cache-header columns (ROBO-zleohwyz, after `content_flag`)
-  and `body`, under the one-schema rule of the Retry-After and Content-Type
+  between the cache-header columns (ROBO-zleohwyz, after `content_flag` and
+  `content_encoding`) and `body`, under the one-schema rule of the Retry-After and Content-Type
   columns above: `robots_fetch()` and
   `allowed_by_robots_url()` fill it from the fetch, `allowed_by_robots_text()`
   writes `FALSE` (the caller supplied the whole text), and
