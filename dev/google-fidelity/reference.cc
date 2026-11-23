@@ -12,11 +12,12 @@
 // This is the contract dev/google-fidelity/differential.R expects.
 //
 // Exit status: 0 on success; 2 on a usage error; 3 on a malformed manifest
-// line; 4 on a file that cannot be opened or written.
+// line; 4 on a file that cannot be opened, read or written.
 
+#include <cstddef>
+#include <cstdio>
 #include <fstream>
 #include <iostream>
-#include <iterator>
 #include <ostream>
 #include <string>
 
@@ -55,13 +56,25 @@ int main(int argc, char** argv) {
       return 3;
     }
     const std::string body_file = line.substr(0, a);
-    std::ifstream file(body_file, std::ios::binary);
-    if (!file) {
+    // stdio, not an ifstream: libc++'s filebuf reports a read error as end
+    // of file, so the stream state cannot tell a short read from a failed one.
+    std::FILE* file = std::fopen(body_file.c_str(), "rb");
+    if (file == nullptr) {
       std::cerr << "reference: cannot open body " << body_file << "\n";
       return 4;
     }
-    const std::string body((std::istreambuf_iterator<char>(file)),
-                           std::istreambuf_iterator<char>());
+    std::string body;
+    char buf[1 << 16];
+    std::size_t n;
+    while ((n = std::fread(buf, 1, sizeof buf, file)) > 0) {
+      body.append(buf, n);
+    }
+    const bool read_failed = std::ferror(file) != 0;
+    std::fclose(file);
+    if (read_failed) {
+      std::cerr << "reference: cannot read body " << body_file << "\n";
+      return 4;
+    }
     googlebot::RobotsMatcher matcher;
     const bool allowed = matcher.OneAgentAllowedByRobots(
         body, line.substr(a + 1, b - a - 1), line.substr(b + 1));

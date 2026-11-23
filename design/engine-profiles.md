@@ -328,13 +328,15 @@ documentation. The map must be re-checked against the pages in §10 when they ch
 (`dev/google-fidelity/reference.cc`) calls `RobotsMatcher::OneAgentAllowedByRobots()` on the raw body
 bytes and reports the decision and `matching_line()`. Anyone can build it from a clean checkout
 (ROBO-basbqqdh): provision a google/robotstxt source directory at that SHA yourself (nothing is
-downloaded, `design/PRD.md` slice C5), make Abseil visible to `pkg-config absl_strings` or set
-`ABSL_PREFIX` to its install prefix, and run
+downloaded, `design/PRD.md` slice C5), make Abseil visible to `pkg-config absl_strings` (through
+`PKG_CONFIG_PATH`, or by setting `ABSL_PREFIX` to its install prefix), and run
 `ROBOTSTXTR_GOOGLE_UPSTREAM=<dir> sh dev/google-fidelity/build-reference.sh`. The script refuses a
 `robots.cc` or `robots.h` whose SHA-256 differs from the values it carries, compiles the checked copies
 with the driver, and writes `tmp/google-fidelity/google-ref` (gitignored; `-o <dir>` elsewhere). Then
 `Rscript dev/google-fidelity/differential.R tmp/google-fidelity/google-ref` replays the fixtures and
-exits 0 when nothing drifted. The same body, token and URL go to each robotstxtr Google path:
+exits 0 when nothing drifted. It exits 1 when the live answers drift from the answers `cases.R` records,
+or on an unexpected row (a difference the `gf_expected` table does not list), a mismatched row (one
+that differs, but not as the table says) or a stale row (one the table lists that agrees). The same body, token and URL go to each robotstxtr Google path:
 `robots_evaluate_text_v1()` with the `google` backend under every ruleset (`google`, `rfc9309`,
 `assumed_rfc9309`, `bing`, `yandex`: each reads a supplied body as `use_rules` at any size, so every
 row that passes input screening reaches the matcher and equals the `google` row, save the
