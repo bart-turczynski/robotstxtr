@@ -6190,7 +6190,7 @@ reopen_stop_intro <- function(stop) {
 # reads of the group holding the earliest one (slash_open_rows()), with
 # the first rule's witness and four more lines at most, then a count. The
 # lines include every other candidate that blocks a reported one's witness
-# by itself (render_resource_named()), read on what the budget left; a
+# by itself (render_resource_named()), read within a second `budget`; a
 # reported candidate whose reading of them did not fit is not checked. A
 # cut body is not checked: a later rule could decide the witness. Returns
 # slash_rows() with a `directive` column; when the budget cut candidates,
@@ -6215,8 +6215,9 @@ render_resource_diagnostics <- function(groups, written = NULL,
   hit <- which(!is.na(pair))
   witness <- render_resource_witness(rules$value[at[hit]],
                                      end_anchor_fillers()$path[pair[hit]])
-  named <- render_resource_named(groups, at, hit, witness, written,
-                                 read$budget)
+  # The naming has a budget of its own, so readings that use theirs up
+  # leave it whole; the work stays linear in the file.
+  named <- render_resource_named(groups, at, hit, witness, written, budget)
   # A reported candidate whose other lines did not fit is not checked.
   if (named$n < length(hit)) {
     checked <- hit[[named$n + 1L]] - 1L
@@ -6269,10 +6270,9 @@ render_resource_witness <- function(value, filler = "x") {
 
 # The filler readings of the candidates `at`, sharing `budget`: each filler
 # reads, in line order, the candidates every earlier filler read and left
-# unreported (render_resource_pass()). Returns list(pair, finished, budget)
-# as end_anchor_reads() does: `pair`, the first filler that passed (NA when
-# none did), and `finished`, whether the candidate's reading is done, with
-# `budget`, what the readings left.
+# unreported (render_resource_pass()). Returns list(pair, finished) as
+# end_anchor_reads() does: `pair`, the first filler that passed (NA when
+# none did), and `finished`, whether the candidate's reading is done.
 render_resource_reads <- function(groups, at, written, budget) {
   fill <- end_anchor_fillers()$path
   rules <- groups$rules
@@ -6301,7 +6301,7 @@ render_resource_reads <- function(groups, at, written, budget) {
   if (k == length(fill)) {
     finished[todo] <- TRUE
   }
-  list(pair = pair, finished = finished, budget = budget)
+  list(pair = pair, finished = finished)
 }
 
 # One filler's two readings of the candidates `at` on their `witness`

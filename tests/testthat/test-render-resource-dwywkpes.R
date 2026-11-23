@@ -610,10 +610,11 @@ test_that("ROBO-dwywkpes: a removal read cut at the last filler stops", {
 })
 
 test_that("ROBO-dwywkpes: a budget cut while naming gets the stop row", {
-  # `/*.js$` decides /x.js and `n` repeats of `/*.js` block it too. Wherever
-  # the budget runs out, a row names them all or there is no row and the
-  # stop row says so; some budgets run out in the naming, both in the
-  # pairs and in the reads of each one by itself.
+  # `/*.js$` decides /x.js and `n` repeats of `/*.js` block it too, beside
+  # `n` shorter Allows each repeat is read with. Wherever the budget runs
+  # out, a row names them all or there is no row and the stop row says so;
+  # some budgets run out in the naming (which has a budget of its own), in
+  # the reads of each repeat by itself.
   named <- render_resource_named
   alone <- render_resource_alone
   seen <- new.env()
@@ -635,13 +636,13 @@ test_that("ROBO-dwywkpes: a budget cut while naming gets the stop row", {
       out
     }
   )
-  for (n in c(1L, 6L)) {
+  for (n in c(1L, 6L, 10L)) {
     same <- if (n == 1L) rr_same("3", one = TRUE) else
-      rr_same("3, 4, 5, 6 and 2 more")
-    for (allow in c("", "Allow: /x\nAllow: /x.\n")) {
+      rr_same(sprintf("3, 4, 5, 6 and %d more", n - 4L))
+    for (allow in c("", strrep("Allow: /x\n", n))) {
       groups <- rr_groups(paste0("User-agent: Foo\nDisallow: /*.js$\n",
                                  strrep("Disallow: /*.js\n", n), allow))
-      for (budget in 0:120) {
+      for (budget in 0:200) {
         found <- render_resource_diagnostics(groups, budget = budget)
         # A row names the repeats even where the budget leaves them
         # unchecked (the stop row then counts them).
