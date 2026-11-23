@@ -100,6 +100,12 @@ gf_split_body <- gf_b(
   "Disallow: /d\n"
 )
 
+# "Disallow: /" and one Allow, on lines 2 and 3: the body of most `index`
+# cases (ROBO-yuqtnqbj).
+gf_index_body <- function(allow) {
+  gf_b("User-agent: *\nDisallow: /\nAllow: ", allow, "\n")
+}
+
 gf_long_rule <- strrep("a", 20000L)
 gf_long_body <- gf_b(
   "User-agent: *\nDisallow: /", gf_long_rule, "\nDisallow: /b\n"
@@ -220,6 +226,93 @@ gf_cases <- function() {
             "FooBot", "https://example.com/page", 1, 9),
     gf_case("pat-inner-dollar-literal", "pattern", gf_pattern_body,
             "FooBot", "https://example.com/lit$x", 0, 10),
+
+    # --- The index.htm Allow fallback (ROBO-yuqtnqbj) ---------------------
+    # RobotsMatcher::HandleAllow(): an Allow that does not match is retried
+    # as `<value up to its last "/">$` when the value from that last "/"
+    # starts with "/index.htm" (case-sensitive, any suffix). The last "/" is
+    # searched over the whole value, query included. HandleDisallow() has no
+    # such branch. Each case's trailing comment is its id in the source-audit
+    # scratch run (ROBO-rwxhhkrv), for ROBO-lohuovpm and ROBO-tnbhhzvk, or
+    # `added here` for a case recorded later from the same reference.
+    # Qualifying suffixes: the directory is allowed, on the Allow's line.
+    gf_case("idx-htm", "index", gf_index_body("/d/index.htm"),
+            "FooBot", "https://example.com/d/", 1, 3),            # index-0
+    gf_case("idx-html", "index", gf_index_body("/d/index.html"),
+            "FooBot", "https://example.com/d/", 1, 3),            # index-3
+    gf_case("idx-htm-suffix", "index", gf_index_body("/d/index.htmXYZ"),
+            "FooBot", "https://example.com/d/", 1, 3),            # index-6
+    gf_case("idx-html-bak", "index", gf_index_body("/d/index.html.bak"),
+            "FooBot", "https://example.com/d/", 1, 3),            # index-9
+    gf_case("idx-htm-query", "index", gf_index_body("/d/index.htm?x=1"),
+            "FooBot", "https://example.com/d/", 1, 3),            # index-12
+    gf_case("idx-htm-dollar", "index", gf_index_body("/d/index.htm$"),
+            "FooBot", "https://example.com/d/", 1, 3),            # index-15
+    gf_case("idx-htm-pct2f", "index", gf_index_body("/d/index.htm%2Fchild"),
+            "FooBot", "https://example.com/d/", 1, 3),            # index-27
+    # Non-qualifying: a capital I, a short suffix, a "/" after index.htm.
+    gf_case("idx-upper", "index", gf_index_body("/d/Index.html"),
+            "FooBot", "https://example.com/d/", 0, 2),            # index-18
+    gf_case("idx-short", "index", gf_index_body("/d/index.ht"),
+            "FooBot", "https://example.com/d/", 0, 2),            # index-21
+    gf_case("idx-htm-child", "index", gf_index_body("/d/index.htm/child"),
+            "FooBot", "https://example.com/d/", 0, 2),            # index-24
+    # The retried pattern ends in `$`: the directory with a query, and the
+    # rest of the directory, stay disallowed.
+    gf_case("idx-html-dir-query", "index", gf_index_body("/d/index.html"),
+            "FooBot", "https://example.com/d/?q=1", 0, 2),        # index-4
+    gf_case("idx-html-neighbor", "index", gf_index_body("/d/index.html"),
+            "FooBot", "https://example.com/d/x", 0, 2),           # index-5
+    gf_case("idx-htm-suffix-dir-query", "index",
+            gf_index_body("/d/index.htmXYZ"),
+            "FooBot", "https://example.com/d/?q=1", 0, 2),        # index-7
+    gf_case("idx-htm-suffix-neighbor", "index",
+            gf_index_body("/d/index.htmXYZ"),
+            "FooBot", "https://example.com/d/x", 0, 2),           # index-8
+    # The retried `/d/$` has the priority of its own length, 4: it beats
+    # `Disallow: /d/` (3) and loses to `Disallow: /d/*$` (5). The scratch run
+    # named the first `index-priority-tie`, though it is no tie.
+    gf_case("idx-priority-beats", "index",
+            gf_b("User-agent: *\nDisallow: /d/\nAllow: /d/index.htmXYZ\n"),
+            "FooBot", "https://example.com/d/", 1, 3),  # index-priority-tie
+    gf_case("idx-priority-loses", "index",
+            gf_b("User-agent: *\nDisallow: /d/*$\nAllow: /d/index.htmXYZ\n"),
+            "FooBot", "https://example.com/d/", 0, 2),  # index-priority-loses
+    # A Disallow of index.html does not close its directory.
+    gf_case("idx-disallow-asymmetry", "index",
+            gf_b("User-agent: *\nDisallow: /d/index.html\n"),
+            "FooBot", "https://example.com/d/", 1, 0),  # index-asymmetry
+    # A "/" in the query is the last "/": the fallback reads from it.
+    gf_case("idx-query-slash-target", "index",
+            gf_index_body("/a?q=/index.html"),
+            "FooBot", "https://example.com/a?q=/", 1, 3),  # review-index-95
+    gf_case("idx-query-slash-not-dir", "index",
+            gf_index_body("/a?q=/index.html"),
+            "FooBot", "https://example.com/a/", 0, 2),     # review-index-96
+    gf_case("idx-query-slash-blocks", "index",
+            gf_index_body("/d/index.html?q=/x"),
+            "FooBot", "https://example.com/d/", 0, 2),     # review-index-97
+    gf_case("idx-query-no-slash", "index",
+            gf_index_body("/d/index.html?q=x"),
+            "FooBot", "https://example.com/d/", 1, 3),     # review-index-98
+    gf_case("idx-query-index-twice", "index",
+            gf_index_body("/d/index.htm?x=/index.html"), "FooBot",
+            "https://example.com/d/index.htm?x=/", 1, 3),  # review-index-99
+    # The named file itself: a direct match, no fallback.
+    gf_case("idx-direct", "index", gf_index_body("/d/index.html"), "FooBot",
+            "https://example.com/d/index.html", 1, 3),     # review-index-100
+    # The site root, a nested directory and its parent, a trailing "/" after
+    # index.html, and the directory with an empty query.
+    gf_case("idx-root", "index", gf_index_body("/index.html"),
+            "FooBot", "https://example.com/", 1, 3),       # added here
+    gf_case("idx-nested", "index", gf_index_body("/a/b/index.html"),
+            "FooBot", "https://example.com/a/b/", 1, 3),   # added here
+    gf_case("idx-nested-parent", "index", gf_index_body("/a/b/index.html"),
+            "FooBot", "https://example.com/a/", 0, 2),     # added here
+    gf_case("idx-trailing-slash", "index", gf_index_body("/d/index.html/"),
+            "FooBot", "https://example.com/d/", 0, 2),     # added here
+    gf_case("idx-html-dir-empty-query", "index", gf_index_body("/d/index.html"),
+            "FooBot", "https://example.com/d/?", 0, 2),    # added here
 
     # --- User-agent edge cases --------------------------------------------
     gf_case("ua-exact", "agent", gf_agent_body,

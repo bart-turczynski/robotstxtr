@@ -231,6 +231,19 @@ directory URL itself (`/` here), not the rest of the directory: `/` is
 allowed and `/x` stays disallowed. `robotstxt` 0.7.15 disallows `/`. RFC
 9309 has no such rule. (Class 22.)
 
+The rule takes an Allow pattern from its last `/`, searched over the whole
+pattern, query included; if that part starts with `/index.htm`, any suffix
+qualifies, so a backup copy such as `index.html.bak` opens its directory
+too, while `Allow: /d/index.html?q=/x` does not open `/d/`. Only the
+directory URL itself opens, without a query:
+
+```{r}
+decide(
+  "User-agent: *\nDisallow: /\nAllow: /d/index.html.bak\n",
+  c("/d/", "/d/?q=1", "/d/x")
+)
+```
+
 ### A rule before the first `User-agent`
 
 ```{r}

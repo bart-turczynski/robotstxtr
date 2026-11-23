@@ -342,7 +342,9 @@ beside a `Googlebot` group, a caller token with a version, an unknown token, fil
 version, repeated, shared and split groups, a rule before any group); CRLF, lone CR, mixed endings,
 a BOM; invalid UTF-8 in a rule and in a `User-agent` value; lines past the upstream 16,663-byte line
 buffer; the typos upstream accepts; empty, scheme-less and `ftp:` URLs and an empty token; a NUL byte
-before a key and inside a rule value.
+before a key and inside a rule value; and the `index` family, the boundaries of `HandleAllow`'s
+`index.htm` fallback (suffixes, case, query slashes, the retried `$` pattern's priority, Allow-only
+asymmetry; ROBO-yuqtnqbj, `design/library-comparison.md` class 22), where every path agrees.
 Fixtures and recorded reference answers:
 `tests/testthat/fixtures/google-fidelity-deehqhlc/cases.R`; pins:
 `tests/testthat/test-google-fidelity-deehqhlc.R`; the differential, which re-derives the answers from
