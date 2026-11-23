@@ -82,10 +82,8 @@ test_that("ROBO-yuqtnqbj: the index family keeps its boundary cases", {
     "idx-query-index-twice", "idx-html-dir-empty-query",
     "idx-htm-suffix-dir-query", "idx-htm-suffix-neighbor"
   ) %in% names(idx_cases)))
-  # Every case has the reference's answer on all four entry points.
-  for (case in idx_cases) {
-    expect_setequal(case$paths, gf_all_paths)
-  }
+  # The per-entry-point pins against the reference's answers live in
+  # test-google-fidelity-deehqhlc.R.
 })
 
 test_that("ROBO-yuqtnqbj: a fallback match reports the Allow as written", {
