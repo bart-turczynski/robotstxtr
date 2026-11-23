@@ -530,7 +530,7 @@ gf_cases <- function() {
     # --- Userinfo in the URL (ROBO-vxmeoqcr) ------------------------------
     # GetPathParamsQuery() looks for the first "/", "?" or ";" after the
     # scheme, with no authority parse: the ";" in "u;v@" starts the target,
-    # ";v@example.com/x", which "/x" does not match. "%3B" is no delimiter.
+    # "/;v@example.com/x", which "/x" does not match. "%3B" is no delimiter.
     # The legacy paths match the URL as given (gf_given_url_paths); the v1
     # paths drop userinfo first (ADR 0002), pinned in
     # test-url-preprocessing-bnvdmdjr.R.

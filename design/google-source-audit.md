@@ -62,7 +62,7 @@ re-derives those answers from a reference binary (`design/engine-profiles.md`
 | lines: nul-ua, nul-value | already covered, with a caveat | gf `nul` family (class 5, resolved). The scratch NUL cases went through robotstxtr's acquired-body decoding before the text facade; the public text API takes no embedded NUL, so they test the fetched paths' decoding, not the text API |
 | longline: long-85 to long-88 | already covered | gf `long-*`, catalog `size-long-line` |
 | longline: review-truncation-110 to 113, review-truncation-control-118 and 119, review-truncation-fullvalue-120 and 121 | newly pinned | gf `truncation` |
-| colon: colon-49 to colon-52, review-colon-101 to review-colon-106 | newly pinned | gf `colon`; colon-49 and review-colon-105, and colon-52 and review-colon-106, are one case each |
+| colon: colon-49, colon-51, colon-52, review-colon-101 to review-colon-106 | newly pinned | gf `colon`; colon-49 and review-colon-105, and colon-52 and review-colon-106, are one case each |
 | colon: colon-48 | already covered | gf `typo-no-colon` (`Disallow /x` blocks `/x`) |
 | colon: colon-50, colon-53, review-whitespace-114 and 115 | newly pinned | gf `whitespace` |
 | priority: review-star-107 to 109, wildcard-83, wildcard-84 | newly pinned | gf `priority` |
@@ -81,8 +81,10 @@ The newly pinned families, in the reference's words:
   blocks `/x`.
 - **whitespace.** The fallback separators are space and tab only, but the key
   is trimmed with `AsciiIsSpace()`, which strips a vertical tab. So
-  `Disallow<VT>/x` blocks nothing, `Disallow<VT>:/x` blocks `/x`, and a VT or a
-  tab between `/x` and a second word leaves no rule.
+  `Disallow<VT>/x` blocks nothing, `Disallow<VT>:/x` blocks `/x`, and a tab or
+  space before a second word leaves no rule (upstream's missing-colon fallback
+  rejects it). A VT is no separator: `/x<VT>extra` is the whole value, a
+  Disallow rule that does not match `/x`.
 - **truncation.** `RobotsTxtParser::Parse()` keeps 16,663 bytes of a line
   (`kMaxLineLen - 1`, with `kMaxLineLen = 2083 * 8`). With one line of
   `Disallow /x` (11 bytes), N spaces and `: /y`, N decides what survives: N=1
@@ -176,7 +178,7 @@ issue, to ROBO-coxzradt; Bing and Yandex tester checks to ROBO-traxexwm.
 
 ## Pins
 
-- `tests/testthat/test-google-fidelity-deehqhlc.R` covers every case above on
+- `tests/testthat/test-google-fidelity-deehqhlc.R` covers every gf case this record names on
   every robotstxtr Google path: the `v1_text` rows under every ruleset,
   `allowed_by_robots_text()`, `allowed_by_robots_url()` and
   `robots_evaluate_url_v1()`, save the `userinfo` cases, which run on the two
