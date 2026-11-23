@@ -14,7 +14,8 @@
 # robots_evaluate_url_v1() the same way (`v1_url:google`). No network.
 #
 # Classes of difference (design/engine-profiles.md §5b):
-#   1. an Allow/Disallow with an empty value: same decision, no line;
+#   1. an Allow/Disallow with an empty value: same decision, no line (also a
+#      line cut after its colon, the `truncation` family);
 #   2. the 512,000-byte window (v1 paths): a rule after it, or a line it cuts;
 #   3. the max_bytes cut (allowed_by_robots_url()): a rule past the cut;
 #   4. input screening: an empty URL or token, a URL that is not HTTP(S);
@@ -159,16 +160,24 @@ test_that("ROBO-deehqhlc: the fixtures reach every path and family", {
   families <- vapply(cases, `[[`, character(1L), "family")
   expect_setequal(families, c(
     "empty_value", "window", "target", "pattern", "index", "agent", "eol",
-    "utf8", "long", "typo", "input", "nul"
+    "utf8", "long", "typo", "input", "nul", "colon", "whitespace",
+    "truncation", "userinfo", "priority"
   ))
   ids <- vapply(cases, `[[`, character(1L), "id")
   expect_false(anyDuplicated(ids) > 0L)
-  # Every entry point is reached, and a NUL body only by the fetched ones.
+  # Every entry point is reached, a NUL body only by the fetched ones, and a
+  # userinfo URL only by the paths that match the URL as given (ROBO-vxmeoqcr).
   paths <- lapply(cases, `[[`, "paths")
   expect_setequal(unlist(paths), c("v1_text", "text", "url", "v1_url"))
   nul <- families == "nul"
+  userinfo <- families == "userinfo"
   expect_true(all(vapply(paths[nul], setequal, logical(1L), gf_url_paths)))
-  expect_true(all(vapply(paths[!nul], setequal, logical(1L), gf_all_paths)))
+  expect_true(all(vapply(
+    paths[userinfo], setequal, logical(1L), gf_given_url_paths
+  )))
+  expect_true(all(vapply(
+    paths[!nul & !userinfo], setequal, logical(1L), gf_all_paths
+  )))
 })
 
 # --- Class 1: an Allow/Disallow with an empty value ---------------------------

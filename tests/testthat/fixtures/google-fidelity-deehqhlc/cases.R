@@ -24,6 +24,10 @@
 gf_text_paths <- c("v1_text", "text")
 gf_url_paths <- c("url", "v1_url")
 gf_all_paths <- c(gf_text_paths, gf_url_paths)
+# The legacy paths, which match the URL as given. The v1 paths preprocess it
+# first (url_normalization = "rfc3986" by default, design/adr/0002), which
+# drops userinfo: the `userinfo` cases reach these two only (ROBO-vxmeoqcr).
+gf_given_url_paths <- c("text", "url")
 
 gf_b <- function(...) charToRaw(paste0(...))
 
@@ -110,6 +114,13 @@ gf_long_rule <- strrep("a", 20000L)
 gf_long_body <- gf_b(
   "User-agent: *\nDisallow: /", gf_long_rule, "\nDisallow: /b\n"
 )
+
+# One rule line, "Disallow /x", `n` spaces, then ": /y" (ROBO-vxmeoqcr). The
+# reference keeps the first 16,663 bytes of a line (kMaxLineLen - 1), and
+# "Disallow /x" is 11 bytes, so `n` decides how much of ": /y" survives.
+gf_truncation_body <- function(n) {
+  gf_b("User-agent: *\nDisallow /x", strrep(" ", n), ": /y\n")
+}
 
 gf_cases <- function() {
   private <- gf_b("User-agent: *\nDisallow: /private\n")
@@ -432,6 +443,126 @@ gf_cases <- function() {
             gf_b("  User-Agent :  FooBot  \n\tdisallow\t:\t/x  \n"),
             "FooBot", "https://example.com/x", 0, 2),
 
+    # --- The colon, and the missing-colon recovery (ROBO-vxmeoqcr) --------
+    # RobotsTxtParser::GetKeyAndValueFrom() strips the comment, then splits
+    # at the first ":". Only a line with no colon falls back to the first
+    # space or tab, and then refuses a value with a second space- or
+    # tab-separated token. The key is a Disallow when it starts with one, so
+    # "Disallow /ignored" is a Disallow key and "/target" its value. Each
+    # trailing comment is the case's id in the source-audit scratch run, as
+    # in the index family; `typo-no-colon` above is scratch colon-48.
+    gf_case("colon-redirect-target", "colon",
+            gf_b("User-agent: *\nDisallow /ignored:/target\n"),
+            "FooBot", "https://example.com/target", 0, 2),  # review-colon-101
+    gf_case("colon-redirect-source", "colon",
+            gf_b("User-agent: *\nDisallow /ignored:/target\n"),
+            "FooBot", "https://example.com/ignored", 1, 0), # review-colon-102
+    gf_case("colon-in-value-prefix", "colon",
+            gf_b("User-agent: *\nDisallow /x:y\n"),
+            "FooBot", "https://example.com/x", 1, 0),       # colon-51
+    gf_case("colon-in-value-whole", "colon",
+            gf_b("User-agent: *\nDisallow /x:y\n"),
+            "FooBot", "https://example.com/x:y", 1, 0),     # review-colon-103
+    # The control: with its own colon, "/x:y" is the value.
+    gf_case("colon-proper-control", "colon",
+            gf_b("User-agent: *\nDisallow: /x:y\n"),
+            "FooBot", "https://example.com/x:y", 0, 2),     # review-colon-104
+    gf_case("colon-missing-two-tokens", "colon",
+            gf_b("User-agent: *\nDisallow /x extra\n"),
+            "FooBot", "https://example.com/x",
+            1, 0),                             # colon-49, review-colon-105
+    gf_case("colon-missing-comment", "colon",
+            gf_b("User-agent: *\nDisallow /x # ignored\n"),
+            "FooBot", "https://example.com/x",
+            0, 2),                             # colon-52, review-colon-106
+
+    # --- Whitespace in the recovery: VT and tab (ROBO-vxmeoqcr) -----------
+    # The fallback separators are space and tab (kWhite); a vertical tab is
+    # not one, though the key is trimmed with AsciiIsSpace(), which strips it.
+    gf_case("ws-vt-separator", "whitespace",
+            gf_b("User-agent: *\nDisallow\v/x\n"),
+            "FooBot", "https://example.com/x", 1, 0),  # review-whitespace-114
+    gf_case("ws-vt-before-colon", "whitespace",
+            gf_b("User-agent: *\nDisallow\v:/x\n"),
+            "FooBot", "https://example.com/x", 0, 2),  # review-whitespace-115
+    gf_case("ws-vt-in-value", "whitespace",
+            gf_b("User-agent: *\nDisallow /x\vextra\n"),
+            "FooBot", "https://example.com/x", 1, 0),  # colon-53
+    gf_case("ws-tab-second-token", "whitespace",
+            gf_b("User-agent: *\nDisallow /x\textra\n"),
+            "FooBot", "https://example.com/x", 1, 0),  # colon-50
+
+    # --- One line cut at 16,663 bytes (ROBO-vxmeoqcr) ---------------------
+    # gf_truncation_body(n): the colon is byte 11 + n + 1 of the line. N=1 is
+    # the short control; 16,648 keeps ": /y" whole (the line is exactly
+    # 16,663 bytes); 16,649 keeps ": /"; 16,650 keeps ": "; 16,651 keeps ":"
+    # (an empty value, class 1); 16,652 keeps no colon, so the recovery reads
+    # "Disallow /x".
+    gf_case("trunc-short-x", "truncation", gf_truncation_body(1L),
+            "FooBot", "https://example.com/x", 1, 0),  # added here
+    gf_case("trunc-short-y", "truncation", gf_truncation_body(1L),
+            "FooBot", "https://example.com/y", 0, 2),  # added here
+    gf_case("trunc-whole-x", "truncation", gf_truncation_body(16648L),
+            "FooBot", "https://example.com/x",
+            1, 0),                             # review-truncation-fullvalue-120
+    gf_case("trunc-whole-y", "truncation", gf_truncation_body(16648L),
+            "FooBot", "https://example.com/y",
+            0, 2),                             # review-truncation-fullvalue-121
+    gf_case("trunc-slash-x", "truncation", gf_truncation_body(16649L),
+            "FooBot", "https://example.com/x",
+            0, 2),                             # review-truncation-control-118
+    gf_case("trunc-slash-y", "truncation", gf_truncation_body(16649L),
+            "FooBot", "https://example.com/y",
+            0, 2),                             # review-truncation-control-119
+    gf_case("trunc-colon-space-x", "truncation", gf_truncation_body(16650L),
+            "FooBot", "https://example.com/x", 1, 2),  # added here
+    gf_case("trunc-colon-space-y", "truncation", gf_truncation_body(16650L),
+            "FooBot", "https://example.com/y", 1, 2),  # added here
+    gf_case("trunc-colon-x", "truncation", gf_truncation_body(16651L),
+            "FooBot", "https://example.com/x", 1, 2),  # review-truncation-112
+    gf_case("trunc-colon-y", "truncation", gf_truncation_body(16651L),
+            "FooBot", "https://example.com/y", 1, 2),  # review-truncation-113
+    gf_case("trunc-no-colon-x", "truncation", gf_truncation_body(16652L),
+            "FooBot", "https://example.com/x", 0, 2),  # review-truncation-110
+    gf_case("trunc-no-colon-y", "truncation", gf_truncation_body(16652L),
+            "FooBot", "https://example.com/y", 1, 0),  # review-truncation-111
+
+    # --- Userinfo in the URL (ROBO-vxmeoqcr) ------------------------------
+    # GetPathParamsQuery() looks for the first "/", "?" or ";" after the
+    # scheme, with no authority parse: the ";" in "u;v@" starts the target,
+    # ";v@example.com/x", which "/x" does not match. "%3B" is no delimiter.
+    # The legacy paths match the URL as given (gf_given_url_paths); the v1
+    # paths drop userinfo first (ADR 0002), pinned in
+    # test-url-preprocessing-bnvdmdjr.R.
+    gf_case("userinfo-semicolon", "userinfo",
+            gf_b("User-agent: *\nDisallow: /x\n"),
+            "FooBot", "https://u;v@example.com/x", 1, 0,
+            gf_given_url_paths),                       # review-userinfo-116
+    gf_case("userinfo-escaped-semicolon", "userinfo",
+            gf_b("User-agent: *\nDisallow: /x\n"),
+            "FooBot", "https://u%3Bv@example.com/x", 0, 2,
+            gf_given_url_paths),                       # review-userinfo-117
+
+    # --- Priority: trailing and redundant `*` (ROBO-vxmeoqcr) -------------
+    # A pattern's priority is its length as written, stars included, and an
+    # Allow wins a tie. "/p*" matches what "/p" matches, but is longer.
+    gf_case("prio-trailing-star-control", "priority",
+            gf_b("User-agent: *\nDisallow: /p\nAllow: /p\n"),
+            "FooBot", "https://example.com/p", 1, 3),  # review-star-107
+    gf_case("prio-trailing-star", "priority",
+            gf_b("User-agent: *\nDisallow: /p*\nAllow: /p\n"),
+            "FooBot", "https://example.com/p", 0, 2),  # review-star-108
+    gf_case("prio-trailing-stars", "priority",
+            gf_b("User-agent: *\nDisallow: /p**\nAllow: /p\n"),
+            "FooBot", "https://example.com/p", 0, 2),  # review-star-109
+    # "/a**" and "/abc" are both 4 bytes: a tie, which the Allow wins.
+    gf_case("prio-stars-tie", "priority",
+            gf_b("User-agent: *\nAllow: /abc\nDisallow: /a**\n"),
+            "FooBot", "https://example.com/abc", 1, 2),  # wildcard-83
+    gf_case("prio-stars-longer", "priority",
+            gf_b("User-agent: *\nAllow: /abc\nDisallow: /a***\n"),
+            "FooBot", "https://example.com/abc", 0, 3),  # wildcard-84
+
     # --- Input shapes the entry points screen -----------------------------
     gf_case("in-empty-url", "input", private, "FooBot", "", 1, 0),
     gf_case("in-empty-token", "input", private,
@@ -486,8 +617,11 @@ gf_expect <- function(class, ids, paths, allowed, line, reason,
 # differential all read this table; it is the only list of the differing
 # case ids.
 gf_expected <- list(
+  # The truncation cases whose line keeps a colon but no value (ROBO-vxmeoqcr)
+  # are class 1 too: the cut leaves an empty Disallow.
   gf_expect(1L, c("ev-disallow", "ev-allow", "ev-both", "ev-comment",
-                  "ev-beside-rule-miss"),
+                  "ev-beside-rule-miss", "trunc-colon-space-x",
+                  "trunc-colon-space-y", "trunc-colon-x", "trunc-colon-y"),
             gf_all_paths, TRUE, NA, "default_allow"),
   gf_expect(2L, c("win-after", "win-after-ceiling", "win-straddle"),
             c("v1_text", "v1_url"), TRUE, NA, "default_allow"),
