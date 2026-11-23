@@ -734,6 +734,22 @@ test_that("ROBO-dwywkpes: a budget cut while naming gets the stop row", {
   out <- render_resource_named(groups, at, k, witness, NULL, Inf)
   expect_identical(out$n, 20L)
   expect_identical(lengths(out$rules), integer(20L))
+  # Both merges share the budget: each spends 110 here (4 candidate rows, 3
+  # pairs, then the 3 repeats' bodies with 20 Allows each, as counted by
+  # render_resource_pairs() and render_resource_alone()), and Google's
+  # (`Foo`) reads with what the whole-value one (`Foo/1.0`) left, so the
+  # naming needs 220.
+  groups <- slash_groups(rr_groups(paste0(
+    "User-agent: Foo/1.0\nDisallow: /*.js$\n", strrep("Disallow: /*.js\n", 3L),
+    strrep("Allow: /*j\n", 20L)
+  )))
+  at <- render_resource_candidates(groups$rules)
+  expect_identical(render_resource_named(groups, at, 1L, "/x.js", NULL,
+                                         219)$n, 0L)
+  out <- render_resource_named(groups, at, 1L, "/x.js", NULL, 220)
+  expect_identical(out$n, 1L)
+  expect_identical(groups$rules$line[out$rules[[1L]]], c(3L, 4L, 5L, 3L, 4L,
+                                                         5L))
 })
 
 test_that("ROBO-dwywkpes: a row the naming cuts is dropped whole", {
@@ -1210,8 +1226,9 @@ test_that("ROBO-dwywkpes: the naming reads each line as written", {
   # and lose to the Allow, and the row would not name it. (Not testable on
   # Bing and Yandex: the line buffer is Google's parser's.)
   name <- strrep(rawToChar(as.raw(c(0xc3, 0xa9))), 2800L)
-  body <- paste0("User-agent: Foo\nDisallow: /", name, "/*.js$\nDisallow: /",
-                 name, "/**.js\nAllow: /", name, "/*.js\n")
+  body <- sprintf(paste0("User-agent: Foo\nDisallow: /%s/*.js$\n",
+                         "Disallow: /%s/**.js\nAllow: /%s/*.js\n"),
+                  name, name, name)
   shown <- paste0("/", strrep("%C3%A9", 5L), "%C3...")
   expect_identical(rr_message_of(body),
                    rr_one(2L, shown, shown, rr_same("3", one = TRUE)))
