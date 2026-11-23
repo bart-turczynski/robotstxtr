@@ -474,6 +474,40 @@ allowed `index.htm` or `index.html` also allows its directory, as `/$`). `pro` a
 this as / being allowed too". Verdict: library deviation from a
 Google-specific rule that RFC 9309 does not have.
 
+The rule's boundaries (ROBO-yuqtnqbj; measured 2026-11-18 against the
+pristine reference at `22b355ff855419e6a3ff8ff09c0ad7fdb17116f9`; current
+upstream `HEAD` not re-checked). `HandleAllow` runs it only when the Allow
+pattern does not match the path. It takes the pattern from its last `/`; if
+that part starts with `/index.htm` (case-sensitive), it retries the pattern
+up to and including that `/`, plus `$`, on the same line. So:
+
+- Any suffix qualifies: `index.htm`, `index.html`, `index.htmXYZ`,
+  `index.html.bak`, `index.htm?x=1`, `index.htm$` and `index.htm%2Fchild`
+  (an escaped slash is not a `/`) all reopen `/d/` under `Disallow: /`.
+  `Index.html`, `index.ht` and `index.htm/child` do not. The upstream source
+  comment names only `index.htm` and `index.html`: a source/comment
+  discrepancy, not evidence of what Googlebot does.
+- The retried pattern is end-anchored: `/d/?q=1`, `/d/?` and `/d/x` stay
+  disallowed. `Allow: /a/b/index.html` reopens `/a/b/`, not `/a/`.
+- The last `/` is searched over the whole pattern, query included:
+  `Allow: /a?q=/index.html` allows `/a?q=/`, not `/a/`;
+  `Allow: /d/index.html?q=/x` does not reopen `/d/`, `?q=x` does; `Allow:
+  /d/index.html/` does not.
+- The retried pattern's priority is its own length (`/d/$`: 4), so it beats
+  `Disallow: /d/` and loses to `Disallow: /d/*$`.
+- Allow only: `Disallow: /d/index.html` does not close `/d/`.
+- robotstxtr reports the original Allow, its line and its pattern as written
+  (`matched_rule_value` `/d/index.htmXYZ`, never `/d/$`), on every Google
+  entry point; so does the reference's `matching_line()`.
+- The local Bing (robotstxtbing 0.1.0) and Yandex (robotstxtyandex 0.2.0)
+  backends have no such rule: they disallow every fallback case on the
+  `Disallow` line. These are local-backend predictions, not vendor
+  observations (webmaster-tool checks: ROBO-traxexwm).
+
+Fixtures and the reference's recorded answers: the `index` family of
+`tests/testthat/fixtures/google-fidelity-deehqhlc/cases.R`; the reported
+rule and the Bing/Yandex rows: `tests/testthat/test-google-index-fallback-yuqtnqbj.R`.
+
 ### 23. Lines `go`'s tokenizer reads differently
 
 Catalog `cmt-hash-in-rule` (`Disallow: /a#b`): reference disallow on `/a`
