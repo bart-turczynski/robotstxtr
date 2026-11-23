@@ -63,17 +63,22 @@ validation_unsupported <- c(
 #'   \code{compressed_body} \tab error \tab
 #'     The body starts with a compression signature: gzip (\code{1f 8b}),
 #'     Zstandard (\code{28 b5 2f fd}), or a zlib header (\code{78} then
-#'     \code{01}, \code{5e}, \code{9c} or \code{da}) on a body that is not
-#'     well-formed UTF-8, so text that starts \code{x^} is not flagged. Its
-#'     bytes are not read as lines: this row replaces every line, group and
-#'     rule check, \code{no_rules} included, and only \code{body_truncated},
+#'     \code{01}, \code{5e}, \code{9c} or \code{da}) whose second byte and
+#'     the 16 after it are not well-formed UTF-8, so text that starts
+#'     \code{x^} is not flagged, even with a Latin-1 byte in a later line.
+#'     Its bytes are not read as
+#'     lines: this row replaces every line, group and rule check,
+#'     \code{no_rules} included, and only \code{body_truncated},
 #'     \code{acquisition_http_other_2xx} and the \code{redirect_} and
-#'     \code{content_type_} rows (but \code{content_type_charset_conflict})
-#'     can join it. In \code{documents}, the byte facts (\code{byte_size},
-#'     \code{line_count}, \code{encoding}, \code{has_bom},
-#'     \code{nul_byte_count}, \code{final_newline}) are kept, and every
-#'     directive count, \code{active_line_count} and \code{malformed_lines}
-#'     are 0. Decode the body first; the body is not decompressed. \cr
+#'     \code{content_type_} rows (except
+#'     \code{content_type_charset_conflict}) can join it. In
+#'     \code{documents}, the byte facts (\code{byte_size}, \code{line_count},
+#'     \code{encoding}, \code{has_bom}, \code{nul_byte_count},
+#'     \code{final_newline}) are kept, and every directive count,
+#'     \code{active_line_count} and \code{malformed_lines} are 0; on a body
+#'     cut at \code{max_bytes}, the byte facts describe the stored bytes as
+#'     cut, no partial line dropped. Decode the body first; the body is not
+#'     decompressed, and raw deflate and brotli bodies are not detected. \cr
 #'   \code{byte_order_mark} \tab warning \tab
 #'     The document starts with a UTF-8 byte-order mark; the parser skips it.
 #'     \cr
@@ -1157,11 +1162,16 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #'
 #' A fetched body that is still compressed draws `compressed_body` (see
 #' [robots_validate_text()]) in place of its line rows, and no
-#' `content_type_charset_conflict`. libcurl decodes a gzip or deflate body it
-#' asked for, so this happens when the server compressed a body the fetch did
-#' not ask to be compressed, as with a libcurl built without zlib. The
-#' response's `Content-Encoding` is on the source row of [robots_fetch()] as
-#' `content_encoding`; the validator does not read it.
+#' `content_type_charset_conflict`; its `body_truncated` and `Content-Type`
+#' rows then say the body was not read as rules. libcurl decodes a gzip or
+#' deflate body it asked for, so this happens when the server compressed a
+#' body the fetch did not ask to be compressed, as with a libcurl built
+#' without zlib, or served gzip bytes with no `Content-Encoding` at all, as
+#' a `.gz` file served as the robots.txt. The response's `Content-Encoding`
+#' is on the source row of [robots_fetch()] as `content_encoding`; the
+#' validator does not read it. Only the validator reports such a body: the
+#' matchers, [allowed_by_robots_url()] among them, still read its bytes as
+#' rules. Raw deflate and brotli bodies are not detected.
 #'
 #' This function validates the acquired robots.txt document. It does not answer
 #' whether any target URL is allowed; use [allowed_by_robots_url()] for that
@@ -1407,7 +1417,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   compressed <- compressed_body_signature(stored_bytes, cut = body_truncated)
   if (!is.null(compressed)) {
     return(compressed_body_validation(
-      compressed, bytes, stored_size, source_id, source_type, robots_url,
+      compressed, stored_bytes, source_id, source_type, robots_url,
       effective_url, http_status, fetch_outcome, max_bytes, body_truncated
     ))
   }
@@ -2302,20 +2312,32 @@ validate_document_bytes <- function(bytes, source_id, source_type,
 # how each ruleset reads the status (ROBO-yvhqvthd). A 206 never comes here
 # fetched: classify_status() gives it partial_response with no body.
 # http_status_category_v1() still counts 206 as 2xx other, and a missing
-# status is protocol_error, so the category test drops that too.
+# status is protocol_error, so the category test drops that too. `read` is
+# FALSE for a compressed body, whose bytes were not validated as lines.
 validation_acquisition_rows <- function(bytes, max_bytes, body_truncated,
-                                        fetch_outcome, http_status) {
+                                        fetch_outcome, http_status,
+                                        read = TRUE) {
   rows <- list()
   if (body_truncated) {
-    rows[[length(rows) + 1L]] <- list(
-      severity = "warning", code = "body_truncated",
-      message = sprintf(
+    message <- if (read) {
+      sprintf(
         paste0(
           "Decoded body exceeded max_bytes (%d); only its first %d bytes ",
           "up to the last complete line were validated."
         ),
         as.integer(max_bytes), length(bytes)
       )
+    } else {
+      sprintf(
+        paste0(
+          "Body exceeded max_bytes (%d); it was cut at the size limit and ",
+          "was not read as rules."
+        ),
+        as.integer(max_bytes)
+      )
+    }
+    rows[[length(rows) + 1L]] <- list(
+      severity = "warning", code = "body_truncated", message = message
     )
   }
   other_2xx <- identical(fetch_outcome, "fetched") &&
@@ -2356,17 +2378,19 @@ compressed_body_labels <- c(
 # The compression format a body's first bytes name ("gzip", "zlib" or
 # "zstd"), or NULL. The gzip and zstd signatures hold a byte that cannot
 # start well-formed UTF-8; a zlib header can (`x^`, `x\x01`), so it counts
-# only on a body that is not well-formed UTF-8. `cut` says the body ends at
-# max_bytes, where a character may be split.
+# only when its head window is not well-formed UTF-8. `bytes` are the stored
+# bytes, before a cut drops its partial line, so a body cut to its header is
+# still read; `cut` says the body ends at max_bytes, where a character may be
+# split. An out-of-range raw index reads 00, which no signature holds, so a
+# body shorter than a signature never matches it.
 compressed_body_signature <- function(bytes, cut = FALSE) {
-  n <- length(bytes)
   for (name in names(compressed_body_magic)) {
     magic <- compressed_body_magic[[name]]
-    if (n >= length(magic) && identical(bytes[seq_along(magic)], magic)) {
+    if (identical(bytes[seq_along(magic)], magic)) {
       return(name)
     }
   }
-  if (n >= 2L && bytes[[1L]] == as.raw(0x78) &&
+  if (length(bytes) >= 2L && bytes[[1L]] == as.raw(0x78) &&
         bytes[[2L]] %in% compressed_body_zlib_flags &&
         !compressed_body_text(bytes, cut)) {
     return("zlib")
@@ -2374,13 +2398,26 @@ compressed_body_signature <- function(bytes, cut = FALSE) {
   NULL
 }
 
-# TRUE when `bytes` are well-formed UTF-8; on a cut body, also when only the
-# last character, split by the cut, is not.
+# The bytes after a zlib CMF byte that compressed_body_text() reads: the FLG
+# byte and the 16 after it.
+compressed_body_zlib_window <- 17L
+
+# TRUE when the zlib head window (bytes 2 to 18) is well-formed UTF-8, so the
+# body reads as text. Only the window counts: a Latin-1 robots.txt that starts
+# `x^` and holds one byte of 0x80 or above in a later line is text, not zlib.
+# Base R cannot settle it by inflating a prefix: memDecompress() errors on
+# any stream that does not end, and gzcon() reads no zlib header. Deflate
+# output is close to random bytes, so 16 of them are well-formed UTF-8 only
+# by rare chance. A window that ends before the body, or at the end of a cut
+# body, may split its last character, so up to 3 trailing bytes may go; the
+# FLG byte never does.
 compressed_body_text <- function(bytes, cut) {
   n <- length(bytes)
-  drop <- if (cut) 0:min(3L, n) else 0L
+  end <- min(n, 1L + compressed_body_zlib_window)
+  window <- bytes[2L:end]
+  drop <- if (end < n || cut) 0:min(3L, length(window) - 1L) else 0L
   any(vapply(drop, function(k) {
-    validation_utf8_line(bytes[seq_len(n - k)])
+    validation_utf8_line(window[seq_len(length(window) - k)])
   }, logical(1L)))
 }
 
@@ -2413,8 +2450,9 @@ validation_line_total <- function(bytes) {
 # The validation of a compressed body: one compressed_body error and the
 # acquisition rows, with none of the line, group or rule checks, and a
 # document row that keeps the byte facts while every directive count is 0,
-# since nothing was read as a directive.
-compressed_body_validation <- function(format, bytes, stored_size, source_id,
+# since nothing was read as a directive. `bytes` are the stored bytes, a cut
+# body's included: no line of it was validated, so none is dropped.
+compressed_body_validation <- function(format, bytes, source_id,
                                        source_type, robots_url, effective_url,
                                        http_status, fetch_outcome, max_bytes,
                                        body_truncated) {
@@ -2422,7 +2460,7 @@ compressed_body_validation <- function(format, bytes, stored_size, source_id,
     list(list(severity = "error", code = "compressed_body",
               message = compressed_body_message(format))),
     validation_acquisition_rows(bytes, max_bytes, body_truncated,
-                                fetch_outcome, http_status)
+                                fetch_outcome, http_status, read = FALSE)
   )
   field <- function(name) vapply(rows, `[[`, "", name)
   diagnostics <- validation_diagnostic(
@@ -2443,7 +2481,7 @@ compressed_body_validation <- function(format, bytes, stored_size, source_id,
     fetch_outcome = fetch_outcome,
     validation_status = validation_status(diagnostics),
     profile = robots_validation_profile,
-    byte_size = as.integer(stored_size),
+    byte_size = length(bytes),
     line_count = validation_line_total(bytes),
     active_line_count = 0L,
     recognized_directives = 0L,
@@ -2454,10 +2492,12 @@ compressed_body_validation <- function(format, bytes, stored_size, source_id,
     disallow_directives = 0L,
     sitemap_directives = 0L,
     unsupported_directives = 0L,
-    encoding = if (validation_utf8_line(bytes)) "utf-8" else "invalid-utf-8",
+    # Every signature holds bytes that are not well-formed UTF-8 (a zlib
+    # header counts only then), and none starts with a byte-order mark.
+    encoding = "invalid-utf-8",
     encoding_signature = NA_character_,
     encoding_signature_basis = NA_character_,
-    has_bom = length(bytes) >= 3L && identical(bytes[1:3], validation_bom),
+    has_bom = FALSE,
     nul_byte_count = as.integer(sum(bytes == as.raw(0))),
     final_newline = final_newline,
     max_bytes = as.integer(max_bytes),
@@ -8604,17 +8644,14 @@ validate_fetched_source <- function(robots, i, safety_level = "strict") {
   if (!is.null(downgrade)) {
     validated <- add_document_diagnostic(validated, downgrade)
   }
+  # A compressed body (ROBO-rozvglkd) keeps the rows about the header itself,
+  # worded so they claim no read of its bytes, and draws no charset conflict,
+  # which reads the bytes as text.
   header_rows <- content_type_diagnostics(
     source$source_id, source$content_type, body,
-    validated$document$encoding_signature
+    validated$document$encoding_signature,
+    compressed = "compressed_body" %in% validated$diagnostics$code
   )
-  # The charset conflict reads the body's bytes as text, which a compressed
-  # body is not (ROBO-rozvglkd); the rows about the header itself stay.
-  if ("compressed_body" %in% validated$diagnostics$code) {
-    header_rows <- Filter(function(r) {
-      !identical(r$code, "content_type_charset_conflict")
-    }, header_rows)
-  }
   for (header_row in header_rows) {
     validated <- add_document_diagnostic(validated, header_row)
   }

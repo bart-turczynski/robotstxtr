@@ -161,14 +161,61 @@ test_that("ROBO-rozvglkd: a cut compressed body keeps body_truncated", {
 })
 
 test_that("ROBO-rozvglkd: a cut that splits a character is still text", {
-  # `x^` text whose last character (e-acute, c3 a9) the cut split.
-  body <- c(charToRaw("x^ab\nUser-agent: *\nDisallow: /\n# caf"),
-            as.raw(0xc3))
+  # `x^` text whose last character (e-acute, c3 a9) the cut split, inside
+  # the zlib head window.
+  body <- c(charToRaw("x^ab caf"), as.raw(0xc3))
   cut <- validate_document_bytes(body, "s", "fetch", max_bytes = 100L,
                                  body_truncated = TRUE)
   expect_false("compressed_body" %in% cut$diagnostics$code)
   whole <- validate_document_bytes(body, "s", "fetch")
   expect_true("compressed_body" %in% whole$diagnostics$code)
+})
+
+test_that("ROBO-rozvglkd: a Latin-1 byte past the zlib window is text", {
+  # `x^` text whose only byte that is not UTF-8 (e-acute in Latin-1, e9)
+  # sits in a late comment: read as rules, as before ROBO-rozvglkd.
+  rules <- charToRaw("\nUser-agent: *\nDisallow: /private/\n# caf")
+  for (flg in as.raw(c(0x5e, 0x01))) {
+    body <- c(as.raw(0x78), flg, rules, as.raw(c(0xe9, 0x0a)))
+    v <- robots_validate_text(body)
+    expect_false("compressed_body" %in% v$diagnostics$code)
+    expect_identical(v$documents$disallow_directives, 1L)
+    expect_identical(v$documents$user_agent_directives, 1L)
+  }
+  # The same byte inside the window makes it a zlib header.
+  body <- c(as.raw(c(0x78, 0x5e)), charToRaw("\nUser-a"), as.raw(0xe9),
+            rules)
+  expect_true("compressed_body" %in% cz_codes(body))
+})
+
+test_that("ROBO-rozvglkd: a zlib body cut to its header is flagged", {
+  z <- cz_zlib()
+  for (n in 2:5) {
+    v <- validate_document_bytes(
+      z[seq_len(n)], "s", "fetch", fetch_outcome = "fetched",
+      http_status = 200L, max_bytes = n, body_truncated = TRUE
+    )
+    expect_identical(v$diagnostics$code, c("compressed_body", "body_truncated"))
+  }
+})
+
+test_that("ROBO-rozvglkd: a cut compressed body says it was not read", {
+  body <- cz_gzip()[1:64]
+  v <- validate_document_bytes(
+    body, "s", "fetch", fetch_outcome = "fetched", http_status = 200L,
+    max_bytes = 64L, body_truncated = TRUE
+  )
+  cut <- v$diagnostics$message[v$diagnostics$code == "body_truncated"]
+  expect_identical(cut, paste0(
+    "Body exceeded max_bytes (64); it was cut at the size limit and was not ",
+    "read as rules."
+  ))
+  expect_no_match(cut, "validated", fixed = TRUE)
+  # The byte facts describe the 64 stored bytes, no partial line dropped.
+  expect_identical(v$document$byte_size, 64L)
+  expect_identical(v$document$line_count, validation_line_total(body))
+  expect_identical(v$document$nul_byte_count,
+                   as.integer(sum(body == as.raw(0))))
 })
 
 # --- Fetched rows -------------------------------------------------------------
@@ -229,6 +276,38 @@ test_that("ROBO-rozvglkd: no charset conflict on a compressed body", {
   v <- robots_validate_url("https://example.com/")
   expect_identical(v$diagnostics$code,
                    c("compressed_body", "content_type_not_text_plain"))
+})
+
+test_that("ROBO-rozvglkd: Content-Type rows claim no read of the body", {
+  read_claims <- "validated|read as UTF-8|reads the same"
+  cz_fetch(cz_gzip(), list(`Content-Type` = "application/x-gzip"))
+  v <- robots_validate_url("https://example.com/")
+  msg <- v$diagnostics$message[
+    v$diagnostics$code == "content_type_not_text_plain"
+  ]
+  expect_match(msg, "not read as rules", fixed = TRUE)
+  expect_no_match(msg, read_claims)
+  cz_fetch(cz_gzip(), list(`Content-Type` = "text/plain; charset=iso-8859-1"))
+  v <- robots_validate_url("https://example.com/")
+  expect_identical(v$diagnostics$code,
+                   c("compressed_body", "content_type_charset_unsupported"))
+  msg <- v$diagnostics$message[[2L]]
+  expect_match(msg, "charset iso-8859-1", fixed = TRUE)
+  expect_match(msg, "not read as rules", fixed = TRUE)
+  expect_no_match(msg, read_claims)
+  cz_fetch(cz_gzip(), list(`Content-Type` = "text/plain; charset"))
+  v <- robots_validate_url("https://example.com/")
+  msg <- v$diagnostics$message[v$diagnostics$code == "content_type_malformed"]
+  expect_match(msg, "not read as rules", fixed = TRUE)
+  expect_no_match(msg, read_claims)
+  # The same header over a plain body keeps its old wording.
+  cz_fetch(charToRaw(cz_text),
+           list(`Content-Type` = "text/plain; charset=iso-8859-1"))
+  v <- robots_validate_url("https://example.com/")
+  msg <- v$diagnostics$message[
+    v$diagnostics$code == "content_type_charset_unsupported"
+  ]
+  expect_match(msg, "reads the same", fixed = TRUE)
 })
 
 # A loopback server sending `body` with `headers` at /robots.txt; its URL.

@@ -212,9 +212,12 @@ value as \code{content_encoding}, exactly as received (\code{NA} when absent or 
 there is no final response). libcurl decodes a \code{gzip} or \code{deflate} body it
 asked for, so \code{content_encoding = "gzip"} does not mean the stored body is
 compressed: \code{body} holds the decoded bytes. A body still compressed, as when
-a server compresses a body the fetch did not ask to be compressed, is
+a server compresses a body the fetch did not ask to be compressed or serves
+gzip bytes with no \code{Content-Encoding} (a \code{.gz} file as the robots.txt), is
 stored as received; \code{\link[=robots_validate_url]{robots_validate_url()}} reports it as
-\code{compressed_body}.
+\code{compressed_body}, while the matchers, \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} among
+them, still read its bytes as rules. Raw deflate and brotli bodies are not
+detected.
 
 To help explain why a robots.txt change seems not to have been picked up,
 each source row also keeps seven cache fields of the final response,
