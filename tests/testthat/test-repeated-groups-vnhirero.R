@@ -7,8 +7,8 @@
 # bing-corpus `body-ea-bingbot-empty-disallow-before-rule`), so both block,
 # while Yandex reads it as allowing every path (tester, ydx-11). An
 # every-path Allow with `Disallow: /` is no such split: all three allow. The
-# shapes come from news-ai-access's stored files (NEWS-caacyart):
-# jornaldiabo.com and timeschronicle.ca, quoted line for line.
+# shapes come from two of news-ai-access's stored files (NEWS-caacyart),
+# study files E and D, with their hosts replaced (ROBO-hgbqedwt).
 
 rg_lines <- function(...) paste0(paste(c(...), collapse = "\n"), "\n")
 
@@ -22,31 +22,31 @@ rg_answer <- function(body, backend, token) {
                           "assumed_rfc9309", backend)$results$url_decision
 }
 
-rg_jornaldiabo <- rg_lines(
+rg_file_e <- rg_lines(
   "# START YOAST BLOCK", "# ---------------------------",
   "User-agent: *", "Disallow:", "",
-  "Sitemap: https://jornaldiabo.com/sitemap_index.xml",
+  "Sitemap: https://example.com/sitemap_index.xml",
   "# ---------------------------", "# END YOAST BLOCK", "", "",
   "User-agent: *", "Disallow: /", "",
   "User-agent: bingbot", "Allow: /", "",
   "User-agent: Applebot", "Allow: /", "",
   "User-agent: Googlebot", "Allow: /", "",
-  "User-agent: sentibot", "Disallow: /"
+  "User-agent: ExampleBot", "Disallow: /"
 )
 
-# The head of timeschronicle.ca and its DotBot pair. For Google, line 16
+# The head of study file D and its DotBot pair. For Google, line 16
 # joins line 13's group (a Crawl-delay ends no group), and line 23 joins
 # line 20's (ROBO-xepnhfgs), so the later `*` groups open on lines 13 and 20.
-rg_timeschronicle <- rg_lines(
+rg_file_d <- rg_lines(
   "User-agent: *", "Disallow: /wp-admin/",
   "Allow: /wp-admin/admin-ajax.php", "",
   "# GoogleBot", "User-agent: Googlebot", "Allow: /", "",
   "User-agent: Twitterbot", "Allow: /", "",
-  "# Slow down bots", "User-agent: *", "Crawl-delay: 10", "",
-  "User-agent: *", "Disallow: /?blackhole", "",
-  "# Slow down bots", "User-agent: *", "Crawl-delay: 10", "",
+  "# crawl rate", "User-agent: *", "Crawl-delay: 10", "",
+  "User-agent: *", "Disallow: /?trap", "",
+  "# crawl rate", "User-agent: *", "Crawl-delay: 10", "",
   "User-agent: OAI-SearchBot", "Disallow: /", "",
-  "# http://www.opensiteexplorer.org/dotbot",
+  "# DotBot",
   "User-agent: DotBot", "Disallow: /", "User-agent: dotbot", "Disallow: /"
 )
 
@@ -56,8 +56,8 @@ rg_control <- rg_lines(
   "User-agent: BarBot", "Allow: /"
 )
 
-test_that("jornaldiabo.com: the second `*` group is reported as merged", {
-  r <- rg_rows(rg_jornaldiabo, "user_agent_repeated_group")
+test_that("study file E: the second `*` group is reported as merged", {
+  r <- rg_rows(rg_file_e, "user_agent_repeated_group")
   expect_identical(r$line, 11L)
   expect_identical(r$severity, "info")
   expect_identical(r$directive, "user-agent")
@@ -71,8 +71,8 @@ test_that("jornaldiabo.com: the second `*` group is reported as merged", {
   ))
 })
 
-test_that("jornaldiabo.com: an empty Disallow with a full block warns", {
-  r <- rg_rows(rg_jornaldiabo, "empty_disallow_with_full_block")
+test_that("study file E: an empty Disallow with a full block warns", {
+  r <- rg_rows(rg_file_e, "empty_disallow_with_full_block")
   expect_identical(r$line, 12L)
   expect_identical(r$severity, "warning")
   expect_identical(r$directive, "disallow")
@@ -88,7 +88,7 @@ test_that("jornaldiabo.com: an empty Disallow with a full block warns", {
 })
 
 test_that("the warning's premise is the engines' reading", {
-  expect_identical(rg_answer(rg_jornaldiabo, "google", "SomeBot"),
+  expect_identical(rg_answer(rg_file_e, "google", "SomeBot"),
                    "disallow")
   body <- rg_lines("User-agent: *", "Disallow:", "", "User-agent: *",
                    "Disallow: /")
@@ -96,8 +96,8 @@ test_that("the warning's premise is the engines' reading", {
   expect_identical(rg_answer(body, "yandex", "Yandex"), "allow")
 })
 
-test_that("timeschronicle.ca: each later group of a crawler is reported", {
-  r <- rg_rows(rg_timeschronicle, "user_agent_repeated_group")
+test_that("study file D: each later group of a crawler is reported", {
+  r <- rg_rows(rg_file_d, "user_agent_repeated_group")
   # Line 20 is the third `*` group, but wildcard_rules_not_inherited owns
   # it (one line, one report).
   expect_identical(r$line, c(13L, 29L))
@@ -114,7 +114,7 @@ test_that("timeschronicle.ca: each later group of a crawler is reported", {
                fixed = TRUE)
   # No empty Disallow here: no warning.
   expect_identical(
-    nrow(rg_rows(rg_timeschronicle, "empty_disallow_with_full_block")), 0L
+    nrow(rg_rows(rg_file_d, "empty_disallow_with_full_block")), 0L
   )
 })
 

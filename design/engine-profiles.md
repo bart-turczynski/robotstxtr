@@ -428,9 +428,9 @@ Google's parser starts a new group only after an `Allow` or `Disallow` line (`sr
 `RobotsMatcher::HandleUserAgent`: only `HandleAllow` and `HandleDisallow` set `seen_separator_`),
 so a `User-agent` line after a `Sitemap`, `Crawl-delay` or blank line joins the open group, and
 that group's rules reach the agents before it. Publishers read those lines as neutral: in
-news-ai-access's stored files (NEWS-caacyart), 7 of the 12 sites where a strict reader and Google
-disagree have this shape, internetcom.jp's `User-agent: *` / `Sitemap: …` / blank /
-`User-agent: bingbot` / `Disallow: /news/` the clearest. Bing ends the run at any directive and
+news-ai-access's stored files (NEWS-caacyart), most of the sites where a strict reader and Google
+disagree have this shape, such as `User-agent: *` / `Sitemap: …` / blank /
+`User-agent: bingbot` / `Disallow: /news/`. Bing ends the run at any directive and
 joins across blank and comment lines (`design/engine-disagreements.md` class 1). Yandex Webmaster's
 robots.txt analysis ends it at a blank, comment or `Crawl-delay` line: question Y5
 (`design/engine-disagreements.md`) allowed `/y5/cd/x`, `/y5/comment/x` and `/y5/blank/x`, observed
@@ -447,12 +447,12 @@ for them.
 
 Each code is anchored on the later `User-agent` line, one report per break. Consecutive
 `User-agent` lines, the deliberate way to share rules, stay silent, and so do a line naming no
-crawler, a line whose only earlier agents share its name (`timeschronicle.ca`'s repeated
+crawler, a line whose only earlier agents share its name (a repeated
 `User-agent: *` / `Crawl-delay: 10`) and a group with no rule or only empty ones. A policy-token line is left to
 `ai_training_token_stacked` (§5c), so one line gets one report, and a policy token is never named as
 an agent that gains rules. `wildcard_rules_not_inherited` is unchanged and still anchors on the
-group's first `User-agent` line, which on a joined group is the earlier agent's line (line 7 on
-internetcom.jp, the second `*`), not the named crawler's. On a body holding a NUL byte the codes
+group's first `User-agent` line, which on a joined group is the earlier agent's line (line 7 in the
+Sitemap example's test, the second `*`), not the named crawler's. On a body holding a NUL byte the codes
 follow Google's reading and say so. Pinned by `tests/testthat/test-user-agent-joined-xepnhfgs.R`.
 
 An agent is named as written (ROBO-txnzyugl). When Google's matcher cuts the value (`Foo Bar`,
@@ -466,10 +466,9 @@ for the crawler it names. The sentence speaks of Google's reading only. Pinned b
 A crawler named in two or more groups follows all of them merged. Google merges them (`src/robots.cc`;
 RFC 9309 section 2.2.1), and so do Bing (tester, bing-corpus `body-sel-bingbot-repeated-tier`) and
 Yandex (tester, yandex-corpus ydx-02). Publishers rarely mean it: it usually comes from pasted
-blocks, such as a plugin's block plus a hand-written one. In news-ai-access's stored files,
-internetcom.jp and jornaldiabo.com each have two `User-agent: *` groups, and timeschronicle.ca has
-four. It is worst when the merged rules contradict: jornaldiabo.com's Yoast block (`User-agent: *` /
-`Disallow:`) and a later `User-agent: *` / `Disallow: /`. Google ignores the empty value, and so
+blocks, such as a plugin's block plus a hand-written one. The stored files in news-ai-access
+include files with two and with four `User-agent: *` groups. It is worst when the merged rules
+contradict: a Yoast block (`User-agent: *` / `Disallow:`) and a later `User-agent: *` / `Disallow: /`. Google ignores the empty value, and so
 does Bing (tester, `body-ea-bingbot-empty-disallow-before-rule`), so both block every path; Yandex
 reads it as allowing every path that no longer `Disallow` matches (tester, ydx-11). An every-path
 `Allow` (`Allow: /`, `Allow: /*`) beside `Disallow: /` is no such split: all three backends allow
