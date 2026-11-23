@@ -6391,11 +6391,9 @@ render_resource_named <- function(groups, at, hit, witness, written,
     owner <- c(owner, read$owner)
     named <- c(named, read$rule)
   }
-  n <- render_resource_whole(set[hit], n)
-  keep <- owner <= n
-  list(rules = unname(split(named[keep], factor(owner[keep],
-                                                seq_along(hit)))),
-       n = n)
+  # Entries past `n` are left in: the caller reads the first `n` only.
+  list(rules = unname(split(named, factor(owner, seq_along(hit)))),
+       n = render_resource_whole(set[hit], n))
 }
 
 # One merge's reading for render_resource_named(), on `key`, of the first
