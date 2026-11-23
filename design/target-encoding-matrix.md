@@ -69,7 +69,10 @@ A target passes three stages before a rule is compared with it. The matrix keeps
 ## The local matrix (TESTED)
 
 One unchanged body, 42 target spellings, 3 modes, 3 backends: 378 cells, each decided, refused
-or failed as shown. Run on robotstxtr commit 4598ada (origin/main, 2026-11-23), R 4.6.2. The
+or failed as shown. Generated on 2026-11-23, R 4.6.2, from a tree that is robotstxtr commit
+4598ada (main) plus the two files this research adds: this document and its script,
+`data-raw/target-encoding-matrix.R`. They change no package code, so the code under test is
+4598ada's. The
 WHATWG snapshot is the one `rurl` 3.1.0.9000 implements; `rurl` does not publish the Standard's
 commit it follows, so the implementation version is the pin. Under `"whatwg"` the encoding of a
 space and of non-ASCII differs between `rurl` 3.0.1, 3.1.0 and its main branch
@@ -155,8 +158,8 @@ Target the matcher reads, per mode (the backend does not change it). `none` is t
 | q1 | query raw space | `/q?k=a<20>b` | `/q?k=a<20>b` (not a valid RFC 3986 URI: raw space) | `/q?k=a%20b` (WHATWG URL serialization changed the URL) |
 | q2 | query apostrophe | `/q?a='x'` | `/q?a='x'` | `/q?a=%27x%27` (WHATWG URL serialization changed the URL) |
 | q3 | query raw non-ASCII | `/q?n=caf<C3><A9>` | `/q?n=caf<C3><A9>` (not a valid RFC 3986 URI: raw non-ASCII) | `/q?n=caf%C3%A9` (WHATWG URL serialization changed the URL) |
-| k1 | ASCII control | `/k/x` | `/k/x` | `/k/x` |
-| k2 | ASCII control, no rule | `/z/x` | `/z/x` | `/z/x` |
+| k1 | plain ASCII control | `/k/x` | `/k/x` | `/k/x` |
+| k2 | plain ASCII control, no rule | `/z/x` | `/z/x` | `/z/x` |
 | i1 | invalid UTF-8 byte (unmarked) | `/r/caf<E9>` | `/r/caf<E9>` (not a valid RFC 3986 URI: raw non-ASCII) | `/r/caf<E9>` (not a valid WHATWG URL: evaluated as given) |
 
 Decision per backend and mode. `D:n` disallowed by line n, `A` allowed by default, otherwise the matcher status or the call error.
@@ -248,7 +251,7 @@ Every row is one target against the one body above. Line numbers refer to that b
 - **Query serialization** (q1 to q3). `"whatwg"` encodes a space, `'` and non-ASCII in the
   query. q2 is the disallow-to-allow direction: the rule written with `'` stops matching.
   Library-comparison class 20 records the same `'` effect in `rs` and `js`.
-- **Controls** (k1, k2). Unchanged in every mode and equal across backends.
+- **Plain ASCII controls** (k1, k2). Unchanged in every mode and equal across backends.
 - **Invalid UTF-8** (i1, the byte `E9` alone). Evaluated in every mode, never replaced:
   `"rfc3986"` records `raw non-ASCII`, and `"whatwg"` fails and falls back to the input with
   `not a valid WHATWG URL: evaluated as given` (ADR 0002 §6; under ADR 0002 §7 a decided row
@@ -260,8 +263,10 @@ Every row is one target against the one body above. Line numbers refer to that b
 The adapters' extractors take the URL through the `cpp11` boundary, which translates it to UTF-8
 from the session's native encoding. Under `LC_ALL=C` the native encoding is ASCII, so an
 unmarked URL (`Encoding()` is `"unknown"`) that holds UTF-8 bytes is translated to R's escape
-text: `bing_extract_request_target()` and `robotstxtr_extract_request_target_()` both return the
-twelve ASCII bytes `/caf<c3><a9>` for the bytes `/caf` `C3 A9`. `matcher_url` still shows the
+text: for the bytes `/caf` `C3 A9`, `bing_extract_request_target()` and
+`robotstxtr_extract_request_target_()` both return R's escape text, the 12 ASCII characters
+`/`, `c`, `a`, `f`, `<`, `c`, `3`, `>`, `<`, `a`, `9`, `>`. Those are characters, not the
+`<HH>` byte notation the tables use. `matcher_url` still shows the
 original bytes, while the backend reads the escape text. The body goes the other way:
 `text_body_bytes_v1()` keeps an unmarked body's bytes as written in the C locale
 (`native_text_as_written()`). In a first run of the script with unmarked strings (a `\u` escape
@@ -269,7 +274,7 @@ parsed under `LC_ALL=C` came out unmarked), r1, c1, y1 and j1 went from `D` to `
 and yandex backends under `"none"` and `"rfc3986"`. The UTF-8, `en_US.UTF-8` and `tr_TR.UTF-8`
 runs were unaffected. The script now marks its strings UTF-8, and its output is the same in all
 four locales. The extraction effect itself is unchanged and is not fixed by this research
-issue.
+issue; it is filed separately as ROBO-eaeawkwc.
 
 ## Client survey (TESTED, localhost, 2026-11-23)
 
@@ -307,8 +312,10 @@ Findings:
   (refuses).
 - Java's `URI` normalizes `e` + U+0301 to U+00E9 (NFC) before escaping; no other client does.
 - In the query, curl, libcurl and Go send raw non-ASCII bytes; Go even sends a raw space.
-- Node `fetch` and Chrome send exactly the `"whatwg"` form in every row; wget and Go send
-  upper-case escapes for raw bytes but keep `'` and differ on `\`.
+- Node `fetch` and Chrome send exactly the `"whatwg"` form in every row. wget and Go differ
+  from it in the same two places, keeping `'` and sending `\` as `%5C` where it has `/`; Go
+  also escapes raw bytes and a raw space (upper case) in the path only, sending both raw in the
+  query.
 
 The survey is of HTTP clients, not of crawlers. Which of these behaviors a crawler shares is the
 probe's question 1.
@@ -430,7 +437,8 @@ default as it is until ROBO-oxfpgdrx reports.
   Each byte at or above `0x80` becomes upper-case `%HH`; existing escapes, their case, `%2F` and
   `%7E` stay as they are. It would be recorded like dot-segment removal: `matcher_url` keeps the
   escaped form and `url_preprocessing_note` says the raw bytes were escaped. With it, r1, r2, c1,
-  y1, j1 and q3 decide as their upper-case escaped spellings do, as `src/robots.h` assumes. Today
+  y1, j1 and q3 decide as their upper-case escaped spellings do, as `src/robots.h` assumes; c3
+  and i1 are rewritten too (`/c/caf%C3%A9`, `/r/caf%E9`) and stay `A`. Today
   `"whatwg"` does this and more (backslash, query `'`, `%2e` segments, host); the narrower step
   isolates the encoding. Whether a raw space also becomes `%20` is part of the decision: RFC 3986
   requires it, `MaybeEscapePattern` does not do it to rules, and w3 shows the decision moving.
@@ -457,19 +465,23 @@ Decisions asked of the maintainer:
 3. Whether to extend `disagreement_clients` with the escape families.
 
 Any of these amends ADR 0002 or takes a new ADR, and is filed as its own implementation issue
-once decided. The C-locale extraction effect above is a separate defect candidate.
+once decided. The C-locale extraction effect above is filed separately as ROBO-eaeawkwc.
 
 ## Reproducing
 
-From the package root, on the commit named above:
+From the package root of any checkout that holds this document and
+`data-raw/target-encoding-matrix.R` as committed with it (the scratch files go to the gitignored
+`_scratch/`):
 
 ```sh
-Rscript data-raw/target-encoding-matrix.R > matrix.md
-sed -n '/^<!-- matrix:begin/,/^<!-- matrix:end/p' design/target-encoding-matrix.md > doc.md
-diff matrix.md doc.md
+mkdir -p _scratch
+Rscript data-raw/target-encoding-matrix.R > _scratch/matrix.md
+sed -n '/^<!-- matrix:begin/,/^<!-- matrix:end/p' design/target-encoding-matrix.md > _scratch/doc.md
+diff _scratch/matrix.md _scratch/doc.md
 ```
 
-An empty diff means the embedded block is the script's output. Under `LC_ALL=C`,
-`LC_ALL=en_US.UTF-8` and `LC_ALL=tr_TR.UTF-8` the output is the same. A different `rurl` changes
+An empty diff means the embedded block is the script's output for that checkout's package code
+and installed `rurl`; the block's first lines name the versions it was generated with. Under
+`LC_ALL=C`, `LC_ALL=en_US.UTF-8` and `LC_ALL=tr_TR.UTF-8` the output is the same. A different `rurl` changes
 the `whatwg` columns, and a backend release changes its revision line and possibly its decisions;
 regenerate and re-read then.

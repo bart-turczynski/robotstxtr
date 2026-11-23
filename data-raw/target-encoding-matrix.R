@@ -7,7 +7,7 @@
 # "matrix:begin" and "matrix:end" markers.
 #
 # Run from the package root, or pass the root as the first argument:
-#   Rscript data-raw/target-encoding-matrix.R [root] > <scratch>/matrix.md
+#   Rscript data-raw/target-encoding-matrix.R [root] > _scratch/matrix.md
 # The output is byte-identical across runs and locales: every byte outside
 # printable ASCII, and `|`, is shown as <HH>. Synthetic fixtures on
 # example.com only.
@@ -91,8 +91,8 @@ targets <- matrix(ncol = 3L, byrow = TRUE, c(
   "q1", "query raw space", "/q?k=a b",
   "q2", "query apostrophe", "/q?a='x'",
   "q3", "query raw non-ASCII", "/q?n=café",
-  "k1", "ASCII control", "/k/x",
-  "k2", "ASCII control, no rule", "/z/x"
+  "k1", "plain ASCII control", "/k/x",
+  "k2", "plain ASCII control, no rule", "/z/x"
 ))
 targets <- rbind(
   targets,
@@ -171,7 +171,13 @@ for (backend in names(backends)) {
     cells[[key]] <- lapply(urls, evaluate_cell, backend = backend,
                            mode = mode)
     ok <- Filter(function(cell) cell$ok, cells[[key]])
-    revisions[[backend]] <- ok[[1L]]$revision
+    if (length(ok) > 0L) {
+      revisions[[backend]] <- ok[[1L]]$revision
+    } else if (is.na(revisions[backend])) {
+      # Every cell errored: keep going, so the tables show the `error:`
+      # cells; a later mode's revision replaces this one.
+      revisions[[backend]] <- "unknown (every cell failed)"
+    }
   }
 }
 
