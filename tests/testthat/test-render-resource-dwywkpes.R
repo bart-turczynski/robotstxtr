@@ -577,6 +577,38 @@ test_that("ROBO-dwywkpes: every class on both merges must agree", {
   expect_true(rr_code %in% rr_codes(both))
 })
 
+test_that("ROBO-dwywkpes: a removal read cut at the last filler stops", {
+  # `Foo a` and `Foo b` read apart on the whole-value merge and as one on
+  # Google's, so the removal read splits its budget between them; `x` and
+  # `y` lose to Allows. Wherever the budget runs out, `/*.js` gets its
+  # `z` row or the stop row leaves it unchecked: never counted as checked
+  # with no row.
+  for (case in list(list(r = 5L, m = 1L, to = 400L),
+                    list(r = 20L, m = 3L, to = 700L))) {
+    groups <- rr_groups(paste0(
+      "User-agent: Foo a\nUser-agent: Foo b\nDisallow: /*.js\n",
+      "Allow: /x.js\nAllow: /y.js\n",
+      "\nUser-agent: Foo a\nDisallow: /q1\n\nUser-agent: Foo b\n",
+      "Disallow: /q2\n\nUser-agent: Foo a\nUser-agent: Foo b\n",
+      paste0("Disallow: /r", seq_len(case$r), "\n", collapse = ""),
+      "\nUser-agent: Bar\n",
+      paste0("Disallow: /c", seq_len(case$m), ".css\nAllow: /c",
+             seq_len(case$m), ".css\n", collapse = "")
+    ))
+    full <- render_resource_diagnostics(groups)
+    expect_identical(full$message, paste0(rr_one(3L, "/*.js", "/z.js"),
+                                          rr_note("'Foo a' and 'Foo b'")))
+    for (budget in seq_len(case$to)) {
+      found <- render_resource_diagnostics(groups, budget = budget)
+      if (nrow(found) == 0L) {
+        expect_identical(attr(found, "stopped")$checked, 0L, label = budget)
+      } else {
+        expect_identical(found$message, full$message, label = budget)
+      }
+    }
+  }
+})
+
 test_that("ROBO-dwywkpes: a budget cut while naming gets the stop row", {
   # `/*.js$` decides /x.js and `n` repeats of `/*.js` block it too. Wherever
   # the budget runs out, a row names them all or there is no row and the

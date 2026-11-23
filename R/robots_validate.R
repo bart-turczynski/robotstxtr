@@ -6305,12 +6305,12 @@ render_resource_reads <- function(groups, at, written, budget) {
 }
 
 # One filler's two readings of the candidates `at` on their `witness`
-# paths, sharing `budget`: the first, within half of it, so the second
-# always has the rest for what the first passed, that the candidate
-# decides the witness (so it is disallowed); the second, for those that
-# pass, on `removed` (every candidate flagged empty), that the witness
-# comes out allowed. Returns list(ok, checked, spent): `checked` the
-# leading candidates both readings finished.
+# paths, sharing `budget`: the first, within half of it, that the
+# candidate decides the witness (so it is disallowed); the second, for
+# those that pass, on `removed` (every candidate flagged empty), within the
+# rest, that the witness comes out allowed. With none passing, the second
+# reads nothing and spends nothing. Returns list(ok, checked, spent):
+# `checked` the leading candidates both readings finished.
 render_resource_pass <- function(groups, removed, at, witness, written,
                                  budget) {
   first <- witness_pair_readings(groups, at, witness, witness, "long",
@@ -6319,13 +6319,14 @@ render_resource_pass <- function(groups, removed, at, witness, written,
   ok <- logical(length(at))
   checked <- first$checked
   k <- which(seq_along(at) <= checked & first$ok)
-  if (length(k) == 0L) {
-    return(list(ok = ok, checked = checked, spent = first$spent))
-  }
   second <- witness_pair_readings(removed, at[k], witness[k], witness[k],
                                   "none", written, budget - first$spent,
                                   differ = FALSE, share = TRUE)
   ok[k] <- seq_along(k) <= second$checked & second$ok
+  # The second reading can run out where the first did not (its share of
+  # the budget between the merges differs): a candidate it did not reach
+  # is not checked, so no later filler and no "every filler read it" marks
+  # it finished without a row.
   if (second$checked < length(k)) {
     checked <- min(checked, k[[second$checked + 1L]] - 1L)
   }
