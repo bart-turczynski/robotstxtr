@@ -164,11 +164,50 @@ test_that("ROBO-rozvglkd: a cut that splits a character is still text", {
   # `x^` text whose last character (e-acute, c3 a9) the cut split, inside
   # the zlib head window.
   body <- c(charToRaw("x^ab caf"), as.raw(0xc3))
-  cut <- validate_document_bytes(body, "s", "fetch", max_bytes = 100L,
+  cut <- validate_document_bytes(body, "s", "fetch",
+                                 max_bytes = length(body),
                                  body_truncated = TRUE)
   expect_false("compressed_body" %in% cut$diagnostics$code)
   whole <- validate_document_bytes(body, "s", "fetch")
   expect_true("compressed_body" %in% whole$diagnostics$code)
+})
+
+test_that("ROBO-rozvglkd: a character split at the window's end is text", {
+  # `x^` and 15 ASCII bytes, then an e-acute (c3 a9) split across bytes 18
+  # and 19: the window ends inside it, in an uncut body.
+  body <- c(charToRaw("x^23456789abcdefg"), as.raw(c(0xc3, 0xa9)),
+            charToRaw("\nUser-agent: *\nDisallow: /a\n"))
+  expect_identical(body[18:19], as.raw(c(0xc3, 0xa9)))
+  v <- robots_validate_text(body)
+  expect_false("compressed_body" %in% v$diagnostics$code)
+  expect_identical(v$documents$disallow_directives, 1L)
+})
+
+test_that("ROBO-rozvglkd: a stored zlib block with a UTF-8 head is flagged", {
+  # Level 0 writes 78 01, then a stored block (RFC 1951 section 3.2.4):
+  # BFINAL 1 and BTYPE 00 (01), LEN and NLEN, its ones' complement, both
+  # little-endian. LEN 0x5030 gives 30 50 cf af, well-formed UTF-8 with the
+  # ASCII text after it, so the head window alone reads it as text.
+  len <- 0x5030L
+  line <- "Disallow: /some/path/\n"
+  text <- charToRaw(paste(rep(line, len %/% nchar(line) + 1L), collapse = ""))
+  text <- c(charToRaw("User-agent: *\n"), text)[seq_len(len)]
+  adler <- function(x) {
+    x <- as.numeric(x)
+    a <- (1 + sum(x)) %% 65521
+    b <- (length(x) + sum(rev(seq_along(x)) * x)) %% 65521
+    as.raw(c(b %/% 256, b %% 256, a %/% 256, a %% 256))
+  }
+  body <- c(as.raw(c(0x78, 0x01, 0x01, 0x30, 0x50, 0xcf, 0xaf)), text,
+            adler(text))
+  expect_identical(memDecompress(body, "gzip"), text)
+  expect_true(validation_utf8_line(body[2:18]))
+  v <- robots_validate_text(body)
+  expect_identical(v$diagnostics$code, "compressed_body")
+  expect_match(v$diagnostics$message, "zlib (deflate) signature", fixed = TRUE)
+  # An NLEN that is not LEN's complement (cf ae, still UTF-8) reads as text.
+  body[[7L]] <- as.raw(0xae)
+  expect_false("compressed_body" %in% cz_codes(body))
 })
 
 test_that("ROBO-rozvglkd: a Latin-1 byte past the zlib window is text", {
@@ -208,7 +247,7 @@ test_that("ROBO-rozvglkd: a cut compressed body says it was not read", {
   cut <- v$diagnostics$message[v$diagnostics$code == "body_truncated"]
   expect_identical(cut, paste0(
     "Body exceeded max_bytes (64); it was cut at the size limit and was not ",
-    "read as rules."
+    "read as rules by the validator."
   ))
   expect_no_match(cut, "validated", fixed = TRUE)
   # The byte facts describe the 64 stored bytes, no partial line dropped.
@@ -298,6 +337,24 @@ test_that("ROBO-rozvglkd: Content-Type rows claim no read of the body", {
   cz_fetch(cz_gzip(), list(`Content-Type` = "text/plain; charset"))
   v <- robots_validate_url("https://example.com/")
   msg <- v$diagnostics$message[v$diagnostics$code == "content_type_malformed"]
+  expect_match(msg, "not read as rules", fixed = TRUE)
+  expect_no_match(msg, read_claims)
+  # Two different charsets, and an empty one.
+  cz_fetch(cz_gzip(),
+           list(`Content-Type` = "text/plain; charset=a; charset=b"))
+  v <- robots_validate_url("https://example.com/")
+  expect_identical(v$diagnostics$code,
+                   c("compressed_body", "content_type_charset_unsupported"))
+  msg <- v$diagnostics$message[[2L]]
+  expect_match(msg, "more than once", fixed = TRUE)
+  expect_match(msg, "not read as rules", fixed = TRUE)
+  expect_no_match(msg, read_claims)
+  cz_fetch(cz_gzip(), list(`Content-Type` = "text/plain; charset=\"\""))
+  v <- robots_validate_url("https://example.com/")
+  expect_identical(v$diagnostics$code,
+                   c("compressed_body", "content_type_charset_unsupported"))
+  msg <- v$diagnostics$message[[2L]]
+  expect_match(msg, "declares an empty charset, not", fixed = TRUE)
   expect_match(msg, "not read as rules", fixed = TRUE)
   expect_no_match(msg, read_claims)
   # The same header over a plain body keeps its old wording.

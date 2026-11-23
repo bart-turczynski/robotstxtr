@@ -224,7 +224,8 @@ content_type_parse <- function(value) {
 # The sentence a Content-Type row ends with on a compressed body
 # (ROBO-rozvglkd), in place of one that says how the body was read.
 content_type_compressed_note <- paste(
-  "The body is compressed and was not read as rules (see compressed_body);",
+  "The body is compressed and was not read as rules by the validator",
+  "(see compressed_body);",
   "robotstxtr's results do not depend on the header."
 )
 

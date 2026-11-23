@@ -74,7 +74,10 @@ The body starts with a compression signature: gzip (\code{1f 8b}),
 Zstandard (\code{28 b5 2f fd}), or a zlib header (\code{78} then
 \code{01}, \code{5e}, \code{9c} or \code{da}) whose second byte and
 the 16 after it are not well-formed UTF-8, so text that starts
-\code{x^} is not flagged, even with a Latin-1 byte in a later line.
+\code{x^} is not flagged, even with a Latin-1 byte after its first 18
+bytes. A zlib header \code{78 01} that opens a stored deflate block,
+its length then that length's ones' complement (RFC 1951 section
+3.2.4), is flagged whatever those bytes read as.
 Its bytes are not read as
 lines: this row replaces every line, group and rule check,
 \code{no_rules} included, and only \code{body_truncated},
@@ -509,8 +512,8 @@ not read as rules, or in a group the NUL changes, are counted; a value
 the NUL only shortens is not. Reported even for a body cut at
 \code{max_bytes}. \cr
 \code{body_truncated} \tab warning \tab
-The body exceeded \code{max_bytes}; only lines before the cut were read.
-\cr
+The body exceeded \code{max_bytes}; only lines before the cut were read
+(beside \code{compressed_body}, none was, and the row says so). \cr
 \code{acquisition_input_invalid} \tab error \tab
 An input URL could not be turned into a robots.txt origin. \cr
 \code{acquisition_missing} \tab info \tab
@@ -573,12 +576,14 @@ header as received. A missing header gives no row. \cr
 \code{content_type_not_text_plain} \tab warning \tab
 The fetched response's media type is not \code{text/plain} (RFC 9309
 section 2.3), compared ignoring ASCII case. The body is still read and
-validated; crawlers may still read it as a robots.txt. \cr
+validated (beside \code{compressed_body}, it was not, and the row says
+so); crawlers may still read it as a robots.txt. \cr
 \code{content_type_charset_unsupported} \tab warning \tab
 The \code{Content-Type} declares a \code{charset} other than
 \code{utf-8} or \code{us-ascii} and its aliases (a nonstandard UTF-8
 label such as \code{utf8} included), an empty one, or two different
-ones. The body is read as UTF-8 regardless, without conversion. \cr
+ones. The body is read as UTF-8 regardless, without conversion (beside
+\code{compressed_body}, it was not read, and the row says so). \cr
 \code{content_type_charset_conflict} \tab warning \tab
 The \code{Content-Type} declares \code{charset=us-ascii}, or one of its
 registered aliases such as \code{ascii}, over a body holding a byte of

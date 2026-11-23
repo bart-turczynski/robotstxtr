@@ -130,7 +130,7 @@ Google's own C++ reads it, then handed to the same binding (ROBO-pvqrfvol).
 | Rule values: a `%` that starts no two-hex-digit escape (`rule_invalid_percent_escape`; an unfilled `%name%` is named; a trailing `%`, `%h` or one before `*` may match an escape) | ROBO-rswdwrnp: `test-invalid-percent-escape-rswdwrnp.R` |
 | UTF-16 and UTF-32 identification: all four byte-order marks (UTF-32 before its UTF-16 prefix), short and partial marks, BOM-less UTF-16BE and UTF-32, and bodies the heuristic must not name (NUL-cut rules, control bytes, binary data, Latin-1, odd lengths); `encoding_signature` and `encoding_signature_basis` | ROBO-cvpkzckn: `test-utf16-utf32-identification-cvpkzckn.R` |
 | Content-Type media type, charset and `us-ascii` conflict (validator; a missing header gives no row) | ROBO-plkpmoll: `test-content-type-diagnostics-plkpmoll.R` |
-| Compressed bodies: gzip, zstd and zlib signatures (`compressed_body`, in place of every line, group and rule row; a zlib header only on a body that is not well-formed UTF-8, so text starting `x^` is silent; short and partial signatures, a cut body, character input), and the fetch row's raw `content_encoding` | ROBO-rozvglkd: `test-compressed-body-rozvglkd.R` |
+| Compressed bodies: gzip, zstd and zlib signatures (`compressed_body`, in place of every line, group and rule row; a zlib header only when its FLG byte and the 16 after it are not well-formed UTF-8, so `x^` text is silent, even with a Latin-1 byte past byte 18, or when FLG `01` opens a stored deflate block whose NLEN is LEN's ones' complement (RFC 1951 §3.2.4); short and partial signatures, a cut body, a body cut to its zlib header (flagged), character input), and the fetch row's raw `content_encoding` | ROBO-rozvglkd: `test-compressed-body-rozvglkd.R` |
 | Unicode advisories (always run): U+FFFD, invisible or formatting characters (C1 controls included) and two or more Latin-1 mojibake sequences in raw Allow and Disallow values; silent controls (accented and CJK paths, one mojibake sequence, typed escapes, comments, other directives, invalid UTF-8, latin1 input, UTF-16), the leading U+200B or U+FEFF left to `rule_missing_leading_slash`, and the 100-row cap | ROBO-qxcwxtbm: `test-unicode-advisories-qxcwxtbm.R` |
 | No rules | ROBO-vxrzcqpe: `test-no-rules-vxrzcqpe.R` |
 | Status diagnostics on fetch | ROBO-ybzbxfml: `test-validate-status-ybzbxfml.R` |
@@ -278,7 +278,9 @@ it or stored by a fetch whose server compressed a body it was not asked to,
 used to be read as lines: `nul_byte`, `invalid_utf8` and `malformed_line`
 rows, and `no_rules` saying the file restricts nothing. It now draws one
 `compressed_body` error and no line, group or rule row; the matcher still
-reads the bytes as they are.
+reads the bytes as they are. A zlib header is told from `x^` text by its
+FLG byte and the 16 bytes after it (well-formed UTF-8 reads as text), or by a
+stored first block whose NLEN complements its LEN.
 
 ### Other
 
