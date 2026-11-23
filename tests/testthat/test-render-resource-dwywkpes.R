@@ -512,9 +512,34 @@ rr_stop_text <- function(found, value, done) {
   paste0(
     "This file has ", rules, " (.js, .css, .json and the like), such as '",
     value, "'. For each one, the validator checks whether the rule blocks ",
-    "such a file. This file is too large to check ", done
+    "a file that a page may need to show its content. This file is too ",
+    "large to check ", done
   )
 }
+
+test_that("ROBO-dwywkpes: the stop row says what the problem is", {
+  # The intro names what the check looks for, so the counting sentences'
+  # "the same problem" has a referent; the shared sentences and the other
+  # kinds read as before.
+  stop <- rr_stopped(3L, 1L, "/*.css")
+  m <- slash_stop_message("render_resource", stop)
+  expect_match(m, paste0("whether the rule blocks a file that a page may ",
+                         "need to show its content. This file"), fixed = TRUE)
+  expect_false(grepl("such a file", m, fixed = TRUE))
+  expect_identical(
+    sub("^.*[.] This file is too large", "This file is too large", m),
+    sub("^.*[.] This file is too large", "This file is too large",
+        slash_stop_message("end_anchor", stop))
+  )
+  expect_identical(
+    slash_stop_message("split", rr_stopped(2L, 0L, "/a/")),
+    paste0("This file has 2 rules whose path ends in '/', such as '/a/'. ",
+           "For each one, the validator checks whether crawlers treat '/a' ",
+           "and '/a/' differently. This file is too large to check them all ",
+           "quickly, so none of them were checked. All 2 were skipped, and ",
+           "some of them may have the same problem.")
+  )
+})
 
 test_that("ROBO-dwywkpes: candidates past the work budget get no row", {
   # The deciding read costs 3 (a row, the class's rule, one body line)

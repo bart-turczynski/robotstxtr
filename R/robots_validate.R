@@ -6316,7 +6316,8 @@ render_resource_message <- function(value, line, cap, pair = 1L) {
 }
 
 # The opening of a stopped render-resource check's rule_check_stopped row:
-# what it looks for, with the file's count and its earliest skipped value.
+# what it looks for, with the file's count and its earliest skipped value,
+# so the counting sentences' "the same problem" names that problem.
 render_resource_stop_intro <- function(stop) {
   rules <- if (stop$found == 1L) {
     "1 Disallow rule that ends in a file type a page may load"
@@ -6326,7 +6327,8 @@ render_resource_stop_intro <- function(stop) {
   }
   sprintf(paste0(
     "This file has %s (.js, .css, .json and the like), such as '%s'. For ",
-    "each one, the validator checks whether the rule blocks such a file."
+    "each one, the validator checks whether the rule blocks a file that a ",
+    "page may need to show its content."
   ), rules, query_parameter_cap(stop$value, 40L))
 }
 
