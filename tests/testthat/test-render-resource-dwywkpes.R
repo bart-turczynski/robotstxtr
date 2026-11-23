@@ -980,6 +980,27 @@ test_that("ROBO-dwywkpes: the validator stays linear on costly shapes", {
   }
 })
 
+test_that("ROBO-dwywkpes: the naming's bodies stay linear in the pairs", {
+  skip_on_cran()
+  # `n / 2` folders' `/dK/*.js`, then `n / 2` repeats of `/*.js` that each
+  # block every folder's file by itself: the naming builds one body per
+  # pair, each taken from the pairs once, so 4 times the lines take about
+  # 4 times as long (best of three, taken in turn, so load slows both).
+  shape <- function(n) {
+    k <- seq_len(n / 2)
+    rr_groups(paste0("User-agent: Foo\n",
+                     paste0("Disallow: /d", k, "/*.js\n", collapse = ""),
+                     strrep("Disallow: /*.js\n", n / 2)))
+  }
+  small <- shape(1600L)
+  large <- shape(6400L)
+  times <- vapply(1:3, function(i) {
+    c(system.time(render_resource_diagnostics(small))[["elapsed"]],
+      system.time(render_resource_diagnostics(large))[["elapsed"]])
+  }, numeric(2))
+  expect_lt(min(times[2L, ]), 6 * max(min(times[1L, ]), 0.1))
+})
+
 # Sets the locale categories for the calling test, restored on exit; skips
 # when one is not installed (as ar_local_locale() in
 # test-allow-reopens-through-query-micbpqbc.R).

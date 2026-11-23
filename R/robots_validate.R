@@ -6491,8 +6491,10 @@ render_resource_alone <- function(groups, expand, at, rows, pair_row, rule,
   }
   out$spent <- if (any(read)) cost[[sum(read)]] else body$spent
   t <- t[read]
+  # Taken once: subsetting `rule` inside the loop would cost pairs squared.
+  picked <- rule[read]
   text <- vapply(seq_along(t), function(i) {
-    lines <- sort(c(by_row[[t[[i]]]], rule[read][[i]]))
+    lines <- sort(c(by_row[[t[[i]]]], picked[[i]]))
     paste0("User-agent: witness\n",
            paste0(render_resource_lines(rules, lines, written), "\n",
                   collapse = ""))
