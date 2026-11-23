@@ -71,8 +71,10 @@ test_that("a twin before the upper-case rule names the later line", {
 test_that("a mixed %3d/%3f line names both escapes", {
   x <- tw_text("User-agent: *", "Disallow: /*?*ls%3D*%3Fls%3D*",
                "Disallow: /*?*ls%3d*%3fls%3d*")
-  expect_identical(tw_codes(x), "rule_lowercase_escape_twin@3")
-  expect_identical(x$diagnostics$message, paste0(
+  # The `?` also draws the crawl-not-index note (ROBO-jnnnkyat).
+  expect_identical(tw_codes(x), c("rule_lowercase_escape_twin@3",
+                                  "rule_query_crawl_not_index@2"))
+  expect_identical(x$diagnostics$message[[1L]], paste0(
     "Line 2 has this rule with the escapes in upper case. Google and Bing ",
     "upper-case the escapes '%3d', '%3f' in a pattern, so there this line ",
     "is the same rule as line 2, and a URL written with these lower-case ",
@@ -155,9 +157,11 @@ test_that("the Shopify shape draws no lower-case warning", {
     "Disallow: /*?*ls%3D*%3Fls%3D*",
     "Disallow: /*?*ls%3d*%3fls%3d*"
   )
+  # Line 10's `&` also draws the crawl-not-index note (ROBO-jnnnkyat).
   expect_identical(
     tw_codes(x),
-    paste0("rule_lowercase_escape_twin@", c(6L, 9L, 13L, 16L))
+    c(paste0("rule_lowercase_escape_twin@", c(6L, 9L, 13L, 16L)),
+      "rule_query_crawl_not_index@10")
   )
   expect_identical(x$documents$validation_status, "valid")
 })

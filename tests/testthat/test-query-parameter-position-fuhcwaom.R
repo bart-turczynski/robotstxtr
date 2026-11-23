@@ -7,7 +7,9 @@
 qp_code <- "rule_query_parameter_position"
 
 qp_diag <- function(body) {
-  robots_validate_text(body)$diagnostics
+  d <- robots_validate_text(body)$diagnostics
+  # The crawl-not-index note (ROBO-jnnnkyat) has its own tests; leave it out.
+  d[d$code != "rule_query_crawl_not_index", , drop = FALSE]
 }
 
 qp_codes <- function(body) {
@@ -97,13 +99,15 @@ qp_dot_controls <- list(
 
 test_that("ROBO-fuhcwaom: a query-parameter rule is one info row", {
   x <- robots_validate_text("User-agent: *\nDisallow: /items/*?sort=\n")
-  expect_identical(x$diagnostics$code, qp_code)
-  expect_identical(x$diagnostics$line, 2L)
-  expect_identical(x$diagnostics$severity, "info")
-  expect_identical(x$diagnostics$directive, "disallow")
-  expect_identical(x$diagnostics$raw_text, "Disallow: /items/*?sort=")
-  expect_identical(x$diagnostics$message,
-                   qp_message("sort", "/items/x?a=1&sort="))
+  # A Disallow also draws the crawl-not-index note (ROBO-jnnnkyat).
+  expect_identical(x$diagnostics$code,
+                   c(qp_code, "rule_query_crawl_not_index"))
+  d <- x$diagnostics[x$diagnostics$code == qp_code, , drop = FALSE]
+  expect_identical(d$line, 2L)
+  expect_identical(d$severity, "info")
+  expect_identical(d$directive, "disallow")
+  expect_identical(d$raw_text, "Disallow: /items/*?sort=")
+  expect_identical(d$message, qp_message("sort", "/items/x?a=1&sort="))
   expect_identical(x$documents$validation_status, "valid")
 
   y <- robots_validate_text("User-agent: *\nAllow: /search?page=\n")
@@ -668,7 +672,9 @@ test_that("ROBO-fuhcwaom: a body cut at max_bytes is not checked", {
   x <- validate_document_bytes(
     body, "s", "supplied", max_bytes = 60L, body_truncated = TRUE
   )
-  expect_identical(x$diagnostics$code, "body_truncated")
+  # The crawl-not-index note reads a cut body too (ROBO-jnnnkyat).
+  expect_identical(x$diagnostics$code,
+                   c("rule_query_crawl_not_index", "body_truncated"))
   # The same bytes, not marked cut, get the row.
   x <- validate_document_bytes(body, "s", "supplied")
   expect_identical(x$diagnostics$line[x$diagnostics$code == qp_code], 2L)
