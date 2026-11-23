@@ -821,9 +821,11 @@ out: Allow rules, values not led by \code{/} or \code{*}
 (\code{rule_missing_leading_slash}), a Disallow an identical Allow ties
 (\code{disallow_tied_by_allow}), a lower-case-escape twin, rules before any
 User-agent line and rules of a group no crawler reads, such as one
-naming only \verb{User-agent: __usage_ai-training}. The note does not depend
-on group selection, so a rule repeated across groups or in a repeated
-group adds only its line, and the file gets one row, which also stands beside
+naming only \verb{User-agent: __usage_ai-training}. A group whose User-agent
+Google cuts to no token, such as \verb{360Spider}, still counts: Bing and
+Yandex read the whole value. The note does not depend on group
+selection, so a rule repeated across groups or in a repeated group adds
+only its line, and the file gets one row, which also stands beside
 \code{rule_query_parameter_position} on the same line. The statements about
 indexing follow Google's documentation on blocking indexing, faceted
 navigation and duplicate URLs: a URL robots.txt blocks may still be
@@ -831,8 +833,9 @@ indexed without its content; a noindex meta tag or \code{X-Robots-Tag} header
 is read only on a page the crawler may fetch, so robots.txt is no place
 for it; \code{rel=canonical} is a consolidation hint, not an exclusion; and
 blocking faceted, sort or filter URLs can be deliberate crawl control.
-Other search engines may differ. A body cut at \code{max_bytes} is checked:
-a later line cannot unmake the lines it names.
+Other search engines may differ. A body cut at \code{max_bytes} is checked on
+the bytes read: a line past the cut that would tie a Disallow, such as
+an identical Allow, is not seen.
 
 \code{rule_slash_pair} and \code{rule_slash_split} read only literal patterns: led
 by \code{/}, of printable ASCII other than space, with no \code{*}, \code{$}, \verb{?} or

@@ -110,6 +110,13 @@ qi_fixtures <- list(
     today = c("ai_training_preference", "rule_query_parameter_position"),
     note = 3L
   ),
+  # A digit-led agent: Google reads no token, but Bing and Yandex compare
+  # the whole value, so a crawler reads the rule.
+  digit_led = list(
+    body = "User-agent: 360Spider\nDisallow: /*?x=\n",
+    today = c("user_agent_cut", "rule_query_parameter_position"),
+    note = 2L
+  ),
   # A lower-case-escape twin has its own row and is not named again.
   escape_twin = list(
     body = "User-agent: *\nDisallow: /p?q=%2B\nDisallow: /p?q=%2b\n",
@@ -228,6 +235,16 @@ test_that("ROBO-jnnnkyat: a cut body is checked, a NUL body is Google's", {
                                body_truncated = TRUE)
   d <- x$diagnostics
   expect_identical(d$line[d$code == qi_code], 2L)
+  # On a cut body the note judges only the bytes read: an Allow that would
+  # tie the Disallow, past the cut, is not seen, so the Disallow is named.
+  text <- "User-agent: *\nDisallow: /a?b\nAllow: /a?b\n"
+  expect_false(qi_code %in% qi_diag(text)$code)
+  x <- validate_document_bytes(charToRaw(text)[seq_len(35L)], "s",
+                               "supplied", max_bytes = 35L,
+                               body_truncated = TRUE)
+  d <- x$diagnostics
+  expect_identical(d$line[d$code == qi_code], 2L)
+  expect_false("disallow_tied_by_allow" %in% d$code)
   # A rule a NUL cuts takes part as Google's parser cuts it, and the row
   # says it is Google's reading.
   cut <- c(charToRaw("User-agent: *\nDisallow: /a"), as.raw(0),
@@ -268,7 +285,8 @@ test_that("ROBO-jnnnkyat: the row's length is bounded", {
   expect_lt(nchar(msg), 800L)
   expect_match(msg, "and 196 more", fixed = TRUE)
   # A non-ASCII value shows ASCII-safe.
-  wide <- paste0("User-agent: *\nDisallow: /", strrep(intToUtf8(233L), 30L), "?a=\n")
+  wide <- paste0("User-agent: *\nDisallow: /",
+                 strrep(intToUtf8(233L), 30L), "?a=\n")
   d <- qi_diag(wide)
   msg <- d$message[d$code == qi_code]
   expect_false(grepl("[^ -~]", msg, useBytes = TRUE))

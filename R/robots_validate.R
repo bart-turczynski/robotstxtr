@@ -812,9 +812,11 @@ validation_unsupported <- c(
 #' (`rule_missing_leading_slash`), a Disallow an identical Allow ties
 #' (`disallow_tied_by_allow`), a lower-case-escape twin, rules before any
 #' User-agent line and rules of a group no crawler reads, such as one
-#' naming only `User-agent: __usage_ai-training`. The note does not depend
-#' on group selection, so a rule repeated across groups or in a repeated
-#' group adds only its line, and the file gets one row, which also stands beside
+#' naming only `User-agent: __usage_ai-training`. A group whose User-agent
+#' Google cuts to no token, such as `360Spider`, still counts: Bing and
+#' Yandex read the whole value. The note does not depend on group
+#' selection, so a rule repeated across groups or in a repeated group adds
+#' only its line, and the file gets one row, which also stands beside
 #' `rule_query_parameter_position` on the same line. The statements about
 #' indexing follow Google's documentation on blocking indexing, faceted
 #' navigation and duplicate URLs: a URL robots.txt blocks may still be
@@ -822,8 +824,9 @@ validation_unsupported <- c(
 #' is read only on a page the crawler may fetch, so robots.txt is no place
 #' for it; `rel=canonical` is a consolidation hint, not an exclusion; and
 #' blocking faceted, sort or filter URLs can be deliberate crawl control.
-#' Other search engines may differ. A body cut at `max_bytes` is checked:
-#' a later line cannot unmake the lines it names.
+#' Other search engines may differ. A body cut at `max_bytes` is checked on
+#' the bytes read: a line past the cut that would tie a Disallow, such as
+#' an identical Allow, is not seen.
 #'
 #' `rule_slash_pair` and `rule_slash_split` read only literal patterns: led
 #' by `/`, of printable ASCII other than space, with no `*`, `$`, `?` or
@@ -1964,8 +1967,9 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     }
   }
   # Disallows whose pattern holds a query delimiter: robots.txt controls
-  # crawling, not indexing (ROBO-jnnnkyat). One note for the file. A later
-  # line cannot unmake the lines it names, so a cut body is checked too.
+  # crawling, not indexing (ROBO-jnnnkyat). One note for the file. A cut
+  # body is checked too, on the bytes read: a line past the cut that would
+  # tie a Disallow is not seen.
   found <- query_index_note_diagnostics(
     groups, skip = c(which(!is.na(escape_twin)),
                      vapply(tied, `[[`, integer(1L), "line"))
@@ -4695,7 +4699,10 @@ query_parameter_render <- function(x) {
 # the URLs it blocks. Lines in `skip` (lower-case-escape twins, Disallows an
 # identical Allow ties) are left out, and so is a rule of a group no crawler
 # reads: one naming only the AI-training token (slash_groups()) or an empty
-# User-agent. Rules before any User-agent line are in no group. Returns a
+# User-agent. A value Google cuts to no token (`360Spider`) still counts:
+# Bing and Yandex read it whole. Rules before any User-agent line are in no
+# group. On a cut body only the bytes read are judged: an Allow past the cut
+# that would tie a Disallow is not seen. Returns a
 # data frame of `line` (the first qualifying line) and `message`, with one
 # row or none.
 query_index_note_diagnostics <- function(groups, skip = integer()) {
@@ -4705,10 +4712,12 @@ query_index_note_diagnostics <- function(groups, skip = integer()) {
     rules$type == "disallow" & substr(value, 1L, 1L) %in% c("/", "*") &
       grepl("[?=&]", value, useBytes = TRUE) & !rules$line %in% skip
   )
-  if (length(at) > 0L) {
-    read <- validation_token_expander(slash_groups(groups))(rules$group[at])
-    at <- at[sort(unique(read$owner))]
-  }
+  # A group some crawler reads names `*` or a non-empty whole value
+  # (`agents$uncut`): Bing and Yandex read `360Spider`, which Google cuts to
+  # no token.
+  agents <- slash_groups(groups)$agents
+  read <- agents$group[agents$global | nzchar(agents$uncut)]
+  at <- at[rules$group[at] %in% read]
   if (length(at) == 0L) {
     return(data.frame(line = integer(), message = character(),
                       stringsAsFactors = FALSE))

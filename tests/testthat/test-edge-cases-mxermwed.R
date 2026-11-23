@@ -170,33 +170,17 @@ test_that("ROBO-mxermwed: the v1 google engine agrees on every NUL-free body", {
   expect_setequal(seen, names(edge_v1_decisions))
 })
 
-# Bodies whose validator codes moved after the manifest was written, each
-# with the codes it gets now: a Disallow holding `?` also gets the
-# crawl-not-index note (ROBO-jnnnkyat).
-edge_validator_codes <- c(
-  "esc-query-wildcard" = "rule_query_crawl_not_index@2"
-)
-
 test_that("ROBO-mxermwed: the validator's diagnostics on every body", {
   m <- edge_manifest
   per_case <- unique(m[c("id", "body_file", "validator_codes")])
   expect_false(anyDuplicated(per_case$id) > 0L)
-  seen <- character()
   for (i in seq_len(nrow(per_case))) {
-    id <- per_case$id[[i]]
-    want <- per_case$validator_codes[[i]]
-    if (id %in% names(edge_validator_codes)) {
-      want <- edge_validator_codes[[id]]
-      expect_false(identical(want, per_case$validator_codes[[i]]), label = id)
-      seen <- c(seen, id)
-    }
     expect_identical(
       edge_codes(edge_body(per_case$body_file[[i]])),
-      want,
-      label = id
+      per_case$validator_codes[[i]],
+      label = per_case$id[[i]]
     )
   }
-  expect_setequal(seen, names(edge_validator_codes))
 })
 
 # --- Known gaps, restated -----------------------------------------------
