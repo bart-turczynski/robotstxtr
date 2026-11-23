@@ -886,7 +886,9 @@ body cut at \code{max_bytes} is not checked, and a
 canonical value is led by \code{/} or \code{*} and ends in \code{.js}, \code{.mjs}, \code{.cjs},
 \code{.css}, \code{.json} or \code{.wasm}, in any case, then only a run of \code{*}, a final
 \code{$}, or a query with no \code{/} (\verb{/*.js}, \verb{/cart.js}, \verb{/*.js*$},
-\verb{/a.json?v=*}). The file it blocks is the value without a final \code{$} and
+\verb{/a.json?v=*}). The file type must sit in the path, so no \verb{?} comes
+before it: \verb{/*?*.js} and \verb{/q?f=*.css} name query text and are left out.
+The file it blocks is the value without a final \code{$} and
 the run of \code{*} before it, each other \code{*} written \code{x} (\verb{/*.css*} blocks
 \verb{/x.css}); where another rule matches that filler, the check tries \code{y},
 then \code{z}. A value with a dot segment, a \verb{\%} that starts no escape or a

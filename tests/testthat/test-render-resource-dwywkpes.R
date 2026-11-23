@@ -429,6 +429,22 @@ test_that("ROBO-dwywkpes: the scans make each exclusion", {
   })
 })
 
+test_that("ROBO-dwywkpes: a file type inside the query gets no row", {
+  # The type must sit in the path: a `?` before it makes it query text.
+  for (value in c("/*?*.js", "/search?q=*.css", "/*?file=*.json",
+                  "/q?f=*.css")) {
+    codes <- rr_codes(sprintf("User-agent: Foo\nDisallow: %s\n", value))
+    expect_false(rr_code %in% codes, label = value)
+  }
+  # A query after the type stays in.
+  for (value in c("/a.json?v=*", "/*.js?*", "/x.js?a.css")) {
+    codes <- rr_codes(sprintf("User-agent: Foo\nDisallow: %s\n", value))
+    expect_true(rr_code %in% codes, label = value)
+  }
+  expect_identical(rr_message_of("User-agent: Foo\nDisallow: /*.js?*\n"),
+                   rr_one(2L, "/*.js?*", "/x.js?"))
+})
+
 test_that("ROBO-dwywkpes: a value no URL carries gets no row", {
   for (byte in list(as.raw(0x20), as.raw(0x09), as.raw(0x01), as.raw(0x7f))) {
     body <- c(charToRaw("User-agent: *\nDisallow: /a"), byte,

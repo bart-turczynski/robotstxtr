@@ -877,7 +877,9 @@ validation_unsupported <- c(
 #' canonical value is led by `/` or `*` and ends in `.js`, `.mjs`, `.cjs`,
 #' `.css`, `.json` or `.wasm`, in any case, then only a run of `*`, a final
 #' `$`, or a query with no `/` (`/*.js`, `/cart.js`, `/*.js*$`,
-#' `/a.json?v=*`). The file it blocks is the value without a final `$` and
+#' `/a.json?v=*`). The file type must sit in the path, so no `?` comes
+#' before it: `/*?*.js` and `/q?f=*.css` name query text and are left out.
+#' The file it blocks is the value without a final `$` and
 #' the run of `*` before it, each other `*` written `x` (`/*.css*` blocks
 #' `/x.css`); where another rule matches that filler, the check tries `y`,
 #' then `z`. A value with a dot segment, a `%` that starts no escape or a
@@ -6206,17 +6208,19 @@ render_resource_diagnostics <- function(groups, written = NULL,
 # Indexes of `rules` that are rule_render_resource_blocked candidates: a
 # non-empty Disallow whose canonical value is led by `/` or `*` and ends in
 # a listed file type, in any case, then only a run of `*`, a final `$`, or
-# a query with no `/` (`/*.js`, `/*.js*$`, `/a.json?v=*`). Not a folder
-# (`/js/`), a longer type (`/a.jsp`) or a path that goes on (`/x.json/y`).
-# Nor one whose witness fails url_safe_path(): a dot segment, a stray `%`
-# or a byte no URL carries.
+# a query with no `/` (`/*.js`, `/*.js*$`, `/a.json?v=*`). The type sits
+# in the path, so no `?` comes before it: `/*?*.js` and `/q?f=*.css` name
+# query text, not a file. Not a folder (`/js/`), a longer type (`/a.jsp`)
+# or a path that goes on (`/x.json/y`). Nor one whose witness fails
+# url_safe_path(): a dot segment, a stray `%` or a byte no URL carries.
 render_resource_candidates <- function(rules) {
   value <- rules$value
   hit <- which(
     rules$type == "disallow" & !rules$empty &
-      grepl("^[/*]", value, useBytes = TRUE) &
-      grepl("[.](m?js|cjs|css|json|wasm)([*]*[$]?|[?][^/]*)$", value,
-            ignore.case = TRUE, useBytes = TRUE)
+      grepl(
+        "^[/*][^?]*[.](m?js|cjs|css|json|wasm)([*]*[$]?|[?][^/]*)$", value,
+        ignore.case = TRUE, useBytes = TRUE
+      )
   )
   hit[url_safe_path(value[hit], render_resource_witness(value[hit]))]
 }
