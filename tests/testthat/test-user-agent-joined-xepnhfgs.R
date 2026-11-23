@@ -4,9 +4,9 @@
 # blank line joins the open group, and that group's rules reach the earlier
 # agents too. Bing ends the run at any directive and Yandex at a blank,
 # comment or Crawl-delay line (design/engine-disagreements.md class 1;
-# Yandex tester Y5, ROBO-bpywsjwv). The shapes come from news-ai-access's
-# stored files (NEWS-caacyart): internetcom.jp, www.rro.ch,
-# timeschronicle.ca and www.almeredezeweek.nl, quoted line for line.
+# Yandex tester Y5, ROBO-bpywsjwv). The shapes come from four of
+# news-ai-access's stored files (NEWS-caacyart), study files A to D, with
+# their hosts and distinctive paths replaced (ROBO-hgbqedwt).
 
 uaj_lines <- function(...) paste0(paste(c(...), collapse = "\n"), "\n")
 
@@ -15,20 +15,20 @@ uaj_rows <- function(body, code) {
   d[d$code == code, , drop = FALSE]
 }
 
-uaj_internetcom <- uaj_lines(
+uaj_file_a <- uaj_lines(
   "",
   "User-agent: *", "Disallow: /click/", "Disallow: /ad/",
-  "Disallow: /smartnews_prs/", "",
-  "User-agent: *", "Sitemap: https://internetcom.jp/xml/sitemap_index.xml", "",
+  "Disallow: /partner_feed/", "",
+  "User-agent: *", "Sitemap: https://example.com/xml/sitemap_index.xml", "",
   "User-agent: bingbot", "Disallow: /news/", "Allow: /news/article/"
 )
 
-uaj_rro <- uaj_lines(
+uaj_file_b <- uaj_lines(
   "User-agent: *", "Crawl-delay: 10", "", "User-agent: AhrefsBot", "Disallow: /"
 )
 
-test_that("internetcom.jp: a Sitemap between the lines warns on bingbot", {
-  x <- robots_validate_text(uaj_internetcom)
+test_that("study file A: a Sitemap between the lines warns on bingbot", {
+  x <- robots_validate_text(uaj_file_a)
   d <- x$diagnostics
   r <- d[d$code == "user_agent_joined_across_directive", , drop = FALSE]
   expect_identical(r$line, 10L)
@@ -57,8 +57,8 @@ test_that("internetcom.jp: a Sitemap between the lines warns on bingbot", {
   expect_identical(d$line[d$code == "wildcard_disallows_not_inherited"], 7L)
 })
 
-test_that("www.rro.ch: a Crawl-delay before a full block names both engines", {
-  r <- uaj_rows(uaj_rro, "user_agent_joined_across_directive")
+test_that("study file B: a Crawl-delay before a full block names both engines", {
+  r <- uaj_rows(uaj_file_b, "user_agent_joined_across_directive")
   expect_identical(r$line, 4L)
   expect_identical(r$message, paste0(
     "`User-agent: AhrefsBot` (line 4) joins the group that `User-agent: *` ",
@@ -77,7 +77,7 @@ test_that("www.rro.ch: a Crawl-delay before a full block names both engines", {
 test_that("the joined reading is the matcher's", {
   # The warning's premise, on the vendored Google parser: `*` gets AhrefsBot's
   # full block.
-  r <- allowed_by_robots_text(uaj_rro, "https://example.com/a",
+  r <- allowed_by_robots_text(uaj_file_b, "https://example.com/a",
                               user_agent = "SomeBot")
   expect_false(r$results$allowed)
   expect_identical(r$results$matched_line, 5L)
@@ -96,7 +96,7 @@ test_that("a Sitemap with no blank line names Bing only", {
   expect_no_match(r$message, "Yandex", fixed = TRUE)
 })
 
-test_that("www.almeredezeweek.nl: the policy token keeps its own warning", {
+test_that("study file C: the policy token keeps its own warning", {
   # One line gets one report: ai_training_token_stacked (ROBO-kzyfejcv)
   # already covers a token line stacked across a directive.
   d <- robots_validate_text(uaj_lines(
@@ -104,7 +104,7 @@ test_that("www.almeredezeweek.nl: the policy token keeps its own warning", {
     "User-agent: facebookexternalhit", "Allow: /", "",
     "User-agent: *",
     "Content-Signal: ai-train=no, search=yes, ai-input=yes",
-    "Sitemap: https://www.almeredezeweek.nl/sitemap", "", "", "",
+    "Sitemap: https://www.example.com/sitemap", "", "", "",
     "User-agent: __usage_ai-training", "Disallow: /"
   ))$diagnostics
   expect_identical(d$line[d$code == "ai_training_token_stacked"], 13L)
@@ -118,12 +118,12 @@ test_that("www.almeredezeweek.nl: the policy token keeps its own warning", {
   expect_false(any(startsWith(d$code, "user_agent_joined")))
 })
 
-test_that("timeschronicle.ca: a repeat of the same agent is silent", {
+test_that("study file D: a repeat of the same agent is silent", {
   d <- robots_validate_text(uaj_lines(
     "User-agent: *", "Disallow: /wp-admin/", "",
-    "# Slow down bots", "User-agent: *", "Crawl-delay: 10", "",
-    "User-agent: *", "Disallow: /?blackhole", "",
-    "# Slow down bots", "User-agent: *", "Crawl-delay: 10", "",
+    "# crawl rate", "User-agent: *", "Crawl-delay: 10", "",
+    "User-agent: *", "Disallow: /?trap", "",
+    "# crawl rate", "User-agent: *", "Crawl-delay: 10", "",
     "User-agent: OAI-SearchBot", "Disallow: /"
   ))$diagnostics
   r <- d[d$code == "user_agent_joined_across_directive", , drop = FALSE]
@@ -255,12 +255,12 @@ test_that("moving a Sitemap out is offered only to agents meant to share", {
   # Moving it out of the run makes the User-agent lines adjacent, which
   # every engine joins (branch review): it is the fix for sharing, never
   # for keeping the rules away.
-  r <- uaj_rows(uaj_internetcom, "user_agent_joined_across_directive")
+  r <- uaj_rows(uaj_file_a, "user_agent_joined_across_directive")
   expect_no_match(r$message, "not meant to get these rules, move",
                   fixed = TRUE)
   # A group-level line such as Crawl-delay keeps its group, so moving it is
   # not offered at all.
-  r <- uaj_rows(uaj_rro, "user_agent_joined_across_directive")
+  r <- uaj_rows(uaj_file_b, "user_agent_joined_across_directive")
   expect_no_match(r$message, "move line", fixed = TRUE)
 })
 
