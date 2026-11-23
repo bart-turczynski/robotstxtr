@@ -898,7 +898,12 @@ merged groups: the rule must decide the file, so an Allow that wins it
 (\verb{Allow: /*.js}, \verb{Allow: /x.js} beside \verb{Disallow: /x.js}) silences the
 row, and, read again with every such rule left out, the file must come
 out allowed, so a broader rule that blocks it anyway (\verb{Disallow: /},
-\verb{Disallow: /assets/}) silences it too. A row is reported only where
+\verb{Disallow: /assets/}) silences it too. Beside the rule that decides the
+file, the row names every other such Disallow the same crawlers have that
+blocks it by itself, read with the others left out, so
+\verb{Disallow: /*.js} beside \verb{Disallow: /*.js$} names both lines and leaving
+out every line a row names lets the file through. A row is reported only
+where
 every crawler the group names agrees, on the whole-value merge and on
 Google's merge. The row is Google's reading: the package's Yandex
 matcher counts a pattern's length without its \code{*}, so where an Allow and

@@ -340,10 +340,12 @@ test_that("ROBO-dwywkpes: rows group by crawler set", {
     2L, "/d1/*.js", "/d1/x.js", rr_same("3, 4, 5, 6 and 45 more")
   ))
   # Merged repeated groups give one row; an identical repeated line never
-  # decides (the matcher keeps the first), so it adds nothing.
+  # decides (the matcher keeps the first), but it blocks the file once the
+  # first is gone, so the row names it too.
   expect_identical(rr_message("repeated"),
                    rr_one(2L, "/a.js", "/a.js", rr_same("5", one = TRUE)))
-  expect_identical(rr_message("identical"), rr_one(2L, "/a.js", "/a.js"))
+  expect_identical(rr_message("identical"),
+                   rr_one(2L, "/a.js", "/a.js", rr_same("3", one = TRUE)))
   expect_identical(rr_message("two_kinds"),
                    rr_one(2L, "/*.js", "/x.js", rr_same("3", one = TRUE)))
   # The AI-training token's group gets no row; the row sits on the first
@@ -351,6 +353,64 @@ test_that("ROBO-dwywkpes: rows group by crawler set", {
   expect_identical(rr_codes(rr_body("ai")), "ai_training_preference")
   d <- rr_diag(rr_body("ai_anchor"))
   expect_identical(d$raw_text[d$code == rr_code], "User-agent: Foo")
+})
+
+test_that("ROBO-dwywkpes: a row names every candidate that blocks its file", {
+  # The longer rule decides the witness; the shorter one blocks it too once
+  # the longer one is gone, so both are named.
+  expect_identical(
+    rr_message_of("User-agent: Foo\nDisallow: /*.js\nDisallow: /*.js$\n"),
+    rr_one(3L, "/*.js$", "/x.js", rr_same("2", one = TRUE))
+  )
+  expect_identical(
+    rr_message_of("User-agent: Foo\nDisallow: /*.js\nDisallow: /*.js*\n"),
+    rr_one(3L, "/*.js*", "/x.js", rr_same("2", one = TRUE))
+  )
+  # On every backend, /x.js stays blocked with only the decider gone, and
+  # comes out allowed with both gone.
+  for (backend in names(rr_engines)) {
+    expect_identical(rr_decide("User-agent: %s\nDisallow: /*.js\n", "/x.js",
+                               backend), "disallow", label = backend)
+    expect_identical(rr_decide("User-agent: %s\n", "/x.js", backend),
+                     "allow", label = backend)
+  }
+  # A candidate that loses to an Allow by itself is not named: with the
+  # decider gone, /*.js ties /x.js and the Allow wins.
+  expect_identical(
+    rr_message_of(paste0("User-agent: Foo\nDisallow: /*.js\n",
+                         "Disallow: /*.js$\nAllow: /x.js\n")),
+    rr_one(3L, "/*.js$", "/x.js")
+  )
+  expect_identical(
+    rr_message_of(paste0("User-agent: Foo\nDisallow: /*.js\n",
+                         "Disallow: /*.js$\nAllow: /x.j\n")),
+    rr_one(3L, "/*.js$", "/x.js", rr_same("2", one = TRUE))
+  )
+  # A candidate of another group the row's crawlers obey, on the
+  # whole-value merge and on Google's.
+  expect_identical(
+    rr_message_of(paste0("User-agent: A\nUser-agent: B\nDisallow: /*.js$\n\n",
+                         "User-agent: A\nDisallow: /*.js\n")),
+    paste0(rr_one(3L, "/*.js$", "/x.js", rr_same("6", one = TRUE)),
+           rr_note("'A' and 'B'"))
+  )
+  expect_identical(
+    rr_message_of(paste0("User-agent: Foo web\nDisallow: /*.js$\n\n",
+                         "User-agent: Foo blog\nDisallow: /*.js\n")),
+    rr_one(2L, "/*.js$", "/x.js", rr_same("5", one = TRUE))
+  )
+  # Not one of a crawler the row does not cover.
+  expect_identical(
+    rr_message_of(paste0("User-agent: A\nDisallow: /*.js$\n\n",
+                         "User-agent: B\nDisallow: /*.js\n")),
+    c(rr_one(2L, "/*.js$", "/x.js"), rr_one(5L, "/*.js", "/x.js"))
+  )
+  # The bound holds: four more lines, then a count.
+  body <- paste0("User-agent: Foo\nDisallow: /*.js$\n",
+                 strrep("Disallow: /*.js\n", 9L))
+  expect_identical(rr_message_of(body), rr_one(
+    2L, "/*.js$", "/x.js", rr_same("3, 4, 5, 6 and 5 more")
+  ))
 })
 
 test_that("ROBO-dwywkpes: an Allow or a broader rule silences the row", {
@@ -515,6 +575,55 @@ test_that("ROBO-dwywkpes: every class on both merges must agree", {
   both <- paste0("User-agent: Foo web\nDisallow: /*.js\n\n",
                  "User-agent: Foo blog\nDisallow: /b\n")
   expect_true(rr_code %in% rr_codes(both))
+})
+
+test_that("ROBO-dwywkpes: a budget cut while naming gets the stop row", {
+  # `/*.js$` decides /x.js and `n` repeats of `/*.js` block it too. Wherever
+  # the budget runs out, a row names them all or there is no row and the
+  # stop row says so; some budgets run out in the naming, both in the
+  # pairs and in the reads of each one by itself.
+  named <- render_resource_named
+  alone <- render_resource_alone
+  seen <- new.env()
+  seen$cut <- 0L
+  seen$alone <- 0L
+  local_mocked_bindings(
+    render_resource_named = function(groups, at, hit, ...) {
+      out <- named(groups, at, hit, ...)
+      if (out$n < length(hit)) {
+        seen$cut <- seen$cut + 1L
+      }
+      out
+    },
+    render_resource_alone = function(...) {
+      out <- alone(...)
+      if (is.finite(out$n)) {
+        seen$alone <- seen$alone + 1L
+      }
+      out
+    }
+  )
+  for (n in c(1L, 6L)) {
+    same <- if (n == 1L) rr_same("3", one = TRUE) else
+      rr_same("3, 4, 5, 6 and 2 more")
+    for (allow in c("", "Allow: /x\nAllow: /x.\n")) {
+      groups <- rr_groups(paste0("User-agent: Foo\nDisallow: /*.js$\n",
+                                 strrep("Disallow: /*.js\n", n), allow))
+      for (budget in 0:120) {
+        found <- render_resource_diagnostics(groups, budget = budget)
+        # A row names the repeats even where the budget leaves them
+        # unchecked (the stop row then counts them).
+        if (nrow(found) > 0L) {
+          expect_identical(found$message, rr_one(2L, "/*.js$", "/x.js", same),
+                           label = budget)
+        } else {
+          expect_identical(attr(found, "stopped")$checked, 0L, label = budget)
+        }
+      }
+    }
+  }
+  expect_gt(seen$cut, 0L)
+  expect_gt(seen$alone, 0L)
 })
 
 # A body cut at max_bytes, whose cut line could have decided the witness.

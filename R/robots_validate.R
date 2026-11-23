@@ -889,7 +889,12 @@ validation_unsupported <- c(
 #' (`Allow: /*.js`, `Allow: /x.js` beside `Disallow: /x.js`) silences the
 #' row, and, read again with every such rule left out, the file must come
 #' out allowed, so a broader rule that blocks it anyway (`Disallow: /`,
-#' `Disallow: /assets/`) silences it too. A row is reported only where
+#' `Disallow: /assets/`) silences it too. Beside the rule that decides the
+#' file, the row names every other such Disallow the same crawlers have that
+#' blocks it by itself, read with the others left out, so
+#' `Disallow: /*.js` beside `Disallow: /*.js$` names both lines and leaving
+#' out every line a row names lets the file through. A row is reported only
+#' where
 #' every crawler the group names agrees, on the whole-value merge and on
 #' Google's merge. The row is Google's reading: the package's Yandex
 #' matcher counts a pattern's length without its `*`, so where an Allow and
@@ -5522,13 +5527,8 @@ slash_open_rows <- function(groups, at, cap = 5L,
     return(slash_rows(character()))
   }
   group <- rules$group[at]
-  wanted <- unique(group)
-  rows <- validation_token_expander(groups, groups$agents$uncut)(wanted)
-  signature <- vapply(split(rows$class, factor(rows$owner,
-                                               seq_along(wanted))),
-                      function(x) paste(sort(x), collapse = " "), "")
-  sets <- split(seq_along(at), factor(signature[match(group, wanted)],
-                                      unique(signature[match(group, wanted)])))
+  signature <- slash_open_sets(groups, group)
+  sets <- split(seq_along(at), factor(signature, unique(signature)))
   first <- vapply(sets, `[[`, 0L, 1L)
   # The group's first User-agent line the check reads (slash_groups() may
   # have left out a policy-token line before it); agents are in file order.
@@ -5541,6 +5541,17 @@ slash_open_rows <- function(groups, at, cap = 5L,
     paste0(text, slash_crawler_note(groups$agents, group[first])),
     directive = "user-agent"
   )
+}
+
+# The set of crawler classes (whole-value merge) of each of `group`, as a
+# signature: slash_open_rows() gives one row per signature.
+slash_open_sets <- function(groups, group) {
+  wanted <- unique(group)
+  rows <- validation_token_expander(groups, groups$agents$uncut)(wanted)
+  signature <- vapply(split(rows$class, factor(rows$owner,
+                                               seq_along(wanted))),
+                      function(x) paste(sort(x), collapse = " "), "")
+  unname(signature[match(group, wanted)])
 }
 
 slash_open_message <- function(value, line, cap) {
@@ -6177,7 +6188,10 @@ reopen_stop_intro <- function(stop) {
 # one and every later one get no row, and the stop counts say so. One row
 # per set of crawler classes, on the first User-agent line the check
 # reads of the group holding the earliest one (slash_open_rows()), with
-# the first rule's witness and four more lines at most, then a count. A
+# the first rule's witness and four more lines at most, then a count. The
+# lines include every other candidate that blocks a reported one's witness
+# by itself (render_resource_named()), read on what the budget left; a
+# reported candidate whose reading of them did not fit is not checked. A
 # cut body is not checked: a later rule could decide the witness. Returns
 # slash_rows() with a `directive` column; when the budget cut candidates,
 # its "stopped" attribute holds slash_stop()'s counts.
@@ -6199,10 +6213,22 @@ render_resource_diagnostics <- function(groups, written = NULL,
   pair <- read$pair
   pair[seq_along(pair) > checked] <- NA_integer_
   hit <- which(!is.na(pair))
+  witness <- render_resource_witness(rules$value[at[hit]],
+                                     end_anchor_fillers()$path[pair[hit]])
+  named <- render_resource_named(groups, at, hit, witness, written,
+                                 read$budget)
+  # A reported candidate whose other lines did not fit is not checked.
+  if (named$n < length(hit)) {
+    checked <- hit[[named$n + 1L]] - 1L
+    hit <- hit[seq_len(named$n)]
+  }
   hit_line <- rules$line[at[hit]]
   message <- function(value, line, cap) {
-    render_resource_message(value[[1L]], line, cap,
-                            pair[hit][match(line[[1L]], hit_line)])
+    k <- match(line, hit_line)
+    more <- setdiff(rules$line[unlist(named$rules[k])], line)
+    render_resource_message(value[[1L]],
+                            c(line[[1L]], sort(c(line[-1L], unique(more)))),
+                            cap, pair[hit][k[[1L]]])
   }
   out <- slash_open_rows(groups, at[hit], cap = 4L, message = message)
   attr(out, "stopped") <- slash_stop(rules, at, checked)
@@ -6243,9 +6269,10 @@ render_resource_witness <- function(value, filler = "x") {
 
 # The filler readings of the candidates `at`, sharing `budget`: each filler
 # reads, in line order, the candidates every earlier filler read and left
-# unreported (render_resource_pass()). Returns list(pair, finished) as
-# end_anchor_reads() does: `pair`, the first filler that passed (NA when
-# none did), and `finished`, whether the candidate's reading is done.
+# unreported (render_resource_pass()). Returns list(pair, finished, budget)
+# as end_anchor_reads() does: `pair`, the first filler that passed (NA when
+# none did), and `finished`, whether the candidate's reading is done, with
+# `budget`, what the readings left.
 render_resource_reads <- function(groups, at, written, budget) {
   fill <- end_anchor_fillers()$path
   rules <- groups$rules
@@ -6274,7 +6301,7 @@ render_resource_reads <- function(groups, at, written, budget) {
   if (k == length(fill)) {
     finished[todo] <- TRUE
   }
-  list(pair = pair, finished = finished)
+  list(pair = pair, finished = finished, budget = budget)
 }
 
 # One filler's two readings of the candidates `at` on their `witness`
@@ -6303,6 +6330,172 @@ render_resource_pass <- function(groups, removed, at, witness, written,
     checked <- min(checked, k[[second$checked + 1L]] - 1L)
   }
   list(ok = ok, checked = checked, spent = first$spent + second$spent)
+}
+
+# The other candidates a row must name beside each reported one `hit`
+# (indexes of `at`), whose witness is `witness`: every candidate of `at`
+# held by a crawler class of the reported one's group, on the whole-value
+# merge or on Google's, that blocks the witness by itself, read with every
+# other candidate left out. A longer candidate can decide the witness of a
+# shorter one that blocks it too (`/*.js$` beside `/*.js`, an identical
+# repeat), so the lines a row names without them could leave the file
+# blocked once they are gone. With them, it comes out allowed: what is
+# left holds the rules that are no candidate, which allow it (the removal
+# read), and candidates that do not block it by themselves, so the longest
+# rule left that matches it is an Allow, or ties one. Reported candidates
+# are taken in line order while their reads fit `budget`
+# (render_resource_pairs()). Returns list(rules, n): `rules`, per reported
+# candidate, the indexes of `groups$rules` to name beside it, and `n`, how
+# many leading reported candidates were read.
+render_resource_named <- function(groups, at, hit, witness, written,
+                                  budget) {
+  agents <- groups$agents
+  keys <- list(agents$uncut)
+  if (!all(agents$uncut == agents$key)) {
+    keys <- c(keys, list(agents$key))
+  }
+  head <- slash_rule_parts(groups$rules$type[at], groups$rules$value[at])$head
+  set <- slash_open_sets(groups, groups$rules$group[at])
+  n <- length(hit)
+  owner <- integer()
+  named <- integer()
+  for (key in keys) {
+    read <- render_resource_pairs(groups, key, at, hit, head, witness,
+                                  written, budget, n, set)
+    budget <- budget - read$spent
+    n <- read$n
+    owner <- c(owner, read$owner)
+    named <- c(named, read$rule)
+  }
+  keep <- owner <= n
+  list(rules = unname(split(named[keep], factor(owner[keep],
+                                                seq_along(hit)))),
+       n = n)
+}
+
+# One merge's reading for render_resource_named(), on `key`, of the first
+# `n` reported candidates: the (reported, candidate) pairs of a class
+# where the witness starts with the candidate's literal head `head`
+# (slash_head_hits()), counted before they are built, so many candidates
+# sharing a head build no more of them than `budget`; then those whose
+# candidate matches the witness on a body of that candidate alone; then
+# those where it blocks the witness by itself (render_resource_alone()).
+# `set` is each candidate's row (slash_open_sets()): a reported candidate
+# of the same row is no pair. Returns list(owner, rule, n, spent): the
+# pairs kept (`owner` indexing
+# `hit`, `rule` indexing `groups$rules`), the reported candidates read
+# whole, and the work done.
+render_resource_pairs <- function(groups, key, at, hit, head, witness,
+                                  written, budget, n, set) {
+  rules <- groups$rules
+  expand <- validation_token_expander(groups, key)
+  rows <- expand(rules$group[at[hit[seq_len(n)]]])
+  held <- expand(rules$group[at])
+  # A reported candidate of the same row is named anyway: it is looked at
+  # only in a class that holds reported candidates of more than one row.
+  reported <- seq_along(at) %in% hit
+  own <- reported[held$owner]
+  rows_of <- tapply(set[held$owner][own], held$class[own],
+                    function(s) length(unique(s)))
+  mixed <- as.integer(names(rows_of)[rows_of > 1L])
+  look <- !own | held$class %in% mixed
+  held <- list(owner = held$owner[look], class = held$class[look])
+  near <- slash_head_hits(held$owner, held$class, head[held$owner],
+                          witness[rows$owner], rows$class)
+  per <- numeric(n)
+  if (length(near$row) > 0L) {
+    sums <- rowsum(lengths(near$found), rows$owner[near$row])
+    per[as.integer(rownames(sums))] <- sums[, 1L]
+  }
+  cost <- cumsum(per)
+  n <- sum(cost <= budget)
+  spent <- if (n == 0L) 0 else cost[[n]]
+  k <- rows$owner[near$row] <= n
+  pair_row <- rep(near$row[k], lengths(near$found[k]))
+  pair_at <- unlist(near$found[k], use.names = FALSE)
+  from <- hit[rows$owner[pair_row]]
+  other <- !(reported[pair_at] & set[pair_at] == set[from])
+  pair_row <- pair_row[other]
+  pair_at <- pair_at[other]
+  one <- unique(pair_at)
+  read <- wildcard_witness_decide(
+    paste0("User-agent: witness\n", render_resource_lines(rules, at[one],
+                                                          written), "\n"),
+    match(pair_at, one), witness[rows$owner[pair_row]]
+  )
+  hit_pair <- !read$allowed
+  alone <- render_resource_alone(groups, expand, at, rows, pair_row[hit_pair],
+                                 at[pair_at[hit_pair]], witness, written,
+                                 budget - spent)
+  n <- min(n, alone$n)
+  blocks <- alone$blocks
+  list(owner = rows$owner[pair_row[hit_pair]][blocks],
+       rule = at[pair_at[hit_pair]][blocks], n = n,
+       spent = spent + alone$spent)
+}
+
+# Whether each candidate `rule` (indexes of `groups$rules`) blocks the
+# witness of its pair's row (`pair_row`, indexing `rows`, the (reported,
+# class) rows of `expand`) by itself: read by Google's matcher on the
+# rules of the row's class that are no candidate and can match the witness
+# (slash_split_bodies()), with the candidate added in file order. Rows are
+# read whole reported candidates at a time while their body lines fit
+# `budget`. Returns list(blocks, n, spent): `n`, the reported candidates
+# before the first whose rows did not fit (Inf when all did).
+render_resource_alone <- function(groups, expand, at, rows, pair_row, rule,
+                                  witness, written, budget) {
+  out <- list(blocks = logical(length(rule)), n = Inf, spent = 0)
+  if (length(rule) == 0L) {
+    return(out)
+  }
+  rules <- groups$rules
+  others <- setdiff(which(!rules$empty), at)
+  wanted <- unique(pair_row)
+  held <- expand(rules$group[others])
+  body <- slash_split_bodies(rules, list(rule = others[held$owner],
+                                         class = held$class),
+                             witness[rows$owner[wanted]], rows$class[wanted],
+                             written, rows$owner[wanted], budget)
+  # Each kept row's rules, from the first position of each row that holds
+  # any (rows that hold none have no start).
+  at_row <- which(!is.na(body$start))
+  row_of <- rep(at_row, diff(c(body$start[at_row], length(body$rule) + 1L)))
+  by_row <- split(body$rule, factor(row_of, seq_len(body$rows)))
+  # Each pair's body copies its row's lines: counted too, in pair order.
+  t <- match(pair_row, wanted)
+  kept <- t <= body$rows
+  len <- numeric(length(t))
+  len[kept] <- lengths(by_row)[t[kept]]
+  cost <- body$spent + cumsum(len + 1)
+  read <- kept & cost <= budget
+  first <- match(FALSE, read)
+  if (!is.na(first)) {
+    out$n <- rows$owner[pair_row[[first]]] - 1L
+    read <- seq_along(read) < first
+  }
+  out$spent <- if (any(read)) cost[[sum(read)]] else body$spent
+  t <- t[read]
+  text <- vapply(seq_along(t), function(i) {
+    lines <- sort(c(by_row[[t[[i]]]], rule[read][[i]]))
+    paste0("User-agent: witness\n",
+           paste0(render_resource_lines(rules, lines, written), "\n",
+                  collapse = ""))
+  }, "")
+  found <- wildcard_witness_decide(text, seq_along(text),
+                                   witness[rows$owner[pair_row[read]]])
+  out$blocks[read] <- !found$allowed
+  out
+}
+
+# Rule lines `rule` (indexes of `rules`) as a witness body holds them: as
+# written (slash_written_rules()) when `written` is given, else the key and
+# the canonical value.
+render_resource_lines <- function(rules, rule, written) {
+  if (is.null(written)) {
+    return(paste0(ifelse(rules$type[rule] == "allow", "Allow", "Disallow"),
+                  ":", rules$value[rule]))
+  }
+  written[rule]
 }
 
 # One row's text, in short sentences: the Disallow `value` on `line[1]`
