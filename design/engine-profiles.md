@@ -324,9 +324,17 @@ documentation. The map must be re-checked against the pages in §10 when they ch
 ### 5b. Google fidelity audit (ROBO-deehqhlc)
 
 **Method.** The reference is the pristine upstream google/robotstxt at
-`22b355ff855419e6a3ff8ff09c0ad7fdb17116f9`, the SHA the vendored matcher pins: a maintainer-only command-line tool
-calls `RobotsMatcher::OneAgentAllowedByRobots()` on the raw body bytes and reports the decision and
-`matching_line()`. The same body, token and URL go to each robotstxtr Google path:
+`22b355ff855419e6a3ff8ff09c0ad7fdb17116f9`, the SHA the vendored matcher pins: a command-line driver
+(`dev/google-fidelity/reference.cc`) calls `RobotsMatcher::OneAgentAllowedByRobots()` on the raw body
+bytes and reports the decision and `matching_line()`. Anyone can build it from a clean checkout
+(ROBO-basbqqdh): provision a google/robotstxt source directory at that SHA yourself (nothing is
+downloaded, `design/PRD.md` slice C5), make Abseil visible to `pkg-config absl_strings` or set
+`ABSL_PREFIX` to its install prefix, and run
+`ROBOTSTXTR_GOOGLE_UPSTREAM=<dir> sh dev/google-fidelity/build-reference.sh`. The script refuses a
+`robots.cc` or `robots.h` whose SHA-256 differs from the values it carries, compiles the checked copies
+with the driver, and writes `tmp/google-fidelity/google-ref` (gitignored; `-o <dir>` elsewhere). Then
+`Rscript dev/google-fidelity/differential.R tmp/google-fidelity/google-ref` replays the fixtures and
+exits 0 when nothing drifted. The same body, token and URL go to each robotstxtr Google path:
 `robots_evaluate_text_v1()` with the `google` backend under every ruleset (`google`, `rfc9309`,
 `assumed_rfc9309`, `bing`, `yandex`: each reads a supplied body as `use_rules` at any size, so every
 row that passes input screening reaches the matcher and equals the `google` row, save the

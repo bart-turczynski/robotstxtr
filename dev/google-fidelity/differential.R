@@ -3,15 +3,23 @@
 # Feeds the synthesized fixtures of
 # tests/testthat/fixtures/google-fidelity-deehqhlc/cases.R to a reference
 # binary built from the pristine upstream google/robotstxt (pinned SHA
-# 22b355ff855419e6a3ff8ff09c0ad7fdb17116f9; the maintainer-only harness of
-# robotstxt-cpp, PRD §7 slice C5) and to each robotstxtr Google path, then
-# compares the decision and the matched line.
+# 22b355ff855419e6a3ff8ff09c0ad7fdb17116f9) and to each robotstxtr Google
+# path, then compares the decision and the matched line.
 #
 # Usage:
+#   ROBOTSTXTR_GOOGLE_UPSTREAM=<dir> sh dev/google-fidelity/build-reference.sh
 #   Rscript dev/google-fidelity/differential.R <google_ref binary> [out_dir]
 #
-# The binary reads a manifest of TAB-separated `<body_file> <agent> <url>`
-# lines and writes `<allowed 0|1> <matching_line> <ever_seen 0|1>` per line.
+# where <google_ref binary> is the path build-reference.sh prints (by default
+# tmp/google-fidelity/google-ref, gitignored).
+#
+# build-reference.sh compiles dev/google-fidelity/reference.cc against the
+# robots.cc and robots.h of a google/robotstxt checkout you provision at that
+# SHA (checked by SHA-256; nothing is downloaded, PRD §7 slice C5), with Abseil
+# from `pkg-config absl_strings` or ABSL_PREFIX; its header has the details.
+# Called as `<binary> <manifest> <out>`, the binary reads a manifest of
+# TAB-separated `<body_file> <agent> <url>` lines and writes
+# `<allowed 0|1> <matching_line> <ever_seen 0|1>` per line to <out>.
 # `ever_seen` (the matcher's ever_seen_specific_agent()) is not read:
 # robotstxtr exposes no equivalent on any path, so there is nothing to
 # compare it with. `out_dir` (default: a fresh temporary directory) receives
