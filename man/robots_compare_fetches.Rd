@@ -78,7 +78,8 @@ the budget cut, \code{"input_invalid"} for an invalid URL, \code{NA} when not
 requested), \code{http_status}, \code{effective_url}, \code{redirect_count},
 \code{terminal_redirect_reason}, \code{safety_block_reason},
 \code{transport_error_kind}, \code{error_message}, \code{body_label}, \code{body_size},
-\code{body_truncated}, \code{observed_bytes}, \code{content_type}, \code{content_flag}, the
+\code{body_truncated}, \code{observed_bytes}, \code{content_type}, \code{content_flag},
+\code{content_encoding}, the
 seven raw cache columns \code{cache_control}, \code{age}, \code{date}, \code{expires},
 \code{etag}, \code{last_modified} and \code{vary}, and the list columns \code{redirect_hops}
 and \code{body} (the exact stored bytes, \code{NULL} when none).
@@ -160,7 +161,8 @@ label of its own. \code{body_label} is \code{NA} when there is no stored body.
 completed observations, those with \code{observation_status} \code{"response"},
 \code{"acquisition_failure"} or \code{"refused"}. \code{NA} counts as a value. The seven
 cache columns are kept on \code{observations} but not compared: \code{date} and
-\code{age} differ from one request to the next by nature.
+\code{age} differ from one request to the next by nature. Nor is
+\code{content_encoding}, also kept.
 
 \code{observation_status} keeps a transient failure apart from a content
 difference: \code{"response"} (the server answered, whatever its status,

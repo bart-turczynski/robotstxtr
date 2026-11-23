@@ -116,6 +116,15 @@
 #' The flag comes from the body alone, never from `content_type`, and changes
 #' nothing: the body is matched as it is either way.
 #'
+#' Each source row also keeps the final response's `Content-Encoding` field
+#' value as `content_encoding`, exactly as received (`NA` when absent or when
+#' there is no final response). libcurl decodes a `gzip` or `deflate` body it
+#' asked for, so `content_encoding = "gzip"` does not mean the stored body is
+#' compressed: `body` holds the decoded bytes. A body still compressed, as when
+#' a server compresses a body the fetch did not ask to be compressed, is
+#' stored as received; [robots_validate_url()] reports it as
+#' `compressed_body`.
+#'
 #' To help explain why a robots.txt change seems not to have been picked up,
 #' each source row also keeps seven cache fields of the final response,
 #' unparsed and exactly as \pkg{ssrfr} delivers them: `cache_control`
@@ -241,7 +250,8 @@
 #'   row per fetched source, with the fetched body stored once as a raw vector
 #'   in `robots$body`, and the final response's `Retry-After` as the character
 #'   `retry_after` and the double `retry_after_seconds`, its `Content-Type` as
-#'   the character `content_type`, the character `content_flag`, its cache
+#'   the character `content_type`, the character `content_flag`, its
+#'   `Content-Encoding` as the character `content_encoding`, its cache
 #'   fields as the character `cache_control`, `age`, `date`, `expires`,
 #'   `etag`, `last_modified` and `vary`, the logical `body_truncated`, the
 #'   character `terminal_redirect_reason` and `safety_block_reason`, and the
@@ -486,6 +496,10 @@ robots_source_frame <- function(source_ids, source_type, robots_urls,
     ),
     content_type = vapply(results, function(r) r$content_type, character(1L)),
     content_flag = vapply(results, function(r) r$content_flag, character(1L)),
+    # The final response's Content-Encoding, raw (ROBO-rozvglkd).
+    content_encoding = vapply(
+      results, function(r) r$content_encoding, character(1L)
+    ),
     # The final response's cache fields, raw (ROBO-zleohwyz).
     cache_header_frame(results),
     body_truncated = vapply(

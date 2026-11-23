@@ -76,7 +76,8 @@ components, \code{map} (one row per input URL, in input order) and \code{robots}
 row per fetched source, with the fetched body stored once as a raw vector
 in \code{robots$body}, and the final response's \code{Retry-After} as the character
 \code{retry_after} and the double \code{retry_after_seconds}, its \code{Content-Type} as
-the character \code{content_type}, the character \code{content_flag}, its cache
+the character \code{content_type}, the character \code{content_flag}, its
+\code{Content-Encoding} as the character \code{content_encoding}, its cache
 fields as the character \code{cache_control}, \code{age}, \code{date}, \code{expires},
 \code{etag}, \code{last_modified} and \code{vary}, the logical \code{body_truncated}, the
 character \code{terminal_redirect_reason} and \code{safety_block_reason}, and the
@@ -205,6 +206,15 @@ anywhere), \code{"xml"} (any other body starting with \code{<}, such as a feed o
 XML error), \code{"json"} (the body starts with a JSON object or array), or \code{NA}.
 The flag comes from the body alone, never from \code{content_type}, and changes
 nothing: the body is matched as it is either way.
+
+Each source row also keeps the final response's \code{Content-Encoding} field
+value as \code{content_encoding}, exactly as received (\code{NA} when absent or when
+there is no final response). libcurl decodes a \code{gzip} or \code{deflate} body it
+asked for, so \code{content_encoding = "gzip"} does not mean the stored body is
+compressed: \code{body} holds the decoded bytes. A body still compressed, as when
+a server compresses a body the fetch did not ask to be compressed, is
+stored as received; \code{\link[=robots_validate_url]{robots_validate_url()}} reports it as
+\code{compressed_body}.
 
 To help explain why a robots.txt change seems not to have been picked up,
 each source row also keeps seven cache fields of the final response,

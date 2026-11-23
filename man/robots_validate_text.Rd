@@ -69,6 +69,20 @@ follows the body's own rows.
 
 \tabular{lll}{
 \strong{Code} \tab \strong{Severity} \tab \strong{Meaning} \cr
+\code{compressed_body} \tab error \tab
+The body starts with a compression signature: gzip (\code{1f 8b}),
+Zstandard (\code{28 b5 2f fd}), or a zlib header (\code{78} then
+\code{01}, \code{5e}, \code{9c} or \code{da}) on a body that is not
+well-formed UTF-8, so text that starts \code{x^} is not flagged. Its
+bytes are not read as lines: this row replaces every line, group and
+rule check, \code{no_rules} included, and only \code{body_truncated},
+\code{acquisition_http_other_2xx} and the \code{redirect_} and
+\code{content_type_} rows (but \code{content_type_charset_conflict})
+can join it. In \code{documents}, the byte facts (\code{byte_size},
+\code{line_count}, \code{encoding}, \code{has_bom},
+\code{nul_byte_count}, \code{final_newline}) are kept, and every
+directive count, \code{active_line_count} and \code{malformed_lines}
+are 0. Decode the body first; the body is not decompressed. \cr
 \code{byte_order_mark} \tab warning \tab
 The document starts with a UTF-8 byte-order mark; the parser skips it.
 \cr

@@ -66,7 +66,8 @@
 #' completed observations, those with `observation_status` `"response"`,
 #' `"acquisition_failure"` or `"refused"`. `NA` counts as a value. The seven
 #' cache columns are kept on `observations` but not compared: `date` and
-#' `age` differ from one request to the next by nature.
+#' `age` differ from one request to the next by nature. Nor is
+#' `content_encoding`, also kept.
 #'
 #' `observation_status` keeps a transient failure apart from a content
 #' difference: `"response"` (the server answered, whatever its status,
@@ -110,7 +111,8 @@
 #'   requested), `http_status`, `effective_url`, `redirect_count`,
 #'   `terminal_redirect_reason`, `safety_block_reason`,
 #'   `transport_error_kind`, `error_message`, `body_label`, `body_size`,
-#'   `body_truncated`, `observed_bytes`, `content_type`, `content_flag`, the
+#'   `body_truncated`, `observed_bytes`, `content_type`, `content_flag`,
+#'   `content_encoding`, the
 #'   seven raw cache columns `cache_control`, `age`, `date`, `expires`,
 #'   `etag`, `last_modified` and `vary`, and the list columns `redirect_hops`
 #'   and `body` (the exact stored bytes, `NULL` when none).
@@ -291,7 +293,9 @@ compare_body_columns <- function(observed) {
     body_truncated = truncated,
     observed_bytes = compare_field(observed, "observed_bytes", NA_integer_),
     content_type = compare_field(observed, "content_type", NA_character_),
-    content_flag = compare_field(observed, "content_flag", NA_character_)
+    content_flag = compare_field(observed, "content_flag", NA_character_),
+    content_encoding = compare_field(observed, "content_encoding",
+                                     NA_character_)
   )
 }
 
