@@ -57,7 +57,7 @@ test_that("study file A: a Sitemap between the lines warns on bingbot", {
   expect_identical(d$line[d$code == "wildcard_disallows_not_inherited"], 7L)
 })
 
-test_that("study file B: a Crawl-delay before a full block names both engines", {
+test_that("study file B: Crawl-delay before a full block names both engines", {
   r <- uaj_rows(uaj_file_b, "user_agent_joined_across_directive")
   expect_identical(r$line, 4L)
   expect_identical(r$message, paste0(
