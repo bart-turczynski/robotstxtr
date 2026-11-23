@@ -784,8 +784,11 @@ dropped; order and exact repeats are ignored (an exact repeat is
 and \code{~}, stay apart, since Yandex compares the pattern as written. The
 suggestion is withheld for a \code{*} group, a policy-token, empty or
 token-less User-agent line, a line a \verb{user_agent_joined_*} or
-\code{user_agent_cut} row reports, a line a NUL cuts, a missing colon, a
-User-agent typo or a line past the parser's buffer, and for a group whose
+\code{user_agent_cut} row reports, a line a NUL cuts, a missing colon, a line
+whose key is anything other than \code{User-agent} in any case (a typo, or a
+longer key Google reads by its prefix), a User-agent line on line 1
+behind a byte-order mark, full or partial (Bing does not read it as
+User-agent) or a line past the parser's buffer, and for a group whose
 lines up to the next group hold anything but User-agent, Allow, Disallow,
 blank and comment lines, or a Sitemap after its last rule: Yandex ends a
 group at \code{Crawl-delay}, and \code{Clean-param}, \code{Host} and unknown lines may be

@@ -175,8 +175,25 @@ sr_fixtures <- list(
     body = sr_two("Disallow: /x", paste0("Disallow: /x", strrep(" ", 17000L))),
     today = "line_too_long"
   ),
-  # Line 1's byte-order mark is skipped, whole or in part, as the parser
-  # skips it.
+  # Indented User-agent lines, and blanks before the User-agent colon, are
+  # read alike everywhere.
+  agent_indent = list(
+    body = paste0(" User-agent: Foo\nDisallow: /x\n\n",
+                  sr_group("Bar", "Disallow: /x")),
+    today = character(0)
+  ),
+  agent_space_colon = list(
+    body = paste0(sr_group("Foo", "Disallow: /x"),
+                  "\nUser-agent : Bar\nDisallow: /x\n"),
+    today = character(0)
+  ),
+  agent_tab_colon = list(
+    body = paste0(sr_group("Foo", "Disallow: /x"),
+                  "\nUser-agent\t: Bar\nDisallow: /x\n"),
+    today = character(0)
+  ),
+  # The parser skips line 1's byte-order mark, whole or in part, but Bing
+  # does not read that line as User-agent, so its group takes no part.
   bom = list(
     body = c(as.raw(c(0xef, 0xbb, 0xbf)),
              charToRaw(sr_two("Disallow: /x", "Disallow: /x"))),
@@ -220,8 +237,9 @@ sr_want <- list(
   repeated_elsewhere = c("user_agent_repeated_group", sr_code),
   overlap = c("user_agent_repeated_group", sr_code),
   key_blank = sr_code,
-  bom = c("byte_order_mark", sr_code),
-  partial_bom = c("invalid_utf8", sr_code),
+  agent_indent = sr_code,
+  agent_space_colon = sr_code,
+  agent_tab_colon = sr_code,
   two_classes = c(sr_code, sr_code)
 )
 
@@ -306,13 +324,29 @@ test_that("ROBO-rdxgnqhw: rows follow their first lines", {
                fixed = TRUE)
 })
 
-test_that("ROBO-rdxgnqhw: a byte-order mark leaves the first group in", {
+test_that("ROBO-rdxgnqhw: a byte-order mark keeps the first group out", {
   # The fixture loop above pins `bom`, `partial_bom` and `latin1_key` in the
   # session's locale, without an error; the checks run UTF-8, C and tr_TR.
-  d <- robots_validate_text(sr_fixtures$bom$body)$diagnostics
-  expect_identical(d$line[d$code == sr_code], 1L)
-  expect_match(d$message[d$code == sr_code], "the group at line 4 give",
-               fixed = TRUE)
+  # Bing reads bingbot's line 1 behind the mark as no User-agent line, so
+  # bingbot and adidxbot do not get the same rules there.
+  tail <- paste(sr_group("bingbot", "Disallow: /x"),
+                sr_group("adidxbot", "Disallow: /x"), sep = "\n")
+  for (mark in list(as.raw(0xef), as.raw(c(0xef, 0xbb)),
+                    as.raw(c(0xef, 0xbb, 0xbf)))) {
+    d <- robots_validate_text(c(mark, charToRaw(tail)))$diagnostics
+    expect_false(sr_code %in% d$code)
+    base <- if (length(mark) == 3L) "byte_order_mark" else "invalid_utf8"
+    expect_true(base %in% d$code)
+  }
+  # Without the mark the same body gets the row.
+  expect_identical(sr_codes(tail), sr_code)
+})
+
+test_that("ROBO-rdxgnqhw: the stacked rules drop blanks before the colon", {
+  d <- sr_diag(sr_two("Disallow : /x", "Disallow: /x"))
+  expect_match(d$message[d$code == sr_code],
+               paste0("lines: `User-agent: Foo` and `User-agent: Bar`, then ",
+                      "`Disallow: /x`. This is"), fixed = TRUE)
 })
 
 test_that("ROBO-rdxgnqhw: thousands of equal groups give one bounded row", {

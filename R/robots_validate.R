@@ -775,8 +775,11 @@ validation_unsupported <- c(
 #' and `~`, stay apart, since Yandex compares the pattern as written. The
 #' suggestion is withheld for a `*` group, a policy-token, empty or
 #' token-less User-agent line, a line a `user_agent_joined_*` or
-#' `user_agent_cut` row reports, a line a NUL cuts, a missing colon, a
-#' User-agent typo or a line past the parser's buffer, and for a group whose
+#' `user_agent_cut` row reports, a line a NUL cuts, a missing colon, a line
+#' whose key is anything other than `User-agent` in any case (a typo, or a
+#' longer key Google reads by its prefix), a User-agent line on line 1
+#' behind a byte-order mark, full or partial (Bing does not read it as
+#' User-agent) or a line past the parser's buffer, and for a group whose
 #' lines up to the next group hold anything but User-agent, Allow, Disallow,
 #' blank and comment lines, or a Sitemap after its last rule: Yandex ends a
 #' group at `Crawl-delay`, and `Clean-param`, `Host` and unknown lines may be
@@ -3583,8 +3586,9 @@ user_agent_duplicate_in_group_diagnostics <- function(groups,
 # - no line of it is in `skip` (a joined or cut User-agent line, or a line
 #   holding a NUL Bing and Yandex read past), no User-agent line has a key
 #   other than `User-agent` in any case (a typo or a longer key Google reads
-#   by its prefix; line 1's byte-order mark, full or partial, skipped as the
-#   parser skips it), and none misses its colon or overruns the line buffer;
+#   by its prefix), none is line 1 behind a byte-order mark, full or partial
+#   (Bing does not read it as User-agent), and none misses its colon or
+#   overruns the line buffer;
 # - from its first User-agent line to the next group, every line is a
 #   User-agent, Allow, Disallow, blank or comment line, or a Sitemap after
 #   its last rule: a Crawl-delay, Clean-param, Host or unknown line may be
@@ -3616,7 +3620,7 @@ same_rules_group_diagnostics <- function(groups, parsed, written, raw_lines,
   # also keeps every typo out.
   bad_agent <- ai_training_kind(agents)$family |
     (!agents$global & !nzchar(agents$key)) |
-    !same_rules_agent_key(raw_lines[agents$line], agents$line)
+    !same_rules_agent_key(raw_lines[agents$line])
   ok[pos_agent[bad_agent]] <- FALSE
   last_rule <- integer(nrow(info))
   last_rule[pos_rule] <- rules$line
@@ -3674,29 +3678,23 @@ same_rules_group_diagnostics <- function(groups, parsed, written, raw_lines,
                    "user-agent", unname(message))
 }
 
-# Whether each User-agent line (`raw_lines`, file lines `lines`) has the key
-# `User-agent`, in any case, as slash_written_keys() reads a key, past the
-# byte-order mark the parser skips on line 1, full or partial. The key is
-# folded on bytes, so a byte not valid in the session's encoding is never
-# translated.
-same_rules_agent_key <- function(raw_lines, lines) {
+# Whether each User-agent line (`raw_lines`) has the key `User-agent`, in
+# any case, as slash_written_keys() reads a key. The key is read from the
+# line's first byte: line 1 behind a byte-order mark, full (EF BB BF) or
+# partial (EF, EF BB), starts at 0xEF and never has it. The parser skips the
+# mark, but Bing does not read that line as User-agent
+# (design/backend-evidence-inventory.tsv, ed-02-bing), so its group's
+# crawlers do not get the same rules there. The key is folded on bytes, so
+# a byte not valid in the session's encoding is never translated.
+same_rules_agent_key <- function(raw_lines) {
   want <- charToRaw("user-agent")
   stop_at <- as.raw(c(0x3a, 0x20, 0x09, 0x00))
-  vapply(seq_along(raw_lines), function(i) {
-    bytes <- raw_lines[[i]]
-    if (lines[[i]] == 1L) {
-      skip <- 0L
-      while (skip < min(3L, length(bytes)) &&
-               bytes[[skip + 1L]] == validation_bom[[skip + 1L]]) {
-        skip <- skip + 1L
-      }
-      bytes <- slash_drop(bytes, skip)
-    }
+  vapply(raw_lines, function(bytes) {
     lead <- match(TRUE, !bytes %in% as.raw(c(0x20, 0x09)), nomatch = 1L)
     bytes <- slash_drop(bytes, lead - 1L)
     end <- match(TRUE, bytes %in% stop_at, nomatch = length(bytes) + 1L)
     identical(ascii_lower_raw_v1(bytes[seq_len(end - 1L)]), want)
-  }, logical(1L))
+  }, logical(1L), USE.NAMES = FALSE)
 }
 
 # Each rule as written (`key:value`, slash_written_rules()) as the member of
@@ -3708,6 +3706,9 @@ same_rules_members <- function(written) {
   if (length(written) == 0L) {
     return(character())
   }
+  # Every element is unmarked (slash_written_rules() builds each with
+  # rawToChar()), so pasting them re-encodes nothing and charToRaw() keeps
+  # each rule's bytes at the offsets `size` gives.
   size <- nchar(written, type = "bytes")
   bytes <- charToRaw(paste(written, collapse = ""))
   id <- rep.int(seq_along(written), size)
