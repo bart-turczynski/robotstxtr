@@ -268,7 +268,7 @@ test_that("ROBO-jnnnkyat: the row's length is bounded", {
   expect_lt(nchar(msg), 800L)
   expect_match(msg, "and 196 more", fixed = TRUE)
   # A non-ASCII value shows ASCII-safe.
-  wide <- paste0("User-agent: *\nDisallow: /", strrep("é", 30L), "?a=\n")
+  wide <- paste0("User-agent: *\nDisallow: /", strrep(intToUtf8(233L), 30L), "?a=\n")
   d <- qi_diag(wide)
   msg <- d$message[d$code == qi_code]
   expect_false(grepl("[^ -~]", msg, useBytes = TRUE))
