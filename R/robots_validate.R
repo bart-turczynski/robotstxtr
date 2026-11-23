@@ -442,11 +442,26 @@ validation_unsupported <- c(
 #'     most, then a count. Past a fixed amount of work, as for
 #'     \code{rule_slash_split}, rules get no row and
 #'     \code{rule_check_stopped} says so. \cr
+#'   \code{rule_prefix_sibling} \tab info \tab
+#'     A literal rule with no trailing \code{/} or \code{$}
+#'     (\code{Disallow: /feed}) also matches a longer path the same
+#'     crawlers' rules list separately with the same type
+#'     (\code{Disallow: /feeds}), which goes on from it without a
+#'     \code{/}. Reported only when, with that line left out, the shorter
+#'     rule decides its path, under every rule the crawlers have. The
+#'     message names \code{P$} together with \code{P/} as the narrower
+#'     spelling (either one alone drops paths \code{P} matches) and calls
+#'     neither rule wrong. One row per set of crawlers of the shorter
+#'     rule's group, on its line, listing five pairs at most, then a count;
+#'     a sibling listed for fewer crawlers names them. Past a
+#'     fixed amount of work, as for \code{rule_slash_split}, rules get no
+#'     row and \code{rule_check_stopped} says so. \cr
 #'   \code{rule_check_stopped} \tab info \tab
 #'     The file is too large for \code{rule_slash_pair},
 #'     \code{rule_slash_split}, \code{rule_end_anchor_query},
-#'     \code{allow_reopens_through_query} or
-#'     \code{rule_render_resource_blocked} to check
+#'     \code{allow_reopens_through_query},
+#'     \code{rule_render_resource_blocked} or
+#'     \code{rule_prefix_sibling} to check
 #'     every candidate quickly, so the check
 #'     read only the first ones, in line order. The message gives the counts
 #'     found, checked and skipped and names the earliest skipped rule; the
@@ -974,12 +989,33 @@ validation_unsupported <- c(
 #' cut at `max_bytes` is not checked, and a
 #' `User-agent: __usage_ai-training` group gets no row.
 #'
+#' `rule_prefix_sibling` reads a literal rule `P`, as the slash checks do,
+#' that does not end in `/`, and another rule of the same type, `M`, also a
+#' literal, whose value goes on from `P` with a byte other than `/`
+#' (`/feed` and `/feeds`, `/login` and `/login.php`). Every crawler `M`'s
+#' group names must have both. Pairs form on the whole User-agent value
+#' merge only: two groups with the same value count as one, two naming
+#' different crawlers give none, and a pair that only Google's cut merge
+#' joins (`Foo/1.0` beside `Foo`) gets no row; its `user_agent_cut` row
+#' covers it. `P` is the longest such rule; a sibling
+#' that goes on with `/` (`/feed/rss`), one holding `*`, `$`, `?` or `%`,
+#' and a pair of opposite type (`Disallow: /search` beside
+#' `Allow: /searchx`) are not read. Google's matcher reads `M`'s path with
+#' `M` left out, over every rule of the crawler's merged groups, on the
+#' whole-value merge and on Google's merge: `P`, or a rule of the same type
+#' and value in another of the merged groups, must decide it, so an Allow
+#' that would take over (`Allow: /feeds` beside the pair) silences the row.
+#' A later repeat of `M` is not named. The check reads its candidates in
+#' line order within a fixed amount of work, as the slash checks do. A body
+#' cut at `max_bytes` is not checked, and a
+#' `User-agent: __usage_ai-training` group gets no row.
+#'
 #' On a document holding a NUL byte, `wildcard_rules_not_inherited`,
 #' `disallow_tied_by_allow`, `duplicate_rule`,
 #' `rule_query_parameter_position`, `rule_query_crawl_not_index`,
 #' `rule_slash_pair`, `rule_slash_split`,
 #' `rule_end_anchor_query`, `allow_reopens_through_query`,
-#' `rule_render_resource_blocked` and the
+#' `rule_render_resource_blocked`, `rule_prefix_sibling` and the
 #' AI-training codes follow Google's
 #' reading: the parser and Google's matcher end a line at its
 #' first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
@@ -2121,6 +2157,24 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       add_diagnostic(
         NA_integer_, "info", "rule_check_stopped", NA_character_,
         slash_stop_message("render_resource", attr(found, "stopped"))
+      )
+    }
+    # A literal rule whose path the same crawlers' rules also list as a
+    # sibling it matches, with the same type (ROBO-otomgbge). A later rule
+    # could decide the sibling's path, so a cut body is skipped too.
+    found <- prefix_sibling_diagnostics(groups, written = written)
+    if (nrow(found) > 0L) {
+      add_chunk(
+        found$line, "info", "rule_prefix_sibling", found$directive,
+        vapply(raw_lines[found$line], render_validation_line, "",
+               USE.NAMES = FALSE),
+        paste0(found$message, nul_reading)
+      )
+    }
+    if (!is.null(attr(found, "stopped"))) {
+      add_diagnostic(
+        NA_integer_, "info", "rule_check_stopped", NA_character_,
+        slash_stop_message("prefix_sibling", attr(found, "stopped"))
       )
     }
   }
@@ -5139,8 +5193,9 @@ slash_stop <- function(rules, at, checked) {
 
 # The rule_check_stopped row's text, for the split check (`kind`
 # "split"), the pair check ("pair"), the end-anchor check ("end_anchor"),
-# the reopen check ("allow_reopen") or the render-resource check
-# ("render_resource"), in plain words with the file's own counts and its
+# the reopen check ("allow_reopen"), the render-resource check
+# ("render_resource") or the prefix-sibling check ("prefix_sibling"), in
+# plain words with the file's own counts and its
 # earliest skipped value.
 slash_stop_message <- function(kind, stop) {
   if (kind == "end_anchor") {
@@ -5150,6 +5205,10 @@ slash_stop_message <- function(kind, stop) {
   if (kind == "render_resource") {
     return(paste(render_resource_stop_intro(stop),
                  slash_stop_counts(stop, "have the same problem")))
+  }
+  if (kind == "prefix_sibling") {
+    return(paste(prefix_sibling_stop_intro(stop),
+                 slash_stop_counts(stop, "be matched that way")))
   }
   if (kind == "allow_reopen") {
     return(paste(reopen_stop_intro(stop),
@@ -6979,6 +7038,332 @@ render_resource_stop_intro <- function(stop) {
     "This file has %s (.js, .css, .json and the like), such as '%s'. For ",
     "each one, the validator checks whether the rule blocks a file that a ",
     "page may need to show its content."
+  ), rules, query_parameter_cap(stop$value, 40L))
+}
+
+# A literal rule `P` with no trailing `/` or `$` also matches every path
+# that starts with it (RFC 9309 section 2.2.2): `Disallow: /feed` matches
+# `/feeds` too (ROBO-otomgbge). When the same crawlers' rules also list such
+# a sibling `M` with the same type, the author may have read `P` as exact,
+# and the row notes that `P` already matches it. `P` is a literal
+# (slash_candidates()) not ending in `/`; `M` is a literal too, longer, led
+# by `P`, and the byte after `P` is not `/` (a subpath is what `P/` names).
+# For each `M`, `P` is the longest such rule of its type in each crawler
+# class of `M`'s group (whole-value merge), the same rule in every class.
+# It is reported only when, for every class `M`'s group names, merged on the
+# whole User-agent value and on Google's token, Google's matcher reads `M`'s
+# path with `M` left out (every rule of its type and value flagged empty, as
+# render_resource_reads() does) and line `P`, or a rule of its type and
+# value in a group the merge joins, decides it: so an Allow that
+# would take over (`Allow: /feeds` beside the pair, `Allow: /fe*sx` beside
+# `/feed` and `/feedsx`) silences it, and so does a longer rule of the same
+# type. A later repeat of `M` in the class is not reported. Pairs of
+# opposite type are not looked at. The reads go in passes, so that no rule
+# left out in a pass is a prefix of another one's path
+# (prefix_sibling_passes()). The work shares `budget` (slash_budget()):
+# first the lookup of `P`, then the passes, each also costing the file's
+# rules once; candidates count as checked in line order up to the first one
+# whose reading did not finish, and the stop counts say so. A cut body is
+# not checked: a later rule could decide a path. One row per set of crawler
+# classes of `P`'s group (prefix_sibling_rows()), on the first `P` line,
+# naming five pairs at most, then a count. Returns slash_rows(); when the
+# budget cut candidates, its "stopped" attribute holds slash_stop()'s
+# counts.
+prefix_sibling_diagnostics <- function(groups, written = NULL,
+                                       budget = NULL) {
+  groups <- slash_groups(groups)
+  rules <- groups$rules
+  cand <- prefix_sibling_candidates(rules)
+  at <- cand$at
+  if (length(at) == 0L) {
+    return(slash_rows(character()))
+  }
+  if (is.null(budget)) {
+    budget <- slash_budget(rules, at)
+  }
+  look <- prefix_sibling_lookup(groups, cand, budget)
+  budget <- budget - look$spent
+  finished <- seq_along(at) <= look$n & is.na(look$stem)
+  ok <- logical(length(at))
+  todo <- which(!is.na(look$stem))
+  pass <- prefix_sibling_passes(rules, at)
+  left_out <- paste(rules$type, rules$value)
+  # The reading names a deciding rule by its line: each rule reads as the
+  # first line of its type and value, so a repeat of `P` in another group
+  # that Google's cut merge joins, which decides as `P` does, confirms it.
+  same <- groups
+  same$rules$line <- rules$line[match(left_out, left_out)]
+  for (k in split(todo, factor(pass[todo], unique(pass[todo])))) {
+    # A pass builds its expanders and flags over the file's rules once.
+    budget <- budget - nrow(rules)
+    if (budget < 0) {
+      break
+    }
+    removed <- same
+    removed$rules$empty[left_out %in% left_out[at[k]]] <- TRUE
+    value <- rules$value[at[k]]
+    read <- witness_pair_readings(removed, look$stem[k], value, value, "long",
+                                  written, budget, differ = FALSE,
+                                  group = rules$group[at[k]], share = TRUE)
+    budget <- budget - read$spent
+    done <- seq_along(k) <= read$checked
+    finished[k[done]] <- TRUE
+    ok[k] <- done & read$ok
+  }
+  checked <- match(FALSE, finished, nomatch = length(at) + 1L) - 1L
+  hit <- which(ok & seq_along(at) <= checked)
+  out <- prefix_sibling_rows(groups, look$stem[hit], at[hit])
+  attr(out, "stopped") <- slash_stop(rules, at, checked)
+  out
+}
+
+# The candidates of prefix_sibling_diagnostics(): `at`, the literal rules
+# (slash_candidates()) some literal rule of the same type not ending in `/`
+# leads, anywhere in the file, in line order; `lit`, every literal rule;
+# `key`, each literal's type and value; `chain`, the prefix chain of the
+# distinct keys `ukey` (prefix_sibling_chain(), only the `/`-less ones
+# pushed); and `top`, each of `at`'s longest such prefix, indexing `ukey`.
+prefix_sibling_candidates <- function(rules) {
+  lit <- slash_candidates(rules)
+  key <- paste0(rules$type[lit], "\t", rules$value[lit])
+  ukey <- unique(key)
+  stem <- !endsWith(ukey, "/")
+  chain <- prefix_sibling_chain(ukey, stem)
+  top <- chain$top[match(key, ukey)]
+  list(at = lit[!is.na(top)], lit = lit, key = key, ukey = ukey,
+       chain = chain, top = top[!is.na(top)], stem = stem)
+}
+
+# For distinct strings `key`, the ones in `push` form chains of prefixes:
+# `top`, for each string, the longest pushed string that is a proper prefix
+# of it (an index of `key`, NA when none), and `depth`, how many pushed
+# strings are. One scan in byte order with a stack, each string pushed and
+# popped once: the strings a string leads sit right after it in that order,
+# so a stack top that does not lead the current string leads no later one.
+prefix_sibling_chain <- function(key, push) {
+  n <- length(key)
+  top <- rep(NA_integer_, n)
+  depth <- integer(n)
+  stack <- integer(n)
+  h <- 0L
+  for (i in order(key, method = "radix")) {
+    while (h > 0L && !startsWith(key[[i]], key[[stack[[h]]]])) {
+      h <- h - 1L
+    }
+    if (h > 0L) {
+      top[[i]] <- stack[[h]]
+      depth[[i]] <- h
+    }
+    if (push[[i]]) {
+      h <- h + 1L
+      stack[[h]] <- i
+    }
+  }
+  list(top = top, depth = depth)
+}
+
+# Each candidate's `P` (prefix_sibling_diagnostics()), as list(stem, n,
+# spent): `stem`, an index of `groups$rules` (NA when the candidate has
+# none, or was not looked up), and `n`, the leading candidates looked up
+# within `budget`, in line order. It walks each (candidate, class) row's
+# prefix chain from the longest prefix down and takes the first held by a
+# rule in that class, the earliest such line. It costs the (rule, class)
+# rows of the rules that lead a candidate, then one unit per row per step
+# of the walk, so a long chain of prefixes is paid for as it is walked.
+prefix_sibling_lookup <- function(groups, cand, budget) {
+  rules <- groups$rules
+  at <- cand$at
+  out <- list(stem = rep(NA_integer_, length(at)), n = 0L, spent = 0)
+  expand <- validation_token_expander(groups, groups$agents$uncut)
+  leads <- cand$stem & seq_along(cand$ukey) %in% cand$chain$top
+  p_at <- cand$lit[leads[match(cand$key, cand$ukey)]]
+  p_cost <- sum(as.numeric(slash_class_counts(expand, rules$group[p_at])))
+  # Only the candidates whose classes fit are expanded; each step of the
+  # walk below is counted as it is taken.
+  n <- sum(p_cost + cumsum(slash_class_counts(expand, rules$group[at])) <=
+             budget)
+  if (n == 0L) {
+    out$spent <- min(p_cost, budget)
+    return(out)
+  }
+  spent <- p_cost
+  p_rows <- expand(rules$group[p_at])
+  p_key <- paste(p_rows$class, cand$key[match(p_at, cand$lit)][p_rows$owner],
+                 sep = "\n")
+  p_rule <- p_at[p_rows$owner]
+  rows <- expand(rules$group[at[seq_len(n)]])
+  found <- rep(NA_integer_, length(rows$owner))
+  cur <- cand$top[rows$owner]
+  repeat {
+    todo <- which(is.na(found) & !is.na(cur) & rows$owner <= n)
+    fits <- spent + seq_along(todo) <= budget
+    if (!all(fits)) {
+      n <- rows$owner[todo[[match(FALSE, fits)]]] - 1L
+      todo <- todo[rows$owner[todo] <= n]
+    }
+    if (length(todo) == 0L) {
+      break
+    }
+    spent <- spent + length(todo)
+    k <- match(paste(rows$class[todo], cand$ukey[cur[todo]], sep = "\n"),
+               p_key)
+    found[todo] <- p_rule[k]
+    cur[todo[is.na(k)]] <- cand$chain$top[cur[todo[is.na(k)]]]
+  }
+  out$n <- n
+  out$spent <- spent
+  if (n == 0L) {
+    return(out)
+  }
+  keep <- rows$owner <= n
+  rows <- list(owner = rows$owner[keep], class = rows$class[keep])
+  found <- found[keep]
+  taken <- at[seq_len(n)]
+  # One `P` for every class, a candidate first of its type and value in
+  # each, and the byte after `P` not `/`.
+  first <- found[match(seq_len(n), rows$owner)]
+  same <- !is.na(found) & !is.na(first[rows$owner]) &
+    found == first[rows$owner] & slash_first(rules, taken, rows)
+  good <- slash_every(rows$owner, same)
+  size <- nchar(rules$value[first[good]], "bytes")
+  good <- good[substr(rules$value[taken[good]], size + 1L, size + 1L) != "/"]
+  out$stem[good] <- first[good]
+  out
+}
+
+# Each candidate's pass for prefix_sibling_diagnostics(): its value's depth
+# among the candidates' distinct values (how many of them are proper
+# prefixes of it, prefix_sibling_chain()) and its type. In one pass no
+# value is a prefix of another's (a prefix has a smaller depth), so the
+# rules a pass leaves out match none of the other paths it reads.
+prefix_sibling_passes <- function(rules, at) {
+  value <- rules$value[at]
+  distinct <- unique(value)
+  depth <- prefix_sibling_chain(distinct, rep(TRUE, length(distinct)))$depth
+  paste(depth[match(value, distinct)], rules$type[at])
+}
+
+# The rows of prefix_sibling_diagnostics() for the confirmed pairs (`stem`
+# the `P` rules, `sibling` the `M` rules, indexes of `groups$rules`): one
+# per set of crawler classes of `P`'s group (slash_open_sets()), on its
+# first `P` line, listing every sibling of those `P` lines. Where a
+# sibling's group names other crawlers than `P`'s, each sibling names its
+# group's crawlers, so the row's "for the same crawlers" holds pair by
+# pair; otherwise the row ends with `P`'s group's crawlers
+# (slash_crawler_note()).
+prefix_sibling_rows <- function(groups, stem, sibling) {
+  if (length(stem) == 0L) {
+    return(slash_rows(character()))
+  }
+  rules <- groups$rules
+  o <- order(rules$line[stem], rules$line[sibling])
+  stem <- stem[o]
+  sibling <- sibling[o]
+  signature <- slash_open_sets(groups, rules$group[stem])
+  narrow <- signature != slash_open_sets(groups, rules$group[sibling])
+  sets <- split(seq_along(stem), factor(signature, unique(signature)))
+  first <- vapply(sets, `[[`, 0L, 1L)
+  by_set <- vapply(sets, function(k) any(narrow[k]), NA)
+  who <- prefix_sibling_who(groups$agents, rules$group[sibling])
+  text <- vapply(sets, function(k) {
+    prefix_sibling_message(rules$type[stem[k]], rules$value[stem[k]],
+                           rules$line[stem[k]], rules$value[sibling[k]],
+                           rules$line[sibling[k]],
+                           if (any(narrow[k])) who[k] else NULL)
+  }, "", USE.NAMES = FALSE)
+  note <- slash_crawler_note(groups$agents, rules$group[stem[first]])
+  note[by_set] <- ""
+  slash_rows(
+    rules$type[stem[first]], rules$line[stem[first]], paste0(text, note)
+  )
+}
+
+# For each of `group`, the crawlers it names as a list ("'a'", "'a' and
+# 'b'"), five at most, then a count; values the whole-value merge reads as
+# one count once, as first written (slash_crawler_note()).
+prefix_sibling_who <- function(agents, group) {
+  named <- agents$global | nzchar(agents$uncut)
+  id <- paste(agents$group, ifelse(agents$global, "*", agents$uncut),
+              sep = "\n")
+  named <- named & !duplicated(id)
+  by_group <- split(agents$name[named], agents$group[named])
+  wanted <- unique(group)
+  who <- vapply(by_group[as.character(wanted)], function(names) {
+    names <- unique(names)
+    shown <- sprintf("'%s'", ai_training_name(utils::head(names, 5L)))
+    joined_and(shown, length(names) - length(shown))
+  }, "", USE.NAMES = FALSE)
+  who[match(group, wanted)]
+}
+
+# A sibling's value as a row shows it: past `cap` bytes, "..." and its last
+# `cap - 4` bytes. A sibling starts with its `P`, so its tail is what tells
+# the two apart. Values are printable ASCII (slash_candidates()).
+prefix_sibling_tail <- function(x, cap = 40L) {
+  n <- nchar(x, "bytes")
+  long <- n > cap
+  x[long] <- paste0("...", substr(x[long], n[long] - cap + 5L, n[long]))
+  x
+}
+
+# One row's text: each `P` (its type, value and line) and the sibling it
+# matches (value and line, and `who`, the sibling's crawlers, when given),
+# five pairs at most, then a count. `P` is elided past 40 bytes
+# (query_parameter_cap()) and its narrower spellings are that text with
+# `$` and with `/` after it; a sibling keeps its tail
+# (prefix_sibling_tail()), so no two of them print alike. It says what `P`
+# matches and names `P$` together with `P/`, as either one alone stops
+# matching paths `P` matches, calling no rule wrong.
+prefix_sibling_message <- function(type, value, line, sib_value, sib_line,
+                                   who = NULL, cap = 5L) {
+  value <- query_parameter_cap(value, 40L)
+  where <- if (is.null(who)) {
+    sprintf("line %d", sib_line)
+  } else {
+    sprintf("line %d, for %s", sib_line, who)
+  }
+  sib <- sprintf("'%s' (%s)", prefix_sibling_tail(sib_value), where)
+  shown <- utils::head(seq_along(sib), cap)
+  more <- length(sib) - length(shown)
+  rule <- paste0(
+    " A rule with no trailing '/' or '$' matches every path that starts ",
+    "with it (RFC 9309 section 2.2.2)."
+  )
+  if (length(unique(line)) == 1L) {
+    noun <- if (type[[1L]] == "allow") "Allow" else "Disallow"
+    listed <- if (length(sib) == 1L) "which is" else "which are"
+    return(paste0(
+      sprintf("The %s on line %d ('%s') also matches %s, %s listed ",
+              noun, line[[1L]], value[[1L]],
+              joined_and(sib[shown], more), listed),
+      "separately for the same crawlers.", rule,
+      sprintf(paste0(" If '%s' was meant as one path segment, '%s$' ",
+                     "together with '%s/' is the narrower spelling."),
+              value[[1L]], value[[1L]], value[[1L]])
+    ))
+  }
+  pairs <- sprintf("line %d ('%s') matches %s", line[shown], value[shown],
+                   sib[shown])
+  paste0(
+    "Rules for the same crawlers also match paths listed separately: ",
+    joined_and(pairs, more), ".", rule,
+    " If such a rule was meant as one path segment, its narrower spelling ",
+    "is the rule ending in '$' together with the rule ending in '/'."
+  )
+}
+
+# The opening of a stopped prefix-sibling check's rule_check_stopped row:
+# what it looks for, with the file's count and its earliest skipped value.
+prefix_sibling_stop_intro <- function(stop) {
+  rules <- if (stop$found == 1L) {
+    "1 rule whose path starts with a shorter rule of the same type"
+  } else {
+    sprintf("%d rules whose paths start with a shorter rule of the same type",
+            stop$found)
+  }
+  sprintf(paste0(
+    "This file has %s, such as '%s'. For each one, the validator checks ",
+    "whether the shorter rule already matches its path for the same crawlers."
   ), rules, query_parameter_cap(stop$value, 40L))
 }
 

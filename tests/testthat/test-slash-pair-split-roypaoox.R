@@ -1077,10 +1077,12 @@ test_that("ROBO-roypaoox: the split's checked count on each budget branch", {
 test_that("ROBO-roypaoox: a file too large for the checks gets the rows", {
   d <- sp_diag(sp_shape("classes", 250L))
   stop <- d[d$code == "rule_check_stopped", , drop = FALSE]
-  expect_identical(stop$line, c(NA_integer_, NA_integer_))
-  expect_identical(stop$severity, c("info", "info"))
-  expect_identical(stop$directive, c(NA_character_, NA_character_))
-  expect_identical(stop$raw_text, c(NA_character_, NA_character_))
+  # The third row is rule_prefix_sibling's (ROBO-otomgbge): `/d1` also
+  # matches `/d10` and the like.
+  expect_identical(stop$line, rep(NA_integer_, 3L))
+  expect_identical(stop$severity, rep("info", 3L))
+  expect_identical(stop$directive, rep(NA_character_, 3L))
+  expect_identical(stop$raw_text, rep(NA_character_, 3L))
   expect_identical(stop$message, c(
     paste0(
       "This file has 750 rules that may come in pairs like '/d137' and ",
@@ -1095,6 +1097,14 @@ test_that("ROBO-roypaoox: a file too large for the checks gets the rows", {
       "'/d1/' differently. This file is too large to check them all ",
       "quickly, so none of them were checked. All 250 were skipped, and some ",
       "of them may have the same problem."
+    ),
+    paste0(
+      "This file has 732 rules whose paths start with a shorter rule of the ",
+      "same type, such as '/d10'. For each one, the validator checks whether ",
+      "the shorter rule already matches its path for the same crawlers. This ",
+      "file is too large to check them all quickly, so only the first 10 ",
+      "were checked, in line order. The other 722 were skipped, and some of ",
+      "them may be matched that way."
     )
   ))
 })
