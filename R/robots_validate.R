@@ -6233,7 +6233,10 @@ render_resource_candidates <- function(rules) {
 # `$` and the run of `*` before it, which would push the type off the end
 # (`/x.cssx`), then each inner `*` written `filler`, led by `/`
 # (end_anchor_controls()). `/*.css*` gives `/x.css`, `/a.json?v=*` gives
-# `/a.json?v=`.
+# `/a.json?v=`. A bare trailing `?` stays (`/*.js?` gives `/x.js?`): it is a
+# literal byte to Google's matcher, and no `?` comes before the type
+# (render_resource_candidates()), so the path without it holds no `?` and
+# the rule cannot match it.
 render_resource_witness <- function(value, filler = "x") {
   end_anchor_controls(sub("[*]*[$]?$", "", value, useBytes = TRUE), filler)
 }

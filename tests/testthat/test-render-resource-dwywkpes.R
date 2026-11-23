@@ -211,7 +211,13 @@ rr_decisions <- list(
   list(body = "User-agent: %s\nDisallow: /*.js\nAllow: /x.j\n", "/x.js",
        "disallow", list(yandex = "allow")),
   list(body = "User-agent: %s\nDisallow: /x.js\nAllow: /*.js\n", "/x.js",
-       "allow", list(yandex = "disallow"))
+       "allow", list(yandex = "disallow")),
+  # A trailing bare `?` is a literal byte to every matcher: without it the
+  # rule does not match, so the witness keeps it.
+  list(body = "User-agent: %s\nDisallow: /*.js?\n", c("/x.js?", "/x.js"),
+       c("disallow", "allow")),
+  list(body = "User-agent: %s\nDisallow: /a.json?$\n",
+       c("/a.json?", "/a.json"), c("disallow", "allow"))
 )
 
 test_that("ROBO-dwywkpes: every backend decides the witnesses", {
@@ -463,6 +469,15 @@ test_that("ROBO-dwywkpes: a file type inside the query gets no row", {
   }
   expect_identical(rr_message_of("User-agent: Foo\nDisallow: /*.js?*\n"),
                    rr_one(2L, "/*.js?*", "/x.js?"))
+})
+
+test_that("ROBO-dwywkpes: a bare trailing `?` stays in the witness", {
+  # The rule matches only a URL holding the `?` (every backend decides
+  # so above), so dropping it would show a file the rule does not block.
+  expect_identical(rr_message_of("User-agent: Foo\nDisallow: /*.js?\n"),
+                   rr_one(2L, "/*.js?", "/x.js?"))
+  expect_identical(rr_message_of("User-agent: Foo\nDisallow: /a.json?$\n"),
+                   rr_one(2L, "/a.json?$", "/a.json?"))
 })
 
 test_that("ROBO-dwywkpes: a value no URL carries gets no row", {
