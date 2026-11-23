@@ -395,6 +395,7 @@ make_source_result <- function(outcome, http_status, effective_url,
                                retry_after_seconds = NA_real_,
                                content_type = NA_character_,
                                content_flag = NA_character_,
+                               content_encoding = NA_character_,
                                cache_headers = NULL) {
   if (is.null(cache_headers)) {
     cache_headers <- cache_header_na(1L)
@@ -443,7 +444,8 @@ make_source_result <- function(outcome, http_status, effective_url,
     retry_after = retry_after,
     retry_after_seconds = as.double(retry_after_seconds),
     content_type = content_type,
-    content_flag = content_flag
+    content_flag = content_flag,
+    content_encoding = content_encoding
   ), as.list(cache_headers))
 }
 

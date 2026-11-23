@@ -89,7 +89,8 @@ Entries marked *verify* rest on a claim about a third party that still needs a d
   (2026-11-18) answers with `Content-Encoding: gzip` even to `Accept-Encoding: identity`.
   robotstxtr's fetches go through ssrfr, which sends `Accept-Encoding: gzip, deflate` when libcurl
   has zlib, so its fetch is unaffected; a client that asks for plain text
-  and doesn't decode gets 8 KB of compressed bytes instead of a 33 KB robots.txt (ROBO-rozvglkd).
+  and doesn't decode gets 8 KB of compressed bytes instead of a 33 KB robots.txt, which the
+  validator now reports as `compressed_body` (ROBO-rozvglkd).
 - **Naver serves its robots.txt as a binary file.** https://www.naver.com/robots.txt
   (2026-11-18) comes as `application/octet-stream` and writes `Allow : /$` with a space before
   the colon. It blocks everything except the homepage, for every crawler.

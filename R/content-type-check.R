@@ -221,7 +221,15 @@ content_type_parse <- function(value) {
   )
 }
 
-content_type_malformed_message <- function(reason) {
+# The sentence a Content-Type row ends with on a compressed body
+# (ROBO-rozvglkd), in place of one that says how the body was read.
+content_type_compressed_note <- paste(
+  "The body is compressed and was not read as rules by the validator",
+  "(see compressed_body);",
+  "robotstxtr's results do not depend on the header."
+)
+
+content_type_malformed_message <- function(reason, compressed = FALSE) {
   serve <- if (identical(reason, "repeated")) {
     NULL
   } else {
@@ -244,17 +252,37 @@ content_type_malformed_message <- function(reason) {
       "(RFC 9110 section 8.3.1)."
     )
   )
+  read <- if (compressed) {
+    content_type_compressed_note
+  } else {
+    paste(
+      "The body was still validated, and robotstxtr's results do not depend",
+      "on the header."
+    )
+  }
   paste(c(
-    "The response's Content-Type header is malformed.", why, serve,
-    "The body was still validated, and robotstxtr's results do not depend",
-    "on the header."
+    "The response's Content-Type header is malformed.", why, serve, read
   ), collapse = " ")
 }
 
 # The message of a `content_type_charset_unsupported` row for one declared
-# charset, or NULL when the charset is supported.
-content_type_charset_message <- function(charset, ascii_body) {
+# charset, or NULL when the charset is supported. A compressed body's row
+# says only what the header declares: no wording depends on its bytes.
+content_type_charset_message <- function(charset, ascii_body,
+                                         compressed = FALSE) {
   shown <- render_validation_line(charToRaw(charset))
+  if (compressed && !(charset %in% c("utf-8", content_type_us_ascii))) {
+    declared <- if (nzchar(charset)) {
+      sprintf("charset %s", shown)
+    } else {
+      "an empty charset"
+    }
+    return(paste(
+      sprintf("The response's Content-Type declares %s, not", declared),
+      "charset=utf-8, which RFC 9309 section 2.3 asks for.",
+      content_type_compressed_note
+    ))
+  }
   if (!nzchar(charset)) {
     paste(
       "The response's Content-Type declares an empty charset. Declare",
@@ -292,9 +320,11 @@ content_type_charset_message <- function(charset, ascii_body) {
 # establish what a server left out. `encoding_signature` is the document
 # column validate_document_bytes() filled; a UTF-16 or UTF-32 body is
 # `utf16_or_utf32_encoding`'s, so it gets no us-ascii conflict and is not
-# called plain ASCII.
+# called plain ASCII. `compressed` is TRUE for a body that drew
+# compressed_body (ROBO-rozvglkd): its rows say the body was not read, none
+# depends on its bytes, and it gets no us-ascii conflict.
 content_type_diagnostics <- function(source_id, content_type, body,
-                                     encoding_signature) {
+                                     encoding_signature, compressed = FALSE) {
   if (length(content_type) != 1L || is.na(content_type)) {
     return(list())
   }
@@ -308,38 +338,58 @@ content_type_diagnostics <- function(source_id, content_type, body,
   parsed <- content_type_parse(content_type)
   if (!is.na(parsed$reason)) {
     return(list(row(
-      "content_type_malformed", content_type_malformed_message(parsed$reason)
+      "content_type_malformed",
+      content_type_malformed_message(parsed$reason, compressed)
     )))
   }
   rows <- list()
   if (!identical(parsed$media_type, "text/plain")) {
-    rows[[length(rows) + 1L]] <- row("content_type_not_text_plain", sprintf(
+    read <- if (compressed) {
+      content_type_compressed_note
+    } else {
       paste(
-        "The response's Content-Type is %s, not text/plain, which RFC 9309",
-        "section 2.3 asks for. Crawlers may still read the body as a",
-        "robots.txt, and robotstxtr validated it as one; its results do not",
-        "depend on the header."
+        "Crawlers may still read the body as a robots.txt, and robotstxtr",
+        "validated it as one; its results do not depend on the header."
+      )
+    }
+    rows[[length(rows) + 1L]] <- row("content_type_not_text_plain", paste(
+      sprintf(
+        paste(
+          "The response's Content-Type is %s, not text/plain, which RFC 9309",
+          "section 2.3 asks for."
+        ),
+        render_validation_line(charToRaw(parsed$media_type))
       ),
-      render_validation_line(charToRaw(parsed$media_type))
+      read
     ))
   }
   charsets <- unique(parsed$charsets)
   wide <- encoding_signature %in% content_type_wide_signatures
   high <- any(body >= as.raw(0x80))
   if (length(charsets) > 1L) {
+    read <- if (compressed) {
+      paste("Declare charset=utf-8 once (RFC 9309 section 2.3).",
+            content_type_compressed_note)
+    } else {
+      paste(
+        "Declare charset=utf-8 once (RFC 9309 section 2.3); the body is read",
+        "as UTF-8 either way."
+      )
+    }
     rows[[length(rows) + 1L]] <- row("content_type_charset_unsupported", paste(
       "The response's Content-Type declares charset more than once, with",
-      "different values, so the declared encoding is ambiguous. Declare",
-      "charset=utf-8 once (RFC 9309 section 2.3); the body is read as UTF-8",
-      "either way."
+      "different values, so the declared encoding is ambiguous.", read
     ))
   } else if (length(charsets) == 1L) {
-    message <- content_type_charset_message(charsets, !high && !wide)
+    message <- content_type_charset_message(
+      charsets, !high && !wide, compressed
+    )
     if (!is.null(message)) {
       rows[[length(rows) + 1L]] <- row(
         "content_type_charset_unsupported", message
       )
-    } else if (charsets %in% content_type_us_ascii && high && !wide) {
+    } else if (!compressed && charsets %in% content_type_us_ascii &&
+                 high && !wide) {
       declared <- if (identical(charsets, "us-ascii")) {
         "us-ascii"
       } else {

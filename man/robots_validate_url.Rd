@@ -170,6 +170,19 @@ checked, an empty 2xx body (a 203 or 204, say) included; a response with
 no \code{Content-Type} gets no row, and an outcome left with no body (a 4xx,
 5xx, or failed or refused fetch) is not checked.
 
+A fetched body that is still compressed draws \code{compressed_body} (see
+\code{\link[=robots_validate_text]{robots_validate_text()}}) in place of its line rows, and no
+\code{content_type_charset_conflict}; its \code{body_truncated} and \code{Content-Type}
+rows then say the body was not read as rules. libcurl decodes a gzip or
+deflate body it asked for, so this happens when the server compressed a
+body the fetch did not ask to be compressed, as with a libcurl built
+without zlib, or served gzip bytes with no \code{Content-Encoding} at all, as
+a \code{.gz} file served as the robots.txt. The response's \code{Content-Encoding}
+is on the source row of \code{\link[=robots_fetch]{robots_fetch()}} as \code{content_encoding}; the
+validator does not read it. Only the validator reports such a body: the
+matchers, \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} among them, still read its bytes as
+rules. Raw deflate and brotli bodies are not detected.
+
 This function validates the acquired robots.txt document. It does not answer
 whether any target URL is allowed; use \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} for that
 separate question. It also does not infer webmaster intent or check whether
