@@ -900,7 +900,10 @@ validation_unsupported <- c(
 #' file, the row names every other such Disallow the same crawlers have that
 #' blocks it by itself, read with the others left out, so
 #' `Disallow: /*.js` beside `Disallow: /*.js$` names both lines and leaving
-#' out every line a row names lets the file through. A row is reported only
+#' out every line a row names lets the file through. The named lines are
+#' read on both merges, so a named line can be one that blocks the file
+#' only when the crawler's whole User-agent value is read (`Foo/1.0`), not
+#' Google's shortened one (`Foo`). A row is reported only
 #' where
 #' every crawler the group names agrees, on the whole-value merge and on
 #' Google's merge. The row is Google's reading: the package's Yandex

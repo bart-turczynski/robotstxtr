@@ -414,6 +414,18 @@ test_that("ROBO-dwywkpes: a row names every candidate that blocks its file", {
              rr_note("'A' and 'B'")),
       rr_one(6L, "/*.js", "/x.js"))
   )
+  # The named lines are read on both merges: line 3 blocks /x.js by itself
+  # when `Foo/1.0` is read whole, but on Google's merge, `Foo`, the Allow
+  # ties it and wins, so with line 2 gone Google allows /x.js. (Not
+  # testable on Bing and Yandex: the cut to `Foo` is Google's matcher's.)
+  body <- paste0("User-agent: Foo/1.0\nDisallow: /*.js$\nDisallow: /*.js\n\n",
+                 "User-agent: Foo\nAllow: /x.js\n")
+  expect_identical(rr_message_of(body),
+                   rr_one(2L, "/*.js$", "/x.js", rr_same("3", one = TRUE)))
+  gone <- sub("Disallow: /*.js$", "Disallow:", body, fixed = TRUE)
+  expect_identical(robots_evaluate_text_v1(
+    gone, "https://e.example/x.js", "Foo", "google", "google"
+  )$results$url_decision, "allow")
   # Not one of a crawler the row does not cover.
   expect_identical(
     rr_message_of(paste0("User-agent: A\nDisallow: /*.js$\n\n",
