@@ -155,6 +155,51 @@ sr_fixtures <- list(
     body = paste(sr_group("Foo", "Disallow: /x"),
                  sr_group("foo", "Disallow: /x"), sep = "\n"),
     today = c("user_agent_repeated_group", "duplicate_rule")
+  ),
+  # Blanks before a rule's colon are read alike everywhere.
+  key_blank = list(body = sr_two("Disallow: /x", "Disallow : /x"),
+                   today = character(0)),
+  # Google reads a longer key by its prefix `user-agent`; others may not.
+  prefix_key = list(
+    body = paste0(sr_group("Foo", "Disallow: /x"),
+                  "\nUser-agentx: Bar\nDisallow: /x\n"),
+    today = character(0)
+  ),
+  agent_typo = list(
+    body = paste0(sr_group("Foo", "Disallow: /x"),
+                  "\nUseragent: Bar\nDisallow: /x\n"),
+    today = "accepted_directive_typo"
+  ),
+  # The parser's line buffer cuts the padded rule to `/x`.
+  long_line = list(
+    body = sr_two("Disallow: /x", paste0("Disallow: /x", strrep(" ", 17000L))),
+    today = "line_too_long"
+  ),
+  # Line 1's byte-order mark is skipped, whole or in part, as the parser
+  # skips it.
+  bom = list(
+    body = c(as.raw(c(0xef, 0xbb, 0xbf)),
+             charToRaw(sr_two("Disallow: /x", "Disallow: /x"))),
+    today = "byte_order_mark"
+  ),
+  partial_bom = list(
+    body = c(as.raw(c(0xef, 0xbb)),
+             charToRaw(sr_two("Disallow: /x", "Disallow: /x"))),
+    today = "invalid_utf8"
+  ),
+  # A key holding a byte not valid in UTF-8 is not `User-agent`.
+  latin1_key = list(
+    body = charToRaw(paste0(sr_group("Foo", "Disallow: /x"),
+                            "\nUser-agent\xe9: Bar\nDisallow: /x\n")),
+    today = "invalid_utf8"
+  ),
+  # Two classes, the later one first by its rules: rows go by line.
+  two_classes = list(
+    body = paste(sr_group("Foo", "Disallow: /b"),
+                 sr_group("Bar", "Disallow: /b"),
+                 sr_group("Baz", "Disallow: /a"),
+                 sr_group("Qux", "Disallow: /a"), sep = "\n"),
+    today = character(0)
   )
 )
 
@@ -173,7 +218,11 @@ sr_want <- list(
   repeated_with_other = c("user_agent_repeated_group", sr_code,
                           "duplicate_rule"),
   repeated_elsewhere = c("user_agent_repeated_group", sr_code),
-  overlap = c("user_agent_repeated_group", sr_code)
+  overlap = c("user_agent_repeated_group", sr_code),
+  key_blank = sr_code,
+  bom = c("byte_order_mark", sr_code),
+  partial_bom = c("invalid_utf8", sr_code),
+  two_classes = c(sr_code, sr_code)
 )
 
 test_that("ROBO-rdxgnqhw: the row is the only code the fixtures gain", {
@@ -245,6 +294,25 @@ test_that("ROBO-rdxgnqhw: a crawler named in two groups is stacked once", {
   # An exact repeat inside a group is still duplicate_rule's.
   d <- sr_diag(sr_fixtures$repeat_in_group$body)
   expect_identical(d$line[d$code == "duplicate_rule"], 3L)
+  # The stacked group shows the repeated rule once.
+  expect_match(d$message[d$code == sr_code],
+               "`User-agent: Bar`, then `Disallow: /a`. This is", fixed = TRUE)
+})
+
+test_that("ROBO-rdxgnqhw: rows follow their first lines", {
+  d <- sr_diag(sr_fixtures$two_classes$body)
+  expect_identical(d$line[d$code == sr_code], c(1L, 7L))
+  expect_match(d$message[d$code == sr_code][[1L]], "then `Disallow: /b`.",
+               fixed = TRUE)
+})
+
+test_that("ROBO-rdxgnqhw: a byte-order mark leaves the first group in", {
+  # The fixture loop above pins `bom`, `partial_bom` and `latin1_key` in the
+  # session's locale, without an error; the checks run UTF-8, C and tr_TR.
+  d <- robots_validate_text(sr_fixtures$bom$body)$diagnostics
+  expect_identical(d$line[d$code == sr_code], 1L)
+  expect_match(d$message[d$code == sr_code], "the group at line 4 give",
+               fixed = TRUE)
 })
 
 test_that("ROBO-rdxgnqhw: thousands of equal groups give one bounded row", {

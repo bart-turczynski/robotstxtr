@@ -3578,11 +3578,13 @@ user_agent_duplicate_in_group_diagnostics <- function(groups,
 # merge the groups naming one crawler (repeated_group_diagnostics()), so
 # moving the lines keeps every crawler's rules, as long as each group reads
 # alike everywhere. So a group takes part only when:
-# - it names no `*` (a named group equal to `*` is another suggestion), no
-#   policy token, and no line with an empty value or no token;
+# - it names no `*` (a `*` group is left out), no policy token, and no line
+#   with an empty value or no token;
 # - no line of it is in `skip` (a joined or cut User-agent line, or a line
-#   holding a NUL Bing and Yandex read past), and none is a typo or prefix
-#   of the User-agent key, misses its colon or overruns the line buffer;
+#   holding a NUL Bing and Yandex read past), no User-agent line has a key
+#   other than `User-agent` in any case (a typo or a longer key Google reads
+#   by its prefix; line 1's byte-order mark, full or partial, skipped as the
+#   parser skips it), and none misses its colon or overruns the line buffer;
 # - from its first User-agent line to the next group, every line is a
 #   User-agent, Allow, Disallow, blank or comment line, or a Sitemap after
 #   its last rule: a Crawl-delay, Clean-param, Host or unknown line may be
@@ -3610,16 +3612,17 @@ same_rules_group_diagnostics <- function(groups, parsed, written, raw_lines,
   pos_agent <- match(agents$group, info$group)
   pos_rule <- match(rules$group, info$group)
   ok <- !info$global & seq_len(nrow(info)) %in% pos_rule
-  agent_key <- ascii_lower(slash_written_keys(raw_lines[agents$line]))
+  # A User-agent typo's key is never `user-agent`, so the key test below
+  # also keeps every typo out.
   bad_agent <- ai_training_kind(agents)$family |
-    (!agents$global & !nzchar(agents$key)) | agent_key != "user-agent"
+    (!agents$global & !nzchar(agents$key)) |
+    !same_rules_agent_key(raw_lines[agents$line], agents$line)
   ok[pos_agent[bad_agent]] <- FALSE
   last_rule <- integer(nrow(info))
   last_rule[pos_rule] <- rules$line
   plain <- parsed$has_directive &
     parsed$type %in% c("user-agent", "allow", "disallow") &
-    !parsed$missing_colon & !parsed$line_too_long &
-    !(parsed$type == "user-agent" & parsed$is_typo)
+    !parsed$missing_colon & !parsed$line_too_long
   at <- findInterval(parsed$line, info$first_line)
   late_sitemap <- parsed$has_directive & parsed$type == "sitemap" &
     at > 0L & parsed$line > c(0L, last_rule)[at + 1L]
@@ -3632,8 +3635,8 @@ same_rules_group_diagnostics <- function(groups, parsed, written, raw_lines,
   }
 
   take <- ok[pos_rule]
-  parts <- lapply(written[take], same_rules_parts)
-  member <- vapply(parts, `[[`, "", "member")
+  kept <- written[take]
+  member <- same_rules_members(kept)
   rule_pos <- pos_rule[take]
   signature <- vapply(split(member, rule_pos), function(m) {
     paste(sort(unique(m), method = "radix"), collapse = " ")
@@ -3663,7 +3666,7 @@ same_rules_group_diagnostics <- function(groups, parsed, written, raw_lines,
     own <- own[!duplicated(member[own])]
     same_rules_message(
       info$first_line[[first]], info$first_line[m[-1L]],
-      agents$name[rows], vapply(parts[own], `[[`, "", "shown"), cap
+      agents$name[rows], vapply(kept[own], same_rules_shown, ""), cap
     )
   }, "")
   line <- info$first_line[vapply(members, `[[`, 0L, 1L)]
@@ -3671,11 +3674,68 @@ same_rules_group_diagnostics <- function(groups, parsed, written, raw_lines,
                    "user-agent", unname(message))
 }
 
-# A rule as written (`key:value`, slash_written_rules()) as the member of a
-# group's rule set, `member`: its key, ASCII upper case folded, and its
-# value, blanks around each dropped, as hex so any byte compares exactly;
-# and as the message shows it, `shown`.
-same_rules_parts <- function(written) {
+# Whether each User-agent line (`raw_lines`, file lines `lines`) has the key
+# `User-agent`, in any case, as slash_written_keys() reads a key, past the
+# byte-order mark the parser skips on line 1, full or partial. The key is
+# folded on bytes, so a byte not valid in the session's encoding is never
+# translated.
+same_rules_agent_key <- function(raw_lines, lines) {
+  want <- charToRaw("user-agent")
+  stop_at <- as.raw(c(0x3a, 0x20, 0x09, 0x00))
+  vapply(seq_along(raw_lines), function(i) {
+    bytes <- raw_lines[[i]]
+    if (lines[[i]] == 1L) {
+      skip <- 0L
+      while (skip < min(3L, length(bytes)) &&
+               bytes[[skip + 1L]] == validation_bom[[skip + 1L]]) {
+        skip <- skip + 1L
+      }
+      bytes <- slash_drop(bytes, skip)
+    }
+    lead <- match(TRUE, !bytes %in% as.raw(c(0x20, 0x09)), nomatch = 1L)
+    bytes <- slash_drop(bytes, lead - 1L)
+    end <- match(TRUE, bytes %in% stop_at, nomatch = length(bytes) + 1L)
+    identical(ascii_lower_raw_v1(bytes[seq_len(end - 1L)]), want)
+  }, logical(1L))
+}
+
+# Each rule as written (`key:value`, slash_written_rules()) as the member of
+# a group's rule set: its key, ASCII upper case folded, and its value,
+# blanks around each dropped, as hex so any byte compares exactly. One pass
+# over the bytes of all the rules: each rule's first `:` is its colon
+# (a key holds none), and it ends the key.
+same_rules_members <- function(written) {
+  if (length(written) == 0L) {
+    return(character())
+  }
+  size <- nchar(written, type = "bytes")
+  bytes <- charToRaw(paste(written, collapse = ""))
+  id <- rep.int(seq_along(written), size)
+  pos <- seq_along(bytes)
+  colon_at <- which(bytes == as.raw(0x3a))
+  colon <- colon_at[match(seq_along(written), id[colon_at])][id]
+  # The key, its colon included, then the value; the colon counts as a
+  # blank, so the key's trailing blanks go with it.
+  part <- 2L * id - (pos <= colon)
+  solid <- !(bytes %in% as.raw(c(0x20, 0x09)) | pos == colon)
+  seen <- cumsum(solid)
+  start <- match(part, part)
+  end <- length(part) + 1L - match(part, rev(part))
+  keep <- seen - (seen[start] - solid[start]) > 0L & seen[end] - seen +
+    solid > 0L
+  upper <- pos < colon & bytes >= as.raw(0x41) & bytes <= as.raw(0x5a)
+  bytes[upper] <- as.raw(as.integer(bytes[upper]) + 32L)
+  token <- as.character(bytes)
+  token[!keep] <- ""
+  token[pos == colon] <- "-"
+  width <- 2L * tabulate(id[keep], length(written)) + 1L
+  last <- cumsum(width)
+  substring(paste(token, collapse = ""), last - width + 1L, last)
+}
+
+# A rule as written (`key:value`, slash_written_rules()) as the message
+# shows it: its key and its value, blanks around each dropped.
+same_rules_shown <- function(written) {
   bytes <- charToRaw(written)
   colon <- match(as.raw(0x3a), bytes)
   trim <- function(x) {
@@ -3684,17 +3744,10 @@ same_rules_parts <- function(written) {
   }
   key <- trim(bytes[seq_len(colon - 1L)])
   value <- trim(slash_drop(bytes, colon))
-  folded <- key
-  upper <- folded >= as.raw(0x41) & folded <= as.raw(0x5a)
-  folded[upper] <- as.raw(as.integer(folded[upper]) + 32L)
-  list(
-    member = paste0(paste(as.character(folded), collapse = ""), "-",
-                    paste(as.character(value), collapse = "")),
-    shown = ai_training_name(paste0(
-      render_validation_line(key), ":",
-      if (length(value) > 0L) paste0(" ", render_validation_line(value))
-    ))
-  )
+  ai_training_name(paste0(
+    render_validation_line(key), ":",
+    if (length(value) > 0L) paste0(" ", render_validation_line(value))
+  ))
 }
 
 # The message of one same-rules row: the first group's line `at`, the other
