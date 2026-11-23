@@ -163,9 +163,16 @@ test_that("the frame of a body on every emission path is pinned", {
       "wildcard_disallows_not_inherited@38",
       "disallow_tied_by_allow@29",
       "duplicate_rule@27",
-      "duplicate_rule@28"
+      "duplicate_rule@28",
+      "rule_prefix_sibling@9"
     )
   )
+  # ROBO-otomgbge: `/typo` (line 9) also matches `/typo2` (line 10); without
+  # that row the frame is the one pinned before.
+  expect_identical(seam_digest(d, linear_frame_extra(d)),
+                   "bfeb9fb193bcf235925028ad110f89b8")
+  d <- d[d$code != "rule_prefix_sibling", , drop = FALSE]
+  rownames(d) <- NULL
   expect_identical(
     # ROBO-txnzyugl: user_agent_cut@25 is info with the effect stated, and
     # wildcard_rules_not_inherited@25 names `Foo.Bot` as written.
@@ -332,5 +339,6 @@ test_that("the batches and document-level rows share that one build", {
   calls <- linear_count_builds()
   d <- robots_validate_text(linear_body_main())$diagnostics
   expect_identical(calls$n, 1L)
-  expect_identical(nrow(d), 44L)
+  # 45 with ROBO-otomgbge's rule_prefix_sibling row.
+  expect_identical(nrow(d), 45L)
 })

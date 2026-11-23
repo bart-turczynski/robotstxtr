@@ -184,7 +184,9 @@ test_that("a NUL between CR and LF does not renumber later lines", {
   many <- c(ch_join("User-agent: *\r\nDisallow: /a\r", "\n"),
             charToRaw(paste0("Disallow: /p", seq_len(100L), "\r\n",
                              collapse = "")))
-  expect_identical(ch_rows(robots_validate_text(many)), "nul_byte@3")
+  # `/p1` also matches `/p10` and the like (ROBO-otomgbge).
+  expect_identical(ch_rows(robots_validate_text(many)),
+                   c("nul_byte@3", "rule_prefix_sibling@4"))
 })
 
 test_that("a CR-NUL-LF body that hides a rule counts it alone", {

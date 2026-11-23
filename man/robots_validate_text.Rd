@@ -451,11 +451,24 @@ with a file it blocks, then the lines of the other rules, four at
 most, then a count. Past a fixed amount of work, as for
 \code{rule_slash_split}, rules get no row and
 \code{rule_check_stopped} says so. \cr
+\code{rule_prefix_sibling} \tab info \tab
+A literal rule with no trailing \code{/} or \code{$}
+(\code{Disallow: /feed}) also matches a longer path the same
+crawlers' rules list separately with the same type
+(\code{Disallow: /feeds}), which goes on from it without a
+\code{/}. Reported only when, with that line left out, the shorter
+rule decides its path, under every rule the crawlers have. The
+message names \code{P/} and \code{P$} as the narrower spellings and
+calls neither rule wrong. One row per group of crawlers, on the
+shorter rule's line, listing five pairs at most, then a count. Past a
+fixed amount of work, as for \code{rule_slash_split}, rules get no
+row and \code{rule_check_stopped} says so. \cr
 \code{rule_check_stopped} \tab info \tab
 The file is too large for \code{rule_slash_pair},
 \code{rule_slash_split}, \code{rule_end_anchor_query},
-\code{allow_reopens_through_query} or
-\code{rule_render_resource_blocked} to check
+\code{allow_reopens_through_query},
+\code{rule_render_resource_blocked} or
+\code{rule_prefix_sibling} to check
 every candidate quickly, so the check
 read only the first ones, in line order. The message gives the counts
 found, checked and skipped and names the earliest skipped rule; the
@@ -983,12 +996,30 @@ maps. A rule such as \verb{/*.js$} can also get \code{rule_end_anchor_query}, an
 cut at \code{max_bytes} is not checked, and a
 \verb{User-agent: __usage_ai-training} group gets no row.
 
+\code{rule_prefix_sibling} reads a literal rule \code{P}, as the slash checks do,
+that does not end in \code{/}, and another rule of the same type, \code{M}, also a
+literal, whose value goes on from \code{P} with a byte other than \code{/}
+(\verb{/feed} and \verb{/feeds}, \verb{/login} and \verb{/login.php}). Every crawler \code{M}'s
+group names must have both: the groups merge as the matchers merge them,
+so two groups naming the same crawler count as one, and two naming
+different crawlers give none. \code{P} is the longest such rule; a sibling
+that goes on with \code{/} (\verb{/feed/rss}), one holding \code{*}, \code{$}, \verb{?} or \verb{\%},
+and a pair of opposite type (\verb{Disallow: /search} beside
+\verb{Allow: /searchx}) are not read. Google's matcher reads \code{M}'s path with
+\code{M} left out, over every rule of the crawler's merged groups, on the
+whole-value merge and on Google's merge: \code{P} must decide it, so an Allow
+that would take over (\verb{Allow: /feeds} beside the pair) silences the row.
+A later repeat of \code{M} is not named. The check reads its candidates in
+line order within a fixed amount of work, as the slash checks do. A body
+cut at \code{max_bytes} is not checked, and a
+\verb{User-agent: __usage_ai-training} group gets no row.
+
 On a document holding a NUL byte, \code{wildcard_rules_not_inherited},
 \code{disallow_tied_by_allow}, \code{duplicate_rule},
 \code{rule_query_parameter_position}, \code{rule_query_crawl_not_index},
 \code{rule_slash_pair}, \code{rule_slash_split},
 \code{rule_end_anchor_query}, \code{allow_reopens_through_query},
-\code{rule_render_resource_blocked} and the
+\code{rule_render_resource_blocked}, \code{rule_prefix_sibling} and the
 AI-training codes follow Google's
 reading: the parser and Google's matcher end a line at its
 first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
