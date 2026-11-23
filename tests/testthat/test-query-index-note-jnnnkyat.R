@@ -70,8 +70,9 @@ qi_fixtures <- list(
       "User-agent: a\nDisallow: /*?s=\n\nUser-agent: b\nDisallow: /*?s=\n\n",
       "User-agent: a\nDisallow: /*?s=\n"
     ),
-    today = c("user_agent_repeated_group", "duplicate_rule",
-              rep("rule_query_parameter_position", 3L)),
+    # `a` and `b` share their rules too (ROBO-rdxgnqhw).
+    today = c("user_agent_repeated_group", "user_agent_groups_same_rules",
+              "duplicate_rule", rep("rule_query_parameter_position", 3L)),
     note = c(2L, 5L, 8L)
   ),
   seven = list(

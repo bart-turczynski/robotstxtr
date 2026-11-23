@@ -514,10 +514,11 @@ test_that("ROBO-roypaoox: every crawler class the group names must agree", {
                    integer(0))
   expect_identical(sp_rows(sp_body("across_crawlers"), sp_split)$message,
                    sp_open_message(5L, "/x/", "/x"))
-  # A pair split across two crawlers' groups is no pair.
+  # A pair split across two crawlers' groups is no pair; the groups share
+  # their rules (ROBO-rdxgnqhw).
   expect_identical(
     sp_codes("User-agent: A\nDisallow: /x\n\nUser-agent: B\nDisallow: /x\n"),
-    character(0)
+    "user_agent_groups_same_rules"
   )
   expect_identical(
     sp_rows("User-agent: A\nDisallow: /x\n\nUser-agent: B\nDisallow: /x/\n",

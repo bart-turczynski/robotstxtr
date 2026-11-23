@@ -219,7 +219,9 @@ token a directive line separates it from (`ai_training_token_stacked`). A key
 such as `DisallowAITraining`, which Google reads as `Disallow`, is
 `accepted_directive_prefix`. A warning, `disallow_tied_by_allow`, flags a
 Disallow that an Allow with the identical pattern cancels, since Allow wins
-the tie. An info, `duplicate_rule`, notes an Allow or Disallow that repeats an
+the tie. An info, `user_agent_groups_same_rules`, notes separate groups that
+give their crawlers the same rules, so their User-agent lines could share one
+group. An info, `duplicate_rule`, notes an Allow or Disallow that repeats an
 earlier rule for the same crawlers, so it has no effect. An info,
 `rule_query_parameter_position`, notes a pattern such as `/items/*?sort=` that
 names a parameter right after `?`, so it may miss URLs where that parameter

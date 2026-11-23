@@ -1,5 +1,6 @@
 # robotstxtr (development version)
 
+* Validator: new `user_agent_groups_same_rules` info for separate groups with the same rules, whose User-agent lines could share one group (RFC 9309 §2.2.1) (ROBO-rdxgnqhw).
 * Validator: new `rule_prefix_sibling` info for `Disallow: /feed` beside `Disallow: /feeds` for the same crawlers: `/feed` already matches `/feeds` (RFC 9309 §2.2.2) (ROBO-otomgbge).
 * Validator: new `compressed_body` error for a gzip, zlib or zstd body, which is no longer read as rules; fetch rows gain `content_encoding`, the raw `Content-Encoding` (ROBO-rozvglkd).
 * Validator: new `rule_query_crawl_not_index` info, once per file, for Disallows holding `?`, `=` or `&`: robots.txt controls crawling, not indexing (ROBO-jnnnkyat).
