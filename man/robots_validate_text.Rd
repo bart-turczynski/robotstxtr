@@ -900,7 +900,11 @@ row, and, read again with every such rule left out, the file must come
 out allowed, so a broader rule that blocks it anyway (\verb{Disallow: /},
 \verb{Disallow: /assets/}) silences it too. A row is reported only where
 every crawler the group names agrees, on the whole-value merge and on
-Google's merge. The check does not read folder rules
+Google's merge. The row is Google's reading: the package's Yandex
+matcher counts a pattern's length without its \code{*}, so where an Allow and
+a Disallow come close in length and one holds a \code{*} (\verb{Disallow: /*.js}
+beside \verb{Allow: /x.j}), Yandex can decide the file the other way. The
+check does not read folder rules
 (\verb{Disallow: /js/}), paths with no file type, fonts, images or source
 maps. A rule such as \verb{/*.js$} can also get \code{rule_end_anchor_query}, and
 \verb{/a.json?v=*} \code{rule_query_parameter_position}; both rows stand. A body

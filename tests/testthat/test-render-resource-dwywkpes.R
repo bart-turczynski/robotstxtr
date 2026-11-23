@@ -202,7 +202,16 @@ rr_decisions <- list(
   list(body = "User-agent: %s\nDisallow: /assets/\n", "/assets/x.js",
        "disallow"),
   list(body = "User-agent: %s\nDisallow: /\n", "/x.js", "disallow"),
-  list(body = "User-agent: %s\nAllow: /assets/*.js\n", "/x.js", "allow")
+  list(body = "User-agent: %s\nAllow: /assets/*.js\n", "/x.js", "allow"),
+  # The package's Yandex matcher counts a pattern's length without its `*`
+  # (the help says the row is Google's reading): `/*.js` (5) beats
+  # `/x.j` (4) on Google and Bing, but counts 4 on Yandex, a tie the Allow
+  # wins; `/*.js` ties `/x.js` on Google and Bing, the Allow winning, but
+  # counts 4 on Yandex and loses.
+  list(body = "User-agent: %s\nDisallow: /*.js\nAllow: /x.j\n", "/x.js",
+       "disallow", list(yandex = "allow")),
+  list(body = "User-agent: %s\nDisallow: /x.js\nAllow: /*.js\n", "/x.js",
+       "allow", list(yandex = "disallow"))
 )
 
 test_that("ROBO-dwywkpes: every backend decides the witnesses", {
@@ -369,6 +378,17 @@ test_that("ROBO-dwywkpes: an Allow or a broader rule silences the row", {
                     "User-agent: Bar\nDisallow: /\n")),
     rr_code
   )
+})
+
+test_that("ROBO-dwywkpes: the row is Google's reading where Yandex differs", {
+  # Google and Bing disallow /x.js, Yandex allows it: the row stands and
+  # names no engine. Google allows /x.js, Yandex disallows it: no row.
+  m <- rr_message_of("User-agent: Foo\nDisallow: /*.js\nAllow: /x.j\n")
+  expect_identical(m, rr_one(2L, "/*.js", "/x.js"))
+  expect_false(grepl("Google|Bing|Yandex", m))
+  expect_false(rr_code %in% rr_codes(
+    "User-agent: Foo\nDisallow: /x.js\nAllow: /*.js\n"
+  ))
 })
 
 test_that("ROBO-dwywkpes: a filler another rule matches gives way", {
