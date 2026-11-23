@@ -1194,10 +1194,10 @@ test_that("ROBO-dwywkpes: edge inputs in the session's locale", {
   rr_edge()
   # Google's matcher compares the escaped witness; the package's Bing and
   # Yandex matchers compare the byte as written.
-  body <- "User-agent: %s\nDisallow: /café/*.js\n"
+  body <- "User-agent: %s\nDisallow: /caf\u00e9/*.js\n"
   expect_identical(rr_decide(body, "/caf%C3%A9/x.js", "google"), "disallow")
   for (backend in c("bing", "yandex")) {
-    expect_identical(rr_decide(body, "/café/x.js", backend), "disallow",
+    expect_identical(rr_decide(body, "/caf\u00e9/x.js", backend), "disallow",
                      label = backend)
   }
   expect_identical(rr_codes(""), "no_rules")
