@@ -6423,7 +6423,9 @@ render_resource_pairs <- function(groups, key, at, hit, head, witness,
                 spent = held$spent))
   }
   # A reported candidate of the same row is named anyway: it is looked at
-  # only in a class that holds reported candidates of more than one row.
+  # only in a class that holds reported candidates of more than one row,
+  # where it can be another row's (a perf filter beside `other` below, but
+  # not one to drop for `!own`: that would leave out another row's).
   reported <- seq_along(at) %in% hit
   own <- reported[held$owner]
   rows_of <- tapply(set[held$owner][own], held$class[own],
@@ -6445,6 +6447,10 @@ render_resource_pairs <- function(groups, key, at, hit, head, witness,
   k <- rows$owner[near$row] <= n
   pair_row <- rep(near$row[k], lengths(near$found[k]))
   pair_at <- unlist(near$found[k], use.names = FALSE)
+  # A perf filter only: a reported candidate of the pair's own row (left
+  # in above in a class holding more than one row) is in that row anyway,
+  # and the message drops a named line the row already shows, so reading
+  # it by itself would change no row, only spend the budget.
   from <- hit[rows$owner[pair_row]]
   other <- !(reported[pair_at] & set[pair_at] == set[from])
   pair_row <- pair_row[other]
