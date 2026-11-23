@@ -6360,9 +6360,13 @@ render_resource_pass <- function(groups, removed, at, witness, written,
 # are taken in line order while their reads fit `budget`
 # (render_resource_pairs()). Returns list(rules, n): `rules`, per reported
 # candidate, the indexes of `groups$rules` to name beside it, and `n`, how
-# many leading reported candidates were read.
+# many leading reported candidates were read. With none reported, nothing
+# is read, so no expander is built.
 render_resource_named <- function(groups, at, hit, witness, written,
                                   budget) {
+  if (length(hit) == 0L) {
+    return(list(rules = list(), n = 0L))
+  }
   agents <- groups$agents
   keys <- list(agents$uncut)
   if (!all(agents$uncut == agents$key)) {
@@ -6394,6 +6398,10 @@ render_resource_named <- function(groups, at, hit, witness, written,
 # sharing a head build no more of them than `budget`; then those whose
 # candidate matches the witness on a body of that candidate alone; then
 # those where it blocks the witness by itself (render_resource_alone()).
+# The candidates are crossed only with the classes of those `n`, and the
+# rows that makes are counted against `budget` before they are built
+# (render_resource_held()): a file whose candidates sit in groups naming
+# many crawlers could otherwise build candidates times crawlers rows.
 # `set` is each candidate's row (slash_open_sets()): a reported candidate
 # of the same row is no pair. Returns list(owner, rule, n, spent): the
 # pairs kept (`owner` indexing
@@ -6404,7 +6412,11 @@ render_resource_pairs <- function(groups, key, at, hit, head, witness,
   rules <- groups$rules
   expand <- validation_token_expander(groups, key)
   rows <- expand(rules$group[at[hit[seq_len(n)]]])
-  held <- expand(rules$group[at])
+  held <- render_resource_held(expand, rules$group[at], rows$class, budget)
+  if (is.null(held$owner)) {
+    return(list(owner = integer(), rule = integer(), n = 0L,
+                spent = held$spent))
+  }
   # A reported candidate of the same row is named anyway: it is looked at
   # only in a class that holds reported candidates of more than one row.
   reported <- seq_along(at) %in% hit
@@ -6413,7 +6425,8 @@ render_resource_pairs <- function(groups, key, at, hit, head, witness,
                     function(s) length(unique(s)))
   mixed <- as.integer(names(rows_of)[rows_of > 1L])
   look <- !own | held$class %in% mixed
-  held <- list(owner = held$owner[look], class = held$class[look])
+  held <- list(owner = held$owner[look], class = held$class[look],
+               spent = held$spent)
   near <- slash_head_hits(held$owner, held$class, head[held$owner],
                           witness[rows$owner], rows$class)
   per <- numeric(n)
@@ -6421,9 +6434,9 @@ render_resource_pairs <- function(groups, key, at, hit, head, witness,
     sums <- rowsum(lengths(near$found), rows$owner[near$row])
     per[as.integer(rownames(sums))] <- sums[, 1L]
   }
-  cost <- cumsum(per)
+  cost <- held$spent + cumsum(per)
   n <- sum(cost <= budget)
-  spent <- if (n == 0L) 0 else cost[[n]]
+  spent <- if (n == 0L) held$spent else cost[[n]]
   k <- rows$owner[near$row] <= n
   pair_row <- rep(near$row[k], lengths(near$found[k]))
   pair_at <- unlist(near$found[k], use.names = FALSE)
@@ -6454,10 +6467,12 @@ render_resource_pairs <- function(groups, key, at, hit, head, witness,
 # witness of its pair's row (`pair_row`, indexing `rows`, the (reported,
 # class) rows of `expand`) by itself: read by Google's matcher on the
 # rules of the row's class that are no candidate and can match the witness
-# (slash_split_bodies()), with the candidate added in file order. Rows are
-# read whole reported candidates at a time while their body lines fit
-# `budget`. Returns list(blocks, n, spent): `n`, the reported candidates
-# before the first whose rows did not fit (Inf when all did).
+# (slash_split_bodies()), with the candidate added in file order. Those
+# rules are crossed only with the rows' classes, counted against `budget`
+# first (render_resource_held()). Rows are read whole reported candidates
+# at a time while their body lines fit `budget`. Returns list(blocks, n,
+# spent): `n`, the reported candidates before the first whose rows did not
+# fit (Inf when all did).
 render_resource_alone <- function(groups, expand, at, rows, pair_row, rule,
                                   witness, written, budget) {
   out <- list(blocks = logical(length(rule)), n = Inf, spent = 0)
@@ -6467,11 +6482,19 @@ render_resource_alone <- function(groups, expand, at, rows, pair_row, rule,
   rules <- groups$rules
   others <- setdiff(which(!rules$empty), at)
   wanted <- unique(pair_row)
-  held <- expand(rules$group[others])
+  held <- render_resource_held(expand, rules$group[others],
+                               rows$class[wanted], budget)
+  if (is.null(held$owner)) {
+    out$n <- rows$owner[pair_row[[1L]]] - 1L
+    out$spent <- held$spent
+    return(out)
+  }
   body <- slash_split_bodies(rules, list(rule = others[held$owner],
                                          class = held$class),
                              witness[rows$owner[wanted]], rows$class[wanted],
-                             written, rows$owner[wanted], budget)
+                             written, rows$owner[wanted],
+                             budget - held$spent)
+  body$spent <- held$spent + body$spent
   # Each kept row's rules, from the first position of each row that holds
   # any (rows that hold none have no start).
   at_row <- which(!is.na(body$start))
@@ -6503,6 +6526,26 @@ render_resource_alone <- function(groups, expand, at, rows, pair_row, rule,
                                    witness[rows$owner[pair_row[read]]])
   out$blocks[read] <- !found$allowed
   out
+}
+
+# The (rule, class) rows of rules whose groups are `group` under `expand`,
+# for the classes in `classes` only, as list(owner, class, spent) like the
+# expander's (`owner` indexing `group`), `spent` their count. They are
+# counted per distinct group first and built only when the count fits
+# `budget`; otherwise `owner` is NULL and nothing is built.
+render_resource_held <- function(expand, group, classes, budget) {
+  wanted <- unique(group)
+  rows <- expand(wanted)
+  keep <- rows$class %in% classes
+  by <- split(rows$class[keep], factor(rows$owner[keep], seq_along(wanted)))
+  k <- match(group, wanted)
+  count <- lengths(by)[k]
+  spent <- sum(as.numeric(count))
+  if (spent > budget) {
+    return(list(owner = NULL, class = NULL, spent = spent))
+  }
+  list(owner = rep(seq_along(group), count),
+       class = as.integer(unlist(by[k], use.names = FALSE)), spent = spent)
 }
 
 # Rule lines `rule` (indexes of `rules`) as a witness body holds them: as

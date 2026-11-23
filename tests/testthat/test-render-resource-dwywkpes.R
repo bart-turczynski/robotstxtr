@@ -688,10 +688,10 @@ test_that("ROBO-dwywkpes: a budget cut while naming gets the stop row", {
   }
   expect_gt(seen$cut, 0L)
   expect_gt(seen$alone, 0L)
-  # The pairs are counted before they are built: twenty reported
-  # `/dK/*.js` beside twenty `/*/aK/*.js` whose head `/` every witness
-  # starts with cost twenty pairs each, so a budget of 100 takes five; none
-  # matches.
+  # The pairs are counted before they are built: the forty candidates'
+  # rows in Foo's class cost 40, then twenty reported `/dK/*.js` beside
+  # twenty `/*/aK/*.js` whose head `/` every witness starts with cost
+  # twenty pairs each, so a budget of 100 takes three; none matches.
   k <- seq_len(20L)
   groups <- slash_groups(rr_groups(paste0(
     "User-agent: Foo\n", paste0("Disallow: /d", k, "/*.js\n", collapse = ""),
@@ -700,7 +700,9 @@ test_that("ROBO-dwywkpes: a budget cut while naming gets the stop row", {
   at <- render_resource_candidates(groups$rules)
   witness <- paste0("/d", k, "/x.js")
   out <- render_resource_named(groups, at, k, witness, NULL, 100)
-  expect_identical(out$n, 5L)
+  expect_identical(out$n, 3L)
+  out <- render_resource_named(groups, at, k, witness, NULL, 39)
+  expect_identical(out$n, 0L)
   out <- render_resource_named(groups, at, k, witness, NULL, Inf)
   expect_identical(out$n, 20L)
   expect_identical(lengths(out$rules), integer(20L))
@@ -978,6 +980,57 @@ test_that("ROBO-dwywkpes: the validator stays linear on costly shapes", {
                 function() robots_validate_text(rr_shape(shape, 400L)),
                 shape)
   }
+})
+
+test_that("ROBO-dwywkpes: the naming's rows stay linear in the crawlers", {
+  # `n` crawlers with a group each, then one group naming them all with `n`
+  # rules: candidates (`plain`), or plain Disallows beside a crawler of its
+  # own whose `/*.css$` and `/*.css` the naming reads (`alone`). Crossing
+  # every rule with every crawler would build `n` squared rows; the naming
+  # crosses them with its rows' crawlers only. Work units: the rows every
+  # expander builds.
+  shape <- function(kind, n) {
+    k <- seq_len(n)
+    rule <- if (kind == "plain") "/*.js" else "/"
+    own <- "User-agent: zz\nDisallow: /*.css$\nDisallow: /*.css\n\n"
+    paste0(if (kind == "alone") own,
+           paste0("User-agent: b", k, "\nAllow: /q\n\n", collapse = ""),
+           paste0("User-agent: b", k, "\n", collapse = ""),
+           paste0("Disallow: /a", k, rule, "\n", collapse = ""))
+  }
+  count <- new.env()
+  count$n <- 0
+  expander <- validation_token_expander
+  local_mocked_bindings(validation_token_expander = function(...) {
+    f <- expander(...)
+    function(group) {
+      out <- f(group)
+      count$n <- count$n + length(out$owner)
+      out
+    }
+  })
+  for (kind in c("plain", "alone")) {
+    work <- vapply(c(80L, 320L, 1280L), function(n) {
+      groups <- rr_groups(shape(kind, n))
+      count$n <- 0
+      render_resource_diagnostics(groups)
+      count$n
+    }, 0)
+    expect_lt(work[[2L]], 6 * work[[1L]], label = kind)
+    expect_lt(work[[3L]], 6 * work[[2L]], label = kind)
+  }
+  # The `alone` row names `/*.css` beside `/*.css$`.
+  expect_identical(rr_message_of(shape("alone", 3L)),
+                   rr_one(2L, "/*.css$", "/x.css", rr_same("3", one = TRUE)))
+  # With no candidate reported, the naming builds no expander.
+  groups <- slash_groups(rr_groups(shape("plain", 3L)))
+  local_mocked_bindings(validation_token_expander = function(...) {
+    stop("expander built")
+  })
+  out <- render_resource_named(groups,
+                               render_resource_candidates(groups$rules),
+                               integer(), character(), NULL, Inf)
+  expect_identical(out$n, 0L)
 })
 
 test_that("ROBO-dwywkpes: the naming's bodies stay linear in the pairs", {
