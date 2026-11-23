@@ -884,8 +884,8 @@ validation_unsupported <- c(
 #' `/*.js$`, `*.json$`, `/assets/*.css`, `/*.css?*`, `*/*.mjs`). An exact
 #' file (`/push-worker.js`, `/a/b/c.json`) or a named stem
 #' (`/js/main-*.js`, `/*.min.js`) is left out. The file type must sit in
-#' the path, so no `?` comes before it: `/*?*.js` and `/q?f=*.css` name
-#' query text and are left out.
+#' the path, so no `?`, `=` or `&` comes before it: `/*?*.js`,
+#' `/q?f=*.css` and `/*a&b/*.js` name query text and are left out.
 #' The file it blocks is the value without a final `$` and
 #' the run of `*` before it, each other `*` written `x` (`/*.css*` blocks
 #' `/x.css`); where another rule matches that filler, the check tries `y`,
@@ -6251,8 +6251,9 @@ render_resource_diagnostics <- function(groups, written = NULL,
 # it has none) up to the type's dot, is a run of `*` (`/*.js`,
 # `/assets/*.css`, `*.json$`), so an exact file (`/push-worker.js`) or a
 # named stem (`/js/main-*.js`, `/*.min.js`) is left out. The type sits in
-# the path, so no `?` comes before it: `/*?*.js` and `/q?f=*.css` name
-# query text, not a file. Not a folder (`/js/`), a longer type (`/*.jsp`)
+# the path, so no `?` comes before it, nor a `=` or `&`, which are query
+# text too: `/*?*.js`, `/q?f=*.css` and `/*a&b/*.js` name query text, not
+# a file. Not a folder (`/js/`), a longer type (`/*.jsp`)
 # or a path that goes on (`/*.json/y`). Nor one whose witness fails
 # url_safe_path(): a dot segment, a stray `%` or a byte no URL carries.
 render_resource_candidates <- function(rules) {
@@ -6260,7 +6261,7 @@ render_resource_candidates <- function(rules) {
   hit <- which(
     rules$type == "disallow" & !rules$empty &
       grepl(
-        paste0("^(([/*][^?]*)?/)?[*]+[.](m?js|cjs|css|json|wasm)",
+        paste0("^(([/*][^?=&]*)?/)?[*]+[.](m?js|cjs|css|json|wasm)",
                "([*]*[$]?|[?][^/]*)$"), value,
         ignore.case = TRUE, useBytes = TRUE
       )

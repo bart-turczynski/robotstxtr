@@ -893,8 +893,8 @@ when it has none) up to the type's dot, is only a run of \code{*} (\verb{/*.js},
 \verb{/*.js$}, \verb{*.json$}, \verb{/assets/*.css}, \verb{/*.css?*}, \verb{*/*.mjs}). An exact
 file (\verb{/push-worker.js}, \verb{/a/b/c.json}) or a named stem
 (\verb{/js/main-*.js}, \verb{/*.min.js}) is left out. The file type must sit in
-the path, so no \verb{?} comes before it: \verb{/*?*.js} and \verb{/q?f=*.css} name
-query text and are left out.
+the path, so no \verb{?}, \code{=} or \code{&} comes before it: \verb{/*?*.js},
+\verb{/q?f=*.css} and \verb{/*a&b/*.js} name query text and are left out.
 The file it blocks is the value without a final \code{$} and
 the run of \code{*} before it, each other \code{*} written \code{x} (\verb{/*.css*} blocks
 \verb{/x.css}); where another rule matches that filler, the check tries \code{y},

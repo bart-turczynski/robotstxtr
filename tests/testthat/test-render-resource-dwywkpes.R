@@ -545,9 +545,11 @@ test_that("ROBO-dwywkpes: only a type-wide value gets a row", {
 })
 
 test_that("ROBO-dwywkpes: a file type inside the query gets no row", {
-  # The type must sit in the path: a `?` before it makes it query text.
+  # The type must sit in the path: a `?` before it makes it query text,
+  # and so does a `=` or `&`.
   for (value in c("/*?*.js", "/search?q=*.css", "/*?file=*.json",
-                  "/q?f=*.css")) {
+                  "/q?f=*.css", "/*name=*.js*", "/*a&b/*.js", "/*a=b/*.css",
+                  "*&/*.json$")) {
     codes <- rr_codes(sprintf("User-agent: Foo\nDisallow: %s\n", value))
     expect_false(rr_code %in% codes, label = value)
   }
