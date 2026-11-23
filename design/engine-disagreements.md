@@ -703,6 +703,9 @@ No backend contradicts its own source or contract, so nothing is OUR BUG.
 Maintainer step: the Google rows are pinned from the vendored matcher only.
 `dev/google-fidelity/differential.R` reads only `gf_cases()` in
 `tests/testthat/fixtures/google-fidelity-deehqhlc/cases.R` and needs the
-maintainer-only upstream binary, so re-deriving these rows from upstream means
-adding them there as `pattern` cases with the reference answers and running
-`Rscript dev/google-fidelity/differential.R <google_ref binary>` (exit 0).
+upstream reference binary, which `dev/google-fidelity/build-reference.sh`
+builds from a google/robotstxt checkout you provision at the pinned SHA
+(`design/engine-profiles.md` §5b), so re-deriving these rows from upstream
+means adding them there as `pattern` cases with the reference answers and
+running `Rscript dev/google-fidelity/differential.R <google_ref binary>`
+(exit 0).
