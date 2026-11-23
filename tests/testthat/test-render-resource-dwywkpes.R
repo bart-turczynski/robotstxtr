@@ -691,7 +691,8 @@ test_that("ROBO-dwywkpes: a budget cut while naming gets the stop row", {
   # The pairs are counted before they are built: the forty candidates'
   # rows in Foo's class cost 40, then twenty reported `/dK/*.js` beside
   # twenty `/*/aK/*.js` whose head `/` every witness starts with cost
-  # twenty pairs each, so a budget of 100 takes three; none matches.
+  # twenty pairs each, so a budget of 100 takes three; none matches. (One
+  # row holds all twenty, so the naming then drops it whole.)
   k <- seq_len(20L)
   groups <- slash_groups(rr_groups(paste0(
     "User-agent: Foo\n", paste0("Disallow: /d", k, "/*.js\n", collapse = ""),
@@ -699,13 +700,72 @@ test_that("ROBO-dwywkpes: a budget cut while naming gets the stop row", {
   )))
   at <- render_resource_candidates(groups$rules)
   witness <- paste0("/d", k, "/x.js")
-  out <- render_resource_named(groups, at, k, witness, NULL, 100)
-  expect_identical(out$n, 3L)
-  out <- render_resource_named(groups, at, k, witness, NULL, 39)
-  expect_identical(out$n, 0L)
+  head <- slash_rule_parts(groups$rules$type[at], groups$rules$value[at])$head
+  set <- slash_open_sets(groups, groups$rules$group[at])
+  pairs <- function(budget) {
+    render_resource_pairs(groups, groups$agents$uncut, at, k, head, witness,
+                          NULL, budget, 20L, set)$n
+  }
+  expect_identical(pairs(100), 3L)
+  expect_identical(pairs(39), 0L)
+  expect_identical(render_resource_named(groups, at, k, witness, NULL, 100)$n,
+                   0L)
   out <- render_resource_named(groups, at, k, witness, NULL, Inf)
   expect_identical(out$n, 20L)
   expect_identical(lengths(out$rules), integer(20L))
+})
+
+test_that("ROBO-dwywkpes: a row the naming cuts is dropped whole", {
+  # `/a/*.js` and the first `/*.js` are reported in one row; the other
+  # repeats block both files by themselves, each read beside 200 shorter
+  # Allows. Where the naming's budget covers `/a/*.js` but not `/*.js`, a
+  # row naming only what was read would leave out line 3, which blocks
+  # /a/x.js too: the row is dropped instead, and the stop row counts both
+  # unchecked.
+  body <- paste0("User-agent: Foo\nDisallow: /a/*.js\n",
+                 strrep("Disallow: /*.js\n", 3L), strrep("Allow: /*j\n", 200L))
+  groups <- rr_groups(body)
+  full <- rr_one(2L, "/a/*.js", "/a/x.js", rr_same("3, 4 and 5"))
+  expect_identical(render_resource_diagnostics(groups)$message, full)
+  named <- render_resource_named
+  seen <- new.env()
+  seen$cut <- 0L
+  local_mocked_bindings(render_resource_named = function(groups, at, hit,
+                                                         ...) {
+    out <- named(groups, at, hit, ...)
+    if (out$n < length(hit)) {
+      seen$cut <- seen$cut + 1L
+    }
+    out
+  })
+  for (budget in seq(1200L, 1450L, by = 2L)) {
+    found <- render_resource_diagnostics(groups, budget = budget)
+    if (nrow(found) > 0L) {
+      expect_identical(found$message, full, label = budget)
+    } else {
+      expect_identical(attr(found, "stopped")$checked, 0L, label = budget)
+    }
+  }
+  expect_gt(seen$cut, 0L)
+  # Leaving out the lines the full row names lets /a/x.js through; line 3
+  # still blocks it with the others gone.
+  for (backend in names(rr_engines)) {
+    gone <- paste0("User-agent: %s\n", strrep("Disallow:\n", 4L),
+                   strrep("Allow: /*j\n", 200L))
+    expect_identical(rr_decide(gone, "/a/x.js", backend), "allow",
+                     label = backend)
+    kept <- paste0("User-agent: %s\nDisallow:\nDisallow: /*.js\n",
+                   strrep("Disallow:\n", 2L), strrep("Allow: /*j\n", 200L))
+    expect_identical(rr_decide(kept, "/a/x.js", backend), "disallow",
+                     label = backend)
+  }
+  # The cut keeps whole rows only: the leading reported candidates of rows
+  # that end within the first `n`.
+  expect_identical(render_resource_whole(c("a", "a", "b"), 3L), 3L)
+  expect_identical(render_resource_whole(c("a", "b", "a"), 2L), 0L)
+  expect_identical(render_resource_whole(c("a", "b", "b", "c", "a"), 4L), 0L)
+  expect_identical(render_resource_whole(c("a", "b", "c", "c"), 3L), 2L)
+  expect_identical(render_resource_whole(c("a", "b", "c", "b", "d"), 3L), 1L)
 })
 
 # A body cut at max_bytes, whose cut line could have decided the witness.

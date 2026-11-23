@@ -6198,7 +6198,8 @@ reopen_stop_intro <- function(stop) {
 # the first rule's witness and four more lines at most, then a count. The
 # lines include every other candidate that blocks a reported one's witness
 # by itself (render_resource_named()), read within a second `budget`; a
-# reported candidate whose reading of them did not fit is not checked. A
+# row whose reading of them did not fit is not checked, from its first
+# reported candidate on, so no row names part of its lines. A
 # cut body is not checked: a later rule could decide the witness. Returns
 # slash_rows() with a `directive` column; when the budget cut candidates,
 # its "stopped" attribute holds slash_stop()'s counts.
@@ -6225,7 +6226,8 @@ render_resource_diagnostics <- function(groups, written = NULL,
   # The naming has a budget of its own, so readings that use theirs up
   # leave it whole; the work stays linear in the file.
   named <- render_resource_named(groups, at, hit, witness, written, budget)
-  # A reported candidate whose other lines did not fit is not checked.
+  # A row whose other lines did not fit is not checked, from its first
+  # reported candidate on (render_resource_whole()).
   if (named$n < length(hit)) {
     checked <- hit[[named$n + 1L]] - 1L
     hit <- hit[seq_len(named$n)]
@@ -6360,8 +6362,9 @@ render_resource_pass <- function(groups, removed, at, witness, written,
 # are taken in line order while their reads fit `budget`
 # (render_resource_pairs()). Returns list(rules, n): `rules`, per reported
 # candidate, the indexes of `groups$rules` to name beside it, and `n`, how
-# many leading reported candidates were read. With none reported, nothing
-# is read, so no expander is built.
+# many leading reported candidates were read, cut back so that no row is
+# read in part (render_resource_whole()). With none reported, nothing is
+# read, so no expander is built.
 render_resource_named <- function(groups, at, hit, witness, written,
                                   budget) {
   if (length(hit) == 0L) {
@@ -6385,6 +6388,7 @@ render_resource_named <- function(groups, at, hit, witness, written,
     owner <- c(owner, read$owner)
     named <- c(named, read$rule)
   }
+  n <- render_resource_whole(set[hit], n)
   keep <- owner <= n
   list(rules = unname(split(named[keep], factor(owner[keep],
                                                 seq_along(hit)))),
@@ -6526,6 +6530,23 @@ render_resource_alone <- function(groups, expand, at, rows, pair_row, rule,
                                    witness[rows$owner[pair_row[read]]])
   out$blocks[read] <- !found$allowed
   out
+}
+
+# How many of the leading reported candidates, the first `n` of those whose
+# rows are `row` (in line order), a check can show: the most that leave no
+# row in part, so a row whose naming did not finish is dropped whole, with
+# every reported candidate after its first, and the stop row counts them.
+# A row shows its own candidates' lines and the others they name, so one
+# cut in part could leave out a line that blocks its file.
+render_resource_whole <- function(row, n) {
+  if (n >= length(row)) {
+    return(n)
+  }
+  # Where each candidate's row ends, and how far the rows begun by each
+  # position reach: the first `i` hold whole rows when that is `i`.
+  last <- length(row) + 1L - match(row, rev(row))
+  whole <- which(cummax(last)[seq_len(n)] == seq_len(n))
+  if (length(whole) == 0L) 0L else max(whole)
 }
 
 # The (rule, class) rows of rules whose groups are `group` under `expand`,
