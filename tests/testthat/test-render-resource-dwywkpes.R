@@ -657,6 +657,21 @@ test_that("ROBO-dwywkpes: a budget cut while naming gets the stop row", {
   }
   expect_gt(seen$cut, 0L)
   expect_gt(seen$alone, 0L)
+  # The pairs are counted before they are built: twenty reported `/dK.js`
+  # beside twenty `/*aK.js` whose head `/` every witness starts with cost
+  # twenty pairs each, so a budget of 100 takes five; none matches.
+  k <- seq_len(20L)
+  groups <- slash_groups(rr_groups(paste0(
+    "User-agent: Foo\n", paste0("Disallow: /d", k, ".js\n", collapse = ""),
+    paste0("Disallow: /*a", k, ".js\n", collapse = "")
+  )))
+  at <- render_resource_candidates(groups$rules)
+  witness <- paste0("/d", k, ".js")
+  out <- render_resource_named(groups, at, k, witness, NULL, 100)
+  expect_identical(out$n, 5L)
+  out <- render_resource_named(groups, at, k, witness, NULL, Inf)
+  expect_identical(out$n, 20L)
+  expect_identical(lengths(out$rules), integer(20L))
 })
 
 # A body cut at max_bytes, whose cut line could have decided the witness.

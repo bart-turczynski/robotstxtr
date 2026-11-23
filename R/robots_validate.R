@@ -6428,7 +6428,9 @@ render_resource_pairs <- function(groups, key, at, hit, head, witness,
   alone <- render_resource_alone(groups, expand, at, rows, pair_row[hit_pair],
                                  at[pair_at[hit_pair]], witness, written,
                                  budget - spent)
-  n <- min(n, alone$n)
+  if (alone$n < n) {
+    n <- alone$n
+  }
   blocks <- alone$blocks
   list(owner = rows$owner[pair_row[hit_pair]][blocks],
        rule = at[pair_at[hit_pair]][blocks], n = n,
