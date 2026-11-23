@@ -16,7 +16,8 @@ ar_codes <- function(body) {
 ar_code <- "allow_reopens_through_query"
 
 # Each fixture: a body (`%s` stands for the crawler token, so the backends
-# can read it) and `today`, the codes it got before ROBO-micbpqbc. A bare
+# can read it) and `today`, the codes it got before ROBO-micbpqbc (plus
+# rule_query_crawl_not_index, added later by ROBO-jnnnkyat). A bare
 # `Disallow: /my/` also gets rule_slash_split: it blocks `/my/` and leaves
 # `/my` allowed.
 ar_split <- "rule_slash_split"
@@ -75,7 +76,7 @@ ar_fixtures <- list(
                   "Disallow: /c/?q=/sitemap_output/\n",
                   "Allow: */sitemap_output/\n"),
     today = c("disallow_tied_by_allow", "rule_query_parameter_position",
-              ar_split)
+              "rule_query_crawl_not_index", ar_split)
   ),
   # Google ranks by pattern length and an Allow wins a tie.
   tie = list(body = "User-agent: %s\nDisallow: /abc/\nAllow: */ss/\n",
@@ -113,7 +114,7 @@ ar_fixtures <- list(
                  today = c("rule_query_parameter_position", ar_split)),
   query_disallow = list(
     body = "User-agent: %s\nDisallow: /my/?\nAllow: */s/\n",
-    today = character(0)
+    today = "rule_query_crawl_not_index"
   ),
   dollar_disallow = list(
     body = "User-agent: %s\nDisallow: /my/$\nAllow: */s/\n",

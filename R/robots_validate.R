@@ -358,6 +358,14 @@ validation_unsupported <- c(
 #'     with that \code{?} written \code{*&}, or written \code{&} when a
 #'     \code{*} stands right before that \code{?} (\code{/*?sort=}, not
 #'     \code{/a*b?sort=}). \cr
+#'   \code{rule_query_crawl_not_index} \tab info \tab
+#'     A Disallow pattern holds \code{?}, \code{=} or \code{&}, so it may
+#'     target URL parameters. The note says robots.txt controls crawling,
+#'     not indexing: a blocked URL may still be indexed without its content,
+#'     a page-level noindex works only on a page the crawler may fetch, and
+#'     \code{rel=canonical} consolidates rather than excludes. One row per
+#'     file, on the first such line, listing five lines at most, then a
+#'     count. A heuristic on the pattern text. \cr
 #'   \code{rule_slash_pair} \tab info \tab
 #'     The same crawlers have a literal Allow or Disallow pattern both
 #'     without and with a trailing \code{/} (\code{/notes} and
@@ -795,6 +803,31 @@ validation_unsupported <- c(
 #' lower-case-escape twin gets no row, and a body cut at `max_bytes` is not
 #' checked: a twin past the cut could silence the rule.
 #'
+#' `rule_query_crawl_not_index` reads a non-empty Disallow whose canonical
+#' value, already cut at `#`, is led by `/` or `*` and holds `?`, `=` or
+#' `&`. It is a heuristic on the pattern text: no list of parameter names
+#' is read, so `/collections/*sort_by*` gets no row, and the check claims
+#' nothing about which URLs the rule blocks or whether any is indexed. Left
+#' out: Allow rules, values not led by `/` or `*`
+#' (`rule_missing_leading_slash`), a Disallow an identical Allow ties
+#' (`disallow_tied_by_allow`), a lower-case-escape twin, rules before any
+#' User-agent line and rules of a group no crawler reads, such as one
+#' naming only `User-agent: __usage_ai-training`. A group whose User-agent
+#' Google cuts to no token, such as `360Spider`, still counts: Bing and
+#' Yandex read the whole value. The note does not depend on group
+#' selection, so a rule repeated across groups or in a repeated group adds
+#' only its line, and the file gets one row, which also stands beside
+#' `rule_query_parameter_position` on the same line. The statements about
+#' indexing follow Google's documentation on blocking indexing, faceted
+#' navigation and duplicate URLs: a URL robots.txt blocks may still be
+#' indexed without its content; a noindex meta tag or `X-Robots-Tag` header
+#' is read only on a page the crawler may fetch, so robots.txt is no place
+#' for it; `rel=canonical` is a consolidation hint, not an exclusion; and
+#' blocking faceted, sort or filter URLs can be deliberate crawl control.
+#' Other search engines may differ. A body cut at `max_bytes` is checked on
+#' the bytes read: a line past the cut that would tie a Disallow, such as
+#' an identical Allow, is not seen.
+#'
 #' `rule_slash_pair` and `rule_slash_split` read only literal patterns: led
 #' by `/`, of printable ASCII other than space, with no `*`, `$`, `?` or
 #' `%`, and no `.` or `..` segment anywhere, the end included (`/a/.`),
@@ -919,7 +952,8 @@ validation_unsupported <- c(
 #'
 #' On a document holding a NUL byte, `wildcard_rules_not_inherited`,
 #' `disallow_tied_by_allow`, `duplicate_rule`,
-#' `rule_query_parameter_position`, `rule_slash_pair`, `rule_slash_split`,
+#' `rule_query_parameter_position`, `rule_query_crawl_not_index`,
+#' `rule_slash_pair`, `rule_slash_split`,
 #' `rule_end_anchor_query`, `allow_reopens_through_query`,
 #' `rule_render_resource_blocked` and the
 #' AI-training codes follow Google's
@@ -1886,7 +1920,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # A Disallow an identical Allow ties never applies (ROBO-fdhmlvwm).
   # Lines past a cut can only add Allows or groups, which cannot revive
   # it, so a cut body is checked too.
-  for (found in tied_disallow_diagnostics(groups)) {
+  tied <- tied_disallow_diagnostics(groups)
+  for (found in tied) {
     add_diagnostic(
       found$line, "warning", "disallow_tied_by_allow", "disallow",
       paste0(found$message, nul_reading)
@@ -1930,6 +1965,20 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         paste0(found$message, nul_reading)
       )
     }
+  }
+  # Disallows whose pattern holds a query delimiter: robots.txt controls
+  # crawling, not indexing (ROBO-jnnnkyat). One note for the file. A cut
+  # body is checked too, on the bytes read: a line past the cut that would
+  # tie a Disallow is not seen.
+  found <- query_index_note_diagnostics(
+    groups, skip = c(which(!is.na(escape_twin)),
+                     vapply(tied, `[[`, integer(1L), "line"))
+  )
+  if (nrow(found) > 0L) {
+    add_diagnostic(
+      found$line, "info", "rule_query_crawl_not_index", "disallow",
+      paste0(found$message, nul_reading)
+    )
   }
   # A literal `P` and `P/` of one type for the same crawlers (ROBO-roypaoox).
   # Later lines cannot undo a pair, so a cut body is checked too.
@@ -4639,6 +4688,73 @@ query_parameter_render <- function(x) {
     render_validation_line(charToRaw(v))
   }, "", USE.NAMES = FALSE)
   x
+}
+
+# The Disallows whose pattern may target URL parameters, for one note per
+# file that robots.txt controls crawling, not indexing (ROBO-jnnnkyat). A
+# rule qualifies when it is a non-empty Disallow whose canonical value
+# (already cut at `#`) is led by `/` or `*` and holds `?`, `=` or `&`. No
+# list of parameter names is read, so `/collections/*sort_by*` stays
+# silent: the check reads the pattern text only and claims nothing about
+# the URLs it blocks. Lines in `skip` (lower-case-escape twins, Disallows an
+# identical Allow ties) are left out, and so is a rule of a group no crawler
+# reads: one naming only the AI-training token (slash_groups()) or an empty
+# User-agent. A value Google cuts to no token (`360Spider`) still counts:
+# Bing and Yandex read it whole. Rules before any User-agent line are in no
+# group. On a cut body only the bytes read are judged: an Allow past the cut
+# that would tie a Disallow is not seen. Returns a
+# data frame of `line` (the first qualifying line) and `message`, with one
+# row or none.
+query_index_note_diagnostics <- function(groups, skip = integer()) {
+  rules <- groups$rules
+  value <- rules$value
+  at <- which(
+    rules$type == "disallow" & substr(value, 1L, 1L) %in% c("/", "*") &
+      grepl("[?=&]", value, useBytes = TRUE) & !rules$line %in% skip
+  )
+  # A group some crawler reads names `*` or a non-empty whole value
+  # (`agents$uncut`): Bing and Yandex read `360Spider`, which Google cuts to
+  # no token.
+  agents <- slash_groups(groups)$agents
+  read <- agents$group[agents$global | nzchar(agents$uncut)]
+  at <- at[rules$group[at] %in% read]
+  if (length(at) == 0L) {
+    return(data.frame(line = integer(), message = character(),
+                      stringsAsFactors = FALSE))
+  }
+  lines <- sort(unique(rules$line[at]))
+  data.frame(line = lines[[1L]],
+             message = query_index_note_message(lines, value[at[[1L]]]),
+             stringsAsFactors = FALSE)
+}
+
+# The note's text: the qualifying lines, five at most, then a count, and
+# the first one's pattern, elided past 40 bytes and rendered ASCII-safe;
+# then, once for the file, what robots.txt does and does not do, hedged
+# with "may" and attributed to Google's documentation. It never suggests
+# a noindex line in robots.txt, and calls deliberate crawl control fine.
+query_index_note_message <- function(lines, first, cap = 5L) {
+  shown <- query_parameter_render(query_parameter_cap(first, 40L))
+  lead <- if (length(lines) == 1L) {
+    sprintf("The Disallow on line %d ('%s') holds", lines, shown)
+  } else {
+    sprintf("The Disallows on lines %s (the first '%s') hold",
+            joined_and(as.character(utils::head(lines, cap)),
+                       length(lines) - min(length(lines), cap)),
+            shown)
+  }
+  target <- if (length(lines) == 1L) "it may target" else "they may target"
+  paste0(
+    lead, " '?', '=' or '&', so ", target, " URL parameters; this reads ",
+    "the pattern text only. robots.txt controls crawling, not indexing: ",
+    "Google's documentation says a blocked URL may still be indexed, ",
+    "without its content. To keep a page out of the index, a noindex meta ",
+    "tag or X-Robots-Tag header works only on a page the crawler may ",
+    "fetch, so it is not seen on a blocked URL. For duplicate parameter ",
+    "URLs, rel=canonical is a consolidation hint, not an exclusion. ",
+    "Blocking faceted, sort or filter URLs can be deliberate crawl control, ",
+    "which is fine where that is the intent."
+  )
 }
 
 # Indexes of `rules` whose canonical value is a literal path pattern for the

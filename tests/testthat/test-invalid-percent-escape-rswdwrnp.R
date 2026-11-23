@@ -8,9 +8,11 @@
 
 # The validator's rows for one rule line, after a User-agent line.
 ip_rows <- function(value, type = "Disallow") {
-  robots_validate_text(
+  d <- robots_validate_text(
     paste0("User-agent: *\n", type, ": ", value, "\n")
   )$diagnostics
+  # The crawl-not-index note (ROBO-jnnnkyat) has its own tests; leave it out.
+  d[d$code != "rule_query_crawl_not_index", , drop = FALSE]
 }
 
 ip_codes <- function(value, type = "Disallow") {
@@ -177,14 +179,16 @@ test_that("ROBO-rswdwrnp: the unfilled placeholder is one warning row", {
   x <- robots_validate_text(
     "User-agent: *\nDisallow: /*hashid=%subscriber_hash%\n"
   )
-  expect_identical(x$diagnostics$code, ip_new)
-  expect_identical(x$diagnostics$line, 2L)
-  expect_identical(x$diagnostics$severity, "warning")
-  expect_identical(x$diagnostics$directive, "disallow")
-  expect_identical(x$diagnostics$raw_text,
-                   "Disallow: /*hashid=%subscriber_hash%")
+  # The `=` also draws the crawl-not-index note (ROBO-jnnnkyat).
+  expect_identical(x$diagnostics$code,
+                   c(ip_new, "rule_query_crawl_not_index"))
+  d <- x$diagnostics[x$diagnostics$code == ip_new, , drop = FALSE]
+  expect_identical(d$line, 2L)
+  expect_identical(d$severity, "warning")
+  expect_identical(d$directive, "disallow")
+  expect_identical(d$raw_text, "Disallow: /*hashid=%subscriber_hash%")
   expect_identical(x$documents$validation_status, "warning")
-  message <- x$diagnostics$message
+  message <- d$message
   expect_match(message, "'%su'", fixed = TRUE)
   expect_match(message, "'%25'", fixed = TRUE)
   expect_match(message, "'%subscriber_hash%' looks like an unfilled",

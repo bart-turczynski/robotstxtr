@@ -577,7 +577,8 @@ sp_misses <- list(
   "/x*" = list(character(0), character(0)),
   "/a*b/" = list(character(0), character(0)),
   "/" = list(character(0), "disallow_tied_by_allow"),
-  "/x?y/" = list(character(0), character(0)),
+  # The `?` Disallow draws the crawl-not-index note (ROBO-jnnnkyat).
+  "/x?y/" = list("rule_query_crawl_not_index", character(0)),
   "/%41/" = list("rule_escaped_unreserved", "rule_escaped_unreserved"),
   "/a/./" = list("rule_dot_segment", "rule_dot_segment"),
   "/a/." = list(character(0), character(0)),

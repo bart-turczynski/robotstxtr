@@ -223,7 +223,11 @@ the tie. An info, `duplicate_rule`, notes an Allow or Disallow that repeats an
 earlier rule for the same crawlers, so it has no effect. An info,
 `rule_query_parameter_position`, notes a pattern such as `/items/*?sort=` that
 names a parameter right after `?`, so it may miss URLs where that parameter
-follows another one. An info, `rule_slash_pair`, notes a literal pattern
+follows another one. An info, `rule_query_crawl_not_index`, notes once per
+file the Disallows whose pattern holds `?`, `=` or `&`, such as `/*?sort=`:
+robots.txt controls crawling, not indexing, so a blocked URL may still be
+indexed, and a page-level noindex is read only on a page the crawler may
+fetch. An info, `rule_slash_pair`, notes a literal pattern
 written both as `/notes` and `/notes/` for the same crawlers, and an info,
 `rule_slash_split`, notes a crawler that gets one decision for `/gallery` and
 another for `/gallery/`, which a server redirect between them makes matter. An

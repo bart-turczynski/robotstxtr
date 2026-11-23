@@ -60,8 +60,14 @@ test_that("ROBO-rnjfbhvn: a dot segment in a rule value is one warning row", {
 test_that("ROBO-rnjfbhvn: a bounded dot segment is flagged", {
   for (type in c("Allow", "Disallow")) {
     for (value in ds_hits) {
+      expected <- "rule_dot_segment"
+      # A Disallow holding `?` also gets the crawl-not-index note
+      # (ROBO-jnnnkyat).
+      if (type == "Disallow" && value == "/a/..?q=x") {
+        expected <- c(expected, "rule_query_crawl_not_index")
+      }
       expect_identical(
-        ds_codes(type, value), "rule_dot_segment",
+        ds_codes(type, value), expected,
         label = paste(type, value)
       )
     }
@@ -80,6 +86,11 @@ test_that("ROBO-rnjfbhvn: other dots keep their codes", {
       # A Disallow `P$` alone blocks `P` and not `P?x=1` (ROBO-nzcvlsvk).
       if (type == "Disallow" && value == "/v1.$") {
         expected <- c(expected, "rule_end_anchor_query")
+      }
+      # A Disallow holding `?` also gets the crawl-not-index note
+      # (ROBO-jnnnkyat).
+      if (type == "Disallow" && value %in% c("/a./b?x", "/?q=/../z")) {
+        expected <- c(expected, "rule_query_crawl_not_index")
       }
       expect_identical(
         ds_codes(type, value), expected,

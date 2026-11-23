@@ -6,7 +6,9 @@
 # backends.
 
 ea_diag <- function(body) {
-  robots_validate_text(body)$diagnostics
+  d <- robots_validate_text(body)$diagnostics
+  # The crawl-not-index note (ROBO-jnnnkyat) has its own tests; leave it out.
+  d[d$code != "rule_query_crawl_not_index", , drop = FALSE]
 }
 
 ea_codes <- function(body) {

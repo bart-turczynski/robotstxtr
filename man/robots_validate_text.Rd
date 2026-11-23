@@ -367,6 +367,14 @@ such URL. Not reported when the same crawlers also have the rule
 with that \code{?} written \code{*&}, or written \code{&} when a
 \code{*} stands right before that \code{?} (\code{/*?sort=}, not
 \code{/a*b?sort=}). \cr
+\code{rule_query_crawl_not_index} \tab info \tab
+A Disallow pattern holds \code{?}, \code{=} or \code{&}, so it may
+target URL parameters. The note says robots.txt controls crawling,
+not indexing: a blocked URL may still be indexed without its content,
+a page-level noindex works only on a page the crawler may fetch, and
+\code{rel=canonical} consolidates rather than excludes. One row per
+file, on the first such line, listing five lines at most, then a
+count. A heuristic on the pattern text. \cr
 \code{rule_slash_pair} \tab info \tab
 The same crawlers have a literal Allow or Disallow pattern both
 without and with a trailing \code{/} (\code{/notes} and
@@ -804,6 +812,31 @@ two fewer where the cut would split a \verb{\%XX} escape. A
 lower-case-escape twin gets no row, and a body cut at \code{max_bytes} is not
 checked: a twin past the cut could silence the rule.
 
+\code{rule_query_crawl_not_index} reads a non-empty Disallow whose canonical
+value, already cut at \verb{#}, is led by \code{/} or \code{*} and holds \verb{?}, \code{=} or
+\code{&}. It is a heuristic on the pattern text: no list of parameter names
+is read, so \verb{/collections/*sort_by*} gets no row, and the check claims
+nothing about which URLs the rule blocks or whether any is indexed. Left
+out: Allow rules, values not led by \code{/} or \code{*}
+(\code{rule_missing_leading_slash}), a Disallow an identical Allow ties
+(\code{disallow_tied_by_allow}), a lower-case-escape twin, rules before any
+User-agent line and rules of a group no crawler reads, such as one
+naming only \verb{User-agent: __usage_ai-training}. A group whose User-agent
+Google cuts to no token, such as \verb{360Spider}, still counts: Bing and
+Yandex read the whole value. The note does not depend on group
+selection, so a rule repeated across groups or in a repeated group adds
+only its line, and the file gets one row, which also stands beside
+\code{rule_query_parameter_position} on the same line. The statements about
+indexing follow Google's documentation on blocking indexing, faceted
+navigation and duplicate URLs: a URL robots.txt blocks may still be
+indexed without its content; a noindex meta tag or \code{X-Robots-Tag} header
+is read only on a page the crawler may fetch, so robots.txt is no place
+for it; \code{rel=canonical} is a consolidation hint, not an exclusion; and
+blocking faceted, sort or filter URLs can be deliberate crawl control.
+Other search engines may differ. A body cut at \code{max_bytes} is checked on
+the bytes read: a line past the cut that would tie a Disallow, such as
+an identical Allow, is not seen.
+
 \code{rule_slash_pair} and \code{rule_slash_split} read only literal patterns: led
 by \code{/}, of printable ASCII other than space, with no \code{*}, \code{$}, \verb{?} or
 \verb{\%}, and no \code{.} or \code{..} segment anywhere, the end included (\verb{/a/.}),
@@ -928,7 +961,8 @@ cut at \code{max_bytes} is not checked, and a
 
 On a document holding a NUL byte, \code{wildcard_rules_not_inherited},
 \code{disallow_tied_by_allow}, \code{duplicate_rule},
-\code{rule_query_parameter_position}, \code{rule_slash_pair}, \code{rule_slash_split},
+\code{rule_query_parameter_position}, \code{rule_query_crawl_not_index},
+\code{rule_slash_pair}, \code{rule_slash_split},
 \code{rule_end_anchor_query}, \code{allow_reopens_through_query},
 \code{rule_render_resource_blocked} and the
 AI-training codes follow Google's
