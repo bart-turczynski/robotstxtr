@@ -25,10 +25,10 @@ The merge gate is fleet-ci's local gate, run in the fleet image by the pre-push 
 `.fp/` is gitignored, so the issue tracker is a local database that no commit, no clone and no bundle has ever contained — while `NEWS.md`, the release audits under `design/` and the test suite all cite `ROBO-*` ids as the reasoning behind what they assert. Regenerate the one copy that is in git with:
 
 ```bash
-sh data-raw/snapshot-tracker.sh
+ROBOTSTXTR_CORPUS=<corpus> ROBOTSTXTR_SNAPSHOT_PUBLIC_HOSTS=<public-host list> sh data-raw/snapshot-tracker.sh
 ```
 
-It writes `design/tracker-snapshot.md`. Not `docs/`: that path here is the generated pkgdown site and is gitignored (`.gitignore:51`), so a snapshot written there would reach no commit and defeat the point of the file. `design/` is where this package's committed design docs already live.
+It writes `design/tracker-snapshot.md`, but only after `data-raw/snapshot-tracker-guard.py` finds no host or file hash of the private study corpus in it (ROBO-hgbqedwt). Both variables point outside git: the corpus, and the list of corpus hosts the tracker cites as public, live-fetched examples. Both live in the private corpus store. On a refusal, scrub the tracker text the named lines come from; never commit the hosts. On a machine without the corpus, `SNAPSHOT_SKIP_CORPUS_CHECK=1` writes it unchecked. Not `docs/`: that path here is the generated pkgdown site and is gitignored (`.gitignore:51`), so a snapshot written there would reach no commit and defeat the point of the file. `design/` is where this package's committed design docs already live.
 
 `fp` stays authoritative — nothing reads the snapshot back, and `fp context <id>` is still the way to read an issue. The file is a backstop, and every run overwrites it wholesale, so hand-edits to it are lost.
 

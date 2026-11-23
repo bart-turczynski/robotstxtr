@@ -34,9 +34,10 @@
 # .fp/config.toml and never guessed: it is not a transform of the directory name
 # (sitemapr's prefix is SITE, robotstxtr's is ROBO), and
 # `fp issue list --format json` reports bare short ids with no prefix field at
-# all, so the config file is the only authority for it. The three assignments
-# below are the only per-repository settings; the rest of the script is
-# identical in every copy.
+# all, so the config file is the only authority for it. The four assignments
+# below are the only per-repository settings; the rest of the script is meant
+# to be identical in every copy (the GUARD hook was added here first, for
+# ROBO-hgbqedwt, and the other copies do not carry it yet).
 set -eu
 
 # Where the snapshot is written, relative to the repository root. Not `docs/`
@@ -55,6 +56,13 @@ CITED_BY="\`NEWS.md\`, the release audits under \`design/\` and the test suite"
 # named in the output header to make the hazard concrete. It is punctuated as a
 # trailing clause; leave it empty in a repository that has no such precedent.
 PRECEDENT=""
+
+# Optional. A program run on the finished output before it replaces $OUT, as
+# `$GUARD <file>`; a non-zero exit leaves $OUT untouched. Here it refuses a
+# snapshot that names a host or file of the private study corpus, since
+# tracker comments are copied verbatim (ROBO-hgbqedwt). Leave it empty in a
+# repository that needs no such check.
+GUARD="python3 data-raw/snapshot-tracker-guard.py"
 
 if ! command -v fp >/dev/null 2>&1; then
 	echo "fp not found on PATH; cannot snapshot the tracker" >&2
@@ -149,6 +157,12 @@ with open(p, encoding="utf-8") as f:
 with open(p, "w", encoding="utf-8") as f:
     f.write(text.rstrip("\n") + "\n")
 ' "$OUT.tmp"
+
+if [ -n "$GUARD" ] && ! $GUARD "$OUT.tmp"; then
+	rm -f "$OUT.tmp"
+	echo "the guard refused the snapshot; $OUT is unchanged" >&2
+	exit 1
+fi
 
 mv "$OUT.tmp" "$OUT"
 
