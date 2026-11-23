@@ -354,7 +354,13 @@ a BOM; invalid UTF-8 in a rule and in a `User-agent` value; lines past the upstr
 buffer; the typos upstream accepts; empty, scheme-less and `ftp:` URLs and an empty token; a NUL byte
 before a key and inside a rule value; and the `index` family, the boundaries of `HandleAllow`'s
 `index.htm` fallback (suffixes, case, query slashes, the retried `$` pattern's priority, Allow-only
-asymmetry; ROBO-yuqtnqbj, `design/library-comparison.md` class 22), where every path agrees.
+asymmetry; ROBO-yuqtnqbj, `design/library-comparison.md` class 22), where every path agrees; and
+the families promoted from the 2026-11-18 source audit (ROBO-vxmeoqcr; findings record
+`design/google-source-audit.md`): `colon` (the first colon splits the line, so
+`Disallow /ignored:/target` blocks `/target`), `whitespace` (VT and tab in the missing-colon
+recovery), `truncation` (one line cut at 16,663 bytes in each of its states), `userinfo` (`u;v@`
+against `u%3Bv@`, on the two legacy paths only: the v1 paths leave userinfo out, ADR 0002) and
+`priority` (trailing and redundant `*` count in a pattern's length).
 Fixtures and recorded reference answers:
 `tests/testthat/fixtures/google-fidelity-deehqhlc/cases.R`; pins:
 `tests/testthat/test-google-fidelity-deehqhlc.R`; the differential, which re-derives the answers from
@@ -364,7 +370,7 @@ Every path agrees with the reference on decision and line, outside these classes
 
 | # | Class | Fixture | Reference | robotstxtr | Verdict |
 |---|---|---|---|---|---|
-| 1 | an `Allow`/`Disallow` with an empty value (also `Disallow: # comment`) matches at priority 0 | `User-agent: FooBot` / `Disallow:`, URL `/x` | allowed, line 2 | allowed, `default_allow`, no line, type `none` (all paths) | DELIBERATE: PRD §6.6 match-metadata rules ("an empty path is ignored", restated as `default_allow`), `normalize_ignored_empty_path()` for the legacy paths; `match_google_v1()` copied it into v1 in `af141e7`. Documented for v1 in `design/engine-contract-v1.md` (ROBO-dhwinnii). The Yandex backend reports an empty `Disallow` as `effective_empty_disallow` with its line, and an empty `Allow` as `default_allow` with no line, as here |
+| 1 | an `Allow`/`Disallow` with an empty value (also `Disallow: # comment`) matches at priority 0 | `User-agent: FooBot` / `Disallow:`, URL `/x`; also a colon whose value the 16,663-byte line buffer cuts away (`truncation`) | allowed, line 2 | allowed, `default_allow`, no line, type `none` (all paths) | DELIBERATE: PRD §6.6 match-metadata rules ("an empty path is ignored", restated as `default_allow`), `normalize_ignored_empty_path()` for the legacy paths; `match_google_v1()` copied it into v1 in `af141e7`. Documented for v1 in `design/engine-contract-v1.md` (ROBO-dhwinnii). The Yandex backend reports an empty `Disallow` as `effective_empty_disallow` with its line, and an empty `Allow` as `default_allow` with no line, as here |
 | 2 | the 512,000-byte window (v1 paths) | a rule starting at byte 520,001; `Disallow: /private-drafts/` across byte 512,000 | disallowed, line 3 (no window) | allowed, `default_allow` | DELIBERATE: §7, the window `[documented]`, the cut line dropped `[application_choice]` (ROBO-phfbpfiy) |
 | 3 | the `max_bytes` cut (`allowed_by_robots_url()`) | a rule starting at byte 520,001 or 530,001; `Disallow: /private-drafts/` across byte 512,000; `Disallow: /private` ending at byte 512,000, its line feed byte 512,001 | disallowed, line 3 | allowed, `default_allow`, `body_truncated` | DELIBERATE: `allowed_by_robots_url()` `max_bytes` (512,000 by default, Google's window, ROBO-uwveumyp; complete lines, ROBO-ldpahknv); §7; §9 delta (c). The v1 paths read the last fixture (class 2 agrees there): accepted, §7 |
 | 4 | input screening | URL `""`, token `""`; on the URL paths also `example.com/private`, `ftp://example.com/private`; on the v1 paths also a caller token that is not an RFC 9309 `identifier` (`Googlebot/2.1`, `Googlebot Image`) | a decision (`""` is path `/`; `""` as agent reads `*`; a token that is not an identifier names no group, so it reads `*`) | no decision, `input_unknown` / `input_invalid` | DELIBERATE: PRD §6.6 input rules; the roxygen of `allowed_by_robots_text()` and `allowed_by_robots_url()` (HTTP(S) only). The identifier screen is the v1 facades' on the `google` and `rfc9309` backends, under every ruleset (RFC 9309 §2.2.1; ROBO-mtmkpwuf, `engine-contract-v1.md` "Accepted matcher-profile selectors"); the legacy paths read such a token as given and agree with the reference |

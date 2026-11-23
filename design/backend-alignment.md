@@ -147,6 +147,7 @@ Unicode correction. They do not implement matcher fixes.
 - The 2026-11-18 source audit's 122 cases include controls and existing families.
   The scratch result is not a durable conformance corpus until ROBO-zjkemhjf
   delivers its accepted outcome. Index-specific coverage stays ROBO-yuqtnqbj.
+  Findings record: [Google source audit](google-source-audit.md).
 - Bing field-name tolerance has measured exceptions to the shipped exact-name
   grammar. Existing adjudications retain compatibility nonclaims; a release
   addressing line ends, suffixes and Unicode does not establish parity there.
