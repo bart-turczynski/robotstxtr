@@ -138,7 +138,21 @@ validation_unsupported <- c(
 #'     A directive this profile does not recognize. A key that is valid
 #'     UTF-8 and holds a look-alike character, as \code{user_agent_cut}
 #'     lists them, names it and gives the ASCII spelling
-#'     (\code{Disallow} for a key written with a Cyrillic a). \cr
+#'     (\code{Disallow} for a key written with a Cyrillic a). An ASCII key
+#'     that is a near miss of \code{User-agent}, \code{Allow} or
+#'     \code{Disallow} (one edit from \code{allow}, two from the others,
+#'     such as \code{Disavow}; equal to one once the run of non-letters
+#'     leading it is removed, such as \code{/Disallow} or
+#'     \code{///Disallow}; or \code{Deny}; not a key in range of both
+#'     \code{allow} and \code{disallow}, such as \code{Dallow}) names the
+#'     directive it resembles and what the line does: a rule near miss
+#'     applies on no engine; for a User-agent near miss it gives Google's
+#'     reading only (the line starts no group, so the rules after it stay
+#'     with the group above, naming its crawlers, are in no group before
+#'     the first User-agent line, or, between stacked User-agent lines,
+#'     join the next group) and adds that Bing and Yandex may read the
+#'     following lines differently. In a body over 512,000 bytes it leaves
+#'     out what the line does to the rules after it. \cr
 #'   \code{empty_user_agent} \tab error \tab
 #'     A User-agent line with an empty value. \cr
 #'   \code{user_agent_cut} \tab warning or info \tab
@@ -1654,6 +1668,14 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # Computed once here: the empty-Disallow note (ROBO-vyystald) reads it in
   # the loop below, and the group checks after it.
   groups <- validation_groups(parsed, raw_lines)
+  # The User-agent lines Google joins to the open group (ROBO-xepnhfgs), and
+  # whether a CR ends a line without an LF: read here for the near-miss
+  # sentence (ROBO-klmjfsvd), and below for their own rows.
+  joined_found <- joined_user_agent_diagnostics(groups, parsed)
+  lone_cr <- any(bytes == as.raw(0x0d) &
+                   c(bytes[-1L], as.raw(0x00)) != as.raw(0x0a))
+  near_neighbors <- NULL
+  near_cache <- new.env(hash = TRUE, parent = emptyenv())
   # Groups not naming `*` whose User-agent lines name at least one crawler
   # (a token Google reads), and whether the file has a `*` group.
   named_groups <- setdiff(groups$agents$group[nzchar(groups$agents$key)],
@@ -1754,10 +1776,40 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         # A key holding a look-alike (`Dis<U+0430>llow`) names it and the
         # ASCII spelling (ROBO-wtixhwlo).
         key_note <- lookalike_note(parsed$action[[i]], "key")
+        # A key near User-agent, Allow or Disallow names it and what the
+        # line does (ROBO-klmjfsvd).
+        # Looked up once per folded ASCII key: a file can repeat one
+        # thousands of times. A non-ASCII key is no near miss, and is kept
+        # out of the cache, whose names R translates to the native encoding.
+        # A key not valid UTF-8 folds to "unknown", no near miss either.
+        cacheable <- nzchar(action) && !any(charToRaw(action) > as.raw(0x7f))
+        near <- if (cacheable) near_cache[[action]]
+        if (is.null(near)) {
+          near <- validation_near_miss_key(parsed$action[[i]])
+          near <- if (is.null(near)) "" else near
+          if (cacheable) {
+            assign(action, near, envir = near_cache)
+          }
+        }
+        near_note <- NULL
+        if (nzchar(near)) {
+          if (is.null(near_neighbors)) {
+            near_neighbors <- near_miss_neighbors(
+              parsed, groups,
+              joined_found$line[joined_found$code ==
+                                  "user_agent_joined_across_directive"]
+            )
+          }
+          near_note <- near_miss_sentence(
+            near, i, parsed, near_neighbors, lone_cr, body_truncated,
+            stored_size > 512000L
+          )
+        }
         add_diagnostic(
           line, "warning", "unknown_directive", action,
           paste0("Directive is not recognized by this validation profile.",
-                 if (!is.null(key_note)) paste0(" ", key_note$sentence, "."))
+                 if (!is.null(key_note)) paste0(" ", key_note$sentence, "."),
+                 if (!is.null(near_note)) paste0(" ", near_note))
         )
       }
     }
@@ -1984,7 +2036,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   }
   # A User-agent line Google joins to the open group across a directive, or
   # across blank and comment lines only (ROBO-xepnhfgs).
-  found <- joined_user_agent_diagnostics(groups, parsed)
+  found <- joined_found
   joined_lines <- found$line
   if (nrow(found) > 0L) {
     add_chunk(
@@ -2041,8 +2093,6 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       raw_lines[rule_line], rule_line,
       parsed$missing_colon[match(rule_line, parsed$line)], groups$rules$empty
     )
-    lone_cr <- any(bytes == as.raw(0x0d) &
-                     c(bytes[-1L], as.raw(0x00)) != as.raw(0x0a))
     found <- if (lone_cr || stored_size > 500000L) {
       ai_training_rows()
     } else {
@@ -9176,6 +9226,235 @@ validation_prefix_key_message <- function(key, type) {
     )
   }
   message
+}
+
+# The directive an unknown key is a near miss of (ROBO-klmjfsvd): "user-agent",
+# "allow" or "disallow", or NULL. Only a key of ASCII bytes is read: a
+# non-ASCII one is left to the look-alike note (ROBO-wtixhwlo) and the
+# invisible-character checks, and this also leaves out a key a misplaced BOM
+# starts (ROBO-atkmqcov) and a key that is not valid UTF-8 (marked "bytes"),
+# both of which hold a byte over 0x7F. A key Google reads (the typo and
+# prefix forms) is never unknown, so it never gets here. The key, folded
+# with ascii_lower(), is a near miss when it is `deny`, when it equals one of
+# the three once its leading non-letters are removed (`/Disallow`), or when
+# it is within an optimal-string-alignment distance of 1 of `allow` or 2 of
+# `disallow` or `user-agent`. A key in range of both `allow` and `disallow`
+# (`Dallow`, `Sallow`: one edit from the first, two from the second)
+# resembles neither, as which one was meant cannot be told.
+validation_near_miss_key <- function(action) {
+  bytes <- charToRaw(action)
+  if (length(bytes) == 0L || any(bytes > as.raw(0x7f))) {
+    return(NULL)
+  }
+  key <- ascii_lower(action)
+  if (identical(key, "deny")) {
+    return("disallow")
+  }
+  bound <- c(allow = 1L, disallow = 2L, "user-agent" = 2L)
+  lower <- charToRaw(key)
+  letter <- which(lower >= as.raw(0x61) & lower <= as.raw(0x7a))
+  if (length(letter) > 0L && letter[[1L]] > 1L) {
+    stripped <- rawToChar(lower[letter[[1L]]:length(lower)])
+    if (stripped %in% names(bound)) {
+      return(stripped)
+    }
+  }
+  # A key whose length is out of range is not compared, so a long key costs
+  # nothing.
+  near <- vapply(names(bound), function(target) {
+    if (abs(length(lower) - nchar(target)) > bound[[target]]) {
+      return(NA_integer_)
+    }
+    validation_osa_distance(lower, charToRaw(target))
+  }, integer(1L))
+  hit <- names(near)[!is.na(near) & near <= bound]
+  if (length(hit) != 1L) {
+    return(NULL)
+  }
+  hit
+}
+
+# The optimal-string-alignment distance between two raw vectors: insertions,
+# deletions, substitutions and a swap of two adjacent bytes count 1 each.
+validation_osa_distance <- function(a, b) {
+  n <- length(a)
+  m <- length(b)
+  d <- matrix(0L, n + 1L, m + 1L)
+  d[, 1L] <- 0:n
+  d[1L, ] <- 0:m
+  for (i in seq_len(n)) {
+    for (j in seq_len(m)) {
+      cost <- if (a[[i]] == b[[j]]) 0L else 1L
+      best <- min(d[i, j + 1L] + 1L, d[i + 1L, j] + 1L, d[i, j] + cost)
+      if (i > 1L && j > 1L && a[[i]] == b[[j - 1L]] &&
+            a[[i - 1L]] == b[[j]]) {
+        best <- min(best, d[i - 1L, j - 1L] + 1L)
+      }
+      d[i + 1L, j + 1L] <- best
+    }
+  }
+  d[n + 1L, m + 1L]
+}
+
+# For near_miss_sentence() (ROBO-klmjfsvd), computed once per document so
+# that each sentence costs the same whatever the file holds (ROBO-dbvmxcfw).
+# All of it is Google's reading: `groups` is validation_groups(), which
+# joins User-agent lines as Google's parser does.
+# By parsed row: the last User-agent, Allow or Disallow row before it (0
+# when none), the first User-agent row after it (n + 1 when none), the
+# Allow and Disallow rows Google reads counted up to it, the group of a
+# User-agent or rule row, and the crawlers each group names counted up to
+# it, each once in any ASCII case.
+# By group: its first User-agent row and whether it holds a rule.
+# By line: whether a user_agent_joined_across_directive row is on it.
+near_miss_neighbors <- function(parsed, groups, joined) {
+  n <- nrow(parsed)
+  index <- seq_len(n)
+  agent <- parsed$has_directive & parsed$type == "user-agent"
+  rule <- parsed$has_directive & parsed$type %in% c("allow", "disallow")
+  next_agent <- rev(cummin(rev(ifelse(agent, index, n + 1L))))
+  last_line <- max(parsed$line, 0L)
+  row_of <- match(seq_len(last_line), parsed$line)
+  agents <- groups$agents
+  n_groups <- max(agents$group, 0L)
+  agent_row <- row_of[agents$line]
+  group_of <- rep(NA_integer_, n)
+  group_of[agent_row] <- agents$group
+  group_of[row_of[groups$rules$line]] <- groups$rules$group
+  first_row <- integer(n_groups)
+  first_row[rev(agents$group)] <- rev(agent_row)
+  named <- nzchar(agents$name)
+  label <- ifelse(agents$global, "*", agents$name)
+  first <- named & !duplicated(data.frame(agents$group, ascii_lower(label)))
+  first_at <- logical(n)
+  first_at[agent_row[first]] <- TRUE
+  is_joined <- logical(last_line)
+  is_joined[joined] <- TRUE
+  # Printed in a code span: a backtick is written as the escape printed
+  # values use for other bytes, and a long name is cut as other rows cut it.
+  shown <- ai_training_name(gsub("`", "\\x60", label[first], fixed = TRUE))
+  list(
+    prev_kept = cummax(ifelse(agent | rule, index, 0L)),
+    next_agent = c(next_agent[-1L], n + 1L),
+    rule_count = cumsum(rule),
+    rule_rows = which(rule),
+    group_of = group_of,
+    first_row = first_row,
+    has_rule = tabulate(groups$rules$group, n_groups) > 0L,
+    first_count = cumsum(first_at),
+    first_label = shown,
+    is_joined = is_joined
+  )
+}
+
+# The sentence a near-miss key adds to its unknown_directive row
+# (ROBO-klmjfsvd): the directive the key resembles and what the line does,
+# by where it sits.
+# A rule near miss: no engine reads the key as Allow or Disallow. Bing's
+# tester honors no field name outside Google's register (robotstxt-cpp-bing
+# docs/DECISIONS.md, 2026-11-23), and Yandex's flags typos as unknown
+# directives (robotstxtyandex field-name typo closure, 2026-08-05). In a body
+# with a lone CR it speaks for Google only, as Google's lines are the ones
+# read here.
+# A User-agent near miss: only Google's reading is stated (where the rules
+# after it go, and to which crawlers), then that Bing and Yandex may read
+# the following lines differently. It names no rewrite: a typo fixed
+# changes what the file decides. In a body over 512,000 bytes (`big`),
+# past what Google reads, the effect on the lines after it is left out.
+# `truncated` says the body was cut, past which no rule was read.
+near_miss_sentence <- function(target, i, parsed, neighbors, lone_cr,
+                               truncated, big, cap = 5L) {
+  label <- c("user-agent" = "User-agent", allow = "Allow",
+             disallow = "Disallow")[[target]]
+  # A backtick is written as the escape printed values use for other bytes,
+  # so it cannot end the code span.
+  key <- gsub("`", "\\x60", render_validation_line(charToRaw(
+    parsed$action[[i]]
+  )), fixed = TRUE)
+  lead <- sprintf("The key `%s` resembles `%s`, but %s it as %s", key, label,
+                  if (lone_cr || identical(target, "user-agent")) {
+                    "Google does not read"
+                  } else {
+                    "no engine reads"
+                  }, label)
+  if (!identical(target, "user-agent")) {
+    return(paste0(lead, ", so ", if (lone_cr) "Google does not apply" else
+      "no engine applies", " this rule."))
+  }
+  out <- paste0(lead, ", so on Google it starts no group.")
+  others <- " Bing and Yandex may read the following lines differently."
+  if (big) {
+    return(paste0(out, " The file is over 512,000 bytes, past what Google ",
+                  "reads, so what the line does to the rules after it is ",
+                  "not stated.", others))
+  }
+  prev <- neighbors$prev_kept[[i]]
+  next_agent <- neighbors$next_agent[[i]]
+  # The Allow and Disallow rows after it, up to the next User-agent row.
+  before <- neighbors$rule_count[[i]]
+  count <- neighbors$rule_count[[next_agent - 1L]] - before
+  rule_text <- if (count > cap) {
+    sprintf("lines %d-%d (%d rules)",
+            parsed$line[[neighbors$rule_rows[[before + 1L]]]],
+            parsed$line[[neighbors$rule_rows[[before + count]]]], count)
+  } else if (count > 0L) {
+    joined_rule_lines(parsed$line[neighbors$rule_rows[before + seq_len(count)]])
+  }
+  rules_after <- paste0(" The rules after it, up to the next User-agent ",
+                        "line (", rule_text, "), ")
+  # The group of the User-agent or rule line before it; NA for none, or for
+  # a rule before the first User-agent line.
+  group <- if (prev > 0L) neighbors$group_of[[prev]] else NA_integer_
+  if (is.na(group)) {
+    if (count > 0L) {
+      out <- paste0(out, rules_after, "are in no group on Google, so Google ",
+                    "applies none of them.")
+    }
+  } else {
+    # The distinct crawlers the group names above the line, counted from
+    # the group's first User-agent line, the first `cap` of them by name.
+    # An empty User-agent value names none.
+    first_row <- neighbors$first_row[[group]]
+    base <- if (first_row > 1L) neighbors$first_count[[first_row - 1L]] else 0L
+    distinct <- neighbors$first_count[[i]] - base
+    named <- if (distinct > 0L) {
+      joined_and(sprintf("`%s`", neighbors$first_label[
+        base + seq_len(min(distinct, cap))
+      ]), max(0L, distinct - cap))
+    }
+    if (count > 0L) {
+      out <- paste0(out, rules_after, "stay with the group above it on ",
+                    "Google", if (!is.null(named)) paste0(", for ", named),
+                    ".")
+    } else if (identical(parsed$type[[prev]], "user-agent") &&
+                 next_agent <= nrow(parsed)) {
+      # Between User-agent lines: Google joins the next one to this group.
+      agent_line <- parsed$line[[next_agent]]
+      out <- paste0(
+        out, " Google keeps the User-agent run across it, ",
+        if (is.null(named)) {
+          sprintf("to the next User-agent line (line %d).", agent_line)
+        } else if (neighbors$has_rule[[group]]) {
+          sprintf(paste0("so the rules after the next User-agent line ",
+                         "(line %d) apply to the agents above it too (%s)."),
+                  agent_line, named)
+        } else {
+          sprintf(paste0("so the agents above it (%s) share the group of ",
+                         "the next User-agent line (line %d)."),
+                  named, agent_line)
+        },
+        if (neighbors$is_joined[[agent_line]]) {
+          sprintf(" See the user_agent_joined_across_directive row on line %d.",
+                  agent_line)
+        }
+      )
+    }
+  }
+  if (truncated) {
+    out <- paste0(out, " The body was cut, and lines past the cut were not ",
+                  "read.")
+  }
+  paste0(out, others)
 }
 
 split_validation_lines <- function(bytes) {
