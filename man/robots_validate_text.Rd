@@ -201,19 +201,23 @@ that holds a second directive key followed by a colon, as when a
 line break was lost (\code{User-agent: * Disallow: /private/}):
 after a space or tab in any ASCII case, or glued onto the text before
 it in its usual spelling only (\code{ExampleBotAllow: /}, not the
-\code{allow:} of \code{/swallow:x}). The value is read as Google's
-parser reads it, so a key in a comment, after a NUL or past the line
-buffer is not found. The message names the key and its byte column
-and states Google's reading only: the text from the key on is part of
-the value, so its directive is lost; on a User-agent line, the token
-Google's matcher reads, as \code{user_agent_cut} would say, and, when
-the next User-agent line joins the group, whose rules then apply to
-this line's agent; then that Bing and Yandex may read the line
-differently. Rows that name a User-agent line's agent as a crawler
-leave such a line out (\code{wildcard_disallows_not_inherited} and
-the other wildcard codes, \code{user_agent_repeated_group},
-\code{user_agent_duplicate_in_group},
-\code{user_agent_groups_same_rules}). \cr
+\code{allow:} of \code{/swallow:x}), and then only before a blank,
+the value's end, \code{/} or \code{*} (Allow, Disallow) or a digit
+(Crawl-delay), and not after \code{?}, \code{&}, \code{=}, \code{.}
+or \code{:} (not \code{/search?q=Allow:x} or \code{/Host:8080}). The
+value is read as Google's parser reads it, so a key in a comment,
+after a NUL, past the line buffer or with its colon past the first
+512,000 bytes is not found. The message names the key and its byte
+column and states Google's reading only: the text from the key on is
+part of the value, so its directive is lost; on a User-agent line, the
+token Google's matcher reads, as \code{user_agent_cut} would say,
+which group a crawler going by the text before the key gets, and,
+when the next User-agent line joins the group, whose rules then apply
+to this line's agent; then that Bing and Yandex may read the line
+differently. \code{user_agent_repeated_group} and
+\code{user_agent_duplicate_in_group} leave such a line out, and the
+wildcard codes do when the key is glued onto the token Google reads
+(\code{ExampleBotAllow:}). \cr
 \code{rule_without_user_agent} \tab error \tab
 An Allow or Disallow in no group a non-empty User-agent opened: before
 any, or after an empty User-agent that follows a rule. \cr

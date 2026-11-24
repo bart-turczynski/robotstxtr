@@ -192,19 +192,23 @@ validation_unsupported <- c(
 #'     line break was lost (\code{User-agent: * Disallow: /private/}):
 #'     after a space or tab in any ASCII case, or glued onto the text before
 #'     it in its usual spelling only (\code{ExampleBotAllow: /}, not the
-#'     \code{allow:} of \code{/swallow:x}). The value is read as Google's
-#'     parser reads it, so a key in a comment, after a NUL or past the line
-#'     buffer is not found. The message names the key and its byte column
-#'     and states Google's reading only: the text from the key on is part of
-#'     the value, so its directive is lost; on a User-agent line, the token
-#'     Google's matcher reads, as \code{user_agent_cut} would say, and, when
-#'     the next User-agent line joins the group, whose rules then apply to
-#'     this line's agent; then that Bing and Yandex may read the line
-#'     differently. Rows that name a User-agent line's agent as a crawler
-#'     leave such a line out (\code{wildcard_disallows_not_inherited} and
-#'     the other wildcard codes, \code{user_agent_repeated_group},
-#'     \code{user_agent_duplicate_in_group},
-#'     \code{user_agent_groups_same_rules}). \cr
+#'     \code{allow:} of \code{/swallow:x}), and then only before a blank,
+#'     the value's end, \code{/} or \code{*} (Allow, Disallow) or a digit
+#'     (Crawl-delay), and not after \code{?}, \code{&}, \code{=}, \code{.}
+#'     or \code{:} (not \code{/search?q=Allow:x} or \code{/Host:8080}). The
+#'     value is read as Google's parser reads it, so a key in a comment,
+#'     after a NUL, past the line buffer or with its colon past the first
+#'     512,000 bytes is not found. The message names the key and its byte
+#'     column and states Google's reading only: the text from the key on is
+#'     part of the value, so its directive is lost; on a User-agent line, the
+#'     token Google's matcher reads, as \code{user_agent_cut} would say,
+#'     which group a crawler going by the text before the key gets, and,
+#'     when the next User-agent line joins the group, whose rules then apply
+#'     to this line's agent; then that Bing and Yandex may read the line
+#'     differently. \code{user_agent_repeated_group} and
+#'     \code{user_agent_duplicate_in_group} leave such a line out, and the
+#'     wildcard codes do when the key is glued onto the token Google reads
+#'     (\code{ExampleBotAllow:}). \cr
 #'   \code{rule_without_user_agent} \tab error \tab
 #'     An Allow or Disallow in no group a non-empty User-agent opened: before
 #'     any, or after an empty User-agent that follows a rule. \cr
@@ -1690,9 +1694,12 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # the loop below, and the group checks after it.
   groups <- validation_groups(parsed, raw_lines)
   # Values holding a second directive key (ROBO-bkzqgvai), found once here:
-  # the rows below that name a User-agent line's agent read `hidden`.
-  hidden <- directive_in_value_rows(parsed, raw_lines)
+  # the rows below that name a User-agent line's agent read `hidden`, and
+  # the wildcard rows `misnamed` (the token Google reads runs into the key).
+  hidden <- directive_in_value_rows(parsed, raw_lines, bytes)
   groups$agents$hidden <- groups$agents$line %in% hidden$line
+  groups$agents$misnamed <- groups$agents$line %in%
+    hidden$line[hidden$misnamed]
   # The User-agent lines Google joins to the open group (ROBO-xepnhfgs), and
   # whether a CR ends a line without an LF: read here for the near-miss
   # sentence (ROBO-klmjfsvd), and below for their own rows.
@@ -2128,11 +2135,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # too for a body over 500,000 bytes, the smallest engine window: Yandex
   # allows everything in a larger file, and Google reads only the first
   # 512,000 bytes, so a group moved across either limit changes its rules.
-  # A User-agent line whose value holds a second directive key keeps its
-  # group out too, `* Disallow: /x` as well, which Google reads as `*`:
-  # Bing and Yandex may read the value differently (ROBO-bkzqgvai). Such a
-  # line is cut, or makes its group a `*` group, which the check already
-  # leaves out; the skip keeps that so if either rule changes.
+  # A User-agent line whose value holds a second directive key is cut, or
+  # makes its group a `*` group, so its group is out already (ROBO-bkzqgvai).
   if (!body_truncated) {
     rule_line <- groups$rules$line
     written <- slash_written_rules(
@@ -2144,8 +2148,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     } else {
       same_rules_group_diagnostics(
         groups, parsed, written, raw_lines,
-        skip = c(joined_lines, agents$line[agents$cut | agents$hidden],
-                 nul_lines[nul_active])
+        skip = c(joined_lines, agents$line[agents$cut], nul_lines[nul_active])
       )
     }
     if (nrow(found) > 0L) {
@@ -2896,9 +2899,10 @@ rsl_license_scope <- function(at, first, names, has_global, local_groups) {
 #   the parser kept it, its bytes unchanged, less a character the line
 #   buffer split when the value reaches the buffer, which needs `raw_lines`,
 #   the document's lines by number; read for look-alike characters,
-#   ROBO-wtixhwlo) and `hidden` (FALSE here; TRUE for a line whose value
+#   ROBO-wtixhwlo), `hidden` (FALSE here; TRUE for a line whose value
 #   holds a second directive key, set by validate_document_bytes(),
-#   ROBO-bkzqgvai).
+#   ROBO-bkzqgvai) and `misnamed` (FALSE here; TRUE for such a line whose
+#   token runs on into the key, `ExampleBotAllow:`).
 # - `rules`: one row per Allow or Disallow inside a group (rules before the
 #   first User-agent are dropped): `group`, `line`, `type` ("allow" or
 #   "disallow"), `value` (canonical, as parsed), `empty` and `key` (type and
@@ -2944,6 +2948,7 @@ validation_groups <- function(parsed, raw_lines = NULL) {
   # Set by validate_document_bytes() for a line whose value holds a second
   # directive key (ROBO-bkzqgvai).
   agents$hidden <- logical(nrow(agents))
+  agents$misnamed <- logical(nrow(agents))
 
   group_ids <- unique(agents$group)
   groups <- data.frame(
@@ -3601,14 +3606,16 @@ joined_user_agent_diagnostics <- function(groups, parsed, cap = 5L) {
 # count). A later group with no rule line draws nothing. Policy-token lines
 # are left to ai_training_token_stacked, and a line in `skip` (one a join,
 # cut or inheritance report already owns) draws nothing but still counts for
-# later groups: one line, one report.
+# later groups: one line, one report. A line whose value holds a second
+# directive key (`agents$hidden`, ROBO-bkzqgvai) is not the name it looks
+# like, so it neither draws a row nor counts.
 repeated_group_diagnostics <- function(groups, skip = integer(), cap = 5L) {
   agents <- groups$agents
   if (nrow(agents) < 2L) {
     return(ai_training_rows())
   }
   family <- ai_training_kind(agents)$family
-  keep <- (agents$global | nzchar(agents$key)) & !family
+  keep <- (agents$global | nzchar(agents$key)) & !family & !agents$hidden
   id <- ifelse(agents$global, "*", agents$key)[keep]
   line <- agents$line[keep]
   group <- agents$group[keep]
@@ -3674,14 +3681,15 @@ repeated_group_diagnostics <- function(groups, skip = integer(), cap = 5L) {
 # line; a cut value keeps its full text, so `Foo Bot` and `foo` stay apart
 # (ROBO-txnzyugl). Policy-token lines are dropped here and left to
 # ai_training_*. A line in `skip` draws nothing but still counts as an earlier
-# name; a group with no rule line draws nothing, as in
-# repeated_group_diagnostics(). One info per repeated line, naming the first
-# line of its group with the same name.
+# name; a line whose value holds a second directive key (`agents$hidden`,
+# ROBO-bkzqgvai) does neither. A group with no rule line draws nothing, as
+# in repeated_group_diagnostics(). One info per repeated line, naming the
+# first line of its group with the same name.
 user_agent_duplicate_in_group_diagnostics <- function(groups,
                                                       skip = integer()) {
   agents <- groups$agents
   family <- ai_training_kind(agents)$family
-  keep <- (agents$global | nzchar(agents$key)) & !family
+  keep <- (agents$global | nzchar(agents$key)) & !family & !agents$hidden
   agents <- agents[keep, , drop = FALSE]
   folded <- ifelse(agents$global, "*", ascii_lower(agents$name))
   pair <- paste(agents$group, folded, sep = "\n")
@@ -4285,12 +4293,14 @@ wildcard_inheritance_diagnostics <- function(groups) {
   # names no crawler. The AI-training policy token is no crawler either, and
   # `*` never applies to it (ROBO-kzyfejcv): the key is what Google reads, so
   # `__usage_ai-training/1.0` is left out too. So is a line whose value holds
-  # a second directive key (`ExampleBotAllow: /`): its directive_in_value
-  # row explains it, and a row here would name a crawler no one meant
-  # (ROBO-bkzqgvai). A group of only such lines draws no row.
+  # a second directive key glued onto the token Google reads
+  # (`ExampleBotAllow: /`): its directive_in_value row explains it, and a
+  # row here would name a crawler no one meant (ROBO-bkzqgvai). A group of
+  # only such lines draws no row. A spaced key (`Foo Disallow: /x`) leaves
+  # the token the crawler meant, so that line keeps its row.
   agents <- groups$agents[nzchar(groups$agents$key) &
                             groups$agents$key != ai_training_token &
-                            !groups$agents$hidden, ,
+                            !groups$agents$misnamed, ,
                           drop = FALSE]
   # A `*` Allow matching every path is not compared, and the named side's
   # allow-all test uses the same vector (ROBO-gkuuwbgc). It is tested on the
@@ -4327,6 +4337,7 @@ wildcard_inheritance_diagnostics <- function(groups) {
       names = written[[k]],
       cut_names = agents$name[cut_rows[[k]]],
       cut_lines = agents$line[cut_rows[[k]]],
+      cut_hidden = agents$hidden[cut_rows[[k]]],
       groups = agent_groups,
       first_group = min(agent_groups),
       one_group = length(agent_groups) == 1L,
@@ -4888,13 +4899,7 @@ cut_agent_note <- function(names, lines, hidden = logical(length(lines)),
   cut <- cut[order(lines[cut])]
   shown <- cut[seq_len(min(cap, length(cut)))]
   several <- length(cut) > 1L
-  code <- if (all(hidden[cut])) {
-    "directive_in_value"
-  } else if (any(hidden[cut])) {
-    "user_agent_cut and directive_in_value"
-  } else {
-    "user_agent_cut"
-  }
+  code <- duplicate_rule_cut_pointer(hidden[cut])
   sprintf(
     paste0(" Google's matcher reads only a product token from %s and takes ",
            "%s to be %s; see the %s %s."),
@@ -4908,11 +4913,13 @@ cut_agent_note <- function(names, lines, hidden = logical(length(lines)),
 
 # cut_agent_note() for the crawlers of a wildcard row, as
 # wildcard_inheritance_diagnostics() gives them: each member's `cut_names`
-# and their `cut_lines`.
+# and their `cut_lines`, and whether each hides a directive key
+# (`cut_hidden`, ROBO-bkzqgvai).
 wildcard_cut_note <- function(members) {
   cut_agent_note(
     unlist(lapply(members, `[[`, "cut_names"), use.names = FALSE),
-    unlist(lapply(members, `[[`, "cut_lines"), use.names = FALSE)
+    unlist(lapply(members, `[[`, "cut_lines"), use.names = FALSE),
+    unlist(lapply(members, `[[`, "cut_hidden"), use.names = FALSE)
   )
 }
 
@@ -5114,9 +5121,9 @@ duplicate_rule_cut_message <- function(agents, rules, owner, first) {
   sprintf(paste0(
     "This %s repeats line %d only for Google's matcher, which reads %s ",
     "and merges their groups. %s, so there it is not a repeat; see the ",
-    "user_agent_cut rows."
+    "%s rows."
   ), ifelse(rules$type[owner] == "allow", "Allow", "Disallow"), first,
-  parts[1L, at], parts[2L, at])
+  parts[1L, at], parts[2L, at], parts[3L, at])
 }
 
 # The crawlers each bounded backend evaluates, by engine name: its accepted
@@ -5149,7 +5156,7 @@ duplicate_rule_cut_apart <- function(keys, engines) {
         "keep the groups apart")
 }
 
-# For each group in `wanted`, a column of two message parts. The first is
+# For each group in `wanted`, a column of three message parts. The first is
 # "<values> as <tokens>": the tokens the group names that more than one
 # whole value cuts to in the groups up to and including it (Google merges
 # all of them), as first written (five at most, then a count), and their
@@ -5157,7 +5164,8 @@ duplicate_rule_cut_apart <- function(keys, engines) {
 # group's own for each token named, then the earliest others. Values
 # differing only in ASCII case count once, the first written. A line
 # reading no token (`1bot`) is left out. The second part is
-# duplicate_rule_cut_apart() for those tokens.
+# duplicate_rule_cut_apart() for those tokens, the third the code of the
+# rows that explain the cut values shown (duplicate_rule_cut_pointer()).
 # The lookups are integer vectors built once, and a group reads only its own
 # lines and the values it shows, so the cost is linear in the agent lines
 # (ROBO-dbvmxcfw).
@@ -5181,14 +5189,15 @@ duplicate_rule_cut_names <- function(agents, wanted, cap = 5L) {
     # The distinct whole values of a line's token up to and including it.
     seen = stats::ave(as.integer(is_first), key, FUN = cumsum),
     engines = duplicate_rule_cut_engines(),
-    folded = agents$key[keep]
+    folded = agents$key[keep], cut = agents$cut[keep],
+    hidden = agents$hidden[keep]
   )
   at <- match(wanted, runs$values)
   vapply(seq_along(wanted), function(i) {
     own <- seq.int(ends[[at[[i]]]] - runs$lengths[[at[[i]]]] + 1L,
                    ends[[at[[i]]]])
     duplicate_rule_cut_group_names(look, own, cap)
-  }, character(2L), USE.NAMES = FALSE)
+  }, character(3L), USE.NAMES = FALSE)
 }
 
 duplicate_rule_cut_group_names <- function(look, own, cap) {
@@ -5229,8 +5238,24 @@ duplicate_rule_cut_group_names <- function(look, own, cap) {
         ))
       }
     ),
-    duplicate_rule_cut_apart(look$folded[firsts], look$engines)
+    duplicate_rule_cut_apart(look$folded[firsts], look$engines),
+    # The rows that explain the cut values named: a line whose value holds a
+    # second directive key has a directive_in_value row instead of a
+    # user_agent_cut row (ROBO-bkzqgvai).
+    duplicate_rule_cut_pointer(look$hidden[shown[look$cut[shown]]])
   )
+}
+
+# The code of the rows explaining cut lines, by whether each hides a
+# directive key: "user_agent_cut", "directive_in_value" or both.
+duplicate_rule_cut_pointer <- function(hidden) {
+  if (length(hidden) > 0L && all(hidden)) {
+    "directive_in_value"
+  } else if (any(hidden)) {
+    "user_agent_cut and directive_in_value"
+  } else {
+    "user_agent_cut"
+  }
 }
 
 # A rule whose pattern names a query parameter right after its first `?`
@@ -8655,8 +8680,9 @@ validation_line_bytes <- 16663L
 # at the first space or tab after the leading blanks. The blanks after the
 # key are kept. Nothing here is specific to a rule, so it also gives the
 # raw value of a License line (rsl_license_uri()). With `start`, the value
-# carries the position in `line_bytes` of its first byte as attribute
-# "start", for a message giving a byte column (ROBO-bkzqgvai).
+# of a line holding its colon carries the position in `line_bytes` of its
+# first byte as attribute "start", for a message giving a byte column
+# (ROBO-bkzqgvai).
 rule_raw_value <- function(line_bytes, first_line, missing_colon,
                            start = FALSE) {
   bytes <- line_bytes
@@ -8684,7 +8710,6 @@ rule_raw_value <- function(line_bytes, first_line, missing_colon,
     blank <- as.raw(c(0x20, 0x09, 0x0a, 0x0b, 0x0c, 0x0d))
     lead <- which(!bytes %in% blank)
     bytes <- bytes[lead[[1L]]:length(bytes)]
-    before <- before + lead[[1L]] - 1L
     stop_at <- which(bytes %in% as.raw(c(0x20, 0x09)))
   } else {
     stop_at <- which(bytes == as.raw(0x3a))
@@ -9545,16 +9570,24 @@ directive_in_value_keys <- c(
   sitemap = "Sitemap", "crawl-delay" = "Crawl-delay", host = "Host"
 )
 
-# The directive keys a raw value holds (ROBO-bkzqgvai): a key after a space
-# or tab, or at the value's start, in any ASCII case; or glued onto the byte
-# before it, in its usual spelling only (`ExampleBotAllow:`, not the
-# `allow:` of `/swallow:`). Either way the key is followed by `:`, with
-# spaces or tabs allowed before it, so `ExampleBot/1.0` and `/allowance/`
-# hold none. The value is read as bytes: ASCII case is folded byte by byte,
-# never by the locale. `values` is a list of raw values, read in one regex
-# pass each way. Returns a data frame with a row per value: `at` (the first
-# key's position in the value, NA for none), `length` (the key's length up
-# to its colon) and `count` (the keys found).
+# The directive keys a raw value holds (ROBO-bkzqgvai), each ending at `:`,
+# with spaces or tabs allowed before the colon, so `ExampleBot/1.0` and
+# `/allowance/` hold none:
+# - spaced: a key after a space or tab, or at the value's start, in any
+#   ASCII case;
+# - glued: a key glued onto the byte before it, in its usual spelling only
+#   (`ExampleBotAllow:`, not the `allow:` of `/swallow:`), and only where a
+#   lost line break is the likely reading: not after `?`, `&`, `=`, `.` or
+#   `:` (`/search?q=Allow:x`, `/LocalHost:8080`), and followed by what the
+#   directive's value starts with: a blank or the value's end, or `/` and
+#   `*` for Allow and Disallow, or a digit for Crawl-delay (so `/Host:8080`
+#   and `/Crawl-delay:/x` hold none).
+# A key both forms find (`DisAllow:` holds `Allow:`) counts once: two keys
+# never share a colon. The value is read as bytes: ASCII case is folded
+# byte by byte, never by the locale. `values` is a list of raw values, read
+# in one regex pass each way. Returns a data frame with a row per value:
+# `at` (the first key's position in the value, NA for none), `length` (the
+# key's length up to its colon) and `count` (the keys found).
 directive_in_value_find <- function(values) {
   folded <- lapply(values, function(value) {
     upper <- value >= as.raw(0x41) & value <= as.raw(0x5a)
@@ -9569,7 +9602,10 @@ directive_in_value_find <- function(values) {
     unlist(folded, use.names = FALSE), perl = TRUE, useBytes = TRUE
   )
   glued <- gregexpr(
-    paste0("(?<=[^ \t])(?:", keys(directive_in_value_keys), ")[ \t]*:"),
+    paste0("(?<=[^ \t?&=.:])(?:",
+           "(?:Allow|Disallow)[ \t]*:(?=[ \t/*]|$)|",
+           "Crawl\\-delay[ \t]*:(?=[ \t0-9]|$)|",
+           "(?:User\\-agent|Sitemap|Host)[ \t]*:(?=[ \t]|$))"),
     vapply(values, rawToChar, ""), perl = TRUE, useBytes = TRUE
   )
   # Plain vectors, filled in place: assigning into a frame's column would
@@ -9588,7 +9624,7 @@ directive_in_value_find <- function(values) {
     first <- which.min(at)
     first_at[[k]] <- at[[first]]
     first_length[[k]] <- size[[first]]
-    count[[k]] <- length(at)
+    count[[k]] <- length(unique(at + size))
   }
   data.frame(at = first_at, length = first_length, count = count)
 }
@@ -9596,19 +9632,26 @@ directive_in_value_find <- function(values) {
 # One row per line whose value holds a directive key (ROBO-bkzqgvai): a
 # User-agent, Allow, Disallow, Sitemap, Crawl-delay or Host line, its value
 # read as the parser reads it (rule_raw_value(): cut at the first NUL and
-# `#` and at the line buffer, so a key Google never reads is not found).
+# `#` and at the line buffer, so a key Google never reads is not found). A
+# key whose colon lies past byte 512,000 of the body (`bytes`) is past what
+# Google reads, so it draws no row either.
 # Columns: `line`, `directive`, `column` (the key's byte column in the
 # line), `key` (as written, up to its colon), `label` (the key's usual
 # spelling), `rest` (the value from the key on), `before` (the value before
-# it), `whole` (the value), each with blanks trimmed and rendered as
-# raw_text renders bytes, a backtick escaped, and `count`
+# it), `whole` (the value), each with blanks trimmed, rendered as raw_text
+# renders bytes, cut as ai_training_name() cuts and then a backtick
+# escaped; `word` (the text before the key when it is `*` or a run of
+# letters, `_` and `-`, uncut, else ""), `misnamed` (on a User-agent line,
+# TRUE when the product token Google reads runs on into the key, as in
+# `ExampleBotAllow:`, so the token is not the crawler meant) and `count`
 # (the keys found). One pass over the lines; only a value holding a `:` is
 # read again.
-directive_in_value_rows <- function(parsed, raw_lines) {
+directive_in_value_rows <- function(parsed, raw_lines, bytes = NULL) {
   none <- data.frame(line = integer(), directive = character(),
                      column = integer(), key = character(),
                      label = character(), rest = character(),
                      before = character(), whole = character(),
+                     word = character(), misnamed = logical(),
                      count = integer(),
                      stringsAsFactors = FALSE)
   maybe <- which(parsed$has_directive &
@@ -9623,7 +9666,11 @@ directive_in_value_rows <- function(parsed, raw_lines) {
   if (length(maybe) == 0L) {
     return(none)
   }
+  token_bytes <- charToRaw(paste0(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", "-_"
+  ))
   # Printable ASCII renders as itself, so it skips the byte-by-byte render.
+  # Cut before the backtick is escaped, so a cut never splits `\x60`.
   shown <- function(bytes) {
     bytes <- trim(bytes)
     text <- if (all(bytes >= as.raw(0x20) & bytes <= as.raw(0x7e))) {
@@ -9631,7 +9678,7 @@ directive_in_value_rows <- function(parsed, raw_lines) {
     } else {
       render_validation_line(bytes)
     }
-    gsub("`", "\\x60", text, fixed = TRUE)
+    gsub("`", "\\x60", ai_training_name(text), fixed = TRUE)
   }
   directive <- vapply(maybe, function(i) {
     validation_ascii_action(parsed$action[[i]], parsed$type[[i]])
@@ -9649,6 +9696,17 @@ directive_in_value_rows <- function(parsed, raw_lines) {
   })
   found <- directive_in_value_find(values)
   hit <- which(!is.na(found$at))
+  if (!is.null(bytes) && length(hit) > 0L) {
+    # Each line's first byte in the body: a line ends at LF, or at a CR not
+    # followed by LF.
+    lf <- bytes == as.raw(0x0a)
+    ends <- which(lf | (bytes == as.raw(0x0d) & !c(lf[-1L], FALSE)))
+    first_byte <- c(1L, ends + 1L)
+    line <- parsed$line[maybe[hit]]
+    colon <- first_byte[line] + vapply(values[hit], attr, 0L, "start") +
+      found$at[hit] + found$length[hit] - 3L
+    hit <- hit[colon <= 512000L]
+  }
   if (length(hit) == 0L) {
     return(none)
   }
@@ -9659,13 +9717,23 @@ directive_in_value_rows <- function(parsed, raw_lines) {
     name <- trim(key[-length(key)])
     upper <- name >= as.raw(0x41) & name <= as.raw(0x5a)
     name[upper] <- as.raw(as.integer(name[upper]) + 32L)
+    before <- trim(value[seq_len(at - 1L)])
+    lead <- which(!value %in% blank)[[1L]]
     list(
       line = parsed$line[[maybe[[k]]]], directive = directive[[k]],
       column = attr(value, "start") + at - 1L,
       key = shown(key),
       label = directive_in_value_keys[[rawToChar(name)]],
       rest = shown(value[at:length(value)]),
-      before = shown(value[seq_len(at - 1L)]), whole = shown(value),
+      before = shown(before), whole = shown(value),
+      word = if (identical(before, as.raw(0x2a)) ||
+                   (length(before) > 0L && all(before %in% token_bytes))) {
+        rawToChar(before)
+      } else {
+        ""
+      },
+      misnamed = directive[[k]] == "user-agent" &&
+        all(value[seq_len(at - lead) + lead - 1L] %in% token_bytes),
       count = found$count[[k]]
     )
   })
@@ -9682,21 +9750,22 @@ directive_in_value_rows <- function(parsed, raw_lines) {
 # directive_in_value_rows(). Only Google's reading is stated: the key, and
 # that Google reads the text from it on as part of the value, so the line
 # it was meant to be is lost; for a User-agent line, the token Google's
-# matcher reads (what a user_agent_cut row would say) and, when the next
-# User-agent line joins the group, what that does on Google; then that Bing
-# and Yandex may read the line differently. `joined` holds the lines of
-# user_agent_joined_across_directive rows. In a body over 512,000 bytes
-# (`big`), past what Google reads, the effect on the lines after it is left
-# out. Each group's rule lines are rendered once, so the cost is linear.
+# matcher reads (what a user_agent_cut row would say), which group a
+# crawler going by the text before the key gets when that text is a token
+# Google does not read (this group, when another line of it names that
+# token or `*`), and, when the next User-agent line joins the group, what
+# that does on Google; then that Bing and Yandex may read the line
+# differently. `joined` holds the lines of user_agent_joined_across_directive
+# rows. In a body over 512,000 bytes (`big`), past what Google reads, the
+# effect on the lines after it is left out. Each group's rule lines are
+# rendered once and every lookup is built once, so the cost is linear.
 directive_in_value_messages <- function(found, groups, has_global, joined,
                                         truncated, big) {
   agents <- groups$agents
-  cut_name <- function(x) ai_training_name(x)
-  rest <- cut_name(found$rest)
   lost <- ifelse(
     found$label %in% c("Allow", "Disallow"),
-    sprintf("so Google does not apply `%s`.", rest),
-    sprintf("so Google does not read `%s` as a line of its own.", rest)
+    sprintf("so Google does not apply `%s`.", found$rest),
+    sprintf("so Google does not read `%s` as a line of its own.", found$rest)
   )
   out <- sprintf(
     paste0("The value holds the directive key `%s` at byte column %d. ",
@@ -9712,63 +9781,75 @@ directive_in_value_messages <- function(found, groups, has_global, joined,
   rule <- found$directive %in% c("allow", "disallow")
   out[rule] <- paste0(out[rule], sprintf(
     " Google reads the whole value, `%s`, as the rule's path.",
-    cut_name(found$whole[rule])
+    found$whole[rule]
   ))
   sitemap <- found$directive == "sitemap"
   out[sitemap] <- paste0(out[sitemap], sprintf(
     " Google reads the whole value, `%s`, as the sitemap URL.",
-    cut_name(found$whole[sitemap])
+    found$whole[sitemap]
   ))
   a <- match(found$line, agents$line)
   is_agent <- !is.na(a)
-  rule_text <- character(max(c(0L, agents$group)))
+  n_groups <- max(c(0L, agents$group))
+  rule_text <- character(n_groups)
   rule_groups <- unique(agents$group[a[is_agent]])
   by_group <- split(groups$rules$line, groups$rules$group)
   for (g in rule_groups) {
     lines <- by_group[[as.character(g)]]
     rule_text[[g]] <- if (length(lines) > 0L) joined_rule_lines(lines) else ""
   }
-  token_bytes <- charToRaw(paste0(
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", "-_"
-  ))
-  is_token <- function(x) nzchar(x) && all(charToRaw(x) %in% token_bytes)
+  # A text before the key that is a token: the first line of the same group
+  # whose token Google reads as it, in any ASCII case, or NA.
+  word <- found$word
+  names_word <- rep(NA_integer_, nrow(found))
+  names_word[is_agent] <- agents$line[match(
+    paste(agents$group[a[is_agent]], ascii_lower(word[is_agent]), sep = "\n"),
+    paste(agents$group, agents$key, sep = "\n")
+  )]
   lookalikes <- character(nrow(found))
   lookalikes[is_agent] <- user_agent_lookalike_notes(agents$value[a[is_agent]])
   global_groups <- groups$groups$group[groups$groups$global]
+  stars <- tabulate(agents$group[agents$global], n_groups)
   # By line, so each lookup costs the same.
   is_joined <- logical(max(c(0L, agents$line, joined)))
   is_joined[joined] <- TRUE
   for (k in which(is_agent)) {
     j <- a[[k]]
     token <- agents$token[[j]]
-    before <- cut_name(found$before[[k]])
+    before <- found$before[[k]]
     key <- found$key[[k]]
     reading <- if (agents$global[[j]]) {
       " Google reads this line as `User-agent: *`."
-    } else if (nzchar(token) && identical(token, found$before[[k]])) {
+    } else if (nzchar(token) && identical(token, word[[k]])) {
       sprintf(paste0(" Google's matcher reads the User-agent value as `%s`, ",
                      "the text before `%s`."), token, key)
     } else if (nzchar(token)) {
       fallback <- ""
-      if (is_token(found$before[[k]])) {
-        fallback <- sprintf(
-          " Unless another group names it, a crawler going by `%s` %s.",
-          before,
-          if (agents$group[[j]] %in% global_groups) {
-            paste0("still gets this group from Google's matcher, since the ",
-                   "group also names `User-agent: *`")
-          } else if (has_global) {
-            "gets the `User-agent: *` group from Google's matcher"
-          } else {
-            paste0("gets no rules from Google's matcher: the file has no ",
-                   "`User-agent: *` group")
-          }
-        )
+      if (nzchar(word[[k]])) {
+        fallback <- if (!is.na(names_word[[k]])) {
+          sprintf(paste0(" A crawler going by `%s` still gets this group ",
+                         "from Google's matcher, since line %d of the group ",
+                         "names it."), before, names_word[[k]])
+        } else {
+          sprintf(
+            " Unless another group names it, a crawler going by `%s` %s.",
+            before,
+            if (agents$group[[j]] %in% global_groups) {
+              paste0("still gets this group from Google's matcher, since ",
+                     "the group also names `User-agent: *`")
+            } else if (has_global) {
+              "gets the `User-agent: *` group from Google's matcher"
+            } else {
+              paste0("gets no rules from Google's matcher: the file has no ",
+                     "`User-agent: *` group")
+            }
+          )
+        }
       }
       paste0(sprintf(
         paste0(" Google's matcher reads the User-agent value only up to ",
                "its first character outside letters, '_' and '-', as `%s`%s."),
-        cut_name(token),
+        ai_training_name(token),
         if (nzchar(before)) {
           sprintf(", not as `%s`, the text before `%s`", before, key)
         } else {
@@ -9779,7 +9860,7 @@ directive_in_value_messages <- function(found, groups, has_global, joined,
       paste0(" Google's matcher reads no product token from the User-agent ",
              "value, as it reads one only from a leading run of letters, ",
              "'_' and '-', so on Google this line names no crawler",
-             if (identical(found$before[[k]], "*")) {
+             if (identical(word[[k]], "*")) {
                sprintf(paste0(" and `*`, the text before `%s`, is not read ",
                               "as `User-agent: *`"), key)
              },
@@ -9796,11 +9877,12 @@ directive_in_value_messages <- function(found, groups, has_global, joined,
                       "not stated.")
     } else if (joins) {
       next_line <- agents$line[[j + 1L]]
-      who <- if (agents$global[[j]]) {
+      # A `*` line in a group another `*` line names adds no crawler.
+      who <- if (agents$global[[j]] && stars[[agents$group[[j]]]] == 1L) {
         "`*` too, so to every crawler without a group of its own"
       } else if (nzchar(token)) {
         sprintf("the token `%s` Google reads from this line too",
-                cut_name(token))
+                ai_training_name(token))
       }
       rules <- rule_text[[agents$group[[j]]]]
       stack <- sprintf(

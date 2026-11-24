@@ -550,3 +550,268 @@ test_that("the row stays linear (ROBO-dbvmxcfw)", {
   expect_lt(dv_time_messages(16000L),
             2.5 * max(dv_time_messages(500L), 0.05))
 })
+
+# Fix round 1 (review 1 of ROBO-bkzqgvai).
+
+test_that("the fallback names this group when a line of it names the token", {
+  for (name in c("ExampleBot", "examplebot")) {
+    body <- dv_lines("User-agent: *", "Disallow: /", "",
+                     paste("User-agent:", name),
+                     "User-agent: ExampleBotAllow: /", "Disallow: /x")
+    row <- dv_rows(robots_validate_text(body))
+    expect_identical(row$line, 5L)
+    expect_match(row$message, paste0(
+      "`ExampleBot`, the text before `Allow:`. A crawler going by ",
+      "`ExampleBot` still gets this group from Google's matcher, since ",
+      "line 4 of the group names it.", dv_others, "$"
+    ))
+    expect_false(grepl("User-agent: *` group", row$message, fixed = TRUE))
+    # Google gives ExampleBot this group, not the `*` group.
+    expect_identical(dv_google(body, "ExampleBot", "/x"), "disallow 6")
+    expect_identical(dv_google(body, "ExampleBot", "/page"), "allow NA")
+  }
+})
+
+test_that("Google's reading of the other fallback variants", {
+  # No `*` group: ExampleBot gets no rules; the group is FooAllow's.
+  body <- dv_lines("User-agent: ExampleBotAllow: /", "Disallow: /x")
+  expect_match(dv_rows(robots_validate_text(body))$message,
+               "gets no rules from Google's matcher", fixed = TRUE)
+  expect_identical(dv_google(body, "ExampleBot", "/x"), "allow NA")
+  expect_identical(dv_google(body, "ExampleBotAllow", "/x"), "disallow 2")
+  # A `*` line in the group: ExampleBot gets this group.
+  body <- dv_lines("User-agent: *", "User-agent: ExampleBotAllow: /",
+                   "Disallow: /x")
+  expect_match(dv_rows(robots_validate_text(body))$message,
+               "still gets this group from Google's matcher, since the group",
+               fixed = TRUE)
+  expect_identical(dv_google(body, "ExampleBot", "/x"), "disallow 3")
+  # A line that adds no crawler to the group it joins: a second `*` line,
+  # and a line with no token.
+  body <- dv_lines("User-agent: * Disallow: /a", "User-agent: *",
+                   "Disallow: /b")
+  expect_identical(dv_google(body, "OtherBot", "/b"), "disallow 3")
+  expect_identical(dv_google(body, "OtherBot", "/a"), "allow NA")
+  body <- dv_lines("User-agent: *Allow: /x", "User-agent: Bar", "Disallow: /y")
+  expect_identical(dv_google(body, "Bar", "/y"), "disallow 3")
+  expect_identical(dv_google(body, "OtherBot", "/y"), "allow NA")
+})
+
+test_that("a hidden line is not the name it looks like in the group checks", {
+  # Not a duplicate: no advice to delete the only clean `*` line.
+  x <- dv_text("User-agent: * Disallow: /a", "User-agent: *", "Disallow: /b")
+  expect_identical(dv_codes(x), "1 directive_in_value")
+  # A `*` line joined to a `*` group adds no crawler.
+  expect_identical(dv_rows(x)$message, paste0(
+    dv_lead("Disallow:", 15L, "Disallow: /a"), dv_star,
+    " Google joins the User-agent line after it (line 2) to this group, to ",
+    "which this line adds no crawler.", dv_others
+  ))
+  # Not an earlier group: no repeated-group row naming the hidden line.
+  x <- dv_text("User-agent: Foo Allow: /a", "Disallow: /x", "",
+               "User-agent: Foo", "Disallow: /y")
+  expect_identical(dv_codes(x), "1 directive_in_value")
+})
+
+test_that("every pointer to a hidden line's cut names directive_in_value", {
+  note <- paste0("Google's matcher reads only a product token from ",
+                 "`Foo Allow: /a` (line %d) and takes the agent to be that ",
+                 "token; see the directive_in_value row.")
+  # ai_training_token_stacked.
+  x <- dv_text("User-agent: Foo Allow: /a", "Crawl-delay: 1",
+               "User-agent: __usage_ai-training", "Disallow: /")
+  expect_true(endsWith(dv_rows(x, "ai_training_token_stacked")$message,
+                       sprintf(note, 1L)))
+  # empty_disallow_with_full_block.
+  x <- dv_text("User-agent: *", "Disallow: /", "", "User-agent: Foo Allow: /a",
+               "Disallow:", "Disallow: /")
+  expect_true(endsWith(dv_rows(x, "empty_disallow_with_full_block")$message,
+                       sprintf(note, 4L)))
+  # user_agent_joined_across_blank.
+  x <- dv_text("User-agent: Foo Allow: /a", "", "User-agent: Bar",
+               "Disallow: /x")
+  expect_true(endsWith(dv_rows(x, "user_agent_joined_across_blank")$message,
+                       sprintf(note, 1L)))
+  # duplicate_rule, all cut lines hidden, and beside a plain cut line.
+  x <- dv_text("User-agent: Foo Allow: /a", "Disallow: /x", "",
+               "User-agent: Foo Disallow: /b", "Disallow: /x")
+  expect_true(endsWith(dv_rows(x, "duplicate_rule")$message,
+                       "see the directive_in_value rows."))
+  x <- dv_text("User-agent: Foo Allow: /a", "Disallow: /x", "",
+               "User-agent: Foo Bar", "Disallow: /x")
+  expect_true(endsWith(dv_rows(x, "duplicate_rule")$message,
+                       "see the user_agent_cut and directive_in_value rows."))
+  # A value Google reads whole has no cut row to point to.
+  x <- dv_text("User-agent: Foo Allow: /a", "Disallow: /x", "",
+               "User-agent: Foo", "Disallow: /x")
+  expect_true(endsWith(dv_rows(x, "duplicate_rule")$message,
+                       "see the directive_in_value rows."))
+})
+
+test_that("where the key sits and which is first", {
+  # A key at the value's start.
+  x <- dv_text("User-agent: *", "Disallow:Allow: /x")
+  expect_identical(dv_rows(x)$message, paste0(
+    dv_lead("Allow:", 10L, "Allow: /x"), dv_path("Allow: /x"), dv_others
+  ))
+  # The first key by position, glued before spaced.
+  x <- dv_text("User-agent: *", "Disallow: /aAllow: /b Host: c")
+  expect_identical(dv_rows(x)$message, paste0(
+    dv_lead("Allow:", 13L, "Allow: /b Host: c"),
+    " The value holds 1 more directive key after it.",
+    dv_path("/aAllow: /b Host: c"), dv_others
+  ))
+  # Blanks around the text shown are trimmed: tab, VT, FF, CR.
+  for (end in c("\t", "\v", "\f", "\r")) {
+    x <- robots_validate_text(c(
+      charToRaw("User-agent: *\nDisallow: /x Allow: /y"), charToRaw(end),
+      charToRaw("\n")
+    ))
+    expect_match(dv_rows(x)$message, "apply `Allow: /y`.", fixed = TRUE)
+  }
+  # A Clean-param value is not read.
+  expect_identical(
+    nrow(dv_rows(dv_text("User-agent: *", "Clean-param: a Disallow: /x"))), 0L
+  )
+})
+
+test_that("the fallback needs a token before the key", {
+  message <- dv_rows(dv_text("User-agent: *", "Disallow: /", "",
+                             "User-agent: Foo/1.0Allow: /"))$message
+  expect_match(message, "as `Foo`, not as `Foo/1.0`, the text before `Allow:`.",
+               fixed = TRUE)
+  expect_false(grepl("crawler going by", message, fixed = TRUE))
+})
+
+test_that("a look-alike character in the hidden line is named", {
+  x <- dv_text("User-agent: bingbоt Allow: /", "Disallow: /x")
+  expect_match(dv_rows(x)$message,
+               "U+043E CYRILLIC SMALL LETTER O at byte 6", fixed = TRUE)
+})
+
+test_that("a glued key needs what its value starts with, not URL text", {
+  for (value in c("/search?q=Allow:x", "/Host:8080", "/LocalHost:8080/",
+                  "/Crawl-delay:/x", "/a.Allow: /b", "/a&Allow: /b",
+                  "/a=Allow: /b", "/a:Allow: /b", "/a?Allow: /b",
+                  "/aSitemap:/x", "/aUser-agent:x", "/aAllow:x",
+                  "/aDisallow:q")) {
+    expect_identical(nrow(dv_rows(dv_text("User-agent: *",
+                                          paste("Disallow:", value)))),
+                     0L, label = value)
+  }
+  expect_identical(nrow(dv_rows(dv_text(
+    "User-agent: *", "Disallow: /",
+    "Sitemap: https://example.com/s.xml?x=Host:1"
+  ))), 0L)
+  x <- dv_text("User-agent: *", "Disallow: /aDisallow:/b",
+               "Disallow: /cAllow:*d", "Disallow: /eCrawl-delay:600",
+               "Disallow: /fAllow:", "Disallow: /gHost: example.com",
+               "User-agent: *Sitemap: https://example.com/s.xml")
+  expect_identical(dv_rows(x)$line, 2:7)
+  # The ticket's examples A, B and C still match.
+  for (body in list(dv_a, dv_b, dv_c)) {
+    expect_identical(nrow(dv_rows(robots_validate_text(body))), 1L)
+  }
+})
+
+test_that("a spaced key keeps the wildcard row of the crawler meant", {
+  body <- dv_lines("User-agent: *", "Disallow: /a", "",
+                   "User-agent: Foo Disallow: /x", "Allow: /a")
+  x <- robots_validate_text(body)
+  wild <- dv_rows(x, "wildcard_disallows_not_inherited")
+  expect_identical(wild$line, 4L)
+  expect_match(wild$message, "^Foo Disallow: /x obeys only this group")
+  expect_true(endsWith(wild$message, paste0(
+    "`Foo Disallow: /x` (line 4) and takes the agent to be that token; see ",
+    "the directive_in_value row."
+  )))
+  expect_identical(dv_rows(x)$line, 4L)
+  # On Google, Foo follows line 4's group only.
+  expect_identical(dv_google(body, "Foo", "/a"), "allow 5")
+  expect_identical(dv_google(body, "Foo", "/x"), "allow NA")
+  # A glued key: the token is no crawler meant, so no wildcard row.
+  expect_identical(
+    dv_codes(robots_validate_text(sub("Foo Disallow", "FooDisallow", body,
+                                      fixed = TRUE))),
+    "4 directive_in_value"
+  )
+})
+
+# A body whose line `line_text` starts at byte `at`.
+dv_at <- function(at, line_text) {
+  head <- "User-agent: *\n"
+  pad <- at - 1L - nchar(head)
+  full <- pad %/% 100L - 1L
+  last <- pad - 100L * full
+  paste0(head, strrep(paste0("#", strrep("x", 98L), "\n"), full),
+         "#", strrep("y", last - 2L), "\n", line_text, "\n")
+}
+
+test_that("no row for a key past Google's 512,000-byte window", {
+  # `Allow:`'s colon is the line's 19th byte.
+  line <- "Disallow: /a Allow: /b"
+  within <- dv_at(512000L - 18L, line)
+  past <- dv_at(512000L - 17L, line)
+  expect_identical(nchar(within) - nchar(past), -1L)
+  expect_identical(dv_rows(robots_validate_text(within))$line, 5121L)
+  expect_identical(nrow(dv_rows(robots_validate_text(past))), 0L)
+  # Lines that end at a lone CR count the same.
+  cr <- function(body) gsub("\n", "\r", body, fixed = TRUE)
+  expect_identical(dv_rows(robots_validate_text(cr(within)))$line, 5121L)
+  expect_identical(nrow(dv_rows(robots_validate_text(cr(past)))), 0L)
+  # A whole line past the window.
+  body <- paste0(dv_at(512100L, "User-agent: Foo Disallow: /x"),
+                 "Disallow: /y\n")
+  x <- robots_validate_text(body)
+  expect_identical(nrow(dv_rows(x)), 0L)
+})
+
+test_that("a key is counted once however it is cased", {
+  x <- dv_text("User-agent: *", "Disallow: /x DisAllow: /y")
+  expect_identical(dv_rows(x)$message, paste0(
+    dv_lead("DisAllow:", 14L, "DisAllow: /y"), dv_path("/x DisAllow: /y"),
+    dv_others
+  ))
+})
+
+test_that("the key shown is bounded, cut before a backtick is escaped", {
+  x <- dv_text(paste0("User-agent: * Disallow", strrep(" ", 3000L), ": /"))
+  message <- dv_rows(x)$message
+  expect_lt(nchar(message), 800L)
+  expect_match(message, paste0("key `Disallow", strrep(" ", 52L), "...` at"),
+               fixed = TRUE)
+  x <- dv_text("User-agent: *", paste0("Disallow: /x Allow: /",
+                                       strrep("b", 51L), "`cccccccc"))
+  expect_match(dv_rows(x)$message,
+               paste0("apply `Allow: /", strrep("b", 51L), "\\x60...`."),
+               fixed = TRUE)
+})
+
+# The messages of 6,000 hidden User-agent lines, then `pad` plain ones in
+# the same group, timed on their own, best of five: a row's own cost must
+# not grow with the body. Today the ratio is about 1.2; a lookup rebuilt or
+# a match() run per row makes it about 4 or more.
+dv_time_padded <- function(pad) {
+  bytes <- charToRaw(paste0(
+    strrep("User-agent: x Disallow: /y\n", 6000L),
+    paste0("User-agent: p", seq_len(pad), "\n", collapse = ""),
+    "Disallow: /\n"
+  ))
+  parsed <- as.data.frame(robotstxtr_validation_parse_(bytes),
+                          stringsAsFactors = FALSE)
+  raw_lines <- split_validation_lines(bytes)
+  groups <- validation_groups(parsed, raw_lines)
+  found <- directive_in_value_rows(parsed, raw_lines, bytes)
+  groups$agents$hidden <- groups$agents$line %in% found$line
+  min(vapply(1:5, function(k) {
+    system.time(
+      directive_in_value_messages(found, groups, FALSE, integer(), FALSE,
+                                  FALSE)
+    )[["elapsed"]]
+  }, 0))
+}
+
+test_that("a row's cost does not grow with the body (ROBO-dbvmxcfw)", {
+  skip_on_cran()
+  expect_lt(dv_time_padded(200000L), 2.5 * max(dv_time_padded(1L), 0.05))
+})
