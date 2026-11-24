@@ -147,7 +147,16 @@ A warning only when the value is not an absolute URI
 A directive this profile does not recognize. A key that is valid
 UTF-8 and holds a look-alike character, as \code{user_agent_cut}
 lists them, names it and gives the ASCII spelling
-(\code{Disallow} for a key written with a Cyrillic a). \cr
+(\code{Disallow} for a key written with a Cyrillic a). An ASCII key
+that is a near miss of \code{User-agent}, \code{Allow} or
+\code{Disallow} (one edit from \code{allow}, two from the others, a
+stray leading non-letter such as \code{/Disallow}, or \code{Deny})
+names the directive it resembles and what the line does: a rule near
+miss applies on no engine; a User-agent near miss starts no group, so
+the rules after it stay with the group above (naming its agents and a
+full block), are in no group before the first User-agent line, or,
+between stacked User-agent lines, join the next group on Google but
+not on Bing. \cr
 \code{empty_user_agent} \tab error \tab
 A User-agent line with an empty value. \cr
 \code{user_agent_cut} \tab warning or info \tab
