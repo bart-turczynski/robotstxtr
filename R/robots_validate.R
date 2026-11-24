@@ -782,7 +782,8 @@ validation_unsupported <- c(
 #' `Disallow` in any case, then its colon at once, and for User-agent a
 #' value. Any other spelling Google's parser accepts (a typo, a longer key
 #' such as `User-agent foo` or `Disallow foo`, a blank before the colon, a
-#' missing colon, an empty User-agent value) leaves the group out, since
+#' missing colon, an empty User-agent value, a control byte other than tab
+#' outside a comment) leaves the group out, since
 #' Bing or Yandex may read it otherwise; so does a `Crawl-delay`,
 #' `Clean-param`, `Host` or unknown line (Yandex ends a group at
 #' `Crawl-delay`). The suggestion is also withheld for a `*` group, a
@@ -794,9 +795,12 @@ validation_unsupported <- c(
 #' `user_agent_repeated_group`'s. One row per set of equal groups, on the
 #' first group's first line, naming the other groups' first lines and the
 #' stacked group (five of each, then a count). A byte outside printable
-#' ASCII is shown as an escape, so the stacked group in the message is a
-#' guide, not a byte-exact copy. A body cut at `max_bytes` is not
-#' checked.
+#' ASCII is shown as an escape, and a name or rule over 64 bytes is
+#' shortened, so the stacked group in the message is a guide, not a
+#' byte-exact copy. The check is skipped for a body cut at `max_bytes`, a
+#' body with a lone CR (a CR not directly before an LF: Bing and Yandex end
+#' a line at LF only), and a body over 500,000 bytes (Yandex allows
+#' everything in a larger file, and Google reads only its first 512,000).
 #'
 #' For `disallow_tied_by_allow`, an Allow and a Disallow with the same
 #' pattern match the same paths with the same priority, and Allow wins the
@@ -2024,16 +2028,29 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # cut body is skipped. A joined or cut User-agent line, and a line a NUL
   # cuts on Google's reading only, keep their group out. The rules as
   # written are read here once; the trailing-slash checks below reuse them.
+  # The whole check is skipped for a body with a CR not directly before an
+  # LF: these lines are Google's, which ends a line at a lone CR too, while
+  # Bing and Yandex end one at LF only (design/engine-disagreements.md
+  # classes 7 and 8), so their groups may run differently. It is skipped
+  # too for a body over 500,000 bytes, the smallest engine window: Yandex
+  # allows everything in a larger file, and Google reads only the first
+  # 512,000 bytes, so a group moved across either limit changes its rules.
   if (!body_truncated) {
     rule_line <- groups$rules$line
     written <- slash_written_rules(
       raw_lines[rule_line], rule_line,
       parsed$missing_colon[match(rule_line, parsed$line)], groups$rules$empty
     )
-    found <- same_rules_group_diagnostics(
-      groups, parsed, written, raw_lines,
-      skip = c(joined_lines, agents$line[agents$cut], nul_lines[nul_active])
-    )
+    lone_cr <- any(bytes == as.raw(0x0d) &
+                     c(bytes[-1L], as.raw(0x00)) != as.raw(0x0a))
+    found <- if (lone_cr || stored_size > 500000L) {
+      ai_training_rows()
+    } else {
+      same_rules_group_diagnostics(
+        groups, parsed, written, raw_lines,
+        skip = c(joined_lines, agents$line[agents$cut], nul_lines[nul_active])
+      )
+    }
     if (nrow(found) > 0L) {
       add_chunk(
         found$line, found$severity, found$code, found$directive,
@@ -3706,7 +3723,10 @@ same_rules_group_diagnostics <- function(groups, parsed, written, raw_lines,
 # cuts is the caller's `skip`). Every other spelling the parser accepts (a
 # typo, a longer key such as `User-agent foo` or `Disallow foo`, a blank
 # before the colon, no colon) is "other": Bing or Yandex may read it
-# otherwise, or not at all. Line 1 behind a byte-order mark, full (EF BB
+# otherwise, or not at all. So is a line with a control byte other than
+# tab before its first `#`: Google trims a VT or FF from a value, Bing and
+# Yandex do not (a control byte in a comment is ignored everywhere). Line
+# 1 behind a byte-order mark, full (EF BB
 # BF) or partial (EF, EF BB), starts at 0xEF, so it is "other" too: the
 # parser skips the mark, but Bing does not read that line as User-agent
 # (design/backend-evidence-inventory.tsv, ed-02-bing). The key is folded
@@ -3716,7 +3736,12 @@ same_rules_line_kind <- function(raw_lines) {
   blank <- as.raw(c(0x20, 0x09))
   agent <- charToRaw("user-agent")
   rule <- list(charToRaw("allow"), charToRaw("disallow"))
+  control <- as.raw(c(0x00:0x08, 0x0a:0x1f, 0x7f))
   vapply(raw_lines, function(bytes) {
+    hash <- match(as.raw(0x23), bytes, nomatch = length(bytes) + 1L)
+    if (any(bytes[seq_len(hash - 1L)] %in% control)) {
+      return("other")
+    }
     lead <- match(TRUE, !bytes %in% blank, nomatch = length(bytes) + 1L)
     bytes <- slash_drop(bytes, lead - 1L)
     if (length(bytes) == 0L || bytes[[1L]] == as.raw(0x23)) {

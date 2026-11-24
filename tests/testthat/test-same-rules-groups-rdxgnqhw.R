@@ -509,9 +509,13 @@ test_that("ROBO-rdxgnqhw: robots_validate_url() gives the same row", {
 # at a User-agent-like line (any spelling Google takes) after a line that
 # is not one; a member's lines run to the next start. The stacked group
 # goes in place of the first member, or of the last, then a blank line, and
-# the other members go.
+# the other members go. The message's line numbers are Google's, so the
+# body is split as Google splits it: at LF, CR LF and a lone CR. Each
+# engine still reads the body as written its own way (Bing and Yandex end
+# a line at LF only), so a row whose stacking a lone CR upsets shows up as
+# changed decisions.
 sr_lines <- function(body) {
-  strsplit(body, "\n", fixed = TRUE, useBytes = TRUE)[[1L]]
+  strsplit(body, "\r\n|\r|\n", useBytes = TRUE)[[1L]]
 }
 
 sr_agent_like <- function(lines) {
@@ -762,6 +766,72 @@ for (shape in names(sr_shapes)) {
                                                 sr_g(a, "Disallow: /x"))
   }
 }
+
+# Review 4's bodies. A CR not directly before an LF: Google ends a line
+# there, Bing and Yandex do not (design/engine-disagreements.md classes 7
+# and 8), so the check skips the body. A VT or FF after a User-agent value:
+# Google trims it, Bing and Yandex do not. A tab-only User-agent value as a
+# next group's first line: no group starts there.
+sr_withheld <- list(
+  cr_comment = paste0("User-agent: Yandex\nDisallow: /x\n# c\rUser-agent: ",
+                      "Foo\nDisallow: /y\n\nUser-agent: bingbot\n",
+                      "Disallow: /x\n"),
+  cr_comment_bing = paste0("User-agent: bingbot\nDisallow: /x\n# c\r",
+                           "User-agent: Foo\nDisallow: /y\n\nUser-agent: ",
+                           "Yandex\nDisallow: /x\n"),
+  crcrlf_rule = sr_j(sr_g("User-agent: bingbot", "Disallow: /x\r\r"),
+                     sr_g("User-agent: Yandex", "Disallow: /x")),
+  crcr_agent_bing = sr_j(sr_g("User-agent: bingbot\r\r", "Disallow: /x"),
+                         sr_g("User-agent: Yandex", "Disallow: /x")),
+  crcr_agent_yandex = sr_j(sr_g("User-agent: Yandex\r\r", "Disallow: /x"),
+                           sr_g("User-agent: bingbot", "Disallow: /x")),
+  all_cr = paste0("User-agent: bingbot\rDisallow: /x\r\rUser-agent: ",
+                  "Yandex\rDisallow: /x\r"),
+  ua_vt_bing = sr_j(sr_g("User-agent: bingbot\v", "Disallow: /x"),
+                    sr_g("User-agent: Yandex", "Disallow: /x")),
+  ua_ff_yandex = sr_j(sr_g("User-agent: Yandex\f", "Disallow: /x"),
+                      sr_g("User-agent: bingbot", "Disallow: /x")),
+  next_ua_tab = sr_j(sr_g("User-agent: bingbot", "Disallow: /x"),
+                     sr_g("User-agent:\t", "Disallow: /x"),
+                     sr_g("User-agent: Yandex", "Disallow: /x"))
+)
+# A whitespace-only line is a blank line on every engine.
+sr_spaced <- list(
+  space_line = sr_j(sr_g("User-agent: Yandex", "Disallow: /x", " "),
+                    sr_g("User-agent: bingbot", "Disallow: /x")),
+  tab_line = sr_j(sr_g("User-agent: Yandex", "\t \t", "Disallow: /x"),
+                  sr_g("User-agent: bingbot", "Disallow: /x"))
+)
+sr_probes <- c(sr_probes, sr_withheld, sr_spaced)
+
+test_that("ROBO-rdxgnqhw: line ends and controls other engines read keep out", {
+  for (name in names(sr_withheld)) {
+    expect_false(sr_code %in% sr_codes(sr_withheld[[name]]), label = name)
+  }
+  # A plain CR LF body still gives its row.
+  expect_identical(sr_codes(sr_probes$crlf), sr_code)
+  # A whitespace-only line inside a group is blank: the row stays.
+  for (name in names(sr_spaced)) {
+    expect_identical(sr_codes(sr_spaced[[name]]), sr_code, label = name)
+  }
+})
+
+test_that("ROBO-rdxgnqhw: a body over 500,000 bytes is skipped", {
+  # Yandex allows everything in a file over 500,000 bytes, and Google reads
+  # only the first 512,000. Comment lines of 100 bytes pad the body.
+  pad <- function(n) strrep(paste0("# ", strrep("p", 97L), "\n"), n)
+  at <- function(n) {
+    paste0(sr_group("Foo", "Disallow: /x"), pad(n), "\n",
+           sr_group("Googlebot", "Disallow: /x"))
+  }
+  # 499,965 bytes: the row.
+  expect_identical(nchar(at(4999L), type = "bytes"), 499965L)
+  expect_identical(sr_codes(at(4999L)), sr_code)
+  # 500,065 and 520,065 bytes (Googlebot's group past Google's window):
+  # none.
+  expect_false(sr_code %in% sr_codes(at(5000L)))
+  expect_false(sr_code %in% sr_codes(at(5200L)))
+})
 
 test_that("ROBO-rdxgnqhw: stacking as the message shows keeps every decision", {
   bodies <- c(lapply(sr_fixtures, `[[`, "body"), sr_probes)

@@ -791,7 +791,8 @@ leading spaces or tabs, the key exactly \code{User-agent}, \code{Allow} or
 \code{Disallow} in any case, then its colon at once, and for User-agent a
 value. Any other spelling Google's parser accepts (a typo, a longer key
 such as \verb{User-agent foo} or \verb{Disallow foo}, a blank before the colon, a
-missing colon, an empty User-agent value) leaves the group out, since
+missing colon, an empty User-agent value, a control byte other than tab
+outside a comment) leaves the group out, since
 Bing or Yandex may read it otherwise; so does a \code{Crawl-delay},
 \code{Clean-param}, \code{Host} or unknown line (Yandex ends a group at
 \code{Crawl-delay}). The suggestion is also withheld for a \code{*} group, a
@@ -803,9 +804,12 @@ User-agent). Groups that name one set of crawlers only are
 \code{user_agent_repeated_group}'s. One row per set of equal groups, on the
 first group's first line, naming the other groups' first lines and the
 stacked group (five of each, then a count). A byte outside printable
-ASCII is shown as an escape, so the stacked group in the message is a
-guide, not a byte-exact copy. A body cut at \code{max_bytes} is not
-checked.
+ASCII is shown as an escape, and a name or rule over 64 bytes is
+shortened, so the stacked group in the message is a guide, not a
+byte-exact copy. The check is skipped for a body cut at \code{max_bytes}, a
+body with a lone CR (a CR not directly before an LF: Bing and Yandex end
+a line at LF only), and a body over 500,000 bytes (Yandex allows
+everything in a larger file, and Google reads only its first 512,000).
 
 For \code{disallow_tied_by_allow}, an Allow and a Disallow with the same
 pattern match the same paths with the same priority, and Allow wins the
