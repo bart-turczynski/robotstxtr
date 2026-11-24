@@ -1,6 +1,6 @@
 # robotstxtr (development version)
 
-* Validator: `unknown_directive` on a near miss of `User-agent`, `Allow` or `Disallow` (`User-agnet`, `Disaloow`, `Deny`) names that directive and what the ignored line does to the rules (ROBO-klmjfsvd).
+* Validator: `unknown_directive` on a near miss of `User-agent`, `Allow` or `Disallow` (`User-agnet`, `Disaloow`, `Deny`) names that directive and, for User-agent, which group Google gives the rules after it (ROBO-klmjfsvd).
 * Validator: new `user_agent_groups_same_rules` info for separate groups, written in plain User-agent, Allow and Disallow lines, with the same rules, whose User-agent lines could share one group (RFC 9309 §2.2.1) (ROBO-rdxgnqhw).
 * Validator: new `rule_prefix_sibling` info for `Disallow: /feed` beside `Disallow: /feeds` for the same crawlers: `/feed` already matches `/feeds` (RFC 9309 §2.2.2) (ROBO-otomgbge).
 * Validator: new `compressed_body` error for a gzip, zlib or zstd body, which is no longer read as rules; fetch rows gain `content_encoding`, the raw `Content-Encoding` (ROBO-rozvglkd).

@@ -140,17 +140,19 @@ validation_unsupported <- c(
 #'     lists them, names it and gives the ASCII spelling
 #'     (\code{Disallow} for a key written with a Cyrillic a). An ASCII key
 #'     that is a near miss of \code{User-agent}, \code{Allow} or
-#'     \code{Disallow} (one edit from \code{allow}, two from the others, a
-#'     stray leading non-letter such as \code{/Disallow}, or \code{Deny};
-#'     not a key in range of both \code{allow} and \code{disallow}, such as
-#'     \code{Dallow}) names the directive it resembles and what the line
-#'     does: a rule near miss applies on no engine; a User-agent near miss
-#'     starts no group, so the rules after it stay with the group above
-#'     (naming its agents only when they are one run of plain User-agent
-#'     lines, as every engine then keeps them together), are in no group
-#'     before the first User-agent line, or, between stacked User-agent
-#'     lines, join the next group on Google but not on Bing. In a body over
-#'     500,000 bytes it says only what the line itself does. \cr
+#'     \code{Disallow} (one edit from \code{allow}, two from the others,
+#'     such as \code{Disavow}; equal to one once the run of non-letters
+#'     leading it is removed, such as \code{/Disallow} or
+#'     \code{///Disallow}; or \code{Deny}; not a key in range of both
+#'     \code{allow} and \code{disallow}, such as \code{Dallow}) names the
+#'     directive it resembles and what the line does: a rule near miss
+#'     applies on no engine; for a User-agent near miss it gives Google's
+#'     reading only (the line starts no group, so the rules after it stay
+#'     with the group above, naming its crawlers, are in no group before
+#'     the first User-agent line, or, between stacked User-agent lines,
+#'     join the next group) and adds that Bing and Yandex may read the
+#'     following lines differently. In a body over 512,000 bytes it leaves
+#'     out what the line does to the rules after it. \cr
 #'   \code{empty_user_agent} \tab error \tab
 #'     A User-agent line with an empty value. \cr
 #'   \code{user_agent_cut} \tab warning or info \tab
@@ -1793,14 +1795,14 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         if (nzchar(near)) {
           if (is.null(near_neighbors)) {
             near_neighbors <- near_miss_neighbors(
-              parsed, groups, raw_lines,
+              parsed, groups,
               joined_found$line[joined_found$code ==
                                   "user_agent_joined_across_directive"]
             )
           }
           near_note <- near_miss_sentence(
             near, i, parsed, near_neighbors, lone_cr, body_truncated,
-            stored_size > 500000L
+            stored_size > 512000L
           )
         }
         add_diagnostic(
@@ -9296,21 +9298,16 @@ validation_osa_distance <- function(a, b) {
 
 # For near_miss_sentence() (ROBO-klmjfsvd), computed once per document so
 # that each sentence costs the same whatever the file holds (ROBO-dbvmxcfw).
+# All of it is Google's reading: `groups` is validation_groups(), which
+# joins User-agent lines as Google's parser does.
 # By parsed row: the last User-agent, Allow or Disallow row before it (0
 # when none), the first User-agent row after it (n + 1 when none), the
-# Allow and Disallow rows counted up to it, the rows Yandex ends a
-# User-agent run at counted up to it (blank, comment, Crawl-delay, an empty
-# User-agent value: class 1, ROBO-bpywsjwv; class 12), the group of a
-# User-agent or rule row, the distinct crawlers named counted up to it, and
-# whether it is a plain User-agent line (same_rules_line_kind() "agent", so
-# it has a value): Bing and Yandex do not read every other form Google
-# does (`Useragent`, `User-agent :`), and Bing skips an empty value. A
-# User-agent line not in the plain form also counts as a Yandex break.
-# By group: its first User-agent row, and whether its User-agent lines are
-# one run of plain lines with nothing between them, which every engine
-# keeps as one group.
+# Allow and Disallow rows Google reads counted up to it, the group of a
+# User-agent or rule row, and the crawlers each group names counted up to
+# it, each once in any ASCII case.
+# By group: its first User-agent row and whether it holds a rule.
 # By line: whether a user_agent_joined_across_directive row is on it.
-near_miss_neighbors <- function(parsed, groups, raw_lines, joined) {
+near_miss_neighbors <- function(parsed, groups, joined) {
   n <- nrow(parsed)
   index <- seq_len(n)
   agent <- parsed$has_directive & parsed$type == "user-agent"
@@ -9326,54 +9323,44 @@ near_miss_neighbors <- function(parsed, groups, raw_lines, joined) {
   group_of[row_of[groups$rules$line]] <- groups$rules$group
   first_row <- integer(n_groups)
   first_row[rev(agents$group)] <- rev(agent_row)
-  last_row <- integer(n_groups)
-  last_row[agents$group] <- agent_row
-  plain <- same_rules_line_kind(raw_lines[agents$line]) == "agent"
-  plain_run <- tabulate(agents$group, n_groups) ==
-    last_row - first_row + 1L & tabulate(agents$group[!plain], n_groups) == 0L
   named <- nzchar(agents$name)
   label <- ifelse(agents$global, "*", agents$name)
-  first <- named & !duplicated(data.frame(agents$group, label))
+  first <- named & !duplicated(data.frame(agents$group, ascii_lower(label)))
   first_at <- logical(n)
   first_at[agent_row[first]] <- TRUE
-  keys <- parsed$action
-  keys[Encoding(keys) == "bytes"] <- ""
-  breaks <- !parsed$has_directive |
-    (parsed$type == "unknown" & ascii_lower(keys) == "crawl-delay")
-  # An empty value is not plain either.
-  breaks[agent_row[!plain]] <- TRUE
-  plain_at <- logical(n)
-  plain_at[agent_row[plain]] <- TRUE
   is_joined <- logical(last_line)
   is_joined[joined] <- TRUE
+  # Printed in a code span: a backtick is written as the escape printed
+  # values use for other bytes, and a long name is cut as other rows cut it.
+  shown <- ai_training_name(gsub("`", "\\x60", label[first], fixed = TRUE))
   list(
     prev_kept = cummax(ifelse(agent | rule, index, 0L)),
     next_agent = c(next_agent[-1L], n + 1L),
     rule_count = cumsum(rule),
     rule_rows = which(rule),
-    yandex_breaks = c(0L, cumsum(breaks)),
-    plain_at = plain_at,
     group_of = group_of,
     first_row = first_row,
-    plain_run = plain_run,
+    has_rule = tabulate(groups$rules$group, n_groups) > 0L,
     first_count = cumsum(first_at),
-    first_label = label[first],
+    first_label = shown,
     is_joined = is_joined
   )
 }
 
 # The sentence a near-miss key adds to its unknown_directive row
 # (ROBO-klmjfsvd): the directive the key resembles and what the line does,
-# by where it sits. Row `i` of `parsed` is an unknown key, so no engine
-# reads it (design/engine-disagreements.md class 1: Bing ends a run of
-# User-agent lines at it, and keeps a group that holds a rule open across
-# it; Google and Yandex keep both). Each claim must hold on Google, Bing and
-# Yandex; where the line's neighbors leave that unsure, it says less. It
-# names no rewrite: a typo fixed changes what the file decides. A body with
-# a lone CR is read in Google's lines, which Bing and Yandex do not share
-# (classes 7 and 8), so there the sentence speaks for Google only. In a
-# body over 500,000 bytes (`big`) Yandex allows everything and Google reads
-# only the first 512,000, so it says only what the line itself does.
+# by where it sits.
+# A rule near miss: no engine reads the key as Allow or Disallow. Bing's
+# tester honors no field name outside Google's register (robotstxt-cpp-bing
+# docs/DECISIONS.md, 2026-11-23), and Yandex's flags typos as unknown
+# directives (robotstxtyandex field-name typo closure, 2026-08-05). In a body
+# with a lone CR it speaks for Google only, as Google's lines are the ones
+# read here.
+# A User-agent near miss: only Google's reading is stated (where the rules
+# after it go, and to which crawlers), then that Bing and Yandex may read
+# the following lines differently. It names no rewrite: a typo fixed
+# changes what the file decides. In a body over 512,000 bytes (`big`),
+# past what Google reads, the effect on the lines after it is left out.
 # `truncated` says the body was cut, past which no rule was read.
 near_miss_sentence <- function(target, i, parsed, neighbors, lone_cr,
                                truncated, big, cap = 5L) {
@@ -9385,21 +9372,21 @@ near_miss_sentence <- function(target, i, parsed, neighbors, lone_cr,
     parsed$action[[i]]
   )), fixed = TRUE)
   lead <- sprintf("The key `%s` resembles `%s`, but %s it as %s", key, label,
-                  if (lone_cr) "Google does not read" else "no engine reads",
-                  label)
-  cr_note <- if (lone_cr) {
-    paste0(" These are Google's lines: the body has a CR not directly before ",
-           "an LF, where Bing and Yandex do not end a line.")
-  } else {
-    ""
-  }
+                  if (lone_cr || identical(target, "user-agent")) {
+                    "Google does not read"
+                  } else {
+                    "no engine reads"
+                  }, label)
   if (!identical(target, "user-agent")) {
     return(paste0(lead, ", so ", if (lone_cr) "Google does not apply" else
-      "no engine applies", " this rule.", cr_note))
+      "no engine applies", " this rule."))
   }
-  out <- paste0(lead, ", so it starts no group.")
+  out <- paste0(lead, ", so on Google it starts no group.")
+  others <- " Bing and Yandex may read the following lines differently."
   if (big) {
-    return(paste0(out, cr_note))
+    return(paste0(out, " The file is over 512,000 bytes, past what Google ",
+                  "reads, so what the line does to the rules after it is ",
+                  "not stated.", others))
   }
   prev <- neighbors$prev_kept[[i]]
   next_agent <- neighbors$next_agent[[i]]
@@ -9413,21 +9400,20 @@ near_miss_sentence <- function(target, i, parsed, neighbors, lone_cr,
   } else if (count > 0L) {
     joined_rule_lines(parsed$line[neighbors$rule_rows[before + seq_len(count)]])
   }
+  rules_after <- paste0(" The rules after it, up to the next User-agent ",
+                        "line (", rule_text, "), ")
   # The group of the User-agent or rule line before it; NA for none, or for
   # a rule before the first User-agent line.
   group <- if (prev > 0L) neighbors$group_of[[prev]] else NA_integer_
   if (is.na(group)) {
     if (count > 0L) {
-      out <- paste0(
-        out, " The rules after it, up to the next User-agent line (",
-        rule_text, "), are in no group, so ",
-        if (lone_cr) "Google applies none of them." else
-          "no engine applies them."
-      )
+      out <- paste0(out, rules_after, "are in no group on Google, so Google ",
+                    "applies none of them.")
     }
   } else {
-    # The distinct crawlers the group names above the line, the first `cap`
-    # of them by name. An empty User-agent value names none.
+    # The distinct crawlers the group names above the line, counted from
+    # the group's first User-agent line, the first `cap` of them by name.
+    # An empty User-agent value names none.
     first_row <- neighbors$first_row[[group]]
     base <- if (first_row > 1L) neighbors$first_count[[first_row - 1L]] else 0L
     distinct <- neighbors$first_count[[i]] - base
@@ -9436,47 +9422,30 @@ near_miss_sentence <- function(target, i, parsed, neighbors, lone_cr,
         base + seq_len(min(distinct, cap))
       ]), max(0L, distinct - cap))
     }
-    # Between User-agent lines with no rule after it before the next one.
-    stacked <- identical(parsed$type[[prev]], "user-agent") &&
-      next_agent <= nrow(parsed) && count == 0L
-    if (!is.null(named) && stacked) {
+    if (count > 0L) {
+      out <- paste0(out, rules_after, "stay with the group above it on ",
+                    "Google", if (!is.null(named)) paste0(", for ", named),
+                    ".")
+    } else if (identical(parsed$type[[prev]], "user-agent") &&
+                 next_agent <= nrow(parsed)) {
+      # Between User-agent lines: Google joins the next one to this group.
       agent_line <- parsed$line[[next_agent]]
-      # Yandex ends the run at a blank, comment or Crawl-delay line or an
-      # empty User-agent value, and reads no User-agent line outside the
-      # plain form, so it is named only when none lies from the group's
-      # first User-agent line to the next one, both included (the counts
-      # are shifted by one row). Bing reads the next line as User-agent
-      # only in the plain form, so it is named only then.
-      breaks <- neighbors$yandex_breaks
-      yandex <- !lone_cr && breaks[[next_agent + 1L]] == breaks[[first_row]]
-      bing <- !lone_cr && neighbors$plain_at[[next_agent]]
       out <- paste0(
-        out, if (yandex) " Google and Yandex keep" else " Google keeps",
-        " the User-agent run across it, so the rules after the next ",
-        "User-agent line (line ", agent_line, ") apply to the agents above ",
-        "it too (", named, ")",
-        if (bing) {
-          "; Bing has ended the run by here, so for Bing they do not."
+        out, " Google keeps the User-agent run across it, ",
+        if (is.null(named)) {
+          sprintf("to the next User-agent line (line %d).", agent_line)
+        } else if (neighbors$has_rule[[group]]) {
+          sprintf(paste0("so the rules after the next User-agent line ",
+                         "(line %d) apply to the agents above it too (%s)."),
+                  agent_line, named)
         } else {
-          "."
+          sprintf(paste0("so the agents above it (%s) share the group of ",
+                         "the next User-agent line (line %d)."),
+                  named, agent_line)
         },
         if (neighbors$is_joined[[agent_line]]) {
           sprintf(" See the user_agent_joined_across_directive row on line %d.",
                   agent_line)
-        }
-      )
-    } else if (!is.null(named) && count > 0L) {
-      # Bing ends a run of User-agent lines at a line between them, and
-      # Yandex at a blank, comment, Crawl-delay or empty value, so the
-      # agents are named only when no line lies between them.
-      out <- paste0(
-        out, " The rules after it, up to the next User-agent line (",
-        rule_text, "), ",
-        if (neighbors$plain_run[[group]]) {
-          paste0("stay with the group above it, for ", named, ".")
-        } else {
-          paste0("join the group above it on Google; Bing and Yandex may ",
-                 "have ended that group earlier.")
         }
       )
     }
@@ -9485,7 +9454,7 @@ near_miss_sentence <- function(target, i, parsed, neighbors, lone_cr,
     out <- paste0(out, " The body was cut, and lines past the cut were not ",
                   "read.")
   }
-  paste0(out, cr_note)
+  paste0(out, others)
 }
 
 split_validation_lines <- function(bytes) {

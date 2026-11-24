@@ -1,6 +1,8 @@
 # ROBO-klmjfsvd: an unknown key that is a near miss of `User-agent`, `Allow`
 # or `Disallow` (a small edit distance, a stray leading non-letter, or
-# `Deny`) is ignored by every engine. Fixtures are synthetic.
+# `Deny`). A rule near miss is applied by no engine; for a User-agent near
+# miss the message states Google's reading only, then that Bing and Yandex
+# may read the following lines differently. Fixtures are synthetic.
 
 nm_lines <- function(...) paste0(paste(c(...), collapse = "\n"), "\n")
 nm_text <- function(...) robots_validate_text(nm_lines(...))
@@ -9,6 +11,7 @@ nm_rows <- function(x, code = "unknown_directive") {
   d[d$code == code, , drop = FALSE]
 }
 nm_plain <- "Directive is not recognized by this validation profile."
+nm_others <- " Bing and Yandex may read the following lines differently."
 
 # One "decision line" string per backend, for one path on example.com: each
 # backend answers for its own crawler token (as dg_outcome() does).
@@ -22,17 +25,13 @@ nm_outcome <- function(body, path, google_token = "ExampleBot") {
     yandex = run("yandex", "Yandex"))
 }
 
-# As nm_outcome(), with `User-agent: A` in `lines` written as each backend's
-# own crawler token, so the slot's agent is the one asked about.
-nm_slot <- function(lines, path = "/page") {
-  tokens <- c(google = "ExampleBot", bing = "bingbot", yandex = "Yandex")
-  vapply(names(tokens), function(backend) {
-    body <- nm_lines(sub("^User-agent: A$", paste("User-agent:",
-                                                  tokens[[backend]]), lines))
-    r <- robots_evaluate_text_v1(body, paste0("https://example.com", path),
-                                 tokens[[backend]], "google", backend)$results
-    paste(r$url_decision, r$matched_line)
-  }, "")
+# Google's decision for `token` on /page, the reading the User-agent
+# sentence states.
+nm_google <- function(lines, token, path = "/page") {
+  r <- robots_evaluate_text_v1(nm_lines(lines),
+                               paste0("https://example.com", path), token,
+                               "google", "google")$results
+  paste(r$url_decision, r$matched_line)
 }
 
 nm_ticket <- nm_lines("User-agent: *", "Disallow: /tmp/", "",
@@ -45,12 +44,19 @@ nm_near <- list(
   "user_agent" = "user-agent", "Usr-agnt" = "user-agent",
   "Allwo" = "allow", "Alow" = "allow", "//Allow" = "allow",
   "Disaloow" = "disallow", "DISALLOOW" = "disallow", "Disallw" = "disallow",
-  "Dsalow" = "disallow", "/Disallow" = "disallow",
-  "///Disallow" = "disallow", "Deny" = "disallow", "DENY" = "disallow"
+  "Dsalow" = "disallow", "/Disallow" = "disallow", "Disavow" = "disallow",
+  "///Disallow" = "disallow", "1Disallow" = "disallow", "Deny" = "disallow",
+  "DENY" = "disallow"
 )
 
+# Consistency checks with the package's backends, for the shapes whose
+# reading on Bing and Yandex has a source (Bing:
+# design/robotstxtbing-v2-spec.md §9.3 and robotstxt-cpp-bing's field-name
+# decisions, 2026-11-23; Yandex: robotstxtyandex ydx-parser-user-agent-space
+# and its field-name typo closure, 2026-08-05). The message states Google's
+# reading only.
 test_that("the backends ignore a near-miss User-agent line after a rule", {
-  # The ticket's example: line 5 joins the `*` group on every backend.
+  # The ticket's example: line 5 joins the `*` group.
   expect_identical(
     nm_outcome(nm_ticket, "/page"),
     c(google = "disallow 5", bing = "disallow 5", yandex = "disallow 5")
@@ -66,25 +72,6 @@ test_that("the backends leave rules after a near miss at the start ungrouped", {
   )
 })
 
-test_that("the backends keep a stacked run when a rule follows a near miss", {
-  body <- nm_lines("User-agent: ExampleBot", "User-agent: bingbot",
-                   "User-agent: Yandex", "User-agnet: Other", "Disallow: /")
-  expect_identical(
-    nm_outcome(body, "/page"),
-    c(google = "disallow 5", bing = "disallow 5", yandex = "disallow 5")
-  )
-})
-
-test_that("bing alone ends a stacked run at a near miss before User-agent", {
-  body <- nm_lines("User-agent: ExampleBot", "User-agent: bingbot",
-                   "User-agent: Yandex", "User-agnet: Other",
-                   "User-agent: Other", "Disallow: /")
-  expect_identical(
-    nm_outcome(body, "/page"),
-    c(google = "disallow 6", bing = "allow NA", yandex = "disallow 6")
-  )
-})
-
 test_that("the backends apply no near-miss rule", {
   for (key in c("Disaloow", "Deny", "Disallw", "Alow")) {
     body <- nm_lines("User-agent: *", "Disallow: /tmp/", paste0(key, ": /"))
@@ -94,6 +81,17 @@ test_that("the backends apply no near-miss rule", {
       info = key
     )
   }
+})
+
+test_that("Google keeps a stacked run across a near miss", {
+  # The near miss between the stacked lines, then a rule or a User-agent
+  # line: Google keeps every agent above it in the group.
+  lines <- c("User-agent: ExampleBot", "User-agent: Other", "User-agnet: q",
+             "Disallow: /")
+  expect_identical(nm_google(lines, "ExampleBot"), "disallow 4")
+  lines <- c("User-agent: ExampleBot", "User-agnet: q", "User-agent: Other",
+             "Disallow: /")
+  expect_identical(nm_google(lines, "ExampleBot"), "disallow 4")
 })
 
 test_that("a near-miss key keeps unknown_directive as its only key row", {
@@ -116,27 +114,29 @@ nm_lead <- function(key, target, reader = "no engine reads") {
   sprintf("%s The key `%s` resembles `%s`, but %s it as %s", nm_plain, key,
           nm_labels[[target]], reader, nm_labels[[target]])
 }
-nm_no_group <- function(key) paste0(nm_lead(key, "user-agent"),
-                                    ", so it starts no group.")
+nm_rule <- function(key, target) {
+  paste0(nm_lead(key, target), ", so no engine applies this rule.")
+}
+nm_no_group <- function(key) {
+  paste0(nm_lead(key, "user-agent", "Google does not read"),
+         ", so on Google it starts no group.")
+}
+# A User-agent near miss's message: its lead, `middle`, the generic clause.
+nm_agent <- function(middle = "", key = "User-agnet") {
+  paste0(nm_no_group(key), middle, nm_others)
+}
+nm_stay <- function(rules, named) {
+  sprintf(paste0(" The rules after it, up to the next User-agent line (%s), ",
+                 "stay with the group above it on Google, for %s."),
+          rules, named)
+}
 
-nm_full_ticket <- paste(
-  nm_no_group("User-agnet"),
-  "The rules after it, up to the next User-agent line (line 5), stay with",
-  "the group above it, for `*`."
-)
-nm_unsure <- function(rules) paste0(
-  nm_no_group("User-agnet"),
-  " The rules after it, up to the next User-agent line (", rules, "), join ",
-  "the group above it on Google; Bing and Yandex may have ended that group ",
-  "earlier."
-)
-
-test_that("the ticket's example names User-agent and the group", {
+test_that("the ticket's example names User-agent and Google's group", {
   x <- robots_validate_text(nm_ticket)
   row <- nm_rows(x)
   expect_identical(row$line, 4L)
   expect_identical(row$severity, "warning")
-  expect_identical(row$message, nm_full_ticket)
+  expect_identical(row$message, nm_agent(nm_stay("line 5", "`*`")))
 })
 
 test_that("each near-miss key names the directive it resembles", {
@@ -144,9 +144,9 @@ test_that("each near-miss key names the directive it resembles", {
     target <- nm_near[[key]]
     x <- nm_text("User-agent: *", "Disallow: /tmp/", paste0(key, ": /x"))
     expected <- if (identical(target, "user-agent")) {
-      nm_no_group(key)
+      nm_agent(key = key)
     } else {
-      paste0(nm_lead(key, target), ", so no engine applies this rule.")
+      nm_rule(key, target)
     }
     expect_identical(nm_rows(x)$message, expected, label = key)
   }
@@ -154,144 +154,208 @@ test_that("each near-miss key names the directive it resembles", {
 
 test_that("the ticket's rule near misses name Disallow", {
   x <- nm_text("User-agent: *", "Disaloow: /private/", "Deny: /")
-  expect_identical(nm_rows(x)$message, c(
-    paste0(nm_lead("Disaloow", "disallow"), ", so no engine applies this ",
-           "rule."),
-    paste0(nm_lead("Deny", "disallow"), ", so no engine applies this rule.")
-  ))
+  expect_identical(nm_rows(x)$message,
+                   c(nm_rule("Disaloow", "disallow"),
+                     nm_rule("Deny", "disallow")))
   # The only rule dropped: no_rules still says so.
   expect_true("no_rules" %in% x$diagnostics$code)
 })
 
+test_that("the generic clause follows every User-agent shape, no rule", {
+  bodies <- list(
+    after_rule = c("User-agent: *", "Disallow: /a", "User-agnet: b",
+                   "Disallow: /"),
+    nothing_after = c("User-agent: *", "Disallow: /a", "User-agnet: b"),
+    no_group = c("User-agnet: b", "Disallow: /"),
+    alone = "User-agnet: b",
+    stacked = c("User-agent: a", "User-agnet: b", "User-agent: c",
+                "Disallow: /"),
+    stacked_empty = c("User-agent:", "User-agnet: b", "User-agent: c")
+  )
+  for (shape in names(bodies)) {
+    message <- nm_rows(nm_text(bodies[[shape]]))$message
+    expect_true(endsWith(message, nm_others), info = shape)
+    expect_identical(lengths(gregexpr("Bing", message, fixed = TRUE)), 1L,
+                     info = shape)
+  }
+  for (key in c("Deny", "Allwo", "Disaloow")) {
+    message <- nm_rows(nm_text("User-agent: *", paste0(key, ": /")))$message
+    expect_false(grepl("Bing|Yandex", message), info = key)
+  }
+})
+
 test_that("a near miss before any User-agent leaves its rules ungrouped", {
-  x <- nm_text("User-agnet: ExampleBot", "Disallow: /", "Allow: /a", "",
-               "User-agent: *", "Disallow: /tmp/")
-  expect_identical(nm_rows(x)$message, paste(
-    nm_no_group("User-agnet"),
-    "The rules after it, up to the next User-agent line (lines 2-3), are in",
-    "no group, so no engine applies them."
-  ))
+  lines <- c("User-agnet: ExampleBot", "Disallow: /", "Allow: /a", "",
+             "User-agent: *", "Disallow: /tmp/")
+  expect_identical(nm_google(lines, "ExampleBot"), "allow NA")
+  x <- nm_text(lines)
+  expect_identical(nm_rows(x)$message, nm_agent(paste(
+    "", "The rules after it, up to the next User-agent line (lines 2-3), are",
+    "in no group on Google, so Google applies none of them."
+  )))
   expect_identical(
     x$diagnostics$line[x$diagnostics$code == "rule_without_user_agent"],
     2:3
   )
   # After a rule that is itself in no group, the same.
   x <- nm_text("Disallow: /a", "User-agnet: ExampleBot", "Disallow: /")
-  expect_identical(nm_rows(x)$message, paste(
-    nm_no_group("User-agnet"),
-    "The rules after it, up to the next User-agent line (line 3), are in no",
-    "group, so no engine applies them."
-  ))
+  expect_identical(nm_rows(x)$message, nm_agent(paste(
+    "", "The rules after it, up to the next User-agent line (line 3), are in",
+    "no group on Google, so Google applies none of them."
+  )))
+  # Nothing after it: the line's own effect only.
+  expect_identical(nm_rows(nm_text("User-agnet: b"))$message, nm_agent())
 })
 
-test_that("a near miss between stacked User-agent lines names the split", {
-  x <- nm_text("User-agent: ExampleBot", "User-agent: bingbot",
-               "User-agent: Yandex", "User-agnet: Other", "User-agent: Other",
-               "Disallow: /")
-  expect_identical(nm_rows(x)$message, paste(
-    nm_no_group("User-agnet"),
-    "Google and Yandex keep the User-agent run across it, so the rules after",
-    "the next User-agent line (line 5) apply to the agents above it too",
-    "(`ExampleBot`, `bingbot` and `Yandex`); Bing has ended the run by here,",
-    "so for Bing they do not. See the user_agent_joined_across_directive row",
-    "on line 5."
-  ))
+test_that("a near miss between stacked User-agent lines states Google's run", {
+  lines <- c("User-agent: ExampleBot", "User-agent: bingbot",
+             "User-agent: Yandex", "User-agnet: Other", "User-agent: Other",
+             "Disallow: /")
+  expect_identical(nm_google(lines, "ExampleBot"), "disallow 6")
+  x <- nm_text(lines)
+  expect_identical(nm_rows(x)$message, nm_agent(paste(
+    "", "Google keeps the User-agent run across it, so the rules after the",
+    "next User-agent line (line 5) apply to the agents above it too",
+    "(`ExampleBot`, `bingbot` and `Yandex`). See the",
+    "user_agent_joined_across_directive row on line 5."
+  )))
   expect_identical(
     x$diagnostics$line[x$diagnostics$code ==
                          "user_agent_joined_across_directive"],
     5L
   )
-  # No joined row (the later group has no rule): no pointer.
+  # No rule after the next User-agent line: no rules are named, and no
+  # joined row fires, so no pointer.
   x <- nm_text("User-agent: a", "User-agnet: b", "User-agent: c")
-  expect_identical(nm_rows(x)$message, paste(
-    nm_no_group("User-agnet"),
-    "Google and Yandex keep the User-agent run across it, so the rules after",
-    "the next User-agent line (line 3) apply to the agents above it too",
-    "(`a`); Bing has ended the run by here, so for Bing they do not."
-  ))
-})
-
-test_that("a blank line in the stacked run leaves Yandex out", {
-  body <- nm_lines("User-agent: Yandex", "", "User-agnet: x",
-                   "User-agent: Other", "Disallow: /")
-  # Google joins and Bing seals. The yandex backend joins too, but the
-  # Yandex tester ends a run at a blank line (Y5, ROBO-bpywsjwv; see
-  # joined_user_agent_diagnostics()), so the message says nothing of Yandex.
-  expect_identical(
-    nm_outcome(body, "/page", google_token = "Yandex"),
-    c(google = "disallow 5", bing = "allow NA", yandex = "disallow 5")
-  )
-  x <- robots_validate_text(body)
-  expect_identical(nm_rows(x)$message, paste(
-    nm_no_group("User-agnet"),
-    "Google keeps the User-agent run across it, so the rules after the next",
-    "User-agent line (line 4) apply to the agents above it too (`Yandex`);",
-    "Bing has ended the run by here, so for Bing they do not. See the",
-    "user_agent_joined_across_directive row on line 4."
-  ))
-  x <- nm_text("User-agent: Yandex", "Crawl-delay: 1", "User-agnet: x",
+  expect_identical(nm_rows(x)$message, nm_agent(paste(
+    "", "Google keeps the User-agent run across it, so the agents above it",
+    "(`a`) share the group of the next User-agent line (line 3)."
+  )))
+  # The agents above it only empty values: none named (and no joined row).
+  x <- nm_text("User-agent:", "User-agnet: b", "User-agent: c", "Disallow: /")
+  expect_identical(nm_rows(x)$message, nm_agent(paste(
+    "", "Google keeps the User-agent run across it, to the next User-agent",
+    "line (line 3)."
+  )))
+  # A blank or Crawl-delay line in the run: Google's run is the same.
+  for (mid in c("", "Crawl-delay: 1", "# c")) {
+    lines <- c("User-agent: ExampleBot", mid, "User-agnet: x",
                "User-agent: Other", "Disallow: /")
-  expect_true(grepl("(`Yandex`); Bing has ended", nm_rows(x)$message,
-                    fixed = TRUE))
-  expect_true(grepl(" Google keeps the", nm_rows(x)$message, fixed = TRUE))
+    expect_identical(nm_google(lines, "ExampleBot"), "disallow 5", info = mid)
+    expect_identical(nm_rows(nm_text(lines))$message, nm_agent(paste(
+      "", "Google keeps the User-agent run across it, so the rules after the",
+      "next User-agent line (line 4) apply to the agents above it too",
+      "(`ExampleBot`). See the user_agent_joined_across_directive row on",
+      "line 4."
+    )), info = mid)
+  }
 })
 
-test_that("a near miss followed by a rule keeps the stacked group", {
-  x <- nm_text("User-agent: ExampleBot", "User-agent: bingbot",
-               "User-agent: Yandex", "User-agnet: Other", "Disallow: /*")
-  expect_identical(nm_rows(x)$message, paste(
-    nm_no_group("User-agnet"),
-    "The rules after it, up to the next User-agent line (line 5), stay with",
-    "the group above it, for `ExampleBot`, `bingbot` and `Yandex`."
-  ))
+test_that("a rule after a near miss below a User-agent line keeps the group", {
+  lines <- c("User-agent: ExampleBot", "User-agent: B", "User-agnet: b",
+             "Disallow: /", "", "User-agent: c", "Disallow: /y")
+  expect_identical(nm_google(lines, "ExampleBot"), "disallow 4")
+  expect_identical(nm_rows(nm_text(lines))$message,
+                   nm_agent(nm_stay("line 4", "`ExampleBot` and `B`")))
 })
 
-test_that("the group's agents are capped at five", {
+test_that("after a rule, the agents named are Google's group", {
+  # Google joins `ExampleBot` and `B` across line 2 whatever it holds.
+  for (mid in c("Foo: 1", "Crawl-delay: 1", "User-agnet: q", "", "# c",
+                "Sitemap: https://example.com/s.xml")) {
+    lines <- c("User-agent: ExampleBot", mid, "User-agent: B", "Disallow: /x",
+               "User-agnet: c", "Disallow: /")
+    expect_identical(nm_google(lines, "ExampleBot"), "disallow 6", info = mid)
+    row <- nm_rows(nm_text(lines))
+    expect_identical(row$message[row$line == 5L],
+                     nm_agent(nm_stay("line 6", "`ExampleBot` and `B`")),
+                     info = mid)
+  }
+  # A User-agent line Google reads in a typo form, and an empty value.
+  x <- nm_text("User-agent: A", "Useragent: B", "User-agent:", "Disallow: /x",
+               "User-agnet: c", "Disallow: /")
+  expect_identical(nm_rows(x)$message,
+                   nm_agent(nm_stay("line 6", "`A` and `B`")))
+  # Rules Google reads in a typo, prefix or colonless form count.
+  for (rule in c("Diasllow: /", "Disallowed: /", "Disallow /")) {
+    lines <- c("User-agent: ExampleBot", "Disallow: /x", "User-agnet: c",
+               rule)
+    expect_identical(nm_google(lines, "ExampleBot"), "disallow 4", info = rule)
+    expect_identical(nm_rows(nm_text(lines))$message,
+                     nm_agent(nm_stay("line 4", "`ExampleBot`")), info = rule)
+  }
+})
+
+test_that("the agents are counted from the group's first User-agent line", {
+  # The near miss in a later group: `X` is in the first group only.
+  lines <- c("User-agent: X", "Disallow: /a", "", "User-agent: Y",
+             "Disallow: /b", "User-agnet: c", "Disallow: /")
+  expect_identical(nm_google(lines, "X"), "allow NA")
+  expect_identical(nm_google(lines, "Y"), "disallow 7")
+  expect_identical(nm_rows(nm_text(lines))$message,
+                   nm_agent(nm_stay("line 7", "`Y`")))
+  # The same in the stacked shape.
+  x <- nm_text("User-agent: X", "Disallow: /a", "User-agent: Y",
+               "User-agnet: c", "User-agent: Z", "Disallow: /")
+  expect_true(grepl("apply to the agents above it too (`Y`).",
+                    nm_rows(x)$message, fixed = TRUE))
+})
+
+test_that("the group's agents are capped at five and each named once", {
   agents <- sprintf("User-agent: bot%d", 1:7)
   x <- nm_text(agents, "Disallow: /a", "User-agnet: B", "Disallow: /b")
   expect_true(grepl(paste0("for `bot1`, `bot2`, `bot3`, `bot4`, `bot5` and ",
                            "2 more."),
                     nm_rows(x)$message, fixed = TRUE))
-  # A global line is named `*`, and a repeated agent once.
+  # A global line is named `*`, and a repeated agent once, in any case.
   x <- nm_text("User-agent: * bot", "User-agent: a", "User-agent: a",
-               "Disallow: /a", "User-agnet: B", "Disallow: /b")
-  expect_true(grepl("for `*` and `a`.", nm_rows(x)$message, fixed = TRUE))
+               "User-agent: A", "Disallow: /a", "User-agnet: B",
+               "Disallow: /b")
+  expect_identical(nm_rows(x)$message,
+                   nm_agent(nm_stay("line 7", "`*` and `a`")))
   # Empty User-agent values name no crawler.
   x <- nm_text("User-agent:", "User-agnet: B", "Disallow: /b")
-  expect_identical(nm_rows(x)$message, nm_no_group("User-agnet"))
+  expect_identical(nm_rows(x)$message, nm_agent(paste(
+    "", "The rules after it, up to the next User-agent line (line 3), stay",
+    "with the group above it on Google."
+  )))
+})
+
+test_that("agent names are escaped and cut in the code span", {
+  x <- nm_text("User-agent: a`b", "Disallow: /x", "User-agnet: q",
+               "Disallow: /")
+  expect_identical(nm_rows(x)$message,
+                   nm_agent(nm_stay("line 4", "`a\\x60b`")))
+  long <- strrep("b", 200L)
+  x <- nm_text(paste("User-agent:", long), "Disallow: /x", "User-agnet: q",
+               "Disallow: /")
+  expect_identical(nm_rows(x)$message, nm_agent(nm_stay(
+    "line 4", paste0("`", strrep("b", 60L), "...`")
+  )))
 })
 
 test_that("a near miss with nothing after it says only that", {
   x <- nm_text("User-agent: *", "Disallow: /a", "User-agnet: B",
                "User-agent: C", "Disallow: /")
-  expect_identical(nm_rows(x)$message, nm_no_group("User-agnet"))
+  expect_identical(nm_rows(x)$message, nm_agent())
 })
 
-test_that("a lone CR body speaks for Google only", {
+test_that("a lone CR body: Google's lines, Google's reading", {
   x <- robots_validate_text(
     "User-agent: *\rDisallow: /a\rUser-agnet: x\rDisallow: /\r"
   )
-  expect_identical(nm_rows(x)$message, paste(
-    paste0(nm_lead("User-agnet", "user-agent", "Google does not read"),
-           ", so it starts no group."),
-    "The rules after it, up to the next User-agent line (line 4), stay with",
-    "the group above it, for `*`. These are Google's lines: the body has a",
-    "CR not directly before an LF, where Bing and Yandex do not end a line."
-  ))
+  expect_identical(nm_rows(x)$message, nm_agent(nm_stay("line 4", "`*`")))
+  # A rule near miss speaks for Google only there.
   x <- robots_validate_text("User-agent: *\rDeny: /\r")
-  expect_identical(nm_rows(x)$message, paste(
-    paste0(nm_lead("Deny", "disallow", "Google does not read"),
-           ", so Google does not apply this rule."),
-    "These are Google's lines: the body has a CR not directly before an LF,",
-    "where Bing and Yandex do not end a line."
+  expect_identical(nm_rows(x)$message, paste0(
+    nm_lead("Deny", "disallow", "Google does not read"),
+    ", so Google does not apply this rule."
   ))
-  x <- robots_validate_text(
-    "User-agent: a\rUser-agnet: b\rUser-agent: c\rDisallow: /\r"
-  )
-  expect_true(grepl(paste0("Google keeps the User-agent run across it, so ",
-                           "the rules after the next User-agent line (line ",
-                           "3) apply to the agents above it too (`a`). See"),
-                    nm_rows(x)$message, fixed = TRUE))
+})
+
+test_that("a CRLF body keeps the wording for every engine", {
+  x <- robots_validate_text("User-agent: a\r\nDeny: /\r\n")
+  expect_identical(nm_rows(x)$message, nm_rule("Deny", "disallow"))
 })
 
 test_that("a cut body says lines past the cut were not read", {
@@ -299,19 +363,17 @@ test_that("a cut body says lines past the cut were not read", {
   x <- validate_document_bytes(body, "s", "supplied",
                                max_bytes = length(body),
                                body_truncated = TRUE)
-  expect_identical(nm_rows(x)$message, paste(
-    nm_full_ticket,
-    "The body was cut, and lines past the cut were not read."
-  ))
+  expect_identical(nm_rows(x)$message, nm_agent(paste0(
+    nm_stay("line 5", "`*`"),
+    " The body was cut, and lines past the cut were not read."
+  )))
 })
 
 test_that("an upper-case key folds the same under every locale", {
   # ascii_lower(), not tolower(): under tr_TR `I` would not fold to `i`.
   x <- nm_text("User-agent: *", "DISALLOOW: /x", "USER-AGNET: y")
   expect_identical(nm_rows(x)$message, c(
-    paste0(nm_lead("DISALLOOW", "disallow"), ", so no engine applies this ",
-           "rule."),
-    nm_no_group("USER-AGNET")
+    nm_rule("DISALLOOW", "disallow"), nm_agent(key = "USER-AGNET")
   ))
 })
 
@@ -357,138 +419,6 @@ test_that("non-ASCII keys are left to other checks", {
   expect_identical(nm_rows(x)$message, nm_plain)
 })
 
-test_that("agents a line splits on Bing are not named after a rule", {
-  # Google joins `A` and `B` across line 2; Bing ends the run there, so `A`
-  # gets none of the rules after the near miss on Bing.
-  for (mid in c("Foo: 1", "Crawl-delay: 1", "User-agnet: q")) {
-    lines <- c("User-agent: A", mid, "User-agent: B", "Disallow: /x",
-               "User-agnet: c", "Disallow: /")
-    expect_identical(
-      nm_slot(lines),
-      c(google = "disallow 6", bing = "allow NA", yandex = "disallow 6"),
-      info = mid
-    )
-    row <- nm_rows(nm_text(lines))
-    expect_identical(row$message[row$line == 5L], nm_unsure("line 6"),
-                     info = mid)
-  }
-  # A blank or comment line in the run: no agents named either.
-  for (mid in c("", "# c")) {
-    x <- nm_text("User-agent: A", mid, "User-agent: B", "Disallow: /x",
-                 "User-agnet: c", "Disallow: /")
-    expect_identical(nm_rows(x)$message, nm_unsure("line 6"), info = mid)
-  }
-  # A run of plain lines: every backend keeps both agents.
-  lines <- c("User-agent: A", "User-agent: B", "Foo: 1", "Disallow: /x",
-             "User-agnet: c", "Disallow: /")
-  expect_identical(
-    nm_slot(lines),
-    c(google = "disallow 6", bing = "disallow 6", yandex = "disallow 6")
-  )
-  expect_identical(nm_rows(nm_text(lines))$message[[2L]], paste(
-    nm_no_group("User-agnet"),
-    "The rules after it, up to the next User-agent line (line 6), stay with",
-    "the group above it, for `A` and `B`."
-  ))
-  # A User-agent line Google reads but not in the plain form.
-  x <- nm_text("User-agent: A", "Useragent: B", "Disallow: /x",
-               "User-agnet: c", "Disallow: /")
-  expect_identical(nm_rows(x)$message, nm_unsure("line 5"))
-})
-
-test_that("an empty User-agent value ends the group on Yandex", {
-  # Stacked: Google keeps `Yandex` in the run, the yandex backend does not.
-  lines <- c("User-agent: A", "User-agent:", "User-agnet: x",
-             "User-agent: Other", "Disallow: /")
-  expect_identical(
-    nm_slot(lines),
-    c(google = "disallow 5", bing = "allow NA", yandex = "allow NA")
-  )
-  expect_identical(nm_rows(nm_text(lines))$message, paste(
-    nm_no_group("User-agnet"),
-    "Google keeps the User-agent run across it, so the rules after the next",
-    "User-agent line (line 4) apply to the agents above it too (`A`); Bing",
-    "has ended the run by here, so for Bing they do not. See the",
-    "user_agent_joined_across_directive row on line 4."
-  ))
-  # The next User-agent line empty: Bing skips it, so keeps `A` with the
-  # rule, and the message names neither Bing nor Yandex.
-  lines <- c("User-agent: A", "User-agnet: x", "User-agent:", "Disallow: /")
-  expect_identical(
-    nm_slot(lines),
-    c(google = "disallow 4", bing = "disallow 4", yandex = "allow NA")
-  )
-  expect_identical(nm_rows(nm_text(lines))$message, paste(
-    nm_no_group("User-agnet"),
-    "Google keeps the User-agent run across it, so the rules after the next",
-    "User-agent line (line 3) apply to the agents above it too (`A`)."
-  ))
-  # After a rule: no agents named.
-  lines <- c("User-agent: A", "User-agent:", "User-agnet: b", "Disallow: /")
-  expect_identical(
-    nm_slot(lines),
-    c(google = "disallow 4", bing = "disallow 4", yandex = "allow NA")
-  )
-  expect_identical(nm_rows(nm_text(lines))$message, nm_unsure("line 4"))
-})
-
-test_that("stacked lines outside the plain form leave Bing or Yandex out", {
-  # The next line a form Bing does not read: Bing keeps `A` with the rule.
-  lines <- c("User-agent: A", "User-agnet: x", "Useragent: B", "Disallow: /")
-  expect_identical(
-    nm_slot(lines),
-    c(google = "disallow 4", bing = "disallow 4", yandex = "disallow 4")
-  )
-  expect_identical(nm_rows(nm_text(lines))$message, paste(
-    nm_no_group("User-agnet"),
-    "Google keeps the User-agent run across it, so the rules after the next",
-    "User-agent line (line 3) apply to the agents above it too (`A`). See",
-    "the user_agent_joined_across_directive row on line 3."
-  ))
-  # The earlier line a form Yandex does not read.
-  lines <- c("Useragent: A", "User-agnet: x", "User-agent: B", "Disallow: /")
-  tokens <- c(google = "ExampleBot", bing = "bingbot", yandex = "Yandex")
-  expect_identical(
-    vapply(names(tokens), function(backend) {
-      body <- nm_lines(sub(" A$", paste0(" ", tokens[[backend]]), lines))
-      r <- robots_evaluate_text_v1(body, "https://example.com/page",
-                                   tokens[[backend]], "google",
-                                   backend)$results
-      paste(r$url_decision, r$matched_line)
-    }, ""),
-    c(google = "disallow 4", bing = "allow NA", yandex = "allow NA")
-  )
-  expect_true(grepl(" Google keeps the User-agent run across it",
-                    nm_rows(nm_text(lines))$message, fixed = TRUE))
-})
-
-test_that("Yandex is named only when its run reaches the group's start", {
-  # The blank is before the line just above the near miss: Yandex ends the
-  # run there (Y5), so the message names Google alone.
-  x <- nm_text("User-agent: A", "", "User-agent: B", "User-agnet: x",
-               "User-agent: C", "Disallow: /")
-  expect_true(grepl(paste0(" Google keeps the User-agent run across it, so ",
-                           "the rules after the next User-agent line (line ",
-                           "5) apply to the agents above it too (`A` and ",
-                           "`B`); Bing has ended"),
-                    nm_rows(x)$message, fixed = TRUE))
-})
-
-test_that("a rule after a near miss below a User-agent line keeps the group", {
-  # No stacked wording: a rule follows before the next User-agent line.
-  lines <- c("User-agent: A", "User-agnet: b", "Disallow: /", "",
-             "User-agent: c", "Disallow: /y")
-  expect_identical(
-    nm_slot(lines),
-    c(google = "disallow 3", bing = "disallow 3", yandex = "disallow 3")
-  )
-  expect_identical(nm_rows(nm_text(lines))$message, paste(
-    nm_no_group("User-agnet"),
-    "The rules after it, up to the next User-agent line (line 3), stay with",
-    "the group above it, for `A`."
-  ))
-})
-
 test_that("the rules after the line are listed up to five, then counted", {
   x <- nm_text("User-agent: *", "User-agnet: x", "Disallow: /a", "Allow: /b",
                "Disallow: /c")
@@ -500,13 +430,6 @@ test_that("the rules after the line are listed up to five, then counted", {
                     nm_rows(x)$message, fixed = TRUE))
 })
 
-test_that("a CRLF body keeps the wording for every engine", {
-  x <- robots_validate_text("User-agent: a\r\nDeny: /\r\n")
-  expect_identical(nm_rows(x)$message,
-                   paste0(nm_lead("Deny", "disallow"),
-                          ", so no engine applies this rule."))
-})
-
 test_that("a key in range of both Allow and Disallow resembles neither", {
   # One edit from allow, two from disallow: which was meant is unknown.
   for (key in c("Dallow", "Sallow", "Iallow")) {
@@ -516,37 +439,62 @@ test_that("a key in range of both Allow and Disallow resembles neither", {
   # Three edits from disallow: Allow only.
   for (key in c("Callow", "Hallow")) {
     x <- nm_text("User-agent: *", "Disallow: /tmp/", paste0(key, ": /x"))
-    expect_identical(nm_rows(x)$message,
-                     paste0(nm_lead(key, "allow"),
-                            ", so no engine applies this rule."), label = key)
+    expect_identical(nm_rows(x)$message, nm_rule(key, "allow"), label = key)
   }
 })
 
-test_that("a body over 500,000 bytes gets the line's own effect only", {
-  # Yandex allows everything in it, and Google reads 512,000 bytes.
-  filler <- strrep("# filler\n", 56000L)
-  body <- paste0("User-agent: *\nDisallow: /tmp/\n", filler,
-                 "User-agnet: x\nDisallow: /\n")
+test_that("a body over 512,000 bytes leaves out the effect after the line", {
+  # Past what Google reads, so the effect on the rules after it is not
+  # stated, and the message says why.
+  body <- paste0("User-agent: *\nDisallow: /tmp/\n",
+                 strrep("# filler\n", 57000L), "User-agnet: x\nDisallow: /\n")
+  expect_gt(nchar(body, "bytes"), 512000L)
+  expect_identical(nm_rows(robots_validate_text(body))$message, nm_agent(paste(
+    "", "The file is over 512,000 bytes, past what Google reads, so what the",
+    "line does to the rules after it is not stated."
+  )))
+  # Over 500,000 but inside Google's window: Google's reading is stated.
+  body <- paste0("User-agent: *\nDisallow: /tmp/\n",
+                 strrep("# filler\n", 56000L), "User-agnet: x\nDisallow: /\n")
   expect_gt(nchar(body, "bytes"), 500000L)
-  x <- robots_validate_text(body)
-  expect_identical(nm_rows(x)$message, nm_no_group("User-agnet"))
-  # Just under: the group is named.
-  body <- paste0("User-agent: *\nDisallow: /tmp/\n", strrep("# filler\n", 100L),
-                 "User-agnet: x\nDisallow: /\n")
-  expect_true(grepl("for `*`.", nm_rows(robots_validate_text(body))$message,
-                    fixed = TRUE))
+  expect_lt(nchar(body, "bytes"), 512000L)
+  expect_identical(nm_rows(robots_validate_text(body))$message,
+                   nm_agent(nm_stay("line 56004", "`*`")))
 })
 
 test_that("a backtick in the key cannot end the code span", {
   x <- nm_text("User-agent: *", "User`agnet: x")
-  expect_identical(nm_rows(x)$message, nm_no_group("User\\x60agnet"))
+  expect_identical(nm_rows(x)$message, nm_agent(key = "User\\x60agnet"))
 })
 
-# Best of three; the near-miss key against a key that resembles nothing, in
-# the same body, so only the sentence's own cost is compared.
+# Best of five; the near-miss key against a key that resembles nothing, in
+# the same body, so only the sentence's own cost is compared. The limit is
+# over twice today's ratio (about 1.4 stacked and 1.2 for pairs), and under
+# the quadratic code's (5.5 and 3.3, 4231bd2).
 nm_time <- function(body) {
-  min(vapply(1:3, function(i) {
+  min(vapply(1:5, function(i) {
     system.time(robots_validate_text(body))[["elapsed"]]
+  }, 0))
+}
+
+# The sentences of `near` near misses above one run of `rules` rules, timed
+# on their own, best of five: each sentence names the same run, so its cost
+# must not grow with the run.
+nm_time_sentences <- function(rules, near = 2000L) {
+  bytes <- charToRaw(paste0(
+    "User-agent: *\n", strrep("User-agnet: x\n", near),
+    paste0("Disallow: /p", seq_len(rules), "\n", collapse = "")
+  ))
+  parsed <- as.data.frame(robotstxtr_validation_parse_(bytes),
+                          stringsAsFactors = FALSE)
+  groups <- validation_groups(parsed, split_validation_lines(bytes))
+  neighbors <- near_miss_neighbors(parsed, groups, integer())
+  rows <- which(parsed$type == "unknown")
+  min(vapply(1:5, function(k) {
+    system.time(for (i in rows) {
+      near_miss_sentence("user-agent", i, parsed, neighbors, FALSE, FALSE,
+                         FALSE)
+    })[["elapsed"]]
   }, 0))
 }
 
@@ -558,12 +506,16 @@ test_that("the near-miss sentence stays linear (ROBO-dbvmxcfw)", {
                   collapse = ""), "Disallow: /\n")
   }
   expect_lt(nm_time(stacked("User-agnet")),
-            2.5 * max(nm_time(stacked("Foo")), 0.05))
+            2.75 * max(nm_time(stacked("Foo")), 0.05))
   # One group of near-miss and rule pairs.
   pairs <- function(key) {
     paste0("User-agent: *\n", paste0(key, ": x\nDisallow: /p", 1:6000, "\n",
                                      collapse = ""))
   }
   expect_lt(nm_time(pairs("User-agnet")),
-            2.5 * max(nm_time(pairs("Foo")), 0.05))
+            2.75 * max(nm_time(pairs("Foo")), 0.05))
+  # Many near misses above one long run of rules: 32 times the rules, about
+  # the same time (a sentence listing the run's rules one by one: over 5).
+  expect_lt(nm_time_sentences(16000L),
+            2.5 * max(nm_time_sentences(500L), 0.05))
 })

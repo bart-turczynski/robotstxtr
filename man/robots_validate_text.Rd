@@ -149,17 +149,19 @@ UTF-8 and holds a look-alike character, as \code{user_agent_cut}
 lists them, names it and gives the ASCII spelling
 (\code{Disallow} for a key written with a Cyrillic a). An ASCII key
 that is a near miss of \code{User-agent}, \code{Allow} or
-\code{Disallow} (one edit from \code{allow}, two from the others, a
-stray leading non-letter such as \code{/Disallow}, or \code{Deny};
-not a key in range of both \code{allow} and \code{disallow}, such as
-\code{Dallow}) names the directive it resembles and what the line
-does: a rule near miss applies on no engine; a User-agent near miss
-starts no group, so the rules after it stay with the group above
-(naming its agents only when they are one run of plain User-agent
-lines, as every engine then keeps them together), are in no group
-before the first User-agent line, or, between stacked User-agent
-lines, join the next group on Google but not on Bing. In a body over
-500,000 bytes it says only what the line itself does. \cr
+\code{Disallow} (one edit from \code{allow}, two from the others,
+such as \code{Disavow}; equal to one once the run of non-letters
+leading it is removed, such as \code{/Disallow} or
+\code{///Disallow}; or \code{Deny}; not a key in range of both
+\code{allow} and \code{disallow}, such as \code{Dallow}) names the
+directive it resembles and what the line does: a rule near miss
+applies on no engine; for a User-agent near miss it gives Google's
+reading only (the line starts no group, so the rules after it stay
+with the group above, naming its crawlers, are in no group before
+the first User-agent line, or, between stacked User-agent lines,
+join the next group) and adds that Bing and Yandex may read the
+following lines differently. In a body over 512,000 bytes it leaves
+out what the line does to the rules after it. \cr
 \code{empty_user_agent} \tab error \tab
 A User-agent line with an empty value. \cr
 \code{user_agent_cut} \tab warning or info \tab
