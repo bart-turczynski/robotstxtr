@@ -720,7 +720,8 @@ test_that("a spaced key keeps the wildcard row of the crawler meant", {
   x <- robots_validate_text(body)
   wild <- dv_rows(x, "wildcard_disallows_not_inherited")
   expect_identical(wild$line, 4L)
-  expect_match(wild$message, "^Foo Disallow: /x obeys only this group")
+  # Named by the token Google reads; the note quotes the line as written.
+  expect_match(wild$message, "^Foo obeys only this group")
   expect_true(endsWith(wild$message, paste0(
     "`Foo Disallow: /x` (line 4) and takes the agent to be that token; see ",
     "the directive_in_value row."
@@ -814,4 +815,346 @@ dv_time_padded <- function(pad) {
 test_that("a row's cost does not grow with the body (ROBO-dbvmxcfw)", {
   skip_on_cran()
   expect_lt(dv_time_padded(200000L), 2.5 * max(dv_time_padded(1L), 0.05))
+})
+
+# Fix round 3 (review 2 of ROBO-bkzqgvai).
+
+# A `*` group, then one group naming Googlebot and a glued hidden line, with
+# an empty `Disallow:` and a full block: Google's decisions, which no change
+# of this round may move.
+dv_guard <- dv_lines("User-agent: *", "Allow: /public", "",
+                     "User-agent: Googlebot", "User-agent: ExampleBotAllow: /",
+                     "Disallow:", "Disallow: /")
+
+test_that("the guard fixture's Google decisions stay", {
+  decisions <- vapply(
+    c("Googlebot", "ExampleBotAllow", "ExampleBot", "OtherBot"),
+    function(token) {
+      paste(dv_google(dv_guard, token, "/"),
+            dv_google(dv_guard, token, "/public"), sep = ", ")
+    }, ""
+  )
+  expect_identical(unname(decisions), c(
+    "disallow 7, disallow 7", "disallow 7, disallow 7",
+    "allow NA, allow 2", "allow NA, allow 2"
+  ))
+})
+
+test_that("a Google crawler token the value did not mean is named", {
+  body <- dv_lines("User-agent: Googlebot Image Disallow: /", "Disallow: /x")
+  expect_identical(dv_rows(robots_validate_text(body))$message, paste0(
+    dv_lead("Disallow:", 29L, "Disallow: /"),
+    " Google's matcher reads the User-agent value only up to its first ",
+    "character outside letters, '_' and '-', as `Googlebot`, not as ",
+    "`Googlebot Image`, the text before `Disallow:`. 'Googlebot' is a Google ",
+    "crawler token, so that Google crawler follows this group.", dv_others
+  ))
+  # On Google, Googlebot follows the group.
+  expect_identical(dv_google(body, "Googlebot", "/x"), "disallow 2")
+  # A version suffix is meant, and a token Google does not document names
+  # no Google crawler: neither says so.
+  for (value in c("Googlebot/2.1", "Googlebot/", "ExampleBot Image")) {
+    message <- dv_rows(dv_text(paste("User-agent:", value, "Disallow: /"),
+                               "Disallow: /x"))$message
+    expect_false(grepl("Google crawler", message, fixed = TRUE), label = value)
+  }
+  # The same sentence as the user_agent_cut row of the line without the key.
+  cut <- dv_rows(dv_text("User-agent: Googlebot Image", "Disallow: /x"),
+                 "user_agent_cut")
+  expect_match(cut$message, paste0("'Googlebot' is a Google crawler token, so ",
+                                   "that Google crawler follows this group."),
+               fixed = TRUE)
+  expect_identical(cut$severity, "warning")
+})
+
+test_that("the fallback reads only the hidden line's own group", {
+  body <- dv_lines("User-agent: *", "Disallow: /", "", "User-agent: ExampleBot",
+                   "Disallow: /y", "", "User-agent: ExampleBotAllow: /",
+                   "Disallow: /x")
+  message <- dv_rows(robots_validate_text(body))$message
+  expect_identical(message, paste0(
+    dv_lead("Allow:", 23L, "Allow: /"),
+    " Google's matcher reads the User-agent value only up to its first ",
+    "character outside letters, '_' and '-', as `ExampleBotAllow`, not as ",
+    "`ExampleBot`, the text before `Allow:`. Unless another group names it, ",
+    "a crawler going by `ExampleBot` gets the `User-agent: *` group from ",
+    "Google's matcher.", dv_others
+  ))
+  expect_false(grepl("of the group names it", message, fixed = TRUE))
+  # Line 4 is another group: ExampleBot does not get line 7's group.
+  expect_identical(dv_google(body, "ExampleBot", "/page"), "allow NA")
+  expect_identical(dv_google(body, "ExampleBot", "/x"), "allow NA")
+})
+
+test_that("a duplicate_rule with no hidden line points to user_agent_cut", {
+  names5 <- c("Foo", "Bar", "Baz", "Qux", "Quux")
+  x <- dv_text(paste0("User-agent: ", names5, "/1"), "Disallow: /x", "",
+               paste0("User-agent: ", names5), "Disallow: /x")
+  expect_true(endsWith(dv_rows(x, "duplicate_rule")$message,
+                       "; see the user_agent_cut rows."))
+})
+
+test_that("a hyphen in the token before a glued key", {
+  body <- dv_lines("User-agent: *", "Disallow: /", "",
+                   "User-agent: Example-BotAllow: /", "Allow: /a")
+  x <- robots_validate_text(body)
+  expect_identical(dv_codes(x), "4 directive_in_value")
+  expect_match(dv_rows(x)$message, paste0(
+    "as `Example-BotAllow`, not as `Example-Bot`, the text before `Allow:`. ",
+    "Unless another group names it, a crawler going by `Example-Bot` gets ",
+    "the `User-agent: *` group from Google's matcher."
+  ), fixed = TRUE)
+  expect_identical(dv_google(body, "Example-Bot", "/page"), "disallow 2")
+})
+
+test_that("a token over 64 bytes is cut in every sentence", {
+  long <- strrep("a", 70L)
+  cut <- paste0(strrep("a", 60L), "...")
+  expect_identical(
+    dv_rows(dv_text(paste0("User-agent: ", long, " Disallow: /")))$message,
+    paste0(dv_lead("Disallow:", 84L, "Disallow: /"),
+           " Google's matcher reads the User-agent value as `", cut,
+           "`, the text before `Disallow:`.", dv_others)
+  )
+  x <- dv_text(paste0("User-agent: ", long, "/1 Disallow: /"),
+               "User-agent: Bar", "Disallow: /y")
+  expect_identical(dv_rows(x)$message, paste0(
+    dv_lead("Disallow:", 86L, "Disallow: /"),
+    " Google's matcher reads the User-agent value only up to its first ",
+    "character outside letters, '_' and '-', as `", cut, "`, not as `", cut,
+    "`, the text before `Disallow:`.",
+    dv_stack(2L, "line 3",
+             sprintf("the token `%s` Google reads from this line too", cut)),
+    dv_others
+  ))
+})
+
+test_that("a glued User-agent or Sitemap key at the value's end", {
+  for (value in c("/xUser-agent:", "/xSitemap:")) {
+    expect_identical(dv_rows(dv_text("User-agent: *",
+                                     paste("Disallow:", value)))$line, 2L,
+                     label = value)
+  }
+})
+
+test_that("a misnamed agent is named as no crawler", {
+  x <- robots_validate_text(dv_guard)
+  d <- x$diagnostics
+  expect_false(any(grepl("ExampleBotAllow",
+                         d$message[d$code != "directive_in_value"],
+                         fixed = TRUE)))
+  expect_identical(dv_rows(x, "empty_disallow_with_full_block")$message, paste0(
+    "`Disallow: /` (line 7) blocks every path for Googlebot, and the empty ",
+    "`Disallow:` on line 6 is in the same group. Google and Bing ignore an ",
+    "empty `Disallow:` and block every path; Yandex reads it as allowing ",
+    "every path and blocks nothing. If Googlebot is meant to be let in, ",
+    "delete line 7; if it is meant to be kept out, delete line 6."
+  ))
+  # A group of only such a line draws no empty-Disallow row.
+  x <- dv_text("User-agent: ExampleBotAllow: /", "Disallow: /", "Disallow:")
+  expect_identical(nrow(dv_rows(x, "empty_disallow_with_full_block")), 0L)
+  # Joined rows: such a line is neither the joined agent nor an earlier one.
+  x <- dv_text("User-agent: ExampleBotAllow: /", "", "User-agent: Bar",
+               "Disallow: /x")
+  expect_identical(nrow(dv_rows(x, "user_agent_joined_across_blank")), 0L)
+  x <- dv_text("User-agent: Foo", "User-agent: ExampleBotAllow: /", "",
+               "User-agent: Bar", "Disallow: /x")
+  blank <- dv_rows(x, "user_agent_joined_across_blank")$message
+  expect_match(blank, paste0("^`User-agent: Bar` \\(line 4\\) shares a group ",
+                             "with `User-agent: Foo` \\(line 1\\): "))
+  expect_false(grepl("ExampleBotAllow", blank, fixed = TRUE))
+  x <- dv_text("User-agent: Foo", "Crawl-delay: 1",
+               "User-agent: ExampleBotAllow: /", "Disallow: /")
+  expect_identical(nrow(dv_rows(x, "user_agent_joined_across_directive")), 0L)
+  # The opener is quoted as the line it is, and named as no crawler.
+  x <- dv_text("User-agent: ExampleBotAllow: /", "User-agent: Foo",
+               "Crawl-delay: 1", "User-agent: Bar", "Disallow: /")
+  joined <- dv_rows(x, "user_agent_joined_across_directive")$message
+  expect_match(joined, paste0("joins the group that `User-agent: ",
+                              "ExampleBotAllow: /` opened on line 1."),
+               fixed = TRUE)
+  expect_match(joined, "So the rules on line 5 apply to Foo as well as to Bar",
+               fixed = TRUE)
+  expect_match(joined, "If `Foo` was not meant to get these rules",
+               fixed = TRUE)
+  # The policy token stacked with such a line only.
+  x <- dv_text("User-agent: ExampleBotAllow: /", "Crawl-delay: 1",
+               "User-agent: __usage_ai-training", "Disallow: /")
+  expect_identical(nrow(dv_rows(x, "ai_training_token_stacked")), 0L)
+  # License scope.
+  x <- dv_text("User-agent: Googlebot", "User-agent: ExampleBotAllow: /",
+               "License: https://example.com/l", "Disallow: /")
+  expect_match(dv_rows(x, "rsl_license_directive")$message,
+               "select the group on line 1 (Googlebot).", fixed = TRUE)
+  x <- dv_text("User-agent: *", "Disallow: /a", "",
+               "User-agent: ExampleBotAllow: /",
+               "License: https://example.com/l", "Disallow: /")
+  rsl <- dv_rows(x, "rsl_license_directive")$message
+  expect_match(rsl, paste0("Under RSL it applies only to the crawlers that ",
+                           "select the group on line 4. "), fixed = TRUE)
+  expect_false(grepl("ExampleBotAllow|all empty", rsl))
+  # A near-miss User-agent key below such a line.
+  x <- dv_text("User-agent: ExampleBotAllow: /", "User-agnet: Foo",
+               "Disallow: /x")
+  expect_match(dv_rows(x, "unknown_directive")$message,
+               "stay with the group above it on Google. Bing", fixed = TRUE)
+  # The slash and prefix rows' crawler lists.
+  x <- dv_text("User-agent: Googlebot", "User-agent: ExampleBotAllow: /",
+               "Disallow: /dir/")
+  expect_false(grepl("ExampleBotAllow",
+                     dv_rows(x, "rule_slash_split")$message, fixed = TRUE))
+  x <- dv_text("User-agent: Bar", "User-agent: ExampleBotAllow: /",
+               "Disallow: /feed", "Disallow: /feeds")
+  expect_false(grepl("ExampleBotAllow",
+                     dv_rows(x, "rule_prefix_sibling")$message, fixed = TRUE))
+})
+
+test_that("a spaced hidden agent is named by the token Google reads", {
+  note <- paste0(" Google's matcher reads only a product token from ",
+                 "`Foo Allow: /a` (line %d) and takes the agent to be that ",
+                 "token; see the directive_in_value row.")
+  x <- dv_text("User-agent: *", "Disallow: /", "", "User-agent: Foo Allow: /a",
+               "Disallow:", "Disallow: /")
+  expect_match(dv_rows(x, "empty_disallow_with_full_block")$message,
+               "^`Disallow: /` \\(line 6\\) blocks every path for Foo, ")
+  x <- dv_text("User-agent: Foo Allow: /a", "", "User-agent: Bar",
+               "Disallow: /x")
+  blank <- dv_rows(x, "user_agent_joined_across_blank")$message
+  # The line is quoted as written, and the crawler named by its token.
+  expect_match(blank, "with `User-agent: Foo Allow: /a` (line 1):",
+               fixed = TRUE)
+  expect_match(blank, "and gives Foo no rules.", fixed = TRUE)
+  expect_match(blank, "give Foo its own rules before line 3.", fixed = TRUE)
+  expect_true(endsWith(blank, sprintf(note, 1L)))
+  x <- dv_text("User-agent: Foo Allow: /a", "Crawl-delay: 1",
+               "User-agent: __usage_ai-training", "Disallow: /")
+  stacked <- dv_rows(x, "ai_training_token_stacked")$message
+  expect_match(stacked, "shares a group with `User-agent: Foo Allow: /a`",
+               fixed = TRUE)
+  expect_match(stacked, "so this group's rules also apply to Foo.",
+               fixed = TRUE)
+  x <- dv_text("User-agent: Googlebot", "User-agent: Foo Allow: /a",
+               "License: https://example.com/l", "Disallow: /")
+  expect_match(dv_rows(x, "rsl_license_directive")$message,
+               "select the group on line 1 (Googlebot and Foo).", fixed = TRUE)
+  x <- dv_text("User-agent: Foo Allow: /a", "User-agnet: Bar", "Disallow: /x")
+  expect_match(dv_rows(x, "unknown_directive")$message,
+               "stay with the group above it on Google, for `Foo`.",
+               fixed = TRUE)
+  x <- dv_text("User-agent: Googlebot", "User-agent: Foo Allow: /a",
+               "Disallow: /dir/")
+  expect_match(dv_rows(x, "rule_slash_split")$message,
+               "every crawler the group names: 'Googlebot' and 'Foo'.",
+               fixed = TRUE)
+  # On Google, Foo follows the group: the token is the crawler.
+  body <- dv_lines("User-agent: Foo Allow: /a", "", "User-agent: Bar",
+                   "Disallow: /x")
+  expect_identical(dv_google(body, "Foo", "/x"), "disallow 4")
+})
+
+test_that("the cut note's pointer names the rows of the lines it names", {
+  x <- dv_text(paste0("User-agent: ", c("A", "B", "C", "D", "E"), "/1"),
+               "User-agent: F/1 Disallow: /", "Disallow: /", "Disallow:")
+  expect_true(endsWith(dv_rows(x, "empty_disallow_with_full_block")$message,
+                       paste0("`E/1` (line 5) and 1 more and takes each agent ",
+                              "to be its token; see the user_agent_cut rows.")))
+})
+
+test_that("glued Sitemap and Host keys need a URL or a host name", {
+  for (value in c("/xSitemap:https://example.com/s.xml",
+                  "/xSitemap:HTTP://example.com/s.xml", "/xHost:example.com",
+                  "/xHost: www.example.com", "/xHost:example.com:8080",
+                  "/xHost:example.com/a")) {
+    expect_identical(dv_rows(dv_text("User-agent: *",
+                                     paste("Disallow:", value)))$line, 2L,
+                     label = value)
+  }
+  x <- dv_text("User-agent: *Sitemap:https://e.com/s.xml", "Disallow: /a")
+  expect_identical(dv_rows(x)$line, 1L)
+  expect_identical(nrow(dv_rows(x, "user_agent_cut")), 0L)
+  for (value in c("/xHost:", "/xHost:localhost", "/xHost:8080",
+                  "/xSitemap:ftp://example.com/s.xml", "/xSitemap:/s.xml",
+                  "/Host:8080", "/LocalHost:8080/", "/Crawl-delay:/x",
+                  "/search?q=allow:x", "/aUser-agent:x",
+                  "/xUser-agent:Googlebot")) {
+    expect_identical(nrow(dv_rows(dv_text("User-agent: *",
+                                          paste("Disallow:", value)))),
+                     0L, label = value)
+  }
+  expect_identical(nrow(dv_rows(dv_text("User-agent: LocalHost: x"))), 0L)
+})
+
+test_that("Google's reading of the glued Sitemap and Host keys", {
+  # `*Sitemap:...` is no `*` line: no crawler gets line 2.
+  body <- dv_lines("User-agent: *Sitemap:https://e.com/s.xml", "Disallow: /a")
+  expect_identical(dv_google(body, "OtherBot", "/a"), "allow NA")
+  expect_match(dv_rows(robots_validate_text(body))$message, paste0(
+    "so Google does not read `Sitemap:https://e.com/s.xml` as a line of its ",
+    "own. Google's matcher reads no product token from the User-agent value"
+  ), fixed = TRUE)
+  # The rule's path is the whole value; no sitemap line is read.
+  for (value in c("/xSitemap:https://example.com/s.xml",
+                  "/xHost:example.com")) {
+    body <- dv_lines("User-agent: *", paste("Disallow:", value))
+    expect_identical(dv_google(body, "OtherBot", value), "disallow 2")
+    expect_identical(dv_google(body, "OtherBot", "/x"), "allow NA")
+    type <- robotstxtr_validation_parse_(charToRaw(body))$type
+    expect_identical(type[type != "none"], c("user-agent", "disallow"))
+    expect_match(dv_rows(robots_validate_text(body))$message,
+                 sprintf("Google reads the whole value, `%s`, as the rule's",
+                         value), fixed = TRUE)
+  }
+})
+
+test_that("joined and prefix rows name crawlers as Google reads them", {
+  # The directive-joined row names a spaced hidden opener by its token.
+  x <- dv_text("User-agent: Foo Allow: /a", "Crawl-delay: 1", "User-agent: Bar",
+               "Disallow: /")
+  joined <- dv_rows(x, "user_agent_joined_across_directive")$message
+  expect_match(joined,
+               "joins the group that `User-agent: Foo Allow: /a` opened",
+               fixed = TRUE)
+  expect_match(joined, "So the rules on line 4 apply to Foo as well as to Bar,",
+               fixed = TRUE)
+  expect_match(joined, "so neither gives these rules to Foo. If `Foo` was not",
+               fixed = TRUE)
+  # A sibling's crawlers: the token Google reads, and none for a group of
+  # only glued hidden lines.
+  x <- dv_text("User-agent: Foo", "User-agent: Bar Allow: /a",
+               "Disallow: /feed", "", "User-agent: Bar Allow: /a",
+               "Disallow: /feeds")
+  expect_match(dv_rows(x, "rule_prefix_sibling")$message,
+               "'/feeds' (line 6, for 'Bar'), which", fixed = TRUE)
+  x <- dv_text("User-agent: Foo", "User-agent: ExampleBotAllow: /",
+               "Disallow: /feed", "", "User-agent: ExampleBotAllow: /",
+               "Disallow: /feeds")
+  expect_match(dv_rows(x, "rule_prefix_sibling")$message,
+               "'/feeds' (line 6), which", fixed = TRUE)
+  x <- dv_text("User-agent: Foo", "User-agent: Baz",
+               "User-agent: ExampleBotAllow: /", "Disallow: /feed", "",
+               "User-agent: Baz", "User-agent: ExampleBotAllow: /",
+               "Disallow: /feeds")
+  expect_match(dv_rows(x, "rule_prefix_sibling")$message,
+               "'/feeds' (line 8, for 'Baz'), which", fixed = TRUE)
+})
+
+test_that("the crawler effect reads the whole text before the key", {
+  # Past 64 bytes the text shown is cut, but the effect reads all of it: a
+  # version ending in a letter is not one, as the user_agent_cut row says.
+  value <- paste0("Googlebot/", strrep("1", 70L), "a")
+  hidden <- dv_rows(dv_text(paste("User-agent:", value, "Disallow: /"),
+                            "Disallow: /x"))$message
+  cut <- dv_rows(dv_text(paste("User-agent:", value), "Disallow: /x"),
+                 "user_agent_cut")$message
+  effect <- paste0("'Googlebot' is a Google crawler token, so that Google ",
+                   "crawler follows this group.")
+  expect_match(hidden, effect, fixed = TRUE)
+  expect_match(cut, effect, fixed = TRUE)
+})
+
+test_that("a hidden line with no token keeps its text where a row lists it", {
+  x <- dv_text("User-agent: *", "Disallow: /", "", "User-agent: 1bot Allow: /a",
+               "License: https://example.com/l", "Disallow: /")
+  expect_match(dv_rows(x, "rsl_license_directive")$message,
+               "select the group on line 4 (1bot Allow: /a).", fixed = TRUE)
 })

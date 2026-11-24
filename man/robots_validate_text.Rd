@@ -202,22 +202,29 @@ line break was lost (\code{User-agent: * Disallow: /private/}):
 after a space or tab in any ASCII case, or glued onto the text before
 it in its usual spelling only (\code{ExampleBotAllow: /}, not the
 \code{allow:} of \code{/swallow:x}), and then only before a blank,
-the value's end, \code{/} or \code{*} (Allow, Disallow) or a digit
-(Crawl-delay), and not after \code{?}, \code{&}, \code{=}, \code{.}
-or \code{:} (not \code{/search?q=Allow:x} or \code{/Host:8080}). The
-value is read as Google's parser reads it, so a key in a comment,
-after a NUL, past the line buffer or with its colon past the first
-512,000 bytes is not found. The message names the key and its byte
+the value's end, \code{/} or \code{*} (Allow, Disallow), a digit
+(Crawl-delay), \code{http://} or \code{https://} (Sitemap), and for
+Host only before a dotted host name, and not after \code{?},
+\code{&}, \code{=}, \code{.} or \code{:} (not
+\code{/search?q=Allow:x} or \code{/Host:8080}). The value is read
+as Google's parser reads it, so a key in a comment, after a NUL,
+past the line buffer or with its colon past the first 512,000 bytes
+is not found. The message names the key and its byte
 column and states Google's reading only: the text from the key on is
 part of the value, so its directive is lost; on a User-agent line, the
-token Google's matcher reads, as \code{user_agent_cut} would say,
-which group a crawler going by the text before the key gets, and,
+token Google's matcher reads, as \code{user_agent_cut} would say
+(and that a Google crawler the value did not mean follows the
+group), which group a crawler going by the text before the key gets, and,
 when the next User-agent line joins the group, whose rules then apply
 to this line's agent; then that Bing and Yandex may read the line
 differently. \code{user_agent_repeated_group} and
-\code{user_agent_duplicate_in_group} leave such a line out, and the
-wildcard codes do when the key is glued onto the token Google reads
-(\code{ExampleBotAllow:}). \cr
+\code{user_agent_duplicate_in_group} leave such a line out. When the
+key is glued onto the token Google reads (\code{ExampleBotAllow:}),
+the rows that name crawlers (the wildcard codes,
+\code{empty_disallow_with_full_block}, \code{user_agent_joined_*},
+\code{ai_training_token_stacked} and the crawler lists of other rows)
+name it as no crawler; otherwise they name the token Google reads
+(\code{Foo} for \code{Foo Disallow: /x}). \cr
 \code{rule_without_user_agent} \tab error \tab
 An Allow or Disallow in no group a non-empty User-agent opened: before
 any, or after an empty User-agent that follows a rule. \cr
@@ -1088,7 +1095,8 @@ group names must have both. Pairs form on the whole User-agent value
 merge only: two groups with the same value count as one, two naming
 different crawlers give none, and a pair that only Google's cut merge
 joins (\code{Foo/1.0} beside \code{Foo}) gets no row; its \code{user_agent_cut} row
-covers it. \code{P} is the longest such rule; a sibling
+covers it, or its \code{directive_in_value} row for a line whose value holds
+a second directive key. \code{P} is the longest such rule; a sibling
 that goes on with \code{/} (\verb{/feed/rss}), one holding \code{*}, \code{$}, \verb{?} or \verb{\%},
 and a pair of opposite type (\verb{Disallow: /search} beside
 \verb{Allow: /searchx}) are not read. Google's matcher reads \code{M}'s path with
@@ -1139,8 +1147,9 @@ non-ASCII character is matched, so most paths with accented letters, a
 path in Japanese, or a Latin-1 string converted to UTF-8 on input stay
 silent, as do a typed escape such as \verb{\%E2\%80\%8B}, a comment, a
 User-agent value (a cut one names its look-alike characters on its
-\code{user_agent_cut} row instead), a Sitemap value, and a rule value that is
-not valid UTF-8
+\code{user_agent_cut} row instead, or on its \code{directive_in_value} row for a
+line whose value holds a second directive key), a Sitemap value, and a
+rule value that is not valid UTF-8
 (bytes after the cut, in a comment or past a NUL, do not count; a
 character the line buffer splits is dropped). Each message quotes code
 points as \code{U+XXXX} with byte offsets counted from 1 at the value's first
