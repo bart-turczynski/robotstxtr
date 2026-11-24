@@ -354,6 +354,12 @@ validation_unsupported <- c(
 #'     on the repeated line; the message names the first line naming it. Blank,
 #'     comment, Crawl-delay and unknown-field lines between the two names were
 #'     checked against the Bing and Yandex testers (2026-11-21). \cr
+#'   \code{user_agent_groups_same_rules} \tab info \tab
+#'     Separate groups written in plain User-agent, Allow and Disallow lines
+#'     give their crawlers the same rules, as written, so their User-agent
+#'     lines could be stacked in one group (RFC 9309 section 2.2.1).
+#'     Optional cleanup. Anchored on the first group's first line; the
+#'     message names the other groups and the stacked group. \cr
 #'   \code{empty_disallow_with_full_block} \tab warning \tab
 #'     The rules one crawler follows hold an empty \code{Disallow:} and a
 #'     full block (\code{Disallow: /}, no non-empty Allow): Google and Bing
@@ -759,6 +765,43 @@ validation_unsupported <- c(
 #' repeat across a blank or a directive that still joins the group counts as
 #' in-group, unless a join row owns that line.
 #'
+#' For `user_agent_groups_same_rules`, separate groups whose sets of rules
+#' are equal as written could share one group, with their User-agent lines
+#' stacked and nothing between them: every engine reads each User-agent
+#' line on its own, and Google, Bing and Yandex merge the groups naming one
+#' crawler, so each crawler keeps its rules. A rule is compared by its key,
+#' in any case, and its value as the parser reads it, blanks around them
+#' dropped; order and exact repeats are ignored (an exact repeat is
+#' `duplicate_rule`'s), an empty value counts, and `/x` and `/x*`, or `%7E`
+#' and `~`, stay apart, since Yandex compares the pattern as written. Only
+#' groups written in the plain form take part: every line from a group's
+#' first User-agent line to the next group, and the next group's first
+#' line, must be a blank or comment-only line, a Sitemap after the group's
+#' last rule, or a plain User-agent, Allow or Disallow line: optional
+#' leading spaces or tabs, the key exactly `User-agent`, `Allow` or
+#' `Disallow` in any case, then its colon at once, and for User-agent a
+#' value. Any other spelling Google's parser accepts (a typo, a longer key
+#' such as `User-agent foo` or `Disallow foo`, a blank before the colon, a
+#' missing colon, an empty User-agent value, a control byte other than tab
+#' outside a comment) leaves the group out, since
+#' Bing or Yandex may read it otherwise; so does a `Crawl-delay`,
+#' `Clean-param`, `Host` or unknown line (Yandex ends a group at
+#' `Crawl-delay`). The suggestion is also withheld for a `*` group, a
+#' policy-token or token-less User-agent line, a line a
+#' `user_agent_joined_*` or `user_agent_cut` row reports, a line a NUL
+#' cuts, a line past the parser's buffer, and a User-agent line on line 1
+#' behind a byte-order mark, full or partial (Bing does not read it as
+#' User-agent). Groups that name one set of crawlers only are
+#' `user_agent_repeated_group`'s. One row per set of equal groups, on the
+#' first group's first line, naming the other groups' first lines and the
+#' stacked group (five of each, then a count). A byte outside printable
+#' ASCII is shown as an escape, and a name or rule over 64 bytes is
+#' shortened, so the stacked group in the message is a guide, not a
+#' byte-exact copy. The check is skipped for a body cut at `max_bytes`, a
+#' body with a lone CR (a CR not directly before an LF: Bing and Yandex end
+#' a line at LF only), and a body over 500,000 bytes (Yandex allows
+#' everything in a larger file, and Google reads only its first 512,000).
+#'
 #' For `disallow_tied_by_allow`, an Allow and a Disallow with the same
 #' pattern match the same paths with the same priority, and Allow wins the
 #' tie (RFC 9309 section 2.2.2), so the Disallow never applies; with
@@ -1015,8 +1058,8 @@ validation_unsupported <- c(
 #' `rule_query_parameter_position`, `rule_query_crawl_not_index`,
 #' `rule_slash_pair`, `rule_slash_split`,
 #' `rule_end_anchor_query`, `allow_reopens_through_query`,
-#' `rule_render_resource_blocked`, `rule_prefix_sibling` and the
-#' AI-training codes follow Google's
+#' `rule_render_resource_blocked`, `rule_prefix_sibling`,
+#' `user_agent_groups_same_rules` and the AI-training codes follow Google's
 #' reading: the parser and Google's matcher end a line at its
 #' first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
 #' byte, so each such message says it is Google's reading, unless every NUL
@@ -1980,6 +2023,43 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       paste0(found$message, nul_reading)
     )
   }
+  # Separate groups with the same rules as written, which could share one
+  # group (ROBO-rdxgnqhw). A line past a cut could still join a group, so a
+  # cut body is skipped. A joined or cut User-agent line, and a line a NUL
+  # cuts on Google's reading only, keep their group out. The rules as
+  # written are read here once; the trailing-slash checks below reuse them.
+  # The whole check is skipped for a body with a CR not directly before an
+  # LF: these lines are Google's, which ends a line at a lone CR too, while
+  # Bing and Yandex end one at LF only (design/engine-disagreements.md
+  # classes 7 and 8), so their groups may run differently. It is skipped
+  # too for a body over 500,000 bytes, the smallest engine window: Yandex
+  # allows everything in a larger file, and Google reads only the first
+  # 512,000 bytes, so a group moved across either limit changes its rules.
+  if (!body_truncated) {
+    rule_line <- groups$rules$line
+    written <- slash_written_rules(
+      raw_lines[rule_line], rule_line,
+      parsed$missing_colon[match(rule_line, parsed$line)], groups$rules$empty
+    )
+    lone_cr <- any(bytes == as.raw(0x0d) &
+                     c(bytes[-1L], as.raw(0x00)) != as.raw(0x0a))
+    found <- if (lone_cr || stored_size > 500000L) {
+      ai_training_rows()
+    } else {
+      same_rules_group_diagnostics(
+        groups, parsed, written, raw_lines,
+        skip = c(joined_lines, agents$line[agents$cut], nul_lines[nul_active])
+      )
+    }
+    if (nrow(found) > 0L) {
+      add_chunk(
+        found$line, found$severity, found$code, found$directive,
+        vapply(raw_lines[found$line], render_validation_line, "",
+               USE.NAMES = FALSE),
+        paste0(found$message, nul_reading)
+      )
+    }
+  }
   # An empty Disallow and a full block one crawler follows: Google and Bing
   # block, Yandex allows (ROBO-vnhirero). A cut body is skipped: lines past
   # the cut could add an Allow.
@@ -2083,13 +2163,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   }
   # A crawler decides the bare URL `P` and the slash URL `P/` of a literal
   # rule differently (ROBO-roypaoox). A later Allow could change a decision,
-  # so a cut body is skipped.
+  # so a cut body is skipped. `written` is the rules as written, read above.
   if (!body_truncated) {
-    rule_line <- groups$rules$line
-    written <- slash_written_rules(
-      raw_lines[rule_line], rule_line,
-      parsed$missing_colon[match(rule_line, parsed$line)], groups$rules$empty
-    )
     found <- slash_split_diagnostics(groups, written = written)
     if (nrow(found) > 0L) {
       add_chunk(
@@ -3523,6 +3598,257 @@ user_agent_duplicate_in_group_diagnostics <- function(groups,
   )
   ai_training_rows(agents$line[repeated], rep("info", length(repeated)),
                    "user_agent_duplicate_in_group", "user-agent", message)
+}
+
+# Separate groups that give their crawlers the same rules (ROBO-rdxgnqhw).
+# Consecutive User-agent lines share one group (RFC 9309 section 2.2.1), so
+# their User-agent lines could be stacked over one copy of the rules. Every
+# engine reads a User-agent line on its own, and Google, Bing and Yandex
+# merge the groups naming one crawler (repeated_group_diagnostics()), so
+# moving the lines keeps every crawler's rules, as long as each group reads
+# alike everywhere. Google's parser accepts more spellings than Bing and
+# Yandex read alike (a typo, a longer key, a blank before the colon, no
+# colon), so only groups written in the plain form take part: every line
+# from a group's first User-agent line to the next group must be a plain
+# line (same_rules_line_kind()), and so must the next group's first line,
+# since on Bing or Yandex a group runs on through a line they do not read
+# as User-agent. So a group takes part only when:
+# - it names no `*` (a `*` group is left out), no policy token, and no line
+#   with an empty value or no token;
+# - no line of it is in `skip` (a joined or cut User-agent line, or a line
+#   holding a NUL Bing and Yandex read past);
+# - from its first User-agent line to the next group, every line is a plain
+#   User-agent, Allow or Disallow line within the parser's line buffer, a
+#   blank or comment-only line, or a Sitemap after its last rule: a
+#   Crawl-delay, Clean-param, Host or unknown line may be read as the
+#   group's (Yandex ends a group at Crawl-delay), and a stacked group could
+#   not keep it;
+# - the next group, if any, starts at a plain User-agent line; and
+# - it has a rule line.
+# Two groups are equal when their sets of rules as written are: each rule is
+# its key, ASCII case folded, and its value bytes the parser reads
+# (`written`, slash_written_rules()), blanks around them dropped. Order and
+# exact repeats are ignored, an empty value stays a member, and `/x` and
+# `/x*`, or `%7E` and `~`, stay apart: Yandex compares the pattern as
+# written. A class of groups naming one crawler set only is
+# user_agent_repeated_group's. Signatures are hashed, so the cost is linear
+# in the lines: one info per class, on the first line of its first group,
+# naming the other groups' first lines (five, then a count) and the stacked
+# group (five User-agent lines and five rules, then counts).
+same_rules_group_diagnostics <- function(groups, parsed, written, raw_lines,
+                                         skip = integer(), cap = 5L) {
+  info <- groups$groups
+  agents <- groups$agents
+  rules <- groups$rules
+  if (nrow(info) < 2L || nrow(rules) == 0L) {
+    return(ai_training_rows())
+  }
+  pos_agent <- match(agents$group, info$group)
+  pos_rule <- match(rules$group, info$group)
+  ok <- !info$global & seq_len(nrow(info)) %in% pos_rule
+  bad_agent <- ai_training_kind(agents)$family |
+    (!agents$global & !nzchar(agents$key))
+  ok[pos_agent[bad_agent]] <- FALSE
+  last_rule <- integer(nrow(info))
+  last_rule[pos_rule] <- rules$line
+  # Every physical line from the first group on, by its group (0 before).
+  line <- seq_along(raw_lines)
+  at <- findInterval(line, info$first_line)
+  kind <- character(length(line))
+  kind[at > 0L] <- same_rules_line_kind(raw_lines[at > 0L])
+  p <- match(line, parsed$line)
+  too_long <- is.na(p) | parsed$line_too_long[p]
+  late_sitemap <- !is.na(p) & parsed$has_directive[p] &
+    parsed$type[p] == "sitemap" & at > 0L &
+    line > c(0L, last_rule)[at + 1L]
+  plain <- (kind %in% c("agent", "rule") & !too_long) |
+    kind == "blank" | late_sitemap
+  ok[at[!plain & at > 0L]] <- FALSE
+  # On Bing or Yandex a group runs on through a next group's first line
+  # they do not read as User-agent.
+  after <- info$first_line[-1L]
+  ok[-nrow(info)][kind[after] != "agent" | too_long[after]] <- FALSE
+  skip_at <- findInterval(skip, info$first_line)
+  ok[skip_at[skip_at > 0L]] <- FALSE
+  if (sum(ok) < 2L) {
+    return(ai_training_rows())
+  }
+
+  take <- ok[pos_rule]
+  kept <- written[take]
+  member <- same_rules_members(kept)
+  rule_pos <- pos_rule[take]
+  signature <- vapply(split(member, rule_pos), function(m) {
+    paste(sort(unique(m), method = "radix"), collapse = " ")
+  }, "")
+  members <- split(as.integer(names(signature)), signature)
+  members <- members[lengths(members) > 1L]
+  if (length(members) == 0L) {
+    return(ai_training_rows())
+  }
+  agent_rows <- split(seq_len(nrow(agents)), pos_agent)
+  crawler_set <- vapply(agent_rows, function(rows) {
+    paste(sort(unique(agents$key[rows]), method = "radix"), collapse = " ")
+  }, "")
+  members <- Filter(function(m) {
+    length(unique(crawler_set[as.character(m)])) > 1L
+  }, members)
+  if (length(members) == 0L) {
+    return(ai_training_rows())
+  }
+  members <- members[order(vapply(members, min, 0L))]
+  rule_rows <- split(seq_along(rule_pos), rule_pos)
+  message <- vapply(members, function(m) {
+    first <- m[[1L]]
+    rows <- unlist(agent_rows[as.character(m)], use.names = FALSE)
+    rows <- rows[!duplicated(agents$key[rows])]
+    own <- rule_rows[[as.character(first)]]
+    own <- own[!duplicated(member[own])]
+    same_rules_message(
+      info$first_line[[first]], info$first_line[m[-1L]],
+      agents$name[rows], vapply(kept[own], same_rules_shown, ""), cap
+    )
+  }, "")
+  line <- info$first_line[vapply(members, `[[`, 0L, 1L)]
+  ai_training_rows(line, "info", "user_agent_groups_same_rules",
+                   "user-agent", unname(message))
+}
+
+# Each line's kind in the plain form the same-rules check takes, read on
+# bytes: "agent" for a User-agent line, "rule" for an Allow or Disallow
+# line, "blank" for a blank or comment-only line, "other" for any other.
+# A plain line is optional leading spaces and tabs, then the key exactly
+# `user-agent`, `allow` or `disallow` in any ASCII case, then its colon at
+# once; a User-agent line also needs a value before any `#` (a line a NUL
+# cuts is the caller's `skip`). Every other spelling the parser accepts (a
+# typo, a longer key such as `User-agent foo` or `Disallow foo`, a blank
+# before the colon, no colon) is "other": Bing or Yandex may read it
+# otherwise, or not at all. So is a line with a control byte other than
+# tab before its first `#`: Google trims a VT or FF from a value, Bing and
+# Yandex do not (a control byte in a comment is ignored everywhere). Line
+# 1 behind a byte-order mark, full (EF BB
+# BF) or partial (EF, EF BB), starts at 0xEF, so it is "other" too: the
+# parser skips the mark, but Bing does not read that line as User-agent
+# (design/backend-evidence-inventory.tsv, ed-02-bing). The key is folded
+# on bytes, so a byte not valid in the session's encoding is never
+# translated.
+same_rules_line_kind <- function(raw_lines) {
+  blank <- as.raw(c(0x20, 0x09))
+  agent <- charToRaw("user-agent")
+  rule <- list(charToRaw("allow"), charToRaw("disallow"))
+  control <- as.raw(c(0x00:0x08, 0x0a:0x1f, 0x7f))
+  vapply(raw_lines, function(bytes) {
+    hash <- match(as.raw(0x23), bytes, nomatch = length(bytes) + 1L)
+    if (any(bytes[seq_len(hash - 1L)] %in% control)) {
+      return("other")
+    }
+    lead <- match(TRUE, !bytes %in% blank, nomatch = length(bytes) + 1L)
+    bytes <- slash_drop(bytes, lead - 1L)
+    if (length(bytes) == 0L || bytes[[1L]] == as.raw(0x23)) {
+      return("blank")
+    }
+    colon <- match(as.raw(0x3a), bytes, nomatch = 0L)
+    if (colon == 0L) {
+      return("other")
+    }
+    key <- ascii_lower_raw_v1(bytes[seq_len(colon - 1L)])
+    if (identical(key, agent)) {
+      value <- slash_drop(bytes, colon)
+      end <- match(as.raw(0x23), value, nomatch = length(value) + 1L)
+      if (all(value[seq_len(end - 1L)] %in% blank)) "other" else "agent"
+    } else if (any(vapply(rule, identical, NA, key))) {
+      "rule"
+    } else {
+      "other"
+    }
+  }, "", USE.NAMES = FALSE)
+}
+
+# Each rule as written (`key:value`, slash_written_rules()) as the member of
+# a group's rule set: its key, ASCII upper case folded, and its value,
+# blanks around each dropped, as hex so any byte compares exactly. One pass
+# over the bytes of all the rules: each rule's first `:` is its colon
+# (a key holds none), and it ends the key.
+same_rules_members <- function(written) {
+  if (length(written) == 0L) {
+    return(character())
+  }
+  # Every element is unmarked (slash_written_rules() builds each with
+  # rawToChar()), so pasting them re-encodes nothing and charToRaw() keeps
+  # each rule's bytes at the offsets `size` gives.
+  size <- nchar(written, type = "bytes")
+  bytes <- charToRaw(paste(written, collapse = ""))
+  id <- rep.int(seq_along(written), size)
+  pos <- seq_along(bytes)
+  colon_at <- which(bytes == as.raw(0x3a))
+  colon <- colon_at[match(seq_along(written), id[colon_at])][id]
+  # The key, its colon included, then the value; the colon counts as a
+  # blank, so the key's trailing blanks go with it.
+  part <- 2L * id - (pos <= colon)
+  solid <- !(bytes %in% as.raw(c(0x20, 0x09)) | pos == colon)
+  seen <- cumsum(solid)
+  start <- match(part, part)
+  end <- length(part) + 1L - match(part, rev(part))
+  keep <- seen - (seen[start] - solid[start]) > 0L & seen[end] - seen +
+    solid > 0L
+  upper <- pos < colon & bytes >= as.raw(0x41) & bytes <= as.raw(0x5a)
+  bytes[upper] <- as.raw(as.integer(bytes[upper]) + 32L)
+  token <- as.character(bytes)
+  token[!keep] <- ""
+  token[pos == colon] <- "-"
+  width <- 2L * tabulate(id[keep], length(written)) + 1L
+  last <- cumsum(width)
+  substring(paste(token, collapse = ""), last - width + 1L, last)
+}
+
+# A rule as written (`key:value`, slash_written_rules()) as the message
+# shows it: its key, plain (same_rules_line_kind()), and its value, blanks
+# around it dropped. A byte outside printable ASCII is shown as an escape
+# (render_validation_line()), so the message is a guide, not a byte-exact
+# copy.
+same_rules_shown <- function(written) {
+  bytes <- charToRaw(written)
+  colon <- match(as.raw(0x3a), bytes)
+  value <- slash_drop(bytes, colon)
+  keep <- which(!value %in% as.raw(c(0x20, 0x09)))
+  value <- if (length(keep) == 0L) raw(0L) else value[min(keep):max(keep)]
+  key <- bytes[seq_len(colon - 1L)]
+  ai_training_name(paste0(
+    render_validation_line(key), ":",
+    if (length(value) > 0L) paste0(" ", render_validation_line(value))
+  ))
+}
+
+# The message of one same-rules row: the first group's line `at`, the other
+# groups' first lines `others`, the crawler names to stack and the shared
+# rules as shown.
+same_rules_message <- function(at, others, names, rules, cap = 5L) {
+  several <- length(others) > 1L
+  sprintf(
+    paste0("The group at line %d and the %s %s give their crawlers the same ",
+           "rules, as written. Consecutive User-agent lines share one group ",
+           "(RFC 9309 section 2.2.1), and Google, Bing and Yandex read each ",
+           "User-agent line the same wherever it stands, so these groups ",
+           "could be one, with nothing between its User-agent lines: %s, ",
+           "then %s. This is optional cleanup; each crawler keeps the same ",
+           "rules."),
+    at, if (several) "groups at lines" else "group at line",
+    same_rules_list(as.character(others), cap, "group"),
+    same_rules_list(sprintf("`User-agent: %s`", ai_training_name(names)),
+                    cap, "User-agent line"),
+    same_rules_list(sprintf("`%s`", rules), cap, "rule")
+  )
+}
+
+# The first `cap` items, then a count of the rest named by `noun`.
+same_rules_list <- function(items, cap, noun) {
+  shown <- items[seq_len(min(cap, length(items)))]
+  more <- length(items) - length(shown)
+  if (more > 0L) {
+    shown <- c(shown, sprintf("%d more %s%s", more, noun,
+                              if (more > 1L) "s" else ""))
+  }
+  joined_and(shown, 0L)
 }
 
 # An empty `Disallow:` and a full block in the rules one crawler follows
