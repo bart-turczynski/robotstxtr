@@ -192,7 +192,28 @@ matcher only when the spelling is a crawler that backend evaluates
 (\code{bingbot} written with a Cyrillic o). Latin letters with
 diacritics are not look-alikes. Every other code names the agent as
 written, and a code that names a cut value adds a sentence pointing
-to this row; \code{duplicate_rule} names the token read. \cr
+to this row; \code{duplicate_rule} names the token read. A line
+whose value holds a second directive key gets
+\code{directive_in_value} instead, and the sentence points there. \cr
+\code{directive_in_value} \tab warning \tab
+A User-agent, Allow, Disallow, Sitemap, Crawl-delay or Host value
+that holds a second directive key followed by a colon, as when a
+line break was lost (\code{User-agent: * Disallow: /private/}):
+after a space or tab in any ASCII case, or glued onto the text before
+it in its usual spelling only (\code{ExampleBotAllow: /}, not the
+\code{allow:} of \code{/swallow:x}). The value is read as Google's
+parser reads it, so a key in a comment, after a NUL or past the line
+buffer is not found. The message names the key and its byte column
+and states Google's reading only: the text from the key on is part of
+the value, so its directive is lost; on a User-agent line, the token
+Google's matcher reads, as \code{user_agent_cut} would say, and, when
+the next User-agent line joins the group, whose rules then apply to
+this line's agent; then that Bing and Yandex may read the line
+differently. Rows that name a User-agent line's agent as a crawler
+leave such a line out (\code{wildcard_disallows_not_inherited} and
+the other wildcard codes, \code{user_agent_repeated_group},
+\code{user_agent_duplicate_in_group},
+\code{user_agent_groups_same_rules}). \cr
 \code{rule_without_user_agent} \tab error \tab
 An Allow or Disallow in no group a non-empty User-agent opened: before
 any, or after an empty User-agent that follows a rule. \cr
