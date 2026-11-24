@@ -156,9 +156,38 @@ sr_fixtures <- list(
                  sr_group("foo", "Disallow: /x"), sep = "\n"),
     today = c("user_agent_repeated_group", "duplicate_rule")
   ),
-  # Blanks before a rule's colon are read alike everywhere.
+  # Yandex reads `Disallow :` as an unknown field (design/
+  # engine-disagreements.md, class 4): only the plain form takes part.
   key_blank = list(body = sr_two("Disallow: /x", "Disallow : /x"),
                    today = character(0)),
+  rule_tab_colon = list(
+    body = paste(sr_group("bingbot", "Disallow\t: /x"),
+                 sr_group("Yandex", "Disallow\t: /x"), sep = "\n"),
+    today = character(0)
+  ),
+  # Bing and Yandex read `Disallow foo` as unknown, not as `Disallow`.
+  rule_key_word = list(
+    body = paste(sr_group("Yandex", c("Disallow foo:", "Disallow: /")),
+                 sr_group("bingbot", c("Disallow:", "Disallow: /")),
+                 sep = "\n"),
+    today = c("accepted_directive_prefix", "allow_all_disallow",
+              "allow_all_disallow", "empty_disallow_with_full_block",
+              "empty_disallow_with_full_block")
+  ),
+  rule_blank_empty = list(
+    body = paste(sr_group("bingbot", c("Disallow:", "Disallow: /")),
+                 sr_group("Yandex", c("Disallow :", "Disallow: /")),
+                 sep = "\n"),
+    today = c("allow_all_disallow", "allow_all_disallow",
+              "empty_disallow_with_full_block",
+              "empty_disallow_with_full_block")
+  ),
+  # A comment-only line inside a group is read alike everywhere.
+  comment_line = list(
+    body = sr_two(c("Disallow: /x", "# note", "Allow: /x/y"),
+                  c("Disallow: /x", "Allow: /x/y")),
+    today = character(0)
+  ),
   # Google reads a longer key by its prefix `user-agent`; others may not.
   prefix_key = list(
     body = paste0(sr_group("Foo", "Disallow: /x"),
@@ -175,13 +204,20 @@ sr_fixtures <- list(
     body = sr_two("Disallow: /x", paste0("Disallow: /x", strrep(" ", 17000L))),
     today = "line_too_long"
   ),
-  # Indented User-agent lines, and blanks before the User-agent colon, are
-  # read alike everywhere.
+  # Indented User-agent lines, by a space or a tab, are read alike
+  # everywhere.
   agent_indent = list(
     body = paste0(" User-agent: Foo\nDisallow: /x\n\n",
                   sr_group("Bar", "Disallow: /x")),
     today = character(0)
   ),
+  agent_tab_indent = list(
+    body = paste0("\tUser-agent: Foo\nDisallow: /x\n\n",
+                  sr_group("Bar", "Disallow: /x")),
+    today = character(0)
+  ),
+  # A blank before the User-agent colon, or a longer key Google reads by its
+  # prefix: Yandex, or Bing and Yandex, do not read it as User-agent.
   agent_space_colon = list(
     body = paste0(sr_group("Foo", "Disallow: /x"),
                   "\nUser-agent : Bar\nDisallow: /x\n"),
@@ -191,6 +227,60 @@ sr_fixtures <- list(
     body = paste0(sr_group("Foo", "Disallow: /x"),
                   "\nUser-agent\t: Bar\nDisallow: /x\n"),
     today = character(0)
+  ),
+  agent_key_word = list(
+    body = paste0("User-agent foo: bingbot\nDisallow: /x\n\n",
+                  sr_group("Yandex", "Disallow: /x")),
+    today = character(0)
+  ),
+  agent_tab_word = list(
+    body = paste0(sr_group("bingbot", "Disallow: /x"),
+                  "\nUser-agent\tfoo: Yandex\nDisallow: /x\n"),
+    today = character(0)
+  ),
+  # The next group starts at a line Bing or Yandex do not read as
+  # User-agent, so on them the group before runs on through its rules.
+  next_typo = list(
+    body = paste(sr_group("Yandex", c("Disallow: /x", "Useragent: Bar",
+                                      "Disallow: /y")),
+                 sr_group("bingbot", "Disallow: /x"), sep = "\n"),
+    today = "accepted_directive_typo"
+  ),
+  next_prefix = list(
+    body = paste(sr_group("Yandex", c("Disallow: /x", "User-agentx: Bar",
+                                      "Disallow: /y")),
+                 sr_group("bingbot", "Disallow: /x"), sep = "\n"),
+    today = character(0)
+  ),
+  next_no_colon = list(
+    body = paste(sr_group("Yandex", "Disallow: /x"),
+                 "User-agent Bar\nDisallow: /y\n",
+                 sr_group("bingbot", "Disallow: /x"), sep = "\n"),
+    today = "accepted_missing_colon"
+  ),
+  next_comment_value = list(
+    body = paste(sr_group("bingbot", "Disallow: /x"),
+                 "User-agent: # none\nDisallow: /y\n",
+                 sr_group("Yandex", "Disallow: /x"), sep = "\n"),
+    today = c("empty_user_agent", "rule_without_user_agent")
+  ),
+  # Past the parser's buffer, the next group's first line is not plain.
+  next_long = list(
+    body = paste(sr_group("Foo", "Disallow: /x"),
+                 sr_group("Bar", "Disallow: /x"),
+                 paste0("User-agent: Baz", strrep(" ", 17000L),
+                        "\nDisallow: /y\n"), sep = "\n"),
+    today = "line_too_long"
+  ),
+  # A bare key with no colon is no plain line.
+  bare_key = list(body = sr_two(c("Disallow: /x", "Disallow"),
+                                "Disallow: /x"),
+                  today = "malformed_line"),
+  next_empty = list(
+    body = paste(sr_group("bingbot", "Disallow: /x"),
+                 "User-agent:\nDisallow: /y\n",
+                 sr_group("Yandex", "Disallow: /x"), sep = "\n"),
+    today = c("empty_user_agent", "rule_without_user_agent")
   ),
   # The parser skips line 1's byte-order mark, whole or in part, but Bing
   # does not read that line as User-agent, so its group takes no part.
@@ -236,10 +326,9 @@ sr_want <- list(
                           "duplicate_rule"),
   repeated_elsewhere = c("user_agent_repeated_group", sr_code),
   overlap = c("user_agent_repeated_group", sr_code),
-  key_blank = sr_code,
+  comment_line = sr_code,
   agent_indent = sr_code,
-  agent_space_colon = sr_code,
-  agent_tab_colon = sr_code,
+  agent_tab_indent = sr_code,
   two_classes = c(sr_code, sr_code)
 )
 
@@ -342,13 +431,6 @@ test_that("ROBO-rdxgnqhw: a byte-order mark keeps the first group out", {
   expect_identical(sr_codes(tail), sr_code)
 })
 
-test_that("ROBO-rdxgnqhw: the stacked rules drop blanks before the colon", {
-  d <- sr_diag(sr_two("Disallow : /x", "Disallow: /x"))
-  expect_match(d$message[d$code == sr_code],
-               paste0("lines: `User-agent: Foo` and `User-agent: Bar`, then ",
-                      "`Disallow: /x`. This is"), fixed = TRUE)
-})
-
 test_that("ROBO-rdxgnqhw: thousands of equal groups give one bounded row", {
   names <- paste0("Bot", apply(expand.grid(letters, letters, letters), 1,
                                paste, collapse = "")[1:2000])
@@ -419,4 +501,276 @@ test_that("ROBO-rdxgnqhw: robots_validate_url() gives the same row", {
   expect_identical(d$raw_text[d$code == sr_code],
                    c("User-agent: ClaudeBot", "User-agent: DataForSeoBot"))
   expect_identical(x$documents$validation_status, "valid")
+})
+
+# The oracle: stack a body's groups exactly as a row's message shows them,
+# and every crawler must get the same decisions on Google, Bing and Yandex.
+# The message's `\xHH` escapes are read back to their bytes. Groups start
+# at a User-agent-like line (any spelling Google takes) after a line that
+# is not one; a member's lines run to the next start. The stacked group
+# goes in place of the first member, or of the last, then a blank line, and
+# the other members go.
+sr_lines <- function(body) {
+  strsplit(body, "\n", fixed = TRUE, useBytes = TRUE)[[1L]]
+}
+
+sr_agent_like <- function(lines) {
+  grepl("^[ \t]*(user-agent|useragent|user agent)([^:]*:| )", lines,
+        ignore.case = TRUE, useBytes = TRUE)
+}
+
+sr_unescape <- function(x) {
+  bytes <- charToRaw(x)
+  out <- raw()
+  i <- 1L
+  while (i <= length(bytes)) {
+    hex <- if (i + 3L <= length(bytes)) rawToChar(bytes[i + 2:3]) else ""
+    if (bytes[[i]] == as.raw(0x5c) && bytes[[i + 1L]] == as.raw(0x78) &&
+          grepl("^[0-9A-Fa-f]{2}$", hex)) {
+      out <- c(out, as.raw(strtoi(hex, 16L)))
+      i <- i + 4L
+    } else {
+      out <- c(out, bytes[[i]])
+      i <- i + 1L
+    }
+  }
+  rawToChar(out)
+}
+
+sr_stack <- function(body, message, last = FALSE) {
+  expect_false(grepl(" more ", message, fixed = TRUE))
+  head <- sub("give their crawlers.*", "", message)
+  at <- as.integer(regmatches(head, gregexpr("[0-9]+", head))[[1L]])
+  stack <- sub(".*with nothing between its User-agent lines: ", "", message)
+  stack <- sub("\\. This is optional cleanup.*", "", stack)
+  item <- regmatches(stack, gregexpr("`[^`]*`", stack))[[1L]]
+  item <- gsub("`", "", item, fixed = TRUE)
+  item <- vapply(item, sr_unescape, "", USE.NAMES = FALSE)
+  lines <- sr_lines(body)
+  like <- sr_agent_like(lines)
+  start <- which(like & !c(FALSE, like[-length(like)]))
+  end <- c(start[-1L] - 1L, length(lines))
+  member <- match(at, start)
+  stopifnot(!anyNA(member))
+  into <- member[[if (last) length(member) else 1L]]
+  keep <- rep(TRUE, length(lines))
+  for (m in member) keep[start[[m]]:end[[m]]] <- FALSE
+  before <- seq_along(lines) < start[[into]]
+  paste0(paste(c(lines[keep & before], item, "", lines[keep & !before]),
+               collapse = "\n"), "\n")
+}
+
+# Every crawler named in the body (cut at the first byte outside a token),
+# plus Foo and one named nowhere; every rule path in the body, with and
+# without `*` and `$`, and a few longer ones.
+sr_tokens <- function(body) {
+  lines <- sr_lines(body)
+  agent <- sr_agent_like(lines) &
+    grepl(":", lines, fixed = TRUE, useBytes = TRUE)
+  value <- sub("^[^:]*:", "", lines[agent], useBytes = TRUE)
+  value <- sub("^[ \t]*([A-Za-z_-]*).*$", "\\1", value, useBytes = TRUE)
+  unique(c(value[nzchar(value)], "Foo", "Unnamedbot"))
+}
+
+sr_urls <- function(body) {
+  lines <- sr_lines(body)
+  rule <- grepl(":[ \t]*/", lines, useBytes = TRUE) & !sr_agent_like(lines)
+  value <- sub("^[^:]*:[ \t]*", "", lines[rule], useBytes = TRUE)
+  value <- sub("[ \t]*(#.*)?$", "", value, useBytes = TRUE)
+  path <- unique(c("/", "/a", "/x", "/x/y", "/y", "/z", "/X", "/x?q",
+                   value, gsub("[*$]", "", value, useBytes = TRUE)))
+  path <- unique(c(path, paste0(path, "x"), sprintf("%s/y", path)))
+  # A byte outside printable ASCII goes as its `%XX` escape.
+  enc <- vapply(path, function(p) {
+    paste(vapply(charToRaw(p), function(x) {
+      if (x < as.raw(0x21) || x > as.raw(0x7e)) {
+        sprintf("%%%02X", as.integer(x))
+      } else {
+        rawToChar(x)
+      }
+    }, ""), collapse = "")
+  }, "", USE.NAMES = FALSE)
+  paste0("https://example.com", enc)
+}
+
+sr_decisions <- function(body, tokens, urls, engine) {
+  url <- rep(urls, times = length(tokens))
+  token <- rep(tokens, each = length(urls))
+  robots_evaluate_text_v1(body, url, token, engine, engine)$results$
+    url_decision
+}
+
+# For each row of `body`, and each placement, the engines whose decisions
+# change; character(0) when the stacking keeps every decision.
+sr_oracle <- function(body) {
+  if (is.raw(body)) body <- rawToChar(body)
+  d <- sr_diag(body)
+  out <- character()
+  tokens <- sr_tokens(body)
+  urls <- sr_urls(body)
+  for (msg in d$message[d$code == sr_code]) {
+    for (last in c(FALSE, TRUE)) {
+      stacked <- sr_stack(body, msg, last)
+      for (engine in c("google", "bing", "yandex")) {
+        if (!identical(sr_decisions(body, tokens, urls, engine),
+                       sr_decisions(stacked, tokens, urls, engine))) {
+          out <- c(out, paste(engine, if (last) "last" else "first"))
+        }
+      }
+    }
+  }
+  out
+}
+
+# Review 3's probe bodies, every one stacked and compared on the engines.
+sr_g <- function(agents, ...) {
+  paste0(paste0(agents, "\n", collapse = ""),
+         paste0(c(...), "\n", collapse = ""))
+}
+sr_j <- function(...) paste(c(...), collapse = "\n")
+sr_probes <- list(
+  owner = sr_j(sr_g("User-agent: Foo", "Disallow: /", "Allow: /x/"),
+               sr_g("User-agent: Bar", "Disallow: /", "Allow: /x/"),
+               sr_g("User-agent: *", "Disallow: /z")),
+  blank_ua_rules = sr_j(sr_g("User-agent: Yandex", "", "Disallow: /x"),
+                        sr_g("User-agent: bingbot", "Disallow: /x")),
+  blank_between = sr_j(sr_g("User-agent: Yandex", "Disallow: /x", "",
+                            "Disallow: /y"),
+                       sr_g("User-agent: bingbot", "Disallow: /x",
+                            "Disallow: /y")),
+  comment_between = sr_j(sr_g("User-agent: Yandex", "Disallow: /x", "# c",
+                              "Disallow: /y"),
+                         sr_g("User-agent: bingbot", "Disallow: /x",
+                              "Disallow: /y")),
+  comment_ua_rules = sr_j(sr_g("User-agent: Yandex", "# c", "Disallow: /x"),
+                          sr_g("User-agent: bingbot", "Disallow: /x")),
+  between_other = sr_j(sr_g("User-agent: Yandex", "Disallow: /x"),
+                       sr_g("User-agent: bingbot", "Disallow: /y"),
+                       sr_g("User-agent: bingbot", "Disallow: /x")),
+  after_other = sr_j(sr_g("User-agent: Yandex", "Disallow: /x"),
+                     sr_g("User-agent: bingbot", "Disallow: /x"),
+                     sr_g("User-agent: bingbot", "Allow: /x")),
+  name_case = sr_j(sr_g("User-agent: foo", "Disallow: /x"),
+                   sr_g("User-agent: FOO", "Disallow: /x"),
+                   sr_g("User-agent: Bar", "Disallow: /x")),
+  key_case = sr_j(sr_g("USER-AGENT: Yandex", "DISALLOW: /x"),
+                  sr_g("user-agent: bingbot", "disallow: /x")),
+  ua_comment = sr_j(sr_g("User-agent: Foo # hi", "Disallow: /x # c"),
+                    sr_g("User-agent: Bar", "Disallow: /x")),
+  yandex_family = sr_j(sr_g("User-agent: Yandex", "Disallow: /x"),
+                       sr_g("User-agent: YandexBot", "Disallow: /x"),
+                       sr_g("User-agent: Yandex", "Disallow: /y")),
+  empty_full = sr_j(sr_g("User-agent: Yandex", "Disallow:", "Disallow: /"),
+                    sr_g("User-agent: bingbot", "Disallow:", "Disallow: /")),
+  empty_full_rep = sr_j(sr_g("User-agent: Yandex", "Disallow:"),
+                        sr_g("User-agent: bingbot", "Disallow:"),
+                        sr_g("User-agent: Yandex", "Disallow: /")),
+  rule_typo = sr_j(sr_g("User-agent: Yandex", "Dissallow: /x"),
+                   sr_g("User-agent: bingbot", "Dissallow: /x")),
+  rule_prefix = sr_j(sr_g("User-agent: Yandex", "Disallowed: /x"),
+                     sr_g("User-agent: bingbot", "Disallowed: /x")),
+  latin1_val = sr_j(sr_g("User-agent: Yandex", "Disallow: /\xe9"),
+                    sr_g("User-agent: bingbot", "Disallow: /\xe9")),
+  utf8_val = sr_j(sr_g("User-agent: Yandex", "Disallow: /\xc3\xa9"),
+                  sr_g("User-agent: bingbot", "Disallow: /\xc3\xa9")),
+  crlf = gsub("\n", "\r\n", fixed = TRUE,
+              sr_j(sr_g("User-agent: Yandex", "Disallow: /x"),
+                   sr_g("User-agent: bingbot", "Disallow: /x"))),
+  bom_comment = paste0("\xef\xbb\xbf# hi\n",
+                       sr_j(sr_g("User-agent: Yandex", "Disallow: /x"),
+                            sr_g("User-agent: bingbot", "Disallow: /x"))),
+  bom_line1_other = paste0("\xef\xbb\xbf", sr_j(
+    sr_g("User-agent: adidxbot", "Disallow: /y"),
+    sr_g("User-agent: adidxbot", "Disallow: /x"),
+    sr_g("User-agent: Yandex", "Disallow: /x")
+  )),
+  bom_line1_two = paste0("\xef\xbb\xbf", sr_j(
+    sr_g(c("User-agent: Foo", "User-agent: bingbot"), "Disallow: /x"),
+    sr_g("User-agent: adidxbot", "Disallow: /x")
+  )),
+  late_sitemap = sr_j(sr_g("User-agent: Yandex", "Disallow: /x",
+                           "Sitemap: https://example.com/s.xml"),
+                      sr_g("User-agent: bingbot", "Disallow: /x")),
+  orphan_before = sr_j("Disallow: /y", "",
+                       sr_g("User-agent: Yandex", "Disallow: /x"),
+                       sr_g("User-agent: bingbot", "Disallow: /x")),
+  overlap = sr_j(sr_g("User-agent: Foo", "Disallow: /"),
+                 sr_g(c("User-agent: Foo", "User-agent: Bar"),
+                      "Disallow: /"),
+                 sr_g("User-agent: Baz", "Disallow: /")),
+  val_space = sr_j(sr_g("User-agent: Yandex", "Disallow: /a b"),
+                   sr_g("User-agent: bingbot", "Disallow: /a b")),
+  wild = sr_j(sr_g("User-agent: Yandex", "Disallow: /*x$", "Allow: /x*"),
+              sr_g("User-agent: bingbot", "Allow: /x*", "Disallow: /*x$")),
+  tab_indent_colon = sr_j(sr_g("\tUser-agent : Yandex", "Disallow: /x"),
+                          sr_g("User-agent: bingbot", "Disallow: /x")),
+  rule_indent = sr_j(sr_g("User-agent: Yandex", " Disallow: /x"),
+                     sr_g("User-agent: bingbot", "Disallow: /x")),
+  typo_mid = sr_j(sr_g("User-agent: Foo", "Disallow: /x", "Useragent: Bar",
+                       "Disallow: /y"),
+                  sr_g("User-agent: Yandex", "Disallow: /x"),
+                  sr_g("User-agent: bingbot", "Disallow: /z")),
+  typo_mid_rev = sr_j(sr_g("User-agent: bingbot", "Disallow: /x",
+                           "Useragent: Bar", "Disallow: /y"),
+                      sr_g("User-agent: Yandex", "Disallow: /x")),
+  prefix_mid_blank = sr_j(sr_g("User-agent: bingbot", "Disallow: /x"),
+                          sr_g("User-agentx: Bar", "Disallow: /y"),
+                          sr_g("User-agent: Yandex", "Disallow: /x")),
+  typo_sp_blank = sr_j(sr_g("User-agent: bingbot", "Disallow: /x"),
+                       sr_g("User agent: Bar", "Disallow: /y"),
+                       sr_g("User-agent: Yandex", "Disallow: /x")),
+  camel_typo = sr_j(sr_g("User-agent: bingbot", "Disallow: /x"),
+                    sr_g("UserAgent: Bar", "Disallow: /y"),
+                    sr_g("User-agent: Yandex", "Disallow: /x")),
+  no_colon_rev = sr_j(sr_g("User-agent: bingbot", "Disallow: /x"),
+                      sr_g("User-agent Bar", "Disallow: /y"),
+                      sr_g("User-agent: Yandex", "Disallow: /x")),
+  policy_next = sr_j(sr_g("User-agent: bingbot", "Disallow: /x"),
+                     sr_g("User-agent: Google-Extended", "Disallow: /y"),
+                     sr_g("User-agent: Yandex", "Disallow: /x")),
+  rule_space_colon = sr_j(sr_g("User-agent: Yandex", "Disallow : /x"),
+                          sr_g("User-agent: bingbot", "Disallow: /x")),
+  rule_word_empty = sr_j(sr_g("User-agent: Yandex", "Disallow foo:"),
+                         sr_g("User-agent: bingbot", "Disallow:")),
+  rule_word_value = sr_j(sr_g("User-agent: Yandex", "Disallow foo: /x"),
+                         sr_g("User-agent: bingbot", "Disallow: /x")),
+  rule_word_full = sr_j(sr_g("User-agent: bingbot", "Disallow:",
+                             "Disallow: /"),
+                        sr_g("User-agent: Yandex", "Disallow foo:",
+                             "Disallow: /")),
+  rule_blank_full = sr_j(sr_g("User-agent: bingbot", "Disallow:",
+                              "Disallow: /"),
+                         sr_g("User-agent: Yandex", "Disallow :",
+                              "Disallow: /"))
+)
+# Each User-agent spelling of review 3, for each crawler, first or second.
+sr_shapes <- c(
+  indent_sp = " User-agent: %s", indent_tab = "\tUser-agent: %s",
+  sp_colon = "User-agent : %s", tab_colon = "User-agent\t: %s",
+  tab_sp_colon = "\tUser-agent : %s", sp2_colon = "User-agent  : %s",
+  lower = "user-agent: %s", nospace = "User-agent:%s",
+  trailing = "User-agent: %s ", key_word = "User-agent foo: %s",
+  key_tab_word = "User-agent\tfoo: %s"
+)
+for (shape in names(sr_shapes)) {
+  for (who in c("Yandex", "bingbot", "Googlebot")) {
+    a <- sprintf(sr_shapes[[shape]], who)
+    b <- paste0("User-agent: ", if (who == "bingbot") "Yandex" else "bingbot")
+    sr_probes[[paste(shape, who, 1L)]] <- sr_j(sr_g(a, "Disallow: /x"),
+                                                sr_g(b, "Disallow: /x"))
+    sr_probes[[paste(shape, who, 2L)]] <- sr_j(sr_g(b, "Disallow: /x"),
+                                                sr_g(a, "Disallow: /x"))
+  }
+}
+
+test_that("ROBO-rdxgnqhw: stacking as the message shows keeps every decision", {
+  bodies <- c(lapply(sr_fixtures, `[[`, "body"), sr_probes)
+  rows <- 0L
+  for (name in names(bodies)) {
+    body <- bodies[[name]]
+    rows <- rows + sum(sr_codes(body) == sr_code)
+    expect_identical(sr_oracle(body), character(0), label = name)
+  }
+  # The oracle ran on real rows, not on none.
+  expect_gt(rows, 40L)
 })

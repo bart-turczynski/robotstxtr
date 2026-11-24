@@ -364,10 +364,11 @@ on the repeated line; the message names the first line naming it. Blank,
 comment, Crawl-delay and unknown-field lines between the two names were
 checked against the Bing and Yandex testers (2026-11-21). \cr
 \code{user_agent_groups_same_rules} \tab info \tab
-Separate groups give their crawlers the same rules, as written, so
-their User-agent lines could be stacked in one group (RFC 9309 section
-2.2.1). Optional cleanup. Anchored on the first group's first line;
-the message names the other groups and the stacked group. \cr
+Separate groups written in plain User-agent, Allow and Disallow lines
+give their crawlers the same rules, as written, so their User-agent
+lines could be stacked in one group (RFC 9309 section 2.2.1).
+Optional cleanup. Anchored on the first group's first line; the
+message names the other groups and the stacked group. \cr
 \code{empty_disallow_with_full_block} \tab warning \tab
 The rules one crawler follows hold an empty \code{Disallow:} and a
 full block (\code{Disallow: /}, no non-empty Allow): Google and Bing
@@ -781,22 +782,30 @@ crawler, so each crawler keeps its rules. A rule is compared by its key,
 in any case, and its value as the parser reads it, blanks around them
 dropped; order and exact repeats are ignored (an exact repeat is
 \code{duplicate_rule}'s), an empty value counts, and \verb{/x} and \verb{/x*}, or \verb{\%7E}
-and \code{~}, stay apart, since Yandex compares the pattern as written. The
-suggestion is withheld for a \code{*} group, a policy-token, empty or
-token-less User-agent line, a line a \verb{user_agent_joined_*} or
-\code{user_agent_cut} row reports, a line a NUL cuts, a missing colon, a line
-whose key is anything other than \code{User-agent} in any case (a typo, or a
-longer key Google reads by its prefix), a User-agent line on line 1
+and \code{~}, stay apart, since Yandex compares the pattern as written. Only
+groups written in the plain form take part: every line from a group's
+first User-agent line to the next group, and the next group's first
+line, must be a blank or comment-only line, a Sitemap after the group's
+last rule, or a plain User-agent, Allow or Disallow line: optional
+leading spaces or tabs, the key exactly \code{User-agent}, \code{Allow} or
+\code{Disallow} in any case, then its colon at once, and for User-agent a
+value. Any other spelling Google's parser accepts (a typo, a longer key
+such as \verb{User-agent foo} or \verb{Disallow foo}, a blank before the colon, a
+missing colon, an empty User-agent value) leaves the group out, since
+Bing or Yandex may read it otherwise; so does a \code{Crawl-delay},
+\code{Clean-param}, \code{Host} or unknown line (Yandex ends a group at
+\code{Crawl-delay}). The suggestion is also withheld for a \code{*} group, a
+policy-token or token-less User-agent line, a line a
+\verb{user_agent_joined_*} or \code{user_agent_cut} row reports, a line a NUL
+cuts, a line past the parser's buffer, and a User-agent line on line 1
 behind a byte-order mark, full or partial (Bing does not read it as
-User-agent) or a line past the parser's buffer, and for a group whose
-lines up to the next group hold anything but User-agent, Allow, Disallow,
-blank and comment lines, or a Sitemap after its last rule: Yandex ends a
-group at \code{Crawl-delay}, and \code{Clean-param}, \code{Host} and unknown lines may be
-read as the group's. Groups that name one set of crawlers only are
+User-agent). Groups that name one set of crawlers only are
 \code{user_agent_repeated_group}'s. One row per set of equal groups, on the
 first group's first line, naming the other groups' first lines and the
-stacked group (five of each, then a count). A body cut at \code{max_bytes} is
-not checked.
+stacked group (five of each, then a count). A byte outside printable
+ASCII is shown as an escape, so the stacked group in the message is a
+guide, not a byte-exact copy. A body cut at \code{max_bytes} is not
+checked.
 
 For \code{disallow_tied_by_allow}, an Allow and a Disallow with the same
 pattern match the same paths with the same priority, and Allow wins the
