@@ -524,10 +524,16 @@ test_that("the spelling and it/them follow what the sentence names", {
   expect_true(grepl(paste0("; with ASCII for the space and the invisible one ",
                            "dropped the value is"),
                     spell("\u00e9\u00a0\u200bx"), fixed = TRUE))
-  expect_true(grepl(paste0("; with ASCII for the look-alikes and the spaces ",
+  expect_true(grepl(paste0("; with ASCII for the look-alike and the spaces ",
                            "and the invisible ones dropped the value is"),
                     spell("\u00e9\u0430\u00a0\u3000\u200b\u2060x"),
                     fixed = TRUE))
+  expect_true(grepl(paste0("; with ASCII for the look-alike and the space ",
+                           "and the invisible one dropped the value is"),
+                    spell("\u00e9\u0430\u00a0\u200bx"), fixed = TRUE))
+  expect_true(grepl(paste0("; with ASCII for the look-alikes and the space ",
+                           "and the invisible one dropped the value is"),
+                    spell("\u00e9\u0430\u043e\u00a0\u200bx"), fixed = TRUE))
   # One character, repeated: named once, so "it".
   key_end <- function(...) iv_rows(iv_text("User-agent: *", ...),
                                    "unknown_directive")$message
@@ -568,4 +574,111 @@ test_that("listed characters keep validation linear in lines", {
   }
   expect_lt(iv_time(body("\u00a0", "\u200b")),
             2.75 * max(iv_time(body("/", "x")), 0.05))
+})
+
+# Review 2 (ROBO-jsecjjyo): the `*`-led reading on bytes, each cut row's own
+# tail, and the misplaced U+FEFF read only where it leads the line.
+iv_star <- paste0("User-agent value names no crawler for Google's matcher, ",
+                  "which reads a product token only from a leading run of ",
+                  "letters, '_' and '-', so there this line matches no ",
+                  "crawler. Google does not read this line as ",
+                  "`User-agent: *`, so on Google no crawler, Google's ",
+                  "included, gets this group through it; ")
+
+test_that("a `*`-led value that is not valid UTF-8 is not `*` on Google", {
+  # Google reads bytes: `*` then a Latin-1 A0 or E9 is not `*`.
+  for (tail in c("\xa0 # all", "\xe9")) {
+    body <- paste0("User-agent: *", tail, "\nDisallow: /x\n")
+    for (token in c("Googlebot", "ExampleBot")) {
+      expect_identical(iv_google(body, token, "/x"), "allow NA",
+                       label = paste(tail, token))
+    }
+    x <- robots_validate_text(body)
+    expect_identical(iv_codes(x), c("1 error invalid_utf8",
+                                    "1 warning user_agent_cut"))
+    expect_identical(iv_rows(x, "user_agent_cut")$message,
+                     paste0(iv_star, "a crawler that no group names gets ",
+                            "no rules."))
+    # Beside a clean `*` group: crawlers no group names get that one.
+    body <- paste0("User-agent: *\nDisallow: /y\n\nUser-agent: *", tail,
+                   "\nDisallow: /x\n")
+    expect_identical(iv_google(body, "Googlebot", "/x"), "allow NA")
+    expect_identical(iv_google(body, "Googlebot", "/y"), "disallow 2")
+    row <- iv_rows(robots_validate_text(body), "user_agent_cut")
+    expect_identical(row$message, paste0(
+      iv_star, "a crawler that no group names gets the other ",
+      "`User-agent: *` group."
+    ))
+    expect_identical(row$severity, "warning")
+  }
+  # Invalid UTF-8 inside a token value keeps a severity.
+  x <- robots_validate_text("User-agent: a\xa0b\nDisallow: /\n")
+  expect_identical(iv_codes(x), c("1 error invalid_utf8",
+                                  "1 info user_agent_cut"))
+})
+
+test_that("each cut row of a document gets its own tail", {
+  body <- iv_lines("User-agent: a/1", "Disallow: /a", "", "User-agent: *",
+                   "User-agent: *bot", "Disallow: /x")
+  expect_identical(iv_google(body, "ExampleBot", "/x"), "disallow 6")
+  rows <- iv_rows(robots_validate_text(body), "user_agent_cut")
+  expect_identical(rows$line, c(1L, 5L))
+  expect_identical(rows$message[[2L]], paste0(
+    iv_star, "the group still reaches every crawler that no other group ",
+    "names, as another of its lines is `User-agent: *`."
+  ))
+  expect_identical(rows$severity, c("info", "info"))
+})
+
+test_that("ASCII blanks between the leading characters and `*` are skipped", {
+  for (value in c(" \t*", " \v*", " \f*")) {
+    body <- iv_lines(paste0("User-agent: ", value), "Disallow: /x")
+    expect_identical(iv_google(body, "Googlebot", "/x"), "allow NA",
+                     label = value)
+    row <- iv_rows(robots_validate_text(body), "user_agent_cut")
+    expect_true(startsWith(row$message, paste0(
+      iv_star, "a crawler that no group names gets no rules."
+    )), label = value)
+    expect_identical(row$severity, "warning", label = value)
+  }
+})
+
+test_that("a listed character beside a plain `*` keeps the warning", {
+  # Only a `*`-led value holding no listed character is info there.
+  for (value in c("*​", "* ", "*а")) {
+    body <- iv_lines("User-agent: *", paste0("User-agent: ", value),
+                     "Disallow: /x")
+    expect_identical(iv_google(body, "Googlebot", "/x"), "disallow 3",
+                     label = value)
+    row <- iv_rows(robots_validate_text(body), "user_agent_cut")
+    expect_true(startsWith(row$message, paste0(
+      iv_star, "the group still reaches every crawler that no other group ",
+      "names, as another of its lines is `User-agent: *`."
+    )), label = value)
+    expect_identical(row$severity, "warning", label = value)
+  }
+})
+
+test_that("only the U+FEFF leading the line is the byte-order mark's", {
+  # A second U+FEFF is named like any listed character and counted.
+  body <- iv_lines("User-agent: *", "﻿﻿Disallow: /x")
+  expect_identical(iv_google(body, "ExampleBot", "/x"), "allow NA")
+  message <- iv_rows(robots_validate_text(body), "unknown_directive")$message
+  expect_identical(message, paste0(
+    iv_plain, " The key holds U+FEFF ZERO WIDTH NO-BREAK SPACE at byte 4, ",
+    "which is invisible; without it the key is '\\xEF\\xBB\\xBFDisallow'. ",
+    "Without it and the byte-order mark, this is a Disallow line; Google ",
+    "does not read it as Disallow, so Google does not apply this rule."
+  ))
+  body <- iv_lines("User-agent: *", "﻿​﻿Disallow: /p")
+  expect_identical(iv_google(body, "ExampleBot", "/p"), "allow NA")
+  message <- iv_rows(robots_validate_text(body), "unknown_directive")$message
+  expect_true(grepl(paste0(
+    "characters that are invisible: U+200B ZERO WIDTH SPACE at byte 4 ",
+    "(invisible), U+FEFF ZERO WIDTH NO-BREAK SPACE at byte 7 (invisible)"
+  ), message, fixed = TRUE))
+  expect_true(endsWith(message, paste0(
+    "Without them and the byte-order mark, this is a Disallow line; Google ",
+    "does not read it as Disallow, so Google does not apply this rule."
+  )))
 })

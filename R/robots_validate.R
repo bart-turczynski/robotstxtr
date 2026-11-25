@@ -203,8 +203,9 @@ validation_unsupported <- c(
 #'     \code{*}, such as \code{*bot} or a \code{*} padded or followed by
 #'     such a character, is not read as \code{User-agent: *}: the row says
 #'     so, and that on Google no crawler, Google's included, gets the group
-#'     through the line, in place of the fallback and effect sentences; it
-#'     is a warning unless another line of the group is
+#'     through the line, in place of the fallback and effect sentences. It
+#'     is a warning, but info for a value holding no such character
+#'     (\code{*bot}) when another line of the group is
 #'     \code{User-agent: *}.
 #'     Latin letters with
 #'     diacritics are not look-alikes. Every other code names the agent as
@@ -3231,21 +3232,40 @@ user_agent_cut_effect <- function(token, key, rest) {
   list(effect = effect, warn = warn)
 }
 
-# TRUE where a User-agent value (as the parser kept it) starts with `*` once
-# the spaces and invisible characters of validation_lookalike_code_points
-# and ASCII blanks leading it are set aside (ROBO-jsecjjyo). Text that is
-# not valid UTF-8 is FALSE.
+# TRUE where a cut User-agent value (as the parser kept it) starts with `*`
+# once the ASCII blanks and the UTF-8 bytes of the spaces and invisible
+# characters of validation_lookalike_code_points leading it are set aside
+# (ROBO-jsecjjyo). Read on bytes, as Google reads the value, so the bytes
+# after the `*` need not be valid UTF-8 (`*` then a Latin-1 A0): the value
+# is cut, so whatever follows the `*` ended Google's `*` reading.
 validation_star_led <- function(values) {
   table <- validation_lookalike_code_points
-  lead <- c(table$point[table$kind %in% c("space", "invisible")],
-            0x09, 0x0B, 0x0C, 0x20)
+  lead <- lapply(table$point[table$kind %in% c("space", "invisible")],
+                 function(point) charToRaw(intToUtf8(point)))
+  blanks <- as.raw(c(0x09, 0x0B, 0x0C, 0x20))
   vapply(values, function(value) {
-    points <- utf8ToInt(rawToChar(charToRaw(value)))
-    if (length(points) == 0L || anyNA(points)) {
-      return(FALSE)
+    bytes <- charToRaw(value)
+    n <- length(bytes)
+    at <- 1L
+    while (at <= n) {
+      if (bytes[[at]] %in% blanks) {
+        at <- at + 1L
+        next
+      }
+      width <- 0L
+      for (mark in lead) {
+        end <- at + length(mark) - 1L
+        if (end <= n && identical(bytes[at:end], mark)) {
+          width <- length(mark)
+          break
+        }
+      }
+      if (width == 0L) {
+        break
+      }
+      at <- at + width
     }
-    rest <- points[!cumprod(points %in% lead)]
-    length(rest) > 0L && rest[[1L]] == 0x2A
+    at <= n && bytes[[at]] == as.raw(0x2A)
   }, logical(1L), USE.NAMES = FALSE)
 }
 
@@ -9330,9 +9350,9 @@ lookalike_split_completes <- function(bytes, line_bytes, first_line) {
 # compare; the sentence quotes it rendered as render_validation_line()
 # does. `unseen` is TRUE when one of them is a space or an invisible
 # character of the table's "space" or "invisible" kind (ROBO-jsecjjyo).
-# Code points in `skip` are read as other characters are (a U+FEFF that
-# misplaced_byte_order_mark already names). One pass over the text's bytes
-# and code points.
+# A code point in `skip` that starts the text is read as other characters
+# are (a U+FEFF that misplaced_byte_order_mark already names); a later one
+# is named as usual. One pass over the text's bytes and code points.
 lookalike_note <- function(text, noun, skip = integer()) {
   bytes <- charToRaw(text)
   # A speed path only: ASCII text holds no look-alike, and most values are
@@ -9347,7 +9367,9 @@ lookalike_note <- function(text, noun, skip = integer()) {
   points <- utf8ToInt(rawToChar(bytes))
   table <- validation_lookalike_code_points
   at <- match(points, table$point)
-  at[points %in% skip] <- NA_integer_
+  if (points[[1L]] %in% skip) {
+    at[[1L]] <- NA_integer_
+  }
   hit <- which(!is.na(at))
   if (length(hit) == 0L) {
     return(NULL)
@@ -9386,7 +9408,9 @@ lookalike_note <- function(text, noun, skip = integer()) {
   } else if (any(invisible)) {
     # Not all invisible, so something was replaced: each part only when
     # such a character is there.
-    replaced <- c(if (any(!invisible & !space)) "the look-alikes",
+    looks <- !invisible & !space
+    replaced <- c(if (any(looks)) if (sum(looks) == 1L) "the look-alike" else
+                    "the look-alikes",
                   if (any(space)) if (sum(space) == 1L) "the space" else
                     "the spaces")
     paste0("with ASCII for ", paste(replaced, collapse = " and "),
@@ -9417,8 +9441,9 @@ lookalike_note <- function(text, noun, skip = integer()) {
 # stand before its colon (ROBO-jsecjjyo), mixed with ASCII blanks: a list of
 # `type` ("user-agent", "allow", "disallow" or "sitemap"), its `label` and
 # the `count` of distinct such characters removed (as lookalike_note() names
-# each once), or NULL. Code points in `skip` are removed too but not
-# counted (a misplaced U+FEFF its own row names). A key that still holds a
+# each once), or NULL. A code point in `skip` that starts the key is removed
+# too but not counted (a misplaced U+FEFF its own row names); a later one
+# counts as any other. A key that still holds a
 # non-ASCII character once they are removed, a character inside the key, is
 # left out. The rest is parsed alone as Google's parser reads it, so a typo
 # or prefix form counts; `cache` (an environment) keeps each ASCII key's
@@ -9437,8 +9462,12 @@ validation_hidden_key <- function(action, cache, skip = integer()) {
   }
   lo <- kept[[1L]]
   hi <- kept[[length(kept)]]
-  removed <- points[-(lo:hi)]
-  count <- length(unique(removed[removed %in% unseen & !removed %in% skip]))
+  outside <- setdiff(seq_along(points), lo:hi)
+  if (points[[1L]] %in% skip) {
+    outside <- outside[outside > 1L]
+  }
+  removed <- points[outside]
+  count <- length(unique(removed[removed %in% unseen]))
   key <- points[lo:hi]
   if (count == 0L || any(key >= 0x80)) {
     return(NULL)

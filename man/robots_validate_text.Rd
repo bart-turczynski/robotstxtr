@@ -212,8 +212,9 @@ Yandex may read the value differently. A cut value led by
 \code{*}, such as \code{*bot} or a \code{*} padded or followed by
 such a character, is not read as \code{User-agent: *}: the row says
 so, and that on Google no crawler, Google's included, gets the group
-through the line, in place of the fallback and effect sentences; it
-is a warning unless another line of the group is
+through the line, in place of the fallback and effect sentences. It
+is a warning, but info for a value holding no such character
+(\code{*bot}) when another line of the group is
 \code{User-agent: *}.
 Latin letters with
 diacritics are not look-alikes. Every other code names the agent as

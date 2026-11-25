@@ -255,7 +255,7 @@ test_that("each wording branch for several look-alikes is pinned", {
     "at byte 2 (invisible), U+2011 NON-BREAKING HYPHEN at byte 5 (looks ",
     "like '-')"
   ), "ab-c\\xC3\\xA9",
-  "with ASCII for the look-alikes and the invisible one dropped")
+  "with ASCII for the look-alike and the invisible one dropped")
   # One invisible character beside other non-ASCII text.
   ends("a\u00adb\u00e9", "U+00AD SOFT HYPHEN at byte 2, which is invisible",
        "ab\\xC3\\xA9", "without it")
