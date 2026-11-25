@@ -180,7 +180,9 @@ validation_unsupported <- c(
 #'     Otherwise info: a version suffix
 #'     (\code{Googlebot/2.1}) or a trailing \code{*}, as the token read is
 #'     the crawler the value names, and any other token, as Google's
-#'     crawlers do not go by it. The Bing and Yandex
+#'     crawlers do not go by it (said only for a value that is ASCII
+#'     or holds no Google token's name, so not for \code{Googlebot} after
+#'     U+2028 or a Latin-1 byte). The Bing and Yandex
 #'     matchers do not cut the value. A value that is valid UTF-8 and holds
 #'     a look-alike character, from a closed list of common ones (Unicode
 #'     hyphens and dashes such as U+2011, U+2212 and U+FF0D, U+FF3F
@@ -3203,8 +3205,12 @@ user_agent_cut_rows <- function(agents, has_global, global_groups) {
   decided <- user_agent_cut_decide(facts, agents$key, kept, cut_effect$warn,
                                    nzchar(lookalike))
   case <- decided$case
-  # "plain": today's sentences.
+  # "plain": today's sentences, but the effect sentence that Google's
+  # crawlers keep the group only where the record proves it.
   message <- paste(read_as, fallback, cut_effect$effect)
+  unproven <- case == "plain" & !decided$kept_claim &
+    !(nzchar(token) & agents$key %in% ascii_lower(validation_google_tokens()))
+  message[unproven] <- paste(read_as[unproven], fallback[unproven])
   # "star" (`*<U+00A0> # all`, `*bot`): Google reads the line as `*` only
   # when an ASCII blank or the value's end follows it, so here it names no
   # crawler, Google's included. The fallback and effect sentences would
@@ -3276,10 +3282,22 @@ user_agent_cut_rows <- function(agents, has_global, global_groups) {
 #
 # "plain" covers every value with no listed character (repaired reading =
 # reading) and an unknown repaired reading (invalid UTF-8: the bytes are
-# read as written and nothing is said of what was meant). Its effect says
-# Google's crawlers keep the group only when the token read is no Google
-# token, and then the repaired reading is no Google token either ("meant"
-# took those) and not `*` (a repaired `*` is always `star_led`).
+# read as written and nothing is said of what was meant). Where the token
+# read is no Google token, its effect says Google's crawlers keep the
+# group ("nothing changes for them"); `kept_claim` says where that holds,
+# and elsewhere the row leaves the sentence out and states Google's
+# reading only, at the same severity:
+#
+#   value bytes                       claim
+#   ASCII, no control (`clean`)       printed: the value is what it reads
+#   other bytes, no Google token      printed (`B\xE4r`, `\u200bExampleBot`)
+#   name in them (`named`)
+#   other bytes naming a Google       left out (`\xA0Googlebot`, U+2028
+#   token                             before `Googlebot`): the bytes the
+#                                     repair keeps may hide that token
+#
+# A repaired reading that is `*` or a Google token never reaches "plain"
+# with a token read that is no Google token: "star" and "meant" take it.
 user_agent_cut_decide <- function(facts, key, kept, effect_warn, lookalike) {
   google <- ascii_lower(validation_google_tokens())
   repaired <- ascii_lower(facts$repaired)
@@ -3290,7 +3308,8 @@ user_agent_cut_decide <- function(facts, key, kept, effect_warn, lookalike) {
   warn[case == "meant"] <- TRUE
   star <- case == "star"
   warn[star] <- !kept[star] | is.na(repaired[star])
-  list(case = case, warn = warn | lookalike)
+  kept_claim <- facts$clean | !facts$named
+  list(case = case, warn = warn | lookalike, kept_claim = kept_claim)
 }
 
 # The fact record of each cut User-agent value (`values`, as the parser kept
@@ -3309,6 +3328,9 @@ user_agent_cut_decide <- function(facts, key, kept, effect_warn, lookalike) {
 #   over 0x7F (a listed character, U+2028, a Latin-1 A0, a sequence cut
 #   short): Google reads none of them as a token character, and a cut value
 #   is not `*` on Google, so the line is not `User-agent: *` there.
+# - `clean`: the value holds no byte over 0x7F and no ASCII control.
+# - `named`: the value's bytes, ASCII case folded, hold the name of a
+#   documented Google token (validation_google_tokens()).
 user_agent_cut_facts <- function(values) {
   table <- validation_lookalike_code_points
   listed <- c(table$point[table$kind %in% c("space", "invisible")], 0x00AD)
@@ -3330,9 +3352,20 @@ user_agent_cut_facts <- function(values) {
   repaired[known] <- validation_agent_readings(
     lapply(repaired_value[known], charToRaw)
   )
+  clean <- vapply(bytes, function(value) {
+    all(value >= as.raw(0x20) & value < as.raw(0x7F))
+  }, logical(1L))
+  names <- ascii_lower(validation_google_tokens())
+  named <- vapply(bytes, function(value) {
+    upper <- value >= as.raw(0x41) & value <= as.raw(0x5A)
+    value[upper] <- as.raw(as.integer(value[upper]) + 32L)
+    folded <- rawToChar(value)
+    any(vapply(names, grepl, logical(1L), folded, fixed = TRUE,
+               useBytes = TRUE))
+  }, logical(1L))
   data.frame(repaired_value = repaired_value,
-             repaired = repaired, star_led = star_led,
-             stringsAsFactors = FALSE)
+             repaired = repaired, star_led = star_led, clean = clean,
+             named = named, stringsAsFactors = FALSE)
 }
 
 # The conditional sentence of a "meant" cut row (user_agent_cut_decide()):

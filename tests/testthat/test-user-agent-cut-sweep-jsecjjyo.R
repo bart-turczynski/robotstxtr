@@ -98,6 +98,19 @@ sw_tokens <- function(target) {
   }
 }
 
+# The documented Google tokens whose name, ASCII case folded, occurs in the
+# written value's bytes (the line after its first `: `).
+sw_named_tokens <- function(ua) {
+  colon <- which(ua == as.raw(0x3A))[[1L]]
+  value <- ua[-seq_len(colon + 1L)]
+  upper <- value >= as.raw(0x41) & value <= as.raw(0x5A)
+  value[upper] <- as.raw(as.integer(value[upper]) + 32L)
+  folded <- rawToChar(value)
+  tokens <- validation_google_tokens()
+  tokens[vapply(ascii_lower(tokens), grepl, logical(1L), folded,
+                fixed = TRUE, useBytes = TRUE)]
+}
+
 sw_spelled_google <- function(message) {
   spelled <- regmatches(message, gregexpr("value is '[^']*'", message))[[1L]]
   spelled <- trimws(sub("^value is '(.*)'$", "\\1", spelled))
@@ -128,7 +141,8 @@ test_that("every generated cut row agrees with Google's reading", {
         before <- clean[[key]]
         for (position in c("before", "inside", "after", "key")) {
           label <- paste(x$name, context, target, position)
-          doc <- sw_document(context, sw_line(target, x$bytes, position))
+          ua <- sw_line(target, x$bytes, position)
+          doc <- sw_document(context, ua)
           documents <- documents + 1L
           d <- robots_validate_text(doc)$diagnostics
           d <- d[d$line == line, , drop = FALSE]
@@ -152,10 +166,25 @@ test_that("every generated cut row agrees with Google's reading", {
           for (k in seq_len(nrow(cut))) {
             message <- cut$message[[k]]
             # (a) a sentence that Google's crawlers keep the group holds
-            # for the Google token the repaired value names.
+            # for the Google token the repaired value names, and "nothing
+            # changes for them" for every Google token whose name the
+            # written value holds.
             if (claims[[k]] && x$repaired && length(tokens) > 0L &&
                   !identical(target, "*")) {
               expect_identical(after[tokens], before[tokens], label = label)
+            }
+            if (grepl("nothing changes for them", message, fixed = TRUE)) {
+              named <- sw_named_tokens(ua)
+              if (length(named) > 0L) {
+                named_key <- paste(key, toString(named))
+                if (is.null(clean[[named_key]])) {
+                  assign(named_key, sw_decide(sw_document(
+                    context, sw_line(target, "", "before")
+                  ), named), envir = clean)
+                }
+                expect_identical(sw_decide(doc, named), clean[[named_key]],
+                                 label = label)
+              }
             }
             # (b) "does not get this group" holds on Google.
             if (loses[[k]]) {
