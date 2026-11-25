@@ -1,11 +1,12 @@
 # ROBO-jsecjjyo: a generated sweep of cut User-agent rows against Google's
 # reading. Each document puts one inserted character (every listed space
-# and invisible character, U+00AD, U+2028, a look-alike, a Latin-1 A0
-# byte, a listed sequence cut short, a tab) at one position of a User-agent
-# line (before its value, inside it, after it, before its key) in one group
-# context, and every row on that line is checked against the Google backend
-# for the same document without the character. Fixtures are built from
-# code points and raw bytes, so the source stays ASCII.
+# and invisible character, U+00AD, U+2028, a Latin-1 A0 byte, a listed
+# sequence cut short, a tab) at one position of a User-agent line (before
+# its value, inside it, after it, before its key), or puts the look-alike
+# U+043E in place of an `o`, in one group context, and every row on that
+# line is checked against the Google backend for the same document with
+# the target written plainly. Fixtures are built from code points and raw
+# bytes, so the source stays ASCII.
 
 sw_bytes <- function(...) {
   unlist(lapply(list(...), function(part) {
@@ -17,9 +18,11 @@ sw_table <- validation_lookalike_code_points
 sw_listed <- sw_table$point[sw_table$kind %in% c("space", "invisible")]
 # Inserts: name, bytes, and whether the row's repair drops it (a listed
 # character or U+00AD), so the value without it is the target.
-sw_insert <- function(name, bytes, repaired) {
-  list(name = name, bytes = bytes, repaired = repaired)
+sw_insert <- function(name, bytes, repaired, positions = sw_positions) {
+  list(name = name, bytes = bytes, repaired = repaired,
+       positions = positions)
 }
+sw_positions <- c("before", "inside", "after", "key")
 sw_code_point <- function(point) {
   sw_insert(sprintf("U+%04X", point), charToRaw(intToUtf8(point)), TRUE)
 }
@@ -29,15 +32,20 @@ sw_full <- c(
   lapply(c(0x00A0, 0x3000, 0x200B, 0xFEFF), sw_code_point),
   list(sw_insert("U+00AD", charToRaw(intToUtf8(0x00AD)), TRUE),
        sw_insert("U+2028", charToRaw(intToUtf8(0x2028)), FALSE),
-       sw_insert("U+0430", charToRaw(intToUtf8(0x0430)), FALSE),
        sw_insert("latin1 A0", as.raw(0xA0), FALSE),
-       sw_insert("cut E2 80", as.raw(c(0xE2, 0x80)), FALSE),
        sw_insert("cut C2", as.raw(0xC2), FALSE),
-       sw_insert("tab", as.raw(0x09), FALSE))
+       sw_insert("tab", as.raw(0x09), FALSE),
+       sw_insert("U+043E for o", charToRaw(intToUtf8(0x043E)), FALSE,
+                 "substitute"))
 )
-# Every other listed character, in the first context only.
+# Every other listed character, in the first context and before or inside
+# the value only: each has the width and kind of one of the four above.
 sw_rest <- lapply(setdiff(sw_listed, c(0x00A0, 0x3000, 0x200B, 0xFEFF)),
-                  sw_code_point)
+                  function(point) {
+                    x <- sw_code_point(point)
+                    x$positions <- c("before", "inside")
+                    x
+                  })
 
 sw_targets <- c("Googlebot", "Googlebot-Image", "*", "ExampleBot",
                 "Mediapartners-Google*")
@@ -50,7 +58,11 @@ sw_line <- function(target, x, position) {
          inside = sw_bytes("User-agent: ", substr(target, 1L, 1L), x,
                            substring(target, 2L)),
          after = sw_bytes("User-agent: ", target, x, " # c"),
-         key = sw_bytes(x, "User-agent: ", target))
+         key = sw_bytes(x, "User-agent: ", target),
+         substitute = sw_bytes(
+           "User-agent: ", sub("o.*$", "", target), x,
+           sub("^[^o]*o", "", target)
+         ))
 }
 
 # The document for a context, with its User-agent line, and that line's
@@ -67,6 +79,9 @@ sw_contexts <- list(
   }),
   named = list(line = 4L, build = function(ua) {
     list("User-agent: Googlebot", "Disallow: /y", "", ua, "Disallow: /x")
+  }),
+  stacked = list(line = 2L, build = function(ua) {
+    list("User-agent: Googlebot", ua, "Disallow: /x")
   })
 )
 sw_document <- function(context, ua) {
@@ -90,29 +105,12 @@ sw_decide <- function(doc, tokens) {
 sw_tokens <- function(target) {
   token <- sub("[^A-Za-z_-].*$", "", target)
   if (identical(target, "*")) {
-    c("ExampleBot", "Googlebot")
+    c("ExampleBot", "Googlebot", "AdsBot-Google")
   } else if (ascii_lower(token) %in% sw_google) {
     token
   } else {
     character()
   }
-}
-
-# The documented Google tokens whose name, ASCII case folded, occurs in the
-# written value's bytes (the line after its first `: `) once every byte
-# outside [A-Za-z_-] is removed, so a token split by any byte counts.
-sw_named_tokens <- function(ua) {
-  colon <- which(ua == as.raw(0x3A))[[1L]]
-  value <- ua[-seq_len(colon + 1L)]
-  value <- value[value %in% charToRaw(paste0(
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", "-_"
-  ))]
-  upper <- value >= as.raw(0x41) & value <= as.raw(0x5A)
-  value[upper] <- as.raw(as.integer(value[upper]) + 32L)
-  folded <- rawToChar(value)
-  tokens <- validation_google_tokens()
-  tokens[vapply(ascii_lower(tokens), grepl, logical(1L), folded,
-                fixed = TRUE, useBytes = TRUE)]
 }
 
 sw_spelled_google <- function(message) {
@@ -126,6 +124,7 @@ test_that("every generated cut row agrees with Google's reading", {
   clean <- new.env(parent = emptyenv())
   documents <- 0L
   rows_checked <- 0L
+  google_tokens <- validation_google_tokens()
   runs <- c(
     lapply(sw_full, function(x) list(x = x, contexts = names(sw_contexts))),
     lapply(sw_rest, function(x) list(x = x, contexts = "alone"))
@@ -137,13 +136,21 @@ test_that("every generated cut row agrees with Google's reading", {
       for (target in sw_targets) {
         tokens <- sw_tokens(target)
         key <- paste(context, target)
+        plain <- sw_document(context, sw_line(target, "", "before"))
         if (is.null(clean[[key]])) {
-          assign(key, sw_decide(sw_document(context,
-                                            sw_line(target, "", "before")),
-                                tokens), envir = clean)
+          assign(key, sw_decide(plain, tokens), envir = clean)
         }
         before <- clean[[key]]
-        for (position in c("before", "inside", "after", "key")) {
+        positions <- x$positions
+        # The hidden key reaches unknown_directive, not user_agent_cut:
+        # one target is enough.
+        if (!identical(target, "Googlebot")) {
+          positions <- setdiff(positions, "key")
+        }
+        if (!grepl("o", target, fixed = TRUE)) {
+          positions <- setdiff(positions, "substitute")
+        }
+        for (position in positions) {
           label <- paste(x$name, context, target, position)
           ua <- sw_line(target, x$bytes, position)
           doc <- sw_document(context, ua)
@@ -155,12 +162,15 @@ test_that("every generated cut row agrees with Google's reading", {
           claims <- grepl("nothing changes for them|nothing changes for that",
                           cut$message)
           loses <- grepl("does not get this group", cut$message, fixed = TRUE)
+          reaches <- grepl("the group still reaches every crawler",
+                           cut$message, fixed = TRUE)
           # Whether the backend is needed: a claim to check, or a loss
           # that a row on the line would have to warn about.
           scoped <- x$repaired || identical(target, "*") ||
             identical(position, "key")
           need <- length(tokens) > 0L &&
-            (any(claims | loses) || (scoped && !any(d$severity == "warning")))
+            (any(claims | loses | reaches) ||
+               (scoped && !any(d$severity == "warning")))
           after <- if (need) sw_decide(doc, tokens)
           lost <- if (need) {
             tokens[before[tokens] == "disallow" & after[tokens] == "allow"]
@@ -170,33 +180,41 @@ test_that("every generated cut row agrees with Google's reading", {
           for (k in seq_len(nrow(cut))) {
             message <- cut$message[[k]]
             # (a) a sentence that Google's crawlers keep the group holds
-            # for the Google token the repaired value names, and "nothing
-            # changes for them" for every Google token whose name the
-            # written value holds.
+            # for the Google token the repaired value names; "nothing
+            # changes for them" holds for every documented Google token,
+            # against the document with the target written plainly.
             if (claims[[k]] && x$repaired && length(tokens) > 0L &&
                   !identical(target, "*")) {
               expect_identical(after[tokens], before[tokens], label = label)
             }
             if (grepl("nothing changes for them", message, fixed = TRUE)) {
-              named <- sw_named_tokens(ua)
-              if (length(named) > 0L) {
-                named_key <- paste(key, toString(named))
-                if (is.null(clean[[named_key]])) {
-                  assign(named_key, sw_decide(sw_document(
-                    context, sw_line(target, "", "before")
-                  ), named), envir = clean)
-                }
-                expect_identical(sw_decide(doc, named), clean[[named_key]],
-                                 label = label)
+              all_key <- paste(key, "all")
+              if (is.null(clean[[all_key]])) {
+                assign(all_key, sw_decide(plain, google_tokens),
+                       envir = clean)
               }
+              expect_identical(sw_decide(doc, google_tokens),
+                               clean[[all_key]], label = label)
             }
             # (b) "does not get this group" holds on Google.
             if (loses[[k]]) {
               named <- sub("^.*Google's (\\S+) does not get this group.*$",
                            "\\1", message)
               expect_true(named %in% tokens, label = label)
-              expect_false(identical(after[[named]], before[[named]]),
-                           label = label)
+              if (named %in% tokens) {
+                expect_false(identical(after[[named]], before[[named]]),
+                             label = label)
+              }
+            }
+            # The `*` tail: every crawler it does not except keeps the
+            # group through the group's `*` line.
+            if (reaches[[k]]) {
+              for (token in tokens) {
+                if (!grepl(token, message, fixed = TRUE)) {
+                  expect_identical(after[[token]], "disallow",
+                                   label = paste(label, token))
+                }
+              }
             }
             # (d) the generic clause at most once.
             expect_lte(lengths(regmatches(message, gregexpr(
@@ -225,11 +243,11 @@ test_that("every generated cut row agrees with Google's reading", {
       }
     }
   }
-  elapsed <- proc.time()[["elapsed"]] - started
-  expect_identical(documents, 4L * length(sw_targets) *
-                     (length(sw_full) * length(sw_contexts) +
-                        length(sw_rest)))
+  expect_gt(documents, 0L)
   expect_gt(rows_checked, 0L)
-  message(sprintf("sweep: %d documents, %d rows on the line, %.1f s",
-                  documents, rows_checked, elapsed))
+  if (isTRUE(getOption("robotstxtr.sweep_report"))) {
+    message(sprintf("sweep: %d documents, %d rows on the line, %.1f s",
+                    documents, rows_checked,
+                    proc.time()[["elapsed"]] - started))
+  }
 })

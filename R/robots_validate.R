@@ -182,8 +182,9 @@ validation_unsupported <- c(
 #'     the crawler the value names, and any other token, as Google's
 #'     crawlers do not go by it (said only for a value that is ASCII
 #'     or holds no Google token's name, even split by bytes Google does
-#'     not read, so not for \code{Googlebot} after or holding U+2028 or a
-#'     Latin-1 byte). The Bing and Yandex
+#'     not read or spelled with a look-alike letter, so not for
+#'     \code{Googlebot} after or holding U+2028 or a Latin-1 byte, or with
+#'     a Cyrillic o). The Bing and Yandex
 #'     matchers do not cut the value. A value that is valid UTF-8 and holds
 #'     a look-alike character, from a closed list of common ones (Unicode
 #'     hyphens and dashes such as U+2011, U+2212 and U+FF0D, U+FF3F
@@ -3224,9 +3225,16 @@ user_agent_cut_rows <- function(agents, has_global, global_groups) {
     "; a crawler that no group names gets no rules."
   }
   star_tail <- rep(star_tail, nrow(agents))
+  # Google's crawlers that ignore `*` (google_crawler_tokens_v1(),
+  # "exact_only") are not reached through a `*` line.
+  crawlers <- google_crawler_tokens_v1()
+  ignore_star <- crawlers$crawler_token[crawlers$group_selection ==
+                                          "exact_only"]
   star_tail[kept] <- paste0("; the group still reaches every crawler that ",
                             "no other group names, as another of its lines ",
-                            "is `User-agent: *`.")
+                            "is `User-agent: *`, except Google's crawlers ",
+                            "that ignore `*` (", joined_and(ignore_star, 0L),
+                            ").")
   message[star] <- paste0(
     read_as[star], " Google does not read this line as `User-agent: *`, so ",
     "on Google no crawler, Google's included, gets this group through it",
@@ -3333,7 +3341,8 @@ user_agent_cut_decide <- function(facts, key, kept, effect_warn, lookalike) {
 # - `named`: the value's bytes, every byte outside [A-Za-z_-] removed and
 #   ASCII case folded, hold the name of a documented Google token
 #   (validation_google_tokens()), so a token split by any byte Google
-#   does not read (`Google\xADbot`) counts.
+#   does not read (`Google\xADbot`) counts; so does its look-alike note's
+#   ASCII spelling (lookalike_note(): `G<U+043E>oglebot`).
 user_agent_cut_facts <- function(values) {
   table <- validation_lookalike_code_points
   listed <- c(table$point[table$kind %in% c("space", "invisible")], 0x00AD)
@@ -3362,13 +3371,23 @@ user_agent_cut_facts <- function(values) {
   token_bytes <- charToRaw(paste0(
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", "-_"
   ))
-  named <- vapply(bytes, function(value) {
+  holds_name <- function(value) {
     value <- value[value %in% token_bytes]
     upper <- value >= as.raw(0x41) & value <= as.raw(0x5A)
     value[upper] <- as.raw(as.integer(value[upper]) + 32L)
     folded <- rawToChar(value)
     any(vapply(names, grepl, logical(1L), folded, fixed = TRUE,
                useBytes = TRUE))
+  }
+  named <- vapply(seq_along(values), function(k) {
+    if (clean[[k]]) {
+      return(holds_name(bytes[[k]]))
+    }
+    # The look-alike note's ASCII spelling too (`G<U+043E>oglebot` spelled
+    # `Googlebot`), searched the same way.
+    note <- lookalike_note(values[[k]], "value")
+    holds_name(bytes[[k]]) ||
+      (!is.null(note) && holds_name(charToRaw(note$spelled)))
   }, logical(1L))
   data.frame(repaired_value = repaired_value,
              repaired = repaired, star_led = star_led, clean = clean,

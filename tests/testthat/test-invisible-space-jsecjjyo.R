@@ -445,10 +445,18 @@ test_that("a cut value led by `*` is not `*` on Google", {
   for (token in c("ExampleBot", "Googlebot")) {
     expect_identical(iv_google(body, token, "/x"), "disallow 3", label = token)
   }
+  # Google's crawlers that ignore `*` are not reached through it.
+  for (token in c("AdsBot-Google", "AdsBot-Google-Mobile",
+                  "Mediapartners-Google", "APIs-Google")) {
+    expect_identical(iv_google(body, token, "/x"), "allow NA", label = token)
+  }
   row <- star_row(body)
   expect_identical(row$message, paste0(
     star, "the group still reaches every crawler that no other group names, ",
-    "as another of its lines is `User-agent: *`."
+    "as another of its lines ",
+    "is `User-agent: *`, except Google's crawlers that ignore `*` ",
+    "(AdsBot-Google, AdsBot-Google-Mobile, Mediapartners-Google and ",
+    "APIs-Google)."
   ))
   expect_identical(row$severity, "info")
   # A token before the `*` keeps the other wording.
@@ -625,7 +633,10 @@ test_that("each cut row of a document gets its own tail", {
   expect_identical(rows$line, c(1L, 5L))
   expect_identical(rows$message[[2L]], paste0(
     iv_star, "the group still reaches every crawler that no other group ",
-    "names, as another of its lines is `User-agent: *`."
+    "names, as another of its lines ",
+    "is `User-agent: *`, except Google's crawlers that ignore `*` ",
+    "(AdsBot-Google, AdsBot-Google-Mobile, Mediapartners-Google and ",
+    "APIs-Google)."
   ))
   expect_identical(rows$severity, c("info", "info"))
 })
@@ -653,7 +664,8 @@ test_that("a listed character beside a plain `*` keeps the warning", {
     row <- iv_rows(robots_validate_text(body), "user_agent_cut")
     expect_true(startsWith(row$message, paste0(
       iv_star, "the group still reaches every crawler that no other group ",
-      "names, as another of its lines is `User-agent: *`."
+      "names, as another of its lines is `User-agent: *`, except Google's ",
+      "crawlers that ignore `*`"
     )), label = value)
     expect_identical(row$severity, "warning", label = value)
   }
@@ -880,6 +892,20 @@ test_that("\"nothing changes for them\" is printed only where proven", {
       "matcher: the file has no `User-agent: *` group."
     ))
     expect_identical(row$severity, "info")
+  }
+  # A look-alike letter in place of an ASCII one: its ASCII spelling names
+  # the Google token.
+  for (value in c("G\u043eoglebot", "Googl\u0435bot", "\u0410dsBot-Google",
+                  "\u200bG\u043eoglebot")) {
+    body <- iv_lines(paste0("User-agent: ", value), "Disallow: /x")
+    token <- if (grepl("dsBot", value, fixed = TRUE)) "AdsBot-Google" else
+      "Googlebot"
+    expect_identical(iv_google(body, token, "/x"), "allow NA", label = value)
+    row <- iv_cut(body)
+    expect_false(grepl("nothing changes", row$message, fixed = TRUE),
+                 label = value)
+    expect_true(grepl("which no byte compare matches", row$message,
+                      fixed = TRUE), label = value)
   }
   # A Google token split by a byte Google does not read counts as named.
   for (value in list("Google\xadbot", "Googl\u2028ebot", "Google\xc2bot")) {
