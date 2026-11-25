@@ -208,14 +208,22 @@ invisible, spelled as an ASCII space or dropped: Google's parser
 strips ASCII whitespace only, so a value padded with no-break spaces
 before a comment looks right but is cut there. Such a sentence names
 no package matcher, and the row then ends saying that Bing and
-Yandex may read the value differently. A cut value led by
-\code{*}, such as \code{*bot} or a \code{*} padded or followed by
-such a character, is not read as \code{User-agent: *}: the row says
-so, and that on Google no crawler, Google's included, gets the group
-through the line, in place of the fallback and effect sentences. It
-is a warning, but info for a value holding no such character
-(\code{*bot}) when another line of the group is
-\code{User-agent: *}.
+Yandex may read the value differently. A value that, without such
+characters and U+00AD, reads as a documented Google crawler token
+Google does not read here (\code{<U+200B>Googlebot}) is a warning,
+and in place of the effect sentence the row says, on condition, that
+Google's crawler of that token does not get the group through the
+line, or, when another line of the group can still reach it, only
+that Google does not read the line so. A cut value led by \code{*}
+once ASCII blanks and non-ASCII bytes before it are set aside, such
+as \code{*bot}, a \code{*} padded or followed by such a character,
+or a \code{*} after U+00AD or a Latin-1 A0 byte, is not read as
+\code{User-agent: *}: the row says so, and that on Google no
+crawler, Google's included, gets the group through the line, in
+place of the fallback and effect sentences. It is a warning, but
+info when another line of the group is \code{User-agent: *} and the
+value is valid UTF-8 holding no character this row names
+(\code{*bot}).
 Latin letters with
 diacritics are not look-alikes. Every other code names the agent as
 written, and a code that names a cut value adds a sentence pointing

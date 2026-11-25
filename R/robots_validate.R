@@ -199,14 +199,22 @@ validation_unsupported <- c(
 #'     strips ASCII whitespace only, so a value padded with no-break spaces
 #'     before a comment looks right but is cut there. Such a sentence names
 #'     no package matcher, and the row then ends saying that Bing and
-#'     Yandex may read the value differently. A cut value led by
-#'     \code{*}, such as \code{*bot} or a \code{*} padded or followed by
-#'     such a character, is not read as \code{User-agent: *}: the row says
-#'     so, and that on Google no crawler, Google's included, gets the group
-#'     through the line, in place of the fallback and effect sentences. It
-#'     is a warning, but info for a value holding no such character
-#'     (\code{*bot}) when another line of the group is
-#'     \code{User-agent: *}.
+#'     Yandex may read the value differently. A value that, without such
+#'     characters and U+00AD, reads as a documented Google crawler token
+#'     Google does not read here (\code{<U+200B>Googlebot}) is a warning,
+#'     and in place of the effect sentence the row says, on condition, that
+#'     Google's crawler of that token does not get the group through the
+#'     line, or, when another line of the group can still reach it, only
+#'     that Google does not read the line so. A cut value led by \code{*}
+#'     once ASCII blanks and non-ASCII bytes before it are set aside, such
+#'     as \code{*bot}, a \code{*} padded or followed by such a character,
+#'     or a \code{*} after U+00AD or a Latin-1 A0 byte, is not read as
+#'     \code{User-agent: *}: the row says so, and that on Google no
+#'     crawler, Google's included, gets the group through the line, in
+#'     place of the fallback and effect sentences. It is a warning, but
+#'     info when another line of the group is \code{User-agent: *} and the
+#'     value is valid UTF-8 holding no character this row names
+#'     (\code{*bot}).
 #'     Latin letters with
 #'     diacritics are not look-alikes. Every other code names the agent as
 #'     written, and a code that names a cut value adds a sentence pointing
@@ -3023,18 +3031,9 @@ validation_groups <- function(parsed, raw_lines = NULL) {
 
   agent_rows <- kept[is_agent, , drop = FALSE]
   agent_bytes <- lapply(agent_rows$value, charToRaw)
-  agent_global <- vapply(agent_bytes, function(bytes) {
-    length(bytes) >= 1L && bytes[[1L]] == charToRaw("*") &&
-      (length(bytes) == 1L || bytes[[2L]] %in% as.raw(c(0x20, 0x09:0x0d)))
-  }, logical(1L))
-  token_bytes <- charToRaw(paste0(
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", "-_"
-  ))
-  agent_token <- vapply(agent_bytes, function(bytes) {
-    outside <- which(!bytes %in% token_bytes)
-    run <- if (length(outside) == 0L) length(bytes) else outside[[1L]] - 1L
-    rawToChar(bytes[seq_len(run)])
-  }, character(1L))
+  agent_reading <- validation_agent_readings(agent_bytes)
+  agent_global <- agent_reading == "*"
+  agent_token <- ifelse(agent_global, "", agent_reading)
   agents <- data.frame(
     group = as.integer(agent_rows$group),
     line = as.integer(agent_rows$line),
@@ -3083,6 +3082,28 @@ validation_groups <- function(parsed, raw_lines = NULL) {
   list(groups = groups, agents = agents, rules = rules)
 }
 
+# What Google's matcher reads from each User-agent value (`agent_bytes`, a
+# list of raw vectors; src/robots.cc, ExtractUserAgent and the `*` test of
+# HandleUserAgent): "*" for a value that is `*` alone or followed by
+# whitespace, else the leading run of [A-Za-z_-] as spelled, "" when there
+# is none. Shared by validation_groups() and the repaired spelling of a cut
+# value (user_agent_cut_facts(), ROBO-jsecjjyo).
+validation_agent_readings <- function(agent_bytes) {
+  token_bytes <- charToRaw(paste0(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", "-_"
+  ))
+  vapply(agent_bytes, function(bytes) {
+    if (length(bytes) >= 1L && bytes[[1L]] == as.raw(0x2A) &&
+          (length(bytes) == 1L ||
+             bytes[[2L]] %in% as.raw(c(0x20, 0x09:0x0d)))) {
+      return("*")
+    }
+    outside <- which(!bytes %in% token_bytes)
+    run <- if (length(outside) == 0L) length(bytes) else outside[[1L]] - 1L
+    rawToChar(bytes[seq_len(run)])
+  }, character(1L))
+}
+
 # The merge key of each User-agent line for a matcher that compares the
 # whole value (ROBO-qwfoyouo): `key` where Google's matcher reads the value
 # whole (and "" for a global line), else the full value with ASCII upper
@@ -3121,18 +3142,35 @@ validation_google_tokens <- function() {
 # Google token and the rest of the value is neither a version suffix (`/2.1`,
 # ` 1.0`) nor a run of `*`: `Googlebot Image` is read as `Googlebot`, and
 # Googlebot follows the group. A value holding a look-alike character is a
-# warning too (ROBO-wtixhwlo). Every other cut is info (ROBO-txnzyugl, owner
-# decision 2026-11-18). A line whose value holds a second directive key
-# gets the directive_in_value row instead, which carries the cut
-# (ROBO-bkzqgvai).
+# warning too (ROBO-wtixhwlo), as no byte compare matches it. Every other
+# cut is info (ROBO-txnzyugl, owner decision 2026-11-18). Each row's
+# wording and severity come from one fact record per value
+# (user_agent_cut_facts()) through one decision table
+# (user_agent_cut_decide(), ROBO-jsecjjyo). A line whose value holds a
+# second directive key gets the directive_in_value row instead, which
+# carries the cut (ROBO-bkzqgvai).
 user_agent_cut_rows <- function(agents, has_global, global_groups) {
+  all_agents <- agents
   agents <- agents[agents$cut & !agents$hidden, , drop = FALSE]
   if (nrow(agents) == 0L) {
     return(ai_training_rows())
   }
   token <- agents$token
   rest <- substring(agents$name, nchar(token, "bytes") + 1L)
-  cut_effect <- user_agent_cut_effect(token, agents$key, rest)
+  facts <- user_agent_cut_facts(agents$value)
+  # The repaired spelling reads the same token and what follows it there is
+  # a version, a `*` run or nothing (`Googlebot<U+00A0># g`): the value
+  # names that token, as `Googlebot/2.1` does (ROBO-jsecjjyo).
+  repaired_rest <- substring(
+    vapply(ifelse(is.na(facts$repaired_value), "", facts$repaired_value),
+           function(value) render_validation_line(charToRaw(value)), "",
+           USE.NAMES = FALSE),
+    nchar(token, "bytes") + 1L
+  )
+  meant <- !is.na(facts$repaired) & nzchar(token) &
+    ascii_lower(facts$repaired) == agents$key &
+    (!nzchar(repaired_rest) | user_agent_cut_meant(repaired_rest))
+  cut_effect <- user_agent_cut_effect(token, agents$key, rest, meant = meant)
   read_as <- ifelse(
     nzchar(token),
     sprintf(paste0(
@@ -3155,24 +3193,24 @@ user_agent_cut_rows <- function(agents, has_global, global_groups) {
   }
   # In a group that is itself `*`, such a crawler still gets this group.
   fallback <- rep(fallback, nrow(agents))
-  fallback[agents$group %in% global_groups] <- paste0(
+  kept <- agents$group %in% global_groups
+  fallback[kept] <- paste0(
     "Unless another group names it, a crawler going by the full value ",
     "still gets this group from Google's matcher, since the group also ",
     "names `User-agent: *`."
   )
-  warn <- cut_effect$warn
   lookalike <- user_agent_lookalike_notes(agents$value)
-  # A cut value led by `*` (`*<U+00A0> # all`, `*bot`, ROBO-jsecjjyo):
-  # Google reads the line as `*` only when an ASCII blank or the value's
-  # end follows it, so here it names no crawler, Google's included. The
-  # fallback and effect sentences above would read as if no `*` line were
-  # written and as if Google's crawlers kept the group, so a sentence of
-  # its own replaces both. Every Google crawler no other line names loses
-  # the group, so the row is a warning, unless another line of the group
-  # is `User-agent: *` and the group still reaches them.
+  decided <- user_agent_cut_decide(facts, agents$key, kept, cut_effect$warn,
+                                   nzchar(lookalike))
+  case <- decided$case
+  # "plain": today's sentences.
   message <- paste(read_as, fallback, cut_effect$effect)
-  star <- validation_star_led(agents$value)
-  kept <- star & agents$group %in% global_groups
+  # "star" (`*<U+00A0> # all`, `*bot`): Google reads the line as `*` only
+  # when an ASCII blank or the value's end follows it, so here it names no
+  # crawler, Google's included. The fallback and effect sentences would
+  # read as if no `*` line were written and as if Google's crawlers kept the
+  # group, so a sentence of its own replaces both, with one of three tails.
+  star <- case == "star"
   star_tail <- if (has_global) {
     "; a crawler that no group names gets the other `User-agent: *` group."
   } else {
@@ -3187,7 +3225,21 @@ user_agent_cut_rows <- function(agents, has_global, global_groups) {
     "on Google no crawler, Google's included, gets this group through it",
     star_tail[star]
   )
-  warn <- warn | (star & !kept)
+  # "meant" (`<U+200B>Googlebot`): without its spaces and invisible
+  # characters the value reads as a Google token that Google does not read
+  # here. The row says what Google then does, on condition, as the intent
+  # is not known; the effect sentence stays only where it names the token
+  # Google does read as a crawler that follows the group.
+  conditional <- user_agent_cut_meant_sentence(
+    facts$repaired, agents$group, kept, all_agents
+  )
+  is_meant <- case == "meant"
+  message[is_meant] <- paste0(
+    read_as[is_meant], " ", fallback[is_meant], " ",
+    ifelse(cut_effect$warn[is_meant],
+           paste0(cut_effect$effect[is_meant], " "), ""),
+    conditional[is_meant]
+  )
   # A space or invisible character in the value (ROBO-jsecjjyo): Google's
   # reading is the one stated, and no recorded source says how Bing or
   # Yandex read it. Added here, not in user_agent_lookalike_notes(), as the
@@ -3197,11 +3249,116 @@ user_agent_cut_rows <- function(agents, has_global, global_groups) {
                               "read this value differently.")
   message[nzchar(lookalike)] <- paste(message[nzchar(lookalike)],
                                       lookalike[nzchar(lookalike)])
-  # A value holding a look-alike is matched by no byte compare, so its row
-  # is a warning whatever the token (ROBO-wtixhwlo, maintainer decision).
-  warn <- warn | nzchar(lookalike)
-  ai_training_rows(agents$line, ifelse(warn, "warning", "info"),
+  ai_training_rows(agents$line, ifelse(decided$warn, "warning", "info"),
                    "user_agent_cut", "user-agent", message)
+}
+
+# Which wording and severity a cut User-agent row gets (ROBO-jsecjjyo),
+# from its fact record (user_agent_cut_facts()), the merge key of the token
+# Google reads (`key`), whether the line's group also holds a `*` line
+# (`kept`), user_agent_cut_effect()'s `effect_warn` and whether the value
+# holds a look-alike, space or invisible character (`lookalike`). The table,
+# first match wins:
+#
+#   case     when                              wording              severity
+#   "star"   `star_led`                        `*`-led sentence     warning,
+#                                              and tail             info when
+#                                                                   `kept`,
+#                                                                   repaired
+#                                                                   known and
+#                                                                   no
+#                                                                   look-alike
+#   "meant"  repaired reading is a Google      conditional          warning
+#            token, not the token read         sentence
+#   "plain"  otherwise                         read_as, fallback,   effect_warn
+#                                              effect               or a
+#                                                                   look-alike
+#
+# "plain" covers every value with no listed character (repaired reading =
+# reading) and an unknown repaired reading (invalid UTF-8: the bytes are
+# read as written and nothing is said of what was meant). Its effect says
+# Google's crawlers keep the group only when the token read is no Google
+# token, and then the repaired reading is no Google token either ("meant"
+# took those) and not `*` (a repaired `*` is always `star_led`).
+user_agent_cut_decide <- function(facts, key, kept, effect_warn, lookalike) {
+  google <- ascii_lower(validation_google_tokens())
+  repaired <- ascii_lower(facts$repaired)
+  case <- rep("plain", nrow(facts))
+  case[!is.na(repaired) & repaired %in% google & repaired != key] <- "meant"
+  case[facts$star_led] <- "star"
+  warn <- effect_warn
+  warn[case == "meant"] <- TRUE
+  star <- case == "star"
+  warn[star] <- !kept[star] | is.na(repaired[star])
+  list(case = case, warn = warn | lookalike)
+}
+
+# The fact record of each cut User-agent value (`values`, as the parser kept
+# them), one row per value, computed on bytes in one pass each
+# (ROBO-jsecjjyo):
+# - `repaired_value`: the value without its listed characters (the space
+#   and invisible kinds of validation_lookalike_code_points and U+00AD SOFT
+#   HYPHEN), leading ASCII blanks dropped;
+#   NA ("unknown") when the bytes are not valid UTF-8, a listed character
+#   cut short among them. Look-alike letters are kept: their rows keep the
+#   ROBO-wtixhwlo wording.
+# - `repaired`: what Google's matcher reads from that spelling
+#   (validation_agent_readings(): "*", a token, or "" for none); NA when
+#   unknown.
+# - `star_led`: the value starts with `*` after ASCII blanks and any bytes
+#   over 0x7F (a listed character, U+2028, a Latin-1 A0, a sequence cut
+#   short): Google reads none of them as a token character, and a cut value
+#   is not `*` on Google, so the line is not `User-agent: *` there.
+user_agent_cut_facts <- function(values) {
+  table <- validation_lookalike_code_points
+  listed <- c(table$point[table$kind %in% c("space", "invisible")], 0x00AD)
+  blanks <- as.raw(c(0x09, 0x0B, 0x0C, 0x20))
+  bytes <- lapply(values, charToRaw)
+  star_led <- vapply(bytes, function(value) {
+    at <- match(FALSE, value %in% blanks | value >= as.raw(0x80))
+    !is.na(at) && value[[at]] == as.raw(0x2A)
+  }, logical(1L))
+  points <- lapply(bytes, function(value) utf8ToInt(rawToChar(value)))
+  known <- !vapply(points, anyNA, logical(1L))
+  repaired_value <- rep(NA_character_, length(values))
+  repaired_value[known] <- vapply(points[known], function(value) {
+    kept <- charToRaw(intToUtf8(value[!value %in% listed]))
+    first <- match(FALSE, kept %in% blanks)
+    if (is.na(first)) "" else rawToChar(kept[first:length(kept)])
+  }, "")
+  repaired <- rep(NA_character_, length(values))
+  repaired[known] <- validation_agent_readings(
+    lapply(repaired_value[known], charToRaw)
+  )
+  data.frame(repaired_value = repaired_value,
+             repaired = repaired, star_led = star_led,
+             stringsAsFactors = FALSE)
+}
+
+# The conditional sentence of a "meant" cut row (user_agent_cut_decide()):
+# `repaired` is the Google token the value reads as without its listed
+# characters. Google's crawler of that token does not get the group through
+# this line; the row says so only when nothing else of the group reaches
+# it: no `*` line (`kept`) and no line of the group (`all_agents`, every
+# User-agent line) reading that token or its parent token
+# (google_crawler_tokens_v1(): `Googlebot-Image` falls back to `Googlebot`).
+# Otherwise it says only that Google does not read the line so.
+user_agent_cut_meant_sentence <- function(repaired, group, kept, all_agents) {
+  table <- google_crawler_tokens_v1()
+  parent <- ascii_lower(table$parent_token[
+    match(ascii_lower(repaired), ascii_lower(table$crawler_token))
+  ])
+  named <- paste(all_agents$group, all_agents$key, sep = "\n")
+  reached <- kept |
+    paste(group, ascii_lower(repaired), sep = "\n") %in% named |
+    (!is.na(parent) & paste(group, parent, sep = "\n") %in% named)
+  ifelse(
+    reached,
+    sprintf("If this line was meant as `%s`, Google does not read it so.",
+            repaired),
+    sprintf(paste0("If this line was meant as `%s`, Google's %s does not ",
+                   "get this group through it."), repaired, repaired)
+  )
 }
 
 # What a cut User-agent value does to Google's crawlers (ROBO-txnzyugl), for
@@ -3212,12 +3369,11 @@ user_agent_cut_rows <- function(agents, has_global, global_groups) {
 # Google token the value did not mean, so that Google crawler follows the
 # group (`Googlebot Image`). Meant is a run of `*` (`Mediapartners-Google*`,
 # `Googlebot *`), or after a space or `/`, a version (`/2.1`, ` 1.0`), a
-# comment (` (+http://...)`) or nothing (`Googlebot/`).
-user_agent_cut_effect <- function(token, key, rest) {
+# comment (` (+http://...)`) or nothing (`Googlebot/`), or TRUE in `meant`
+# (the caller read it on the repaired spelling, ROBO-jsecjjyo).
+user_agent_cut_effect <- function(token, key, rest, meant = FALSE) {
   google <- nzchar(token) & key %in% ascii_lower(validation_google_tokens())
-  meant <- grepl("^([ /]|\\\\t)*\\*+$", rest) |
-    grepl("^([ /]|\\\\t)+([vV]?[0-9]+(\\.[0-9]+)*($|[^A-Za-z0-9])|\\(|$)",
-          rest)
+  meant <- meant | user_agent_cut_meant(rest)
   warn <- google & !meant
   effect <- rep(paste0("Only Google's parser shortens the value, and ",
                        "Google's crawlers do not go by it, so nothing ",
@@ -3232,41 +3388,13 @@ user_agent_cut_effect <- function(token, key, rest) {
   list(effect = effect, warn = warn)
 }
 
-# TRUE where a cut User-agent value (as the parser kept it) starts with `*`
-# once the ASCII blanks and the UTF-8 bytes of the spaces and invisible
-# characters of validation_lookalike_code_points leading it are set aside
-# (ROBO-jsecjjyo). Read on bytes, as Google reads the value, so the bytes
-# after the `*` need not be valid UTF-8 (`*` then a Latin-1 A0): the value
-# is cut, so whatever follows the `*` ended Google's `*` reading.
-validation_star_led <- function(values) {
-  table <- validation_lookalike_code_points
-  lead <- lapply(table$point[table$kind %in% c("space", "invisible")],
-                 function(point) charToRaw(intToUtf8(point)))
-  blanks <- as.raw(c(0x09, 0x0B, 0x0C, 0x20))
-  vapply(values, function(value) {
-    bytes <- charToRaw(value)
-    n <- length(bytes)
-    at <- 1L
-    while (at <= n) {
-      if (bytes[[at]] %in% blanks) {
-        at <- at + 1L
-        next
-      }
-      width <- 0L
-      for (mark in lead) {
-        end <- at + length(mark) - 1L
-        if (end <= n && identical(bytes[at:end], mark)) {
-          width <- length(mark)
-          break
-        }
-      }
-      if (width == 0L) {
-        break
-      }
-      at <- at + width
-    }
-    at <= n && bytes[[at]] == as.raw(0x2A)
-  }, logical(1L), USE.NAMES = FALSE)
+# TRUE where `rest`, the value after the token read (rendered), is what the
+# token's own crawler writes after it: a run of `*`, or after a space or
+# `/`, a version, a comment or nothing (user_agent_cut_effect()).
+user_agent_cut_meant <- function(rest) {
+  grepl("^([ /]|\\\\t)*\\*+$", rest) |
+    grepl("^([ /]|\\\\t)+([vV]?[0-9]+(\\.[0-9]+)*($|[^A-Za-z0-9])|\\(|$)",
+          rest)
 }
 
 # One key per grouped Allow or Disallow of a parsed document (ROBO-ctdkqawi):

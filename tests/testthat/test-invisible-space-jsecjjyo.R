@@ -631,7 +631,7 @@ test_that("each cut row of a document gets its own tail", {
 })
 
 test_that("ASCII blanks between the leading characters and `*` are skipped", {
-  for (value in c(" \t*", " \v*", " \f*")) {
+  for (value in c("\u00a0\t*", "\u00a0\v*", "\u00a0\f*")) {
     body <- iv_lines(paste0("User-agent: ", value), "Disallow: /x")
     expect_identical(iv_google(body, "Googlebot", "/x"), "allow NA",
                      label = value)
@@ -645,7 +645,7 @@ test_that("ASCII blanks between the leading characters and `*` are skipped", {
 
 test_that("a listed character beside a plain `*` keeps the warning", {
   # Only a `*`-led value holding no listed character is info there.
-  for (value in c("*​", "* ", "*а")) {
+  for (value in c("*\u200b", "*\u00a0", "*\u0430")) {
     body <- iv_lines("User-agent: *", paste0("User-agent: ", value),
                      "Disallow: /x")
     expect_identical(iv_google(body, "Googlebot", "/x"), "disallow 3",
@@ -661,7 +661,7 @@ test_that("a listed character beside a plain `*` keeps the warning", {
 
 test_that("only the U+FEFF leading the line is the byte-order mark's", {
   # A second U+FEFF is named like any listed character and counted.
-  body <- iv_lines("User-agent: *", "﻿﻿Disallow: /x")
+  body <- iv_lines("User-agent: *", "\ufeff\ufeffDisallow: /x")
   expect_identical(iv_google(body, "ExampleBot", "/x"), "allow NA")
   message <- iv_rows(robots_validate_text(body), "unknown_directive")$message
   expect_identical(message, paste0(
@@ -670,7 +670,7 @@ test_that("only the U+FEFF leading the line is the byte-order mark's", {
     "Without it and the byte-order mark, this is a Disallow line; Google ",
     "does not read it as Disallow, so Google does not apply this rule."
   ))
-  body <- iv_lines("User-agent: *", "﻿​﻿Disallow: /p")
+  body <- iv_lines("User-agent: *", "\ufeff\u200b\ufeffDisallow: /p")
   expect_identical(iv_google(body, "ExampleBot", "/p"), "allow NA")
   message <- iv_rows(robots_validate_text(body), "unknown_directive")$message
   expect_true(grepl(paste0(
@@ -681,4 +681,183 @@ test_that("only the U+FEFF leading the line is the byte-order mark's", {
     "Without them and the byte-order mark, this is a Disallow line; Google ",
     "does not read it as Disallow, so Google does not apply this rule."
   )))
+})
+
+# Round 4: one fact record per cut value and one decision table. A value
+# that without its spaces and invisible characters reads as a Google token
+# Google does not read here never says that nothing changes for Google's
+# crawlers.
+iv_cut <- function(body) iv_rows(robots_validate_text(body), "user_agent_cut")
+iv_meant <- function(token) {
+  sprintf(paste0("If this line was meant as `%s`, Google's %s does not get ",
+                 "this group through it."), token, token)
+}
+iv_meant_weak <- function(token) {
+  sprintf("If this line was meant as `%s`, Google does not read it so.",
+          token)
+}
+
+test_that("a Google token behind a listed character is lost on Google", {
+  cases <- list(c("​Googlebot", "Googlebot"),
+                c(" Googlebot", "Googlebot"),
+                c("　Googlebot-Image", "Googlebot-Image"),
+                c("Google­bot", "Googlebot"),
+                c("Googlebot-⁠Image", "Googlebot-Image"))
+  for (case in cases) {
+    body <- iv_lines(paste0("User-agent: ", case[[1L]]), "Disallow: /x")
+    expect_identical(iv_google(body, case[[2L]], "/x"), "allow NA",
+                     label = case[[1L]])
+    row <- iv_cut(body)
+    expect_identical(row$severity, "warning", label = case[[1L]])
+    expect_true(grepl(iv_meant(case[[2L]]), row$message, fixed = TRUE),
+                label = case[[1L]])
+    expect_false(grepl("nothing changes", row$message, fixed = TRUE),
+                 label = case[[1L]])
+  }
+  # The whole row for the first case: the effect sentence gives way to the
+  # conditional one, and the rest stays.
+  row <- iv_cut(iv_lines("User-agent: ​Googlebot", "Disallow: /x"))
+  expect_identical(row$message, paste0(
+    "User-agent value names no crawler for Google's matcher, which reads a ",
+    "product token only from a leading run of letters, '_' and '-', so ",
+    "there this line matches no crawler. Unless another group names it, a ",
+    "crawler going by the full value gets no rules from Google's matcher: ",
+    "the file has no `User-agent: *` group. ", iv_meant("Googlebot"),
+    " The value holds U+200B ZERO WIDTH SPACE at byte 1, which is ",
+    "invisible; without it the value is 'Googlebot', which no byte compare ",
+    "matches to this value.", iv_value_clause
+  ))
+  # A Google token that is not documented as one keeps today's sentence.
+  body <- iv_lines("User-agent: ​ExampleBot", "Disallow: /x")
+  row <- iv_cut(body)
+  expect_true(grepl("so nothing changes for them", row$message, fixed = TRUE))
+  expect_false(grepl("If this line", row$message, fixed = TRUE))
+})
+
+test_that("the conditional sentence says less where the group still reaches", {
+  # Another line of the group is `*`.
+  body <- iv_lines("User-agent: *", "User-agent: ​Googlebot-Image",
+                   "Disallow: /x")
+  expect_identical(iv_google(body, "Googlebot-Image", "/x"), "disallow 3")
+  row <- iv_cut(body)
+  expect_true(grepl(iv_meant_weak("Googlebot-Image"), row$message,
+                    fixed = TRUE))
+  expect_false(grepl("does not get this group", row$message, fixed = TRUE))
+  expect_identical(row$severity, "warning")
+  # Another line of the group names the parent token.
+  body <- iv_lines("User-agent: Googlebot", "User-agent: ​Googlebot-Image",
+                   "Disallow: /x")
+  expect_identical(iv_google(body, "Googlebot-Image", "/x"), "disallow 3")
+  row <- iv_cut(body)
+  expect_true(grepl(iv_meant_weak("Googlebot-Image"), row$message,
+                    fixed = TRUE))
+  # Another line of the group names the token itself.
+  body <- iv_lines("User-agent: Googlebot", "User-agent:  Googlebot",
+                   "Disallow: /x")
+  expect_identical(iv_google(body, "Googlebot", "/x"), "disallow 3")
+  expect_true(grepl(iv_meant_weak("Googlebot"), iv_cut(body)$message,
+                    fixed = TRUE))
+  # The line itself reads the parent token: Googlebot-Image falls back to it.
+  body <- iv_lines("User-agent: Googlebot​-Image", "Disallow: /x")
+  expect_identical(iv_google(body, "Googlebot-Image", "/x"), "disallow 2")
+  message <- iv_cut(body)$message
+  expect_true(grepl(paste0(
+    "'Googlebot' is a Google crawler token, so that Google crawler follows ",
+    "this group. ", iv_meant_weak("Googlebot-Image")
+  ), message, fixed = TRUE))
+  # Parent elsewhere, not in the group: the strong sentence holds.
+  body <- iv_lines("User-agent: Googlebot", "Disallow: /y", "",
+                   "User-agent: ​Googlebot-Image", "Disallow: /x")
+  expect_identical(iv_google(body, "Googlebot-Image", "/x"), "allow NA")
+  expect_true(grepl(iv_meant("Googlebot-Image"), iv_cut(body)$message,
+                    fixed = TRUE))
+})
+
+test_that("a value that names its token without the character says so", {
+  # `Googlebot<U+00A0># g` names Googlebot: nothing changes for it.
+  for (value in c("Googlebot # g", "Googlebot​",
+                  "Googlebot /2.1", "Mediapartners-Google​*")) {
+    token <- sub("[^A-Za-z_-].*$", "", value, useBytes = TRUE)
+    body <- iv_lines(paste0("User-agent: ", value), "Disallow: /x")
+    expect_identical(iv_google(body, token, "/x"), "disallow 2",
+                     label = value)
+    row <- iv_cut(body)
+    expect_true(grepl(sprintf(paste0(
+      "'%s' is the Google crawler token the value names, so nothing changes ",
+      "for that crawler."
+    ), token), row$message, fixed = TRUE), label = value)
+    expect_false(grepl("follows this group", row$message, fixed = TRUE),
+                 label = value)
+    # Still a warning: the character is matched by no byte compare.
+    expect_identical(row$severity, "warning", label = value)
+  }
+  # A version after an ASCII space keeps today's text; one glued on is not
+  # meant.
+  row <- iv_cut(iv_lines("User-agent: Googlebot Image", "Disallow: /x"))
+  expect_true(grepl("so that Google crawler follows this group",
+                    row$message, fixed = TRUE))
+})
+
+test_that("`*` after any non-ASCII byte is not `*` on Google", {
+  for (value in list("­*", "\xa0* # all", " *", "\xc2*",
+                     " \xc2*", "﻿*", "​*", "а*")) {
+    body <- paste0("User-agent: ", value, "\nDisallow: /x\n")
+    for (token in c("Googlebot", "ExampleBot")) {
+      expect_identical(iv_google(body, token, "/x"), "allow NA",
+                       label = paste(value, token))
+    }
+    row <- iv_cut(body)
+    expect_true(startsWith(row$message, paste0(
+      iv_star, "a crawler that no group names gets no rules."
+    )), label = value)
+    expect_false(grepl("nothing changes", row$message, fixed = TRUE),
+                 label = value)
+    expect_identical(row$severity, "warning", label = value)
+  }
+  # An ASCII character other than a blank before `*` is not `*`-led.
+  row <- iv_cut(iv_lines("User-agent: /*", "Disallow: /x"))
+  expect_false(grepl("User-agent: *`, so", row$message, fixed = TRUE))
+})
+
+test_that("an invalid UTF-8 `*`-led value stays a warning beside `*`", {
+  body <- "User-agent: *\nUser-agent: *\xe9\nDisallow: /x\n"
+  expect_identical(iv_google(body, "ExampleBot", "/x"), "disallow 3")
+  row <- iv_cut(body)
+  expect_true(grepl("the group still reaches every crawler", row$message,
+                    fixed = TRUE))
+  expect_identical(row$severity, "warning")
+  # A valid character this row does not name keeps it info there.
+  body <- iv_lines("User-agent: *", "User-agent: * ", "Disallow: /x")
+  expect_identical(iv_cut(body)$severity, "info")
+})
+
+test_that("an unknown repaired reading claims nothing about intent", {
+  # A Latin-1 A0 before Googlebot: the bytes are not UTF-8, so the row
+  # names no character and states no conditional reading.
+  row <- iv_cut("User-agent: \xa0Googlebot\nDisallow: /x\n")
+  expect_false(grepl("If this line", row$message, fixed = TRUE))
+  expect_false(grepl("U+00A0", row$message, fixed = TRUE))
+})
+
+test_that("the fact record reads each value once, on bytes", {
+  facts <- user_agent_cut_facts(c("​Googlebot", "*\xa0", "\xc2*",
+                                  "a­b", "   *bot", "Foo Bot",
+                                  "­"))
+  expect_identical(facts$repaired,
+                   c("Googlebot", NA, NA, "ab", "", "Foo", ""))
+  expect_identical(facts$repaired_value,
+                   c("Googlebot", NA, NA, "ab", "*bot", "Foo Bot", ""))
+  expect_identical(facts$star_led,
+                   c(FALSE, TRUE, TRUE, FALSE, TRUE, FALSE, FALSE))
+  # The repaired `*` reading needs the value's end or a blank after `*`.
+  expect_identical(user_agent_cut_facts("​* x")$repaired, "*")
+  decided <- user_agent_cut_decide(
+    facts, ascii_lower(c("", "", "", "a", "", "Foo", "")),
+    kept = c(FALSE, TRUE, FALSE, FALSE, TRUE, FALSE, FALSE),
+    effect_warn = logical(7L), lookalike = logical(7L)
+  )
+  expect_identical(decided$case, c("meant", "star", "star", "plain", "star",
+                                   "plain", "plain"))
+  expect_identical(decided$warn, c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE,
+                                   FALSE))
 })
