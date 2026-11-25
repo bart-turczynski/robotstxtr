@@ -425,7 +425,9 @@ seals `bingbot`'s run at the unknown field (class 1, rule 2a); Yandex reaches
 `*` with the Yandex token on both rows. After a rule, the key starts an `Other`
 group on Google, so line 5 leaves the Yandex and `bingbot` group; both other
 engines keep it there. That last shape is one where Google allows and the other
-engines disallow.
+engines disallow. The validator warns on a key that only starts with
+`user-agent` with `accepted_directive_prefix` (ROBO-lgoehhhq), naming the key
+and Google's reading of it; the typo forms keep `accepted_directive_typo`.
 
 The Yandex form of the stacked shape is refuted: `User-agent: Yandex` /
 `<key>: x` / `User-agent: Other` / `Disallow: /private` is

@@ -188,11 +188,13 @@ sr_fixtures <- list(
                   c("Disallow: /x", "Allow: /x/y")),
     today = character(0)
   ),
-  # Google reads a longer key by its prefix `user-agent`; others may not.
+  # Google reads a longer key by its prefix `user-agent`; Bing and Yandex
+  # may read it differently.
   prefix_key = list(
     body = paste0(sr_group("Foo", "Disallow: /x"),
                   "\nUser-agentx: Bar\nDisallow: /x\n"),
-    today = character(0)
+    # ROBO-lgoehhhq: the prefix key draws its own row.
+    today = "accepted_directive_prefix"
   ),
   agent_typo = list(
     body = paste0(sr_group("Foo", "Disallow: /x"),
@@ -217,7 +219,8 @@ sr_fixtures <- list(
     today = character(0)
   ),
   # A blank before the User-agent colon, or a longer key Google reads by its
-  # prefix: Yandex, or Bing and Yandex, do not read it as User-agent.
+  # prefix: Google reads each as a User-agent line, and the check leaves the
+  # group out, as Bing and Yandex may read the line differently.
   agent_space_colon = list(
     body = paste0(sr_group("Foo", "Disallow: /x"),
                   "\nUser-agent : Bar\nDisallow: /x\n"),
@@ -231,15 +234,17 @@ sr_fixtures <- list(
   agent_key_word = list(
     body = paste0("User-agent foo: bingbot\nDisallow: /x\n\n",
                   sr_group("Yandex", "Disallow: /x")),
-    today = character(0)
+    # ROBO-lgoehhhq: Google reads the key `User-agent foo` by prefix.
+    today = "accepted_directive_prefix"
   ),
   agent_tab_word = list(
     body = paste0(sr_group("bingbot", "Disallow: /x"),
                   "\nUser-agent\tfoo: Yandex\nDisallow: /x\n"),
-    today = character(0)
+    today = "accepted_directive_prefix"
   ),
-  # The next group starts at a line Bing or Yandex do not read as
-  # User-agent, so on them the group before runs on through its rules.
+  # The next group starts at a line that is not plain (a typo or prefix key,
+  # no colon, an empty value); Bing and Yandex may read it differently, so
+  # the check leaves the groups out.
   next_typo = list(
     body = paste(sr_group("Yandex", c("Disallow: /x", "Useragent: Bar",
                                       "Disallow: /y")),
@@ -250,7 +255,7 @@ sr_fixtures <- list(
     body = paste(sr_group("Yandex", c("Disallow: /x", "User-agentx: Bar",
                                       "Disallow: /y")),
                  sr_group("bingbot", "Disallow: /x"), sep = "\n"),
-    today = character(0)
+    today = "accepted_directive_prefix"
   ),
   next_no_colon = list(
     body = paste(sr_group("Yandex", "Disallow: /x"),
@@ -294,11 +299,12 @@ sr_fixtures <- list(
              charToRaw(sr_two("Disallow: /x", "Disallow: /x"))),
     today = "invalid_utf8"
   ),
-  # A key holding a byte not valid in UTF-8 is not `User-agent`.
+  # A key holding a byte not valid in UTF-8 after `User-agent` is no plain
+  # line; Google reads it as User-agent by prefix (ROBO-lgoehhhq).
   latin1_key = list(
     body = charToRaw(paste0(sr_group("Foo", "Disallow: /x"),
                             "\nUser-agent\xe9: Bar\nDisallow: /x\n")),
-    today = "invalid_utf8"
+    today = c("invalid_utf8", "accepted_directive_prefix")
   ),
   # Two classes, the later one first by its rules: rows go by line.
   two_classes = list(

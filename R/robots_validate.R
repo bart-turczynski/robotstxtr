@@ -112,9 +112,9 @@ validation_unsupported <- c(
 #'   \code{accepted_directive_typo} \tab warning \tab
 #'     A directive name in an accepted typo spelling. \cr
 #'   \code{accepted_directive_prefix} \tab warning \tab
-#'     A key such as \code{DisallowAITraining} that only starts with
-#'     \code{allow} or \code{disallow}, which the parser reads as that rule.
-#'     \cr
+#'     A key such as \code{DisallowAITraining} or \code{User-agents} that
+#'     only starts with \code{allow}, \code{disallow} or \code{user-agent},
+#'     which the parser reads as that directive. \cr
 #'   \code{unsupported_directive} \tab warning \tab
 #'     A known directive this profile ignores, such as \code{crawl-delay}. \cr
 #'   \code{content_signal_directive} \tab warning \tab
@@ -699,16 +699,19 @@ validation_unsupported <- c(
 #' }
 #'
 #' For `accepted_directive_prefix`, Google's parser accepts any key that
-#' starts with `allow` or `disallow`, ignoring ASCII case, so
+#' starts with `allow`, `disallow` or `user-agent`, ignoring ASCII case, so
 #' `DisallowAITraining: /` is read as `Disallow: /` and blocks the group's
-#' crawlers. The Bing and Yandex matchers compare the whole field name and
-#' ignore the line, and RFC 9309's grammar (section 2.2) has only `allow` and
-#' `disallow` rule records, leaving other records to the crawler (section
-#' 2.2.4). The message names the key as written; for a Disallow key it points
-#' to a separate `User-agent: __usage_ai-training` group, not stacked under
-#' another User-agent line, as the AI-training opt-out.
-#' An accepted typo such as `Dissallow` is reported as
-#' `accepted_directive_typo` only.
+#' crawlers, and `User-agents: *` heads a group as `User-agent: *` does
+#' (ROBO-lgoehhhq). RFC 9309's grammar (section 2.2) has only `user-agent`,
+#' `allow` and `disallow` records, leaving other records to the crawler
+#' (section 2.2.4). The message names the key as written, states Google's
+#' reading of it and says that Bing and Yandex may read the line
+#' differently; for a Disallow key it points to a separate
+#' `User-agent: __usage_ai-training` group, not stacked under another
+#' User-agent line, as the AI-training opt-out.
+#' An accepted typo such as `Dissallow` or `Useragents` is reported as
+#' `accepted_directive_typo` only. A prefix-key line can draw a
+#' `user_agent_cut` or `directive_in_value` row as well.
 #'
 #' For `wildcard_rules_not_inherited`, a crawler obeys only the groups that
 #' name it (combined when several do) and ignores the `User-agent: *` group,
@@ -1830,7 +1833,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         "Directive spelling is an accepted Google-parser typo variant."
       )
     }
-    if (type %in% c("allow", "disallow") && !parsed$is_typo[[i]]) {
+    if (type %in% c("allow", "disallow", "user-agent") &&
+          !parsed$is_typo[[i]]) {
       prefix_key <- validation_prefix_key(
         raw_lines[[line]], line, type, parsed$missing_colon[[i]]
       )
@@ -9785,9 +9789,10 @@ validation_ascii_action <- function(action, type) {
   ascii_lower(action)
 }
 
-# The key of an Allow or Disallow line as the Google parser cut it
-# (GetKeyAndValueFrom, src/robots.cc), rendered for a message, when it is
-# not exactly `allow` or `disallow`; NULL when it is (ROBO-xglcoagv). The
+# The key of an Allow, Disallow or User-agent line as the Google parser cut
+# it (GetKeyAndValueFrom, src/robots.cc), rendered for a message, when it is
+# not exactly `allow`, `disallow` or `user-agent`; NULL when it is
+# (ROBO-xglcoagv, ROBO-lgoehhhq). The
 # parser hands R only the type of a known key, so the key is derived again
 # from the line's bytes: the BOM prefix Parse() skips on line 1, leading
 # ASCII whitespace, the separator (the first `:`, or the first SP or HT when
@@ -9827,13 +9832,18 @@ validation_prefix_key <- function(bytes, line, type, missing_colon) {
   render_validation_line(key)
 }
 
+# Google's reading of the key, then only the generic clause about Bing and
+# Yandex: the message states nothing a recorded source does not back
+# (ROBO-lgoehhhq).
 validation_prefix_key_message <- function(key, type) {
-  name <- if (identical(type, "disallow")) "Disallow" else "Allow"
+  name <- switch(type, disallow = "Disallow", allow = "Allow",
+                 "user-agent" = "User-agent")
+  what <- switch(type, disallow = "a Disallow rule", allow = "an Allow rule",
+                 "user-agent" = "a User-agent line")
   message <- paste0(
     "Google reads key `", key, "` as ", name, " (prefix match), so for ",
-    "Google this line is ", if (identical(type, "allow")) "an " else "a ",
-    name, " rule; Bing and Yandex ignore it, and RFC 9309 defines no such ",
-    "record."
+    "Google this line is ", what, "; RFC 9309 defines no such record. ",
+    "Bing and Yandex may read this line differently."
   )
   if (identical(type, "disallow")) {
     message <- paste0(

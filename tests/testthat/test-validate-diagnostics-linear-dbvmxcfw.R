@@ -169,8 +169,11 @@ test_that("the frame of a body on every emission path is pinned", {
   )
   # ROBO-otomgbge: `/typo` (line 9) also matches `/typo2` (line 10); without
   # that row the frame is the one pinned before.
+  # ROBO-lgoehhhq: the three digests here moved only with the message of
+  # accepted_directive_prefix@11, which no longer says Bing and Yandex
+  # ignore the key.
   expect_identical(seam_digest(d, linear_frame_extra(d)),
-                   "24fc9ef260ac076839fc2b71dde76c8e")
+                   "876990c14db1bb3a1bcd8128a290cfa2")
   d <- d[d$code != "rule_prefix_sibling", , drop = FALSE]
   rownames(d) <- NULL
   expect_identical(
@@ -181,7 +184,7 @@ test_that("the frame of a body on every emission path is pinned", {
     # ROBO-zqyqbudf: both rows at 25 name the cut `Foo.Bot`, and only they
     # gain a sentence on Google's reading of it.
     seam_digest(d, linear_frame_extra(d)),
-    "c11611911c13a62a8e8a29c91671d054"
+    "bb709dadbcb370ae18e814caa1fdb28b"
   )
   # Without that sentence the frame is the one pinned before: the two rows
   # at 25 are the only change, and only their message changed.
@@ -197,7 +200,7 @@ test_that("the frame of a body on every emission path is pinned", {
                                nchar(old$message[noted]) - nchar(note))
   expect_identical(
     seam_digest(old, linear_frame_extra(old)),
-    "cbe39d47996685e43092c40053b28f37"
+    "2a45ec0f259c77809490dcde3649d8b0"
   )
 })
 

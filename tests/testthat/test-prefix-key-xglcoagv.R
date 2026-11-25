@@ -19,8 +19,9 @@ pk_rows <- function(body) {
 pk_disallow_message <- function(key) {
   paste0(
     "Google reads key `", key, "` as Disallow (prefix match), so for Google ",
-    "this line is a Disallow rule; Bing and Yandex ignore it, and RFC 9309 ",
-    "defines no such record. For an AI-training opt-out, use a separate ",
+    "this line is a Disallow rule; RFC 9309 defines no such record. Bing ",
+    "and Yandex may read this line differently. For an AI-training opt-out, ",
+    "use a separate ",
     "`User-agent: __usage_ai-training` group, not stacked under another ",
     "User-agent line."
   )
@@ -69,8 +70,8 @@ test_that("an Allow-prefixed key warns without the training sentence", {
   expect_identical(d$directive, "allow")
   expect_identical(d$message, paste0(
     "Google reads key `AllowAITraining` as Allow (prefix match), so for ",
-    "Google this line is an Allow rule; Bing and Yandex ignore it, and ",
-    "RFC 9309 defines no such record."
+    "Google this line is an Allow rule; RFC 9309 defines no such record. ",
+    "Bing and Yandex may read this line differently."
   ))
 })
 

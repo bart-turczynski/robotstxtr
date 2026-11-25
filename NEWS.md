@@ -1,5 +1,6 @@
 # robotstxtr (development version)
 
+* Validator: `accepted_directive_prefix` also flags a key Google reads as User-agent by prefix (`User-agents: *`); prefix rows no longer say Bing and Yandex ignore the key (ROBO-lgoehhhq).
 * Validator: `user_agent_cut` and `unknown_directive` name a non-ASCII or zero-width space in a User-agent value or before a key and say what Google reads; a cut `*`-led value says it is not `*` (ROBO-jsecjjyo).
 * Validator: new `directive_in_value` warning for a value holding a second directive (`User-agent: * Disallow: /private/`, `ExampleBotAllow: /`), naming the rule Google loses (ROBO-bkzqgvai).
 * Validator: `unknown_directive` on a near miss of `User-agent`, `Allow` or `Disallow` (`User-agnet`, `Disaloow`, `Deny`) names that directive and, for User-agent, which group Google gives the rules after it (ROBO-klmjfsvd).
