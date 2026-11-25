@@ -181,8 +181,9 @@ validation_unsupported <- c(
 #'     (\code{Googlebot/2.1}) or a trailing \code{*}, as the token read is
 #'     the crawler the value names, and any other token, as Google's
 #'     crawlers do not go by it (said only for a value that is ASCII
-#'     or holds no Google token's name, so not for \code{Googlebot} after
-#'     U+2028 or a Latin-1 byte). The Bing and Yandex
+#'     or holds no Google token's name, even split by bytes Google does
+#'     not read, so not for \code{Googlebot} after or holding U+2028 or a
+#'     Latin-1 byte). The Bing and Yandex
 #'     matchers do not cut the value. A value that is valid UTF-8 and holds
 #'     a look-alike character, from a closed list of common ones (Unicode
 #'     hyphens and dashes such as U+2011, U+2212 and U+FF0D, U+FF3F
@@ -3329,8 +3330,10 @@ user_agent_cut_decide <- function(facts, key, kept, effect_warn, lookalike) {
 #   short): Google reads none of them as a token character, and a cut value
 #   is not `*` on Google, so the line is not `User-agent: *` there.
 # - `clean`: the value holds no byte over 0x7F and no ASCII control.
-# - `named`: the value's bytes, ASCII case folded, hold the name of a
-#   documented Google token (validation_google_tokens()).
+# - `named`: the value's bytes, every byte outside [A-Za-z_-] removed and
+#   ASCII case folded, hold the name of a documented Google token
+#   (validation_google_tokens()), so a token split by any byte Google
+#   does not read (`Google\xADbot`) counts.
 user_agent_cut_facts <- function(values) {
   table <- validation_lookalike_code_points
   listed <- c(table$point[table$kind %in% c("space", "invisible")], 0x00AD)
@@ -3356,7 +3359,11 @@ user_agent_cut_facts <- function(values) {
     all(value >= as.raw(0x20) & value < as.raw(0x7F))
   }, logical(1L))
   names <- ascii_lower(validation_google_tokens())
+  token_bytes <- charToRaw(paste0(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", "-_"
+  ))
   named <- vapply(bytes, function(value) {
+    value <- value[value %in% token_bytes]
     upper <- value >= as.raw(0x41) & value <= as.raw(0x5A)
     value[upper] <- as.raw(as.integer(value[upper]) + 32L)
     folded <- rawToChar(value)

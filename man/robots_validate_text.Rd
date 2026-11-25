@@ -190,8 +190,9 @@ Otherwise info: a version suffix
 (\code{Googlebot/2.1}) or a trailing \code{*}, as the token read is
 the crawler the value names, and any other token, as Google's
 crawlers do not go by it (said only for a value that is ASCII
-or holds no Google token's name, so not for \code{Googlebot} after
-U+2028 or a Latin-1 byte). The Bing and Yandex
+or holds no Google token's name, even split by bytes Google does
+not read, so not for \code{Googlebot} after or holding U+2028 or a
+Latin-1 byte). The Bing and Yandex
 matchers do not cut the value. A value that is valid UTF-8 and holds
 a look-alike character, from a closed list of common ones (Unicode
 hyphens and dashes such as U+2011, U+2212 and U+FF0D, U+FF3F

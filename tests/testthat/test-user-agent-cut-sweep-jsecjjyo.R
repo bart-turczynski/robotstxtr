@@ -99,10 +99,14 @@ sw_tokens <- function(target) {
 }
 
 # The documented Google tokens whose name, ASCII case folded, occurs in the
-# written value's bytes (the line after its first `: `).
+# written value's bytes (the line after its first `: `) once every byte
+# outside [A-Za-z_-] is removed, so a token split by any byte counts.
 sw_named_tokens <- function(ua) {
   colon <- which(ua == as.raw(0x3A))[[1L]]
   value <- ua[-seq_len(colon + 1L)]
+  value <- value[value %in% charToRaw(paste0(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", "-_"
+  ))]
   upper <- value >= as.raw(0x41) & value <= as.raw(0x5A)
   value[upper] <- as.raw(as.integer(value[upper]) + 32L)
   folded <- rawToChar(value)

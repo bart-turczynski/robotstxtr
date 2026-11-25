@@ -867,8 +867,9 @@ test_that("\"nothing changes for them\" is printed only where proven", {
   # Bytes the repair does not drop, before a Google token: Googlebot loses
   # the group on Google, so the row states Google's reading only, at
   # today's severity.
-  for (lead in list("\u2028", "\xa0", "\xc2", "\u00e9 ")) {
-    body <- paste0("User-agent: ", lead, "Googlebot\nDisallow: /x\n")
+  for (value in list("\u2028Googlebot", "\xa0Googlebot", "\xc2Googlebot",
+                     "\u00e9 Googlebot")) {
+    body <- paste0("User-agent: ", value, "\nDisallow: /x\n")
     expect_identical(iv_google(body, "Googlebot", "/x"), "allow NA")
     row <- iv_cut(body)
     expect_identical(row$message, paste0(
@@ -879,6 +880,20 @@ test_that("\"nothing changes for them\" is printed only where proven", {
       "matcher: the file has no `User-agent: *` group."
     ))
     expect_identical(row$severity, "info")
+  }
+  # A Google token split by a byte Google does not read counts as named.
+  for (value in list("Google\xadbot", "Googl\u2028ebot", "Google\xc2bot")) {
+    body <- paste0("User-agent: ", value, "\nDisallow: /x\n")
+    expect_identical(iv_google(body, "Googlebot", "/x"), "allow NA",
+                     label = value)
+    row <- iv_cut(body)
+    expect_true(endsWith(row$message, paste0(
+      "gets no rules from Google's matcher: the file has no ",
+      "`User-agent: *` group."
+    )), label = value)
+    expect_false(grepl("nothing changes", row$message, fixed = TRUE),
+                 label = value)
+    expect_identical(row$severity, "info", label = value)
   }
   # ASCII, or other bytes naming no Google token: printed, valid UTF-8
   # or not.
@@ -895,4 +910,7 @@ test_that("\"nothing changes for them\" is printed only where proven", {
                                   "x GOOGLEBOT"))
   expect_identical(facts$clean, c(TRUE, FALSE, FALSE, TRUE))
   expect_identical(facts$named, c(FALSE, FALSE, TRUE, TRUE))
+  expect_identical(user_agent_cut_facts(c("Google\xadbot", "Exa\xadmple",
+                                          "Googl\u2028ebot"))$named,
+                   c(TRUE, FALSE, TRUE))
 })
