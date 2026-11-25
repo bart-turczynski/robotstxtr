@@ -34,9 +34,15 @@ test_that("a sitemap value without a scheme is invalid_sitemap_url", {
 })
 
 test_that("a scheme without '//' is invalid whatever rurl accepts", {
-  # A lenient rurl that parses "http:x.com" must not let it pass.
+  # A lenient rurl that parses "http:x.com" must not let it pass. The
+  # validator parses a document's values in one batch call and falls back
+  # to the scalar call, so both are mocked (ROBO-qjynmmzw).
   local_mocked_bindings(
     safe_parse_url = function(...) list(scheme = "http", host = "x.com"),
+    safe_parse_urls = function(url, ...) {
+      data.frame(scheme = rep("http", length(url)),
+                 host = rep("x.com", length(url)))
+    },
     .package = "rurl"
   )
   expect_value_codes("Sitemap: http:x.com", "invalid_sitemap_url", "sitemap")
