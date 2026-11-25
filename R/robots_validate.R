@@ -152,7 +152,15 @@ validation_unsupported <- c(
 #'     the first User-agent line, or, between stacked User-agent lines,
 #'     join the next group) and adds that Bing and Yandex may read the
 #'     following lines differently. In a body over 512,000 bytes it leaves
-#'     out what the line does to the rules after it. \cr
+#'     out what the line does to the rules after it. That sentence stays
+#'     for ASCII keys. A key led by a non-ASCII space or a zero-width
+#'     character, as \code{user_agent_cut} lists them, or holding one
+#'     before its colon, names it, and when the key without them is
+#'     \code{User-agent}, \code{Allow}, \code{Disallow} or \code{Sitemap},
+#'     says so and gives Google's reading: Google does not apply the rule,
+#'     or, for \code{User-agent}, the line starts no group, worded as for a
+#'     near miss and ending the same way. A U+FEFF that starts the line is
+#'     left to \code{misplaced_byte_order_mark}. \cr
 #'   \code{empty_user_agent} \tab error \tab
 #'     A User-agent line with an empty value. \cr
 #'   \code{user_agent_cut} \tab warning or info \tab
@@ -180,7 +188,15 @@ validation_unsupported <- c(
 #'     compare matches; U+00AD SOFT HYPHEN is named as invisible and dropped
 #'     from the spelling. The sentence names the package's Bing or Yandex
 #'     matcher only when the spelling is a crawler that backend evaluates
-#'     (\code{bingbot} written with a Cyrillic o). Latin letters with
+#'     (\code{bingbot} written with a Cyrillic o). A non-ASCII space
+#'     (U+00A0 NO-BREAK SPACE, U+2000 to U+200A, U+202F, U+205F, U+3000) or a
+#'     zero-width character (U+200B to U+200D, U+2060, U+FEFF) counts too
+#'     and is named the same way, as a space or as invisible, spelled as an
+#'     ASCII space or dropped: Google's parser strips ASCII whitespace only,
+#'     so a value padded with no-break spaces before a comment looks right
+#'     but is cut there. Such a sentence names no package matcher, and the
+#'     row then ends saying that Bing and Yandex may read the value
+#'     differently. Latin letters with
 #'     diacritics are not look-alikes. Every other code names the agent as
 #'     written, and a code that names a cut value adds a sentence pointing
 #'     to this row; \code{duplicate_rule} names the token read. A line
@@ -1137,9 +1153,10 @@ validation_unsupported <- c(
 #' non-ASCII character is matched, so most paths with accented letters, a
 #' path in Japanese, or a Latin-1 string converted to UTF-8 on input stay
 #' silent, as do a typed escape such as `%E2%80%8B`, a comment, a
-#' User-agent value (a cut one names its look-alike characters on its
-#' `user_agent_cut` row instead, or on its `directive_in_value` row for a
-#' line whose value holds a second directive key), a Sitemap value, and a
+#' User-agent value (a cut one names its look-alike, space and zero-width
+#' characters on its `user_agent_cut` row instead, or on its
+#' `directive_in_value` row for a line whose value holds a second directive
+#' key), a Sitemap value, and a
 #' rule value that is not valid UTF-8
 #' (bytes after the cut, in a comment or past a NUL, do not count; a
 #' character the line buffer splits is dropped). Each message quotes code
@@ -1605,7 +1622,11 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   }
   # ROBO-atkmqcov: only the BOM at byte 0 is skipped; one that starts a
   # line's content anywhere else stays at the front of the key.
-  for (line in misplaced_bom_lines(raw_lines, has_bom)) {
+  bom_lines <- misplaced_bom_lines(raw_lines, has_bom)
+  # By line, for the unknown_directive rows below (a lookup, not a scan).
+  bom_line <- logical(line_count)
+  bom_line[bom_lines] <- TRUE
+  for (line in bom_lines) {
     hidden <- misplaced_bom_hidden(raw_lines[[line]], line == 1L && has_bom)
     add_diagnostic(
       line, "warning", "misplaced_byte_order_mark", hidden$directive,
@@ -1721,6 +1742,9 @@ validate_document_bytes <- function(bytes, source_id, source_type,
                    c(bytes[-1L], as.raw(0x00)) != as.raw(0x0a))
   near_neighbors <- NULL
   near_cache <- new.env(hash = TRUE, parent = emptyenv())
+  # By ASCII key: the directive a key led by a space or invisible character
+  # hides (ROBO-jsecjjyo), parsed once per key.
+  hidden_key_cache <- new.env(hash = TRUE, parent = emptyenv())
   # Groups not naming `*` whose User-agent lines name at least one crawler
   # (a token Google reads), and whether the file has a `*` group.
   named_groups <- setdiff(groups$agents$group[nzchar(groups$agents$key)],
@@ -1819,8 +1843,44 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         )
       } else {
         # A key holding a look-alike (`Dis<U+0430>llow`) names it and the
-        # ASCII spelling (ROBO-wtixhwlo).
-        key_note <- lookalike_note(parsed$action[[i]], "key")
+        # ASCII spelling (ROBO-wtixhwlo). A U+FEFF that starts the line is
+        # misplaced_byte_order_mark's, and is read as written here.
+        bom_owned <- line <= line_count && bom_line[[line]]
+        key_note <- lookalike_note(parsed$action[[i]], "key",
+                                   skip = if (bom_owned) 0xFEFF)
+        # A space or invisible character before the key or before its
+        # colon (ROBO-jsecjjyo): the directive the line would be without
+        # it, and what Google then does with it.
+        hidden_key <- if (!bom_owned && !is.null(key_note) &&
+                            key_note$unseen) {
+          validation_hidden_key(parsed$action[[i]], hidden_key_cache)
+        }
+        hidden_note <- NULL
+        if (!is.null(hidden_key)) {
+          lead <- sprintf(
+            "Without %s, this is %s %s line; Google does not read it as %s",
+            if (hidden_key$count == 1L) "it" else "them",
+            if (identical(hidden_key$label, "Allow")) "an" else "a",
+            hidden_key$label, hidden_key$label
+          )
+          hidden_note <- if (identical(hidden_key$type, "user-agent")) {
+            if (is.null(near_neighbors)) {
+              near_neighbors <- near_miss_neighbors(
+                parsed, groups,
+                joined_found$line[joined_found$code ==
+                                    "user_agent_joined_across_directive"]
+              )
+            }
+            near_miss_sentence(
+              "user-agent", i, parsed, near_neighbors, lone_cr,
+              body_truncated, stored_size > 512000L, lead = lead
+            )
+          } else if (hidden_key$type %in% c("allow", "disallow")) {
+            paste0(lead, ", so Google does not apply this rule.")
+          } else {
+            paste0(lead, ".")
+          }
+        }
         # A key near User-agent, Allow or Disallow names it and what the
         # line does (ROBO-klmjfsvd).
         # Looked up once per folded ASCII key: a file can repeat one
@@ -1854,7 +1914,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
           line, "warning", "unknown_directive", action,
           paste0("Directive is not recognized by this validation profile.",
                  if (!is.null(key_note)) paste0(" ", key_note$sentence, "."),
-                 if (!is.null(near_note)) paste0(" ", near_note))
+                 if (!is.null(near_note)) paste0(" ", near_note),
+                 if (!is.null(hidden_note)) paste0(" ", hidden_note))
         )
       }
     }
@@ -3088,6 +3149,13 @@ user_agent_cut_rows <- function(agents, has_global, global_groups) {
   warn <- cut_effect$warn
   message <- paste(read_as, fallback, cut_effect$effect)
   lookalike <- user_agent_lookalike_notes(agents$value)
+  # A space or invisible character in the value (ROBO-jsecjjyo): Google's
+  # reading is the one stated, and no recorded source says how Bing or
+  # Yandex read it. Added here, not in user_agent_lookalike_notes(), as the
+  # directive_in_value row ends with a clause of its own.
+  unseen <- attr(lookalike, "unseen")
+  lookalike[unseen] <- paste0(lookalike[unseen], " Bing and Yandex may ",
+                              "read this value differently.")
   message[nzchar(lookalike)] <- paste(message[nzchar(lookalike)],
                                       lookalike[nzchar(lookalike)])
   # A value holding a look-alike is matched by no byte compare, so its row
@@ -9079,6 +9147,12 @@ mojibake_units <- function(points) {
 # invisible (as validation_invisible_code_points has it), so it resembles
 # nothing and is dropped from the spelling.
 # Latin letters with diacritics are not look-alikes.
+# The `kind` column (ROBO-jsecjjyo): "lookalike" for the rows above, U+00AD
+# among them; "space" for the non-ASCII spaces (U+00A0, U+2000 to U+200A,
+# U+202F, U+205F, U+3000), spelled as an ASCII space; "invisible" for the
+# zero-width characters (U+200B to U+200D, U+2060, U+FEFF), dropped from the
+# spelling. Google's parser strips ASCII whitespace only, so a value or key
+# holding one looks right but is read with it.
 validation_lookalike_code_points <- data.frame(
   point = c(
     0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015, 0x2212, 0xFE58,
@@ -9088,7 +9162,10 @@ validation_lookalike_code_points <- data.frame(
     0x0410, 0x0412, 0x0415, 0x041A, 0x041C, 0x041D, 0x041E, 0x0420,
     0x0421, 0x0422, 0x0425, 0x0406, 0x0408, 0x0405,
     0x0391, 0x0392, 0x0395, 0x0396, 0x0397, 0x0399, 0x039A, 0x039C,
-    0x039D, 0x039F, 0x03A1, 0x03A4, 0x03A5, 0x03A7, 0x03BF
+    0x039D, 0x039F, 0x03A1, 0x03A4, 0x03A5, 0x03A7, 0x03BF,
+    0x00A0, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006,
+    0x2007, 0x2008, 0x2009, 0x200A, 0x202F, 0x205F, 0x3000,
+    0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF
   ),
   name = c(
     "HYPHEN", "NON-BREAKING HYPHEN", "FIGURE DASH", "EN DASH", "EM DASH",
@@ -9106,15 +9183,24 @@ validation_lookalike_code_points <- data.frame(
       "ALPHA", "BETA", "EPSILON", "ZETA", "ETA", "IOTA", "KAPPA", "MU",
       "NU", "OMICRON", "RHO", "TAU", "UPSILON", "CHI"
     )),
-    "GREEK SMALL LETTER OMICRON"
+    "GREEK SMALL LETTER OMICRON",
+    "NO-BREAK SPACE", "EN QUAD", "EM QUAD", "EN SPACE", "EM SPACE",
+    "THREE-PER-EM SPACE", "FOUR-PER-EM SPACE", "SIX-PER-EM SPACE",
+    "FIGURE SPACE", "PUNCTUATION SPACE", "THIN SPACE", "HAIR SPACE",
+    "NARROW NO-BREAK SPACE", "MEDIUM MATHEMATICAL SPACE",
+    "IDEOGRAPHIC SPACE",
+    "ZERO WIDTH SPACE", "ZERO WIDTH NON-JOINER", "ZERO WIDTH JOINER",
+    "WORD JOINER", "ZERO WIDTH NO-BREAK SPACE"
   ),
   ascii = c(
     rep("-", 10L), "_", "",
     "a", "e", "o", "p", "c", "y", "x", "i", "j", "s", "d",
     "A", "B", "E", "K", "M", "H", "O", "P", "C", "T", "X", "I", "J", "S",
     "A", "B", "E", "Z", "H", "I", "K", "M", "N", "O", "P", "T", "Y", "X",
-    "o"
+    "o",
+    rep(" ", 15L), rep("", 5L)
   ),
+  kind = c(rep("lookalike", 52L), rep("space", 15L), rep("invisible", 5L)),
   stringsAsFactors = FALSE
 )
 
@@ -9185,8 +9271,12 @@ lookalike_split_completes <- function(bytes, line_bytes, first_line) {
 # list(sentence, spelled): `spelled` is the text with each look-alike
 # replaced by its ASCII (an invisible one dropped), for the caller to
 # compare; the sentence quotes it rendered as render_validation_line()
-# does. One pass over the text's bytes and code points.
-lookalike_note <- function(text, noun) {
+# does. `unseen` is TRUE when one of them is a space or an invisible
+# character of the table's "space" or "invisible" kind (ROBO-jsecjjyo).
+# Code points in `skip` are read as other characters are (a U+FEFF that
+# misplaced_byte_order_mark already names). One pass over the text's bytes
+# and code points.
+lookalike_note <- function(text, noun, skip = integer()) {
   bytes <- charToRaw(text)
   # A speed path only: ASCII text holds no look-alike, and most values are
   # ASCII.
@@ -9200,6 +9290,7 @@ lookalike_note <- function(text, noun) {
   points <- utf8ToInt(rawToChar(bytes))
   table <- validation_lookalike_code_points
   at <- match(points, table$point)
+  at[points %in% skip] <- NA_integer_
   hit <- which(!is.na(at))
   if (length(hit) == 0L) {
     return(NULL)
@@ -9209,7 +9300,9 @@ lookalike_note <- function(text, noun) {
   first <- hit[!duplicated(points[hit])]
   row <- at[first]
   ascii <- table$ascii[row]
+  kind <- table$kind[row]
   invisible <- !nzchar(ascii)
+  space <- kind == "space"
   spelled_points <- as.list(points)
   spelled_points[hit] <- lapply(table$ascii[at[hit]], utf8ToInt)
   spelled <- intToUtf8(unlist(spelled_points, use.names = FALSE))
@@ -9217,34 +9310,96 @@ lookalike_note <- function(text, noun) {
   named <- sprintf("U+%04X %s at byte %d", points[first], table$name[row],
                    offsets[first])
   one <- length(first) == 1L
-  # How the spelling was made. The table holds one invisible character, so
-  # only a single look-alike can be all invisible ("without it"). Other
-  # non-ASCII characters are kept as written, and the words say whether a
-  # look-alike was replaced, dropped, or both.
+  # What each one is. A space is spelled as an ASCII space; the no-break
+  # ones are named so.
+  what <- sprintf("looks like '%s'", ascii)
+  what[invisible] <- "invisible"
+  what[space] <- "a space character"
+  what[space & points[first] %in% c(0x00A0, 0x2007, 0x202F)] <-
+    "a no-break space"
+  # How the spelling was made. Other non-ASCII characters are kept as
+  # written, and the words say whether a look-alike was replaced, dropped,
+  # or both.
   spelling <- if (all(invisible)) {
-    "without it"
+    if (one) "without it" else "without them"
   } else if (all(charToRaw(spelled) < as.raw(0x80))) {
     "written in ASCII"
   } else if (one) {
     "with ASCII in its place"
   } else if (any(invisible)) {
-    "with ASCII for the look-alikes and the invisible one dropped"
+    paste0("with ASCII for the look-alikes and the invisible ",
+           if (sum(invisible) == 1L) "one" else "ones", " dropped")
   } else {
     "with ASCII in their place"
   }
   held <- if (one) {
-    paste0(named, ", which ", if (invisible) "is invisible" else
-      sprintf("looks like '%s'", ascii))
+    paste0(named, ", which ", if (space) paste("is", what) else
+      if (invisible) "is invisible" else what)
   } else {
-    paste0("characters that look like ASCII",
-           if (any(invisible)) " or are invisible", ": ",
-           unicode_advisory_list(paste0(named, ifelse(
-             invisible, " (invisible)", sprintf(" (looks like '%s')", ascii)
-           ))))
+    looks <- !invisible & !space
+    classes <- c(if (any(looks)) "look like ASCII",
+                 if (any(invisible)) "are invisible",
+                 if (any(space)) "are non-ASCII spaces")
+    paste0("characters that ", joined_or(classes), ": ",
+           unicode_advisory_list(paste0(named, " (", what, ")")))
   }
   list(sentence = sprintf("The %s holds %s; %s the %s is '%s'", noun, held,
                           spelling, noun, shown),
-       spelled = spelled)
+       spelled = spelled,
+       unseen = any(kind %in% c("space", "invisible")))
+}
+
+# The directive an unknown key would be without the spaces and invisible
+# characters (the table's "space" and "invisible" kinds) that lead it or
+# stand before its colon (ROBO-jsecjjyo), mixed with ASCII blanks: a list of
+# `type` ("user-agent", "allow", "disallow" or "sitemap"), its `label` and
+# the `count` of such characters removed, or NULL. A key that still holds a
+# non-ASCII character once they are removed, a character inside the key, is
+# left out. The rest is parsed alone as Google's parser reads it, so a typo
+# or prefix form counts; `cache` (an environment) keeps each ASCII key's
+# type, so a repeated key is parsed once.
+validation_hidden_key <- function(action, cache) {
+  points <- utf8ToInt(rawToChar(charToRaw(action)))
+  if (length(points) == 0L || anyNA(points)) {
+    return(NULL)
+  }
+  table <- validation_lookalike_code_points
+  unseen <- table$point[table$kind %in% c("space", "invisible")]
+  edge <- points %in% c(unseen, 0x09, 0x0B, 0x0C, 0x20)
+  kept <- which(!edge)
+  if (length(kept) == 0L) {
+    return(NULL)
+  }
+  lo <- kept[[1L]]
+  hi <- kept[[length(kept)]]
+  removed <- points[-(lo:hi)]
+  count <- sum(removed %in% unseen)
+  key <- points[lo:hi]
+  if (count == 0L || any(key >= 0x80)) {
+    return(NULL)
+  }
+  key <- intToUtf8(key)
+  type <- cache[[key]]
+  if (is.null(type)) {
+    parsed <- robotstxtr_validation_parse_(charToRaw(paste0(key, ": x\n")))
+    type <- if (isTRUE(parsed$has_directive[[1L]])) parsed$type[[1L]] else ""
+    assign(key, type, envir = cache)
+  }
+  labels <- c("user-agent" = "User-agent", allow = "Allow",
+              disallow = "Disallow", sitemap = "Sitemap")
+  if (!type %in% names(labels)) {
+    return(NULL)
+  }
+  list(type = type, label = labels[[type]], count = count)
+}
+
+# "a", "a or b", "a, b or c".
+joined_or <- function(items) {
+  n <- length(items)
+  if (n <= 1L) {
+    return(paste(items, collapse = ""))
+  }
+  paste0(toString(items[-n]), " or ", items[[n]])
 }
 
 # By cut row, the look-alike sentences of its written value (`values`, as
@@ -9252,20 +9407,29 @@ lookalike_note <- function(text, noun) {
 # what a matcher that compares bytes would need, so the sentence says none
 # matches. Bing or Yandex is named only when the spelling, folded to ASCII
 # lower case, is one of the crawlers its backend evaluates
-# (duplicate_rule_cut_engines()), read once per call.
+# (duplicate_rule_cut_engines()), read once per call. A value holding a
+# space or invisible character (ROBO-jsecjjyo) names no backend: the
+# package's backends are no evidence of how Bing or Yandex read such a
+# value, so the caller adds what it says of them. The attribute `unseen`
+# marks those rows.
 user_agent_lookalike_notes <- function(values) {
   notes <- lapply(values, lookalike_note, noun = "value")
   found <- !vapply(notes, is.null, logical(1L))
   out <- character(length(values))
+  attr(out, "unseen") <- logical(length(values))
   if (!any(found)) {
     return(out)
   }
+  attr(out, "unseen")[found] <- vapply(notes[found], `[[`, logical(1L),
+                                       "unseen")
   engines <- duplicate_rule_cut_engines()
   out[found] <- vapply(notes[found], function(note) {
     folded <- ascii_lower(note$spelled)
-    named <- names(engines)[vapply(engines, function(accepted) {
-      folded %in% accepted
-    }, logical(1L))]
+    named <- if (!note$unseen) {
+      names(engines)[vapply(engines, function(accepted) {
+        folded %in% accepted
+      }, logical(1L))]
+    }
     paste0(
       note$sentence, ", which no byte compare matches to this value.",
       if (length(named) > 0L) {
@@ -9537,21 +9701,26 @@ near_miss_neighbors <- function(parsed, groups, joined) {
 # changes what the file decides. In a body over 512,000 bytes (`big`),
 # past what Google reads, the effect on the lines after it is left out.
 # `truncated` says the body was cut, past which no rule was read.
+# `lead`, when given, replaces the first clause (a User-agent key hidden
+# behind a space or invisible character, ROBO-jsecjjyo); the rest is the
+# same Google reading.
 near_miss_sentence <- function(target, i, parsed, neighbors, lone_cr,
-                               truncated, big, cap = 5L) {
+                               truncated, big, cap = 5L, lead = NULL) {
   label <- c("user-agent" = "User-agent", allow = "Allow",
              disallow = "Disallow")[[target]]
-  # A backtick is written as the escape printed values use for other bytes,
-  # so it cannot end the code span.
-  key <- gsub("`", "\\x60", render_validation_line(charToRaw(
-    parsed$action[[i]]
-  )), fixed = TRUE)
-  lead <- sprintf("The key `%s` resembles `%s`, but %s it as %s", key, label,
-                  if (lone_cr || identical(target, "user-agent")) {
-                    "Google does not read"
-                  } else {
-                    "no engine reads"
-                  }, label)
+  if (is.null(lead)) {
+    # A backtick is written as the escape printed values use for other
+    # bytes, so it cannot end the code span.
+    key <- gsub("`", "\\x60", render_validation_line(charToRaw(
+      parsed$action[[i]]
+    )), fixed = TRUE)
+    lead <- sprintf("The key `%s` resembles `%s`, but %s it as %s", key,
+                    label, if (lone_cr || identical(target, "user-agent")) {
+                      "Google does not read"
+                    } else {
+                      "no engine reads"
+                    }, label)
+  }
   if (!identical(target, "user-agent")) {
     return(paste0(lead, ", so ", if (lone_cr) "Google does not apply" else
       "no engine applies", " this rule."))

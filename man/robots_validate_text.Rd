@@ -161,7 +161,15 @@ with the group above, naming its crawlers, are in no group before
 the first User-agent line, or, between stacked User-agent lines,
 join the next group) and adds that Bing and Yandex may read the
 following lines differently. In a body over 512,000 bytes it leaves
-out what the line does to the rules after it. \cr
+out what the line does to the rules after it. That sentence stays
+for ASCII keys. A key led by a non-ASCII space or a zero-width
+character, as \code{user_agent_cut} lists them, or holding one
+before its colon, names it, and when the key without them is
+\code{User-agent}, \code{Allow}, \code{Disallow} or \code{Sitemap},
+says so and gives Google's reading: Google does not apply the rule,
+or, for \code{User-agent}, the line starts no group, worded as for a
+near miss and ending the same way. A U+FEFF that starts the line is
+left to \code{misplaced_byte_order_mark}. \cr
 \code{empty_user_agent} \tab error \tab
 A User-agent line with an empty value. \cr
 \code{user_agent_cut} \tab warning or info \tab
@@ -189,7 +197,15 @@ offset, at most ten, and giving the ASCII spelling, which no byte
 compare matches; U+00AD SOFT HYPHEN is named as invisible and dropped
 from the spelling. The sentence names the package's Bing or Yandex
 matcher only when the spelling is a crawler that backend evaluates
-(\code{bingbot} written with a Cyrillic o). Latin letters with
+(\code{bingbot} written with a Cyrillic o). A non-ASCII space
+(U+00A0 NO-BREAK SPACE, U+2000 to U+200A, U+202F, U+205F, U+3000) or a
+zero-width character (U+200B to U+200D, U+2060, U+FEFF) counts too
+and is named the same way, as a space or as invisible, spelled as an
+ASCII space or dropped: Google's parser strips ASCII whitespace only,
+so a value padded with no-break spaces before a comment looks right
+but is cut there. Such a sentence names no package matcher, and the
+row then ends saying that Bing and Yandex may read the value
+differently. Latin letters with
 diacritics are not look-alikes. Every other code names the agent as
 written, and a code that names a cut value adds a sentence pointing
 to this row; \code{duplicate_rule} names the token read. A line
@@ -1146,9 +1162,10 @@ still a C1 control and gets \code{rule_invisible_character}. No other
 non-ASCII character is matched, so most paths with accented letters, a
 path in Japanese, or a Latin-1 string converted to UTF-8 on input stay
 silent, as do a typed escape such as \verb{\%E2\%80\%8B}, a comment, a
-User-agent value (a cut one names its look-alike characters on its
-\code{user_agent_cut} row instead, or on its \code{directive_in_value} row for a
-line whose value holds a second directive key), a Sitemap value, and a
+User-agent value (a cut one names its look-alike, space and zero-width
+characters on its \code{user_agent_cut} row instead, or on its
+\code{directive_in_value} row for a line whose value holds a second directive
+key), a Sitemap value, and a
 rule value that is not valid UTF-8
 (bytes after the cut, in a comment or past a NUL, do not count; a
 character the line buffer splits is dropped). Each message quotes code

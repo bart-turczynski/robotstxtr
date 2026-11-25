@@ -413,8 +413,10 @@ test_that("non-ASCII keys are left to other checks", {
   x <- nm_text("User-agent: *", "Disаllow: /x")
   expect_true(startsWith(nm_rows(x)$message, paste0(nm_plain, " ")))
   expect_false(grepl("resembles", nm_rows(x)$message, fixed = TRUE))
-  x <- nm_text("User-agent: *", "​Disallow: /x")
-  expect_identical(nm_rows(x)$message, nm_plain)
+  # The invisible character gets ROBO-jsecjjyo's sentence, not this one.
+  x <- nm_text("User-agent: *", "\u200bDisallow: /x")
+  expect_true(startsWith(nm_rows(x)$message, paste0(nm_plain, " ")))
+  expect_false(grepl("resembles", nm_rows(x)$message, fixed = TRUE))
   x <- robots_validate_text("User-agent: *\nDis\xffallow: /x\n")
   expect_identical(nm_rows(x)$message, nm_plain)
 })
