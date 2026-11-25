@@ -163,13 +163,15 @@ join the next group) and adds that Bing and Yandex may read the
 following lines differently. In a body over 512,000 bytes it leaves
 out what the line does to the rules after it. That sentence stays
 for ASCII keys. A key led by a non-ASCII space or a zero-width
-character, as \code{user_agent_cut} lists them, or holding one
-before its colon, names it, and when the key without them is
+character, as \code{user_agent_cut} lists them, names it, and when
+the key without them (and without any before its colon) is
 \code{User-agent}, \code{Allow}, \code{Disallow} or \code{Sitemap},
 says so and gives Google's reading: Google does not apply the rule,
 or, for \code{User-agent}, the line starts no group, worded as for a
-near miss and ending the same way. A U+FEFF that starts the line is
-left to \code{misplaced_byte_order_mark}. \cr
+near miss and ending the same way. One only before the colon of
+those four keys is no unknown key, as Google reads them by their
+start. A U+FEFF that starts the line is named by
+\code{misplaced_byte_order_mark}, and the key is read past it. \cr
 \code{empty_user_agent} \tab error \tab
 A User-agent line with an empty value. \cr
 \code{user_agent_cut} \tab warning or info \tab
@@ -179,11 +181,12 @@ character outside letters, \code{_} and \code{-}, such as
 read, or says it names no crawler (\code{*bot}), and states the
 effect: there the written value does not match its own record, so a
 crawler going by it gets another group naming it, else
-\code{User-agent: *}, else no rules. A warning in two cases: the
+\code{User-agent: *}, else no rules. A warning in three cases: the
 value holds a look-alike character (below), whatever the token, as
-no byte compare matches it; or the token read is a documented Google
+no byte compare matches it; the token read is a documented Google
 crawler token the value did not mean (\code{Googlebot Image}, read
-as \code{Googlebot}). Otherwise info: a version suffix
+as \code{Googlebot}); or the value is led by \code{*} (below).
+Otherwise info: a version suffix
 (\code{Googlebot/2.1}) or a trailing \code{*}, as the token read is
 the crawler the value names, and any other token, as Google's
 crawlers do not go by it. The Bing and Yandex
@@ -198,14 +201,21 @@ compare matches; U+00AD SOFT HYPHEN is named as invisible and dropped
 from the spelling. The sentence names the package's Bing or Yandex
 matcher only when the spelling is a crawler that backend evaluates
 (\code{bingbot} written with a Cyrillic o). A non-ASCII space
-(U+00A0 NO-BREAK SPACE, U+2000 to U+200A, U+202F, U+205F, U+3000) or a
-zero-width character (U+200B to U+200D, U+2060, U+FEFF) counts too
-and is named the same way, as a space or as invisible, spelled as an
-ASCII space or dropped: Google's parser strips ASCII whitespace only,
-so a value padded with no-break spaces before a comment looks right
-but is cut there. Such a sentence names no package matcher, and the
-row then ends saying that Bing and Yandex may read the value
-differently. Latin letters with
+(U+00A0 NO-BREAK SPACE, U+1680, U+2000 to U+200A, U+202F, U+205F,
+U+3000) or a zero-width character (U+200B to U+200D, U+2060,
+U+FEFF) counts too and is named the same way, as a space or as
+invisible, spelled as an ASCII space or dropped: Google's parser
+strips ASCII whitespace only, so a value padded with no-break spaces
+before a comment looks right but is cut there. Such a sentence names
+no package matcher, and the row then ends saying that Bing and
+Yandex may read the value differently. A cut value led by
+\code{*}, such as \code{*bot} or a \code{*} padded or followed by
+such a character, is not read as \code{User-agent: *}: the row says
+so, and that on Google no crawler, Google's included, gets the group
+through the line, in place of the fallback and effect sentences; it
+is a warning unless another line of the group is
+\code{User-agent: *}.
+Latin letters with
 diacritics are not look-alikes. Every other code names the agent as
 written, and a code that names a cut value adds a sentence pointing
 to this row; \code{duplicate_rule} names the token read. A line

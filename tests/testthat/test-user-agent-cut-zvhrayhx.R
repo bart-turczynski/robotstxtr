@@ -42,6 +42,15 @@ uac_none <- paste(
   uac_no_star, uac_other
 )
 
+# A value led by `*` is not `*` on Google either (ROBO-jsecjjyo).
+uac_star <- paste0(
+  "User-agent value names no crawler for Google's matcher, which reads a ",
+  "product token only from a leading run of letters, '_' and '-', so there ",
+  "this line matches no crawler. Google does not read this line as ",
+  "`User-agent: *`, so on Google no crawler, Google's included, gets this ",
+  "group through it; a crawler that no group names gets no rules."
+)
+
 test_that("a value cut at a space is one info row naming the token read", {
   x <- robots_validate_text(uac_body("Foo Bot"))
   expect_identical(x$documents$validation_status, "valid")
@@ -63,7 +72,7 @@ test_that("each cut names the token the matcher reads", {
       "changes for that crawler."
     ))
   )
-  expect_identical(uac_rows(uac_body("*bot"))$message, uac_none)
+  expect_identical(uac_rows(uac_body("*bot"))$message, uac_star)
   expect_identical(uac_rows(uac_body("2bot"))$message, uac_none)
 })
 

@@ -120,7 +120,8 @@ test_that("a zero-width space before Disallow names it and the rule", {
     "Disallow line; Google does not read it as Disallow, so Google does not ",
     "apply this rule."
   ))
-  x <- iv_text("User-agent: *", "\u00a0\u00a0Allow: /x")
+  # Two kinds before the key: both named, so "them".
+  x <- iv_text("User-agent: *", "\u00a0\u2060Allow: /x")
   expect_true(endsWith(
     iv_rows(x, "unknown_directive")$message,
     paste0("Without them, this is an Allow line; Google does not read it ",
@@ -177,7 +178,7 @@ test_that("a zero-width space before User-agent gets Google's group reading", {
 })
 
 test_that("each listed character is named by code point and kind", {
-  points <- c(0x00A0, 0x2000:0x200A, 0x202F, 0x205F, 0x3000,
+  points <- c(0x00A0, 0x1680, 0x2000:0x200A, 0x202F, 0x205F, 0x3000,
               0x200B:0x200D, 0x2060, 0xFEFF)
   table <- validation_lookalike_code_points
   for (point in points) {
@@ -335,6 +336,25 @@ test_that("a repeated hidden key is read once per key", {
   expect_identical(nrow(rows), 200L)
   expect_true(all(endsWith(rows$message,
                            "so Google does not apply this rule.")))
+  # The parser calls a body makes: a hidden key adds one per distinct key,
+  # however often it repeats, over the same body with an ASCII-led key.
+  calls <- new.env(parent = emptyenv())
+  parse <- robotstxtr_validation_parse_
+  local_mocked_bindings(robotstxtr_validation_parse_ = function(...) {
+    assign("n", calls$n + 1L, envir = calls)
+    parse(...)
+  })
+  extra <- function(n) {
+    count <- function(key) {
+      assign("n", 0L, envir = calls)
+      robots_validate_text(iv_lines("User-agent: *",
+                                    rep(paste0(key, "Disallow: /x"), n)))
+      calls$n
+    }
+    count("\u200b") - count("x")
+  }
+  expect_identical(extra(1L), 1L)
+  expect_identical(extra(200L), 1L)
 })
 
 # Consistency with the package's backends: optional, not proof, and no
@@ -346,4 +366,206 @@ test_that("consistency with the package's backends on the key case", {
                                  token, "google", backend)$results
     expect_identical(r$url_decision, "allow", label = backend)
   }
+})
+
+test_that("a cut value led by `*` is not `*` on Google", {
+  star <- paste0("User-agent value names no crawler for Google's matcher, ",
+                 "which reads a product token only from a leading run of ",
+                 "letters, '_' and '-', so there this line matches no ",
+                 "crawler. Google does not read this line as ",
+                 "`User-agent: *`, so on Google no crawler, Google's ",
+                 "included, gets this group through it; ")
+  no_rules <- paste0(star, "a crawler that no group names gets no rules.")
+  star_row <- function(body) iv_rows(robots_validate_text(body),
+                                     "user_agent_cut")
+  # Padded before a comment: on Google no crawler gets the group, while
+  # ASCII padding keeps `*` and draws no row.
+  body <- iv_lines("User-agent: *\u00a0  # all", "Disallow: /x")
+  for (token in c("ExampleBot", "Googlebot", "GPTBot")) {
+    expect_identical(iv_google(body, token, "/x"), "allow NA", label = token)
+  }
+  ascii <- iv_lines("User-agent: *   # all", "Disallow: /x")
+  expect_identical(iv_google(ascii, "Googlebot", "/x"), "disallow 2")
+  expect_identical(nrow(robots_validate_text(ascii)$diagnostics), 0L)
+  row <- star_row(body)
+  expect_identical(row$severity, "warning")
+  expect_true(startsWith(row$message, paste0(no_rules, " The value holds ",
+                                             "U+00A0 NO-BREAK SPACE")))
+  expect_true(endsWith(row$message, iv_value_clause))
+  expect_identical(iv_count(row$message, "Bing|Yandex"), 2L)
+  # Any kind after `*`, one before it, ASCII after it, or a character
+  # outside the table (U+2028, named by no row here): the same reading.
+  for (value in c("*\u3000", "*\u200b", "*\u0430", "\u00a0*", "*foo", "**",
+                  "*/1.0", "*\u2028")) {
+    body <- iv_lines(paste0("User-agent: ", value), "Disallow: /x")
+    for (token in c("ExampleBot", "Googlebot")) {
+      expect_identical(iv_google(body, token, "/x"), "allow NA",
+                       label = paste(value, token))
+    }
+    row <- star_row(body)
+    expect_true(startsWith(row$message, no_rules), label = value)
+    expect_false(grepl("nothing changes", row$message, fixed = TRUE),
+                 label = value)
+    expect_false(grepl("the file has no", row$message, fixed = TRUE),
+                 label = value)
+    expect_identical(row$severity, "warning", label = value)
+  }
+  # U+2028 right after `*`, then a space: every crawler loses the rule,
+  # which applies once the character is removed.
+  body <- "User-agent: *\u2028 \nDisallow: /private/ \n"
+  for (token in c("Googlebot", "GPTBot", "ExampleBot")) {
+    expect_identical(iv_google(body, token, "/private/x"), "allow NA",
+                     label = token)
+    expect_identical(iv_google(gsub("\u2028", "", body, fixed = TRUE),
+                               token, "/private/x"), "disallow 2",
+                     label = token)
+  }
+  row <- star_row(body)
+  expect_identical(row$message, no_rules)
+  expect_identical(row$severity, "warning")
+  # Beside another User-agent line: that line keeps the group.
+  body <- iv_lines("User-agent: *\u00a0", "User-agent: foo", "Disallow: /x")
+  expect_identical(iv_google(body, "foo", "/x"), "disallow 3")
+  expect_identical(iv_google(body, "Googlebot", "/x"), "allow NA")
+  expect_true(startsWith(star_row(body)$message, no_rules))
+  # Beside a clean `*` group: crawlers no group names get that one.
+  body <- iv_lines("User-agent: *", "Disallow: /y", "", "User-agent: *bot",
+                   "Disallow: /x")
+  expect_identical(iv_google(body, "Googlebot", "/x"), "allow NA")
+  expect_identical(iv_google(body, "Googlebot", "/y"), "disallow 2")
+  row <- star_row(body)
+  expect_identical(row$message, paste0(
+    star, "a crawler that no group names gets the other `User-agent: *` ",
+    "group."
+  ))
+  expect_identical(row$severity, "warning")
+  # In a group that also names `*`: that line gives the group to all, so no
+  # crawler loses it and the row stays info.
+  body <- iv_lines("User-agent: *", "User-agent: *bot", "Disallow: /x")
+  for (token in c("ExampleBot", "Googlebot")) {
+    expect_identical(iv_google(body, token, "/x"), "disallow 3", label = token)
+  }
+  row <- star_row(body)
+  expect_identical(row$message, paste0(
+    star, "the group still reaches every crawler that no other group names, ",
+    "as another of its lines is `User-agent: *`."
+  ))
+  expect_identical(row$severity, "info")
+  # A token before the `*` keeps the other wording.
+  message <- star_row(iv_lines("User-agent: a\u00a0*", "Disallow: /x"))$message
+  expect_false(grepl("Google does not read this line", message, fixed = TRUE))
+})
+
+test_that("the hidden key needs ASCII between the characters it drops", {
+  # A key that is only a zero-width space: named, no directive, no error.
+  x <- iv_text("User-agent: *", "\u200b: x")
+  message <- iv_rows(x, "unknown_directive")$message
+  expect_true(grepl("U+200B ZERO WIDTH SPACE at byte 1", message,
+                    fixed = TRUE))
+  expect_false(grepl("this is a", message, fixed = TRUE))
+  # ASCII blanks between the character and the key are dropped too.
+  x <- iv_text("User-agent: *", "\u200b  Disallow: /x")
+  expect_true(endsWith(
+    iv_rows(x, "unknown_directive")$message,
+    paste0("Without it, this is a Disallow line; Google does not read it ",
+           "as Disallow, so Google does not apply this rule.")
+  ))
+  expect_identical(iv_google(iv_lines("User-agent: *", "\u200b  Disallow: /x"),
+                             "ExampleBot", "/x"), "allow NA")
+  # And between two such characters.
+  x <- iv_text("User-agent: *", "\u200b \u00a0Disallow: /x")
+  expect_true(endsWith(
+    iv_rows(x, "unknown_directive")$message,
+    paste0("Without them, this is a Disallow line; Google does not read it ",
+           "as Disallow, so Google does not apply this rule.")
+  ))
+  # A key still holding a non-ASCII letter hides no key, and is never
+  # parsed or kept as a cache key.
+  x <- iv_text("User-agent: *", "\u200bDisallow\u0430: /x")
+  expect_false(grepl("this is a", iv_rows(x, "unknown_directive")$message,
+                     fixed = TRUE))
+  cache <- new.env(parent = emptyenv())
+  expect_null(validation_hidden_key("\u200bDisallow\u0430", cache))
+  expect_identical(ls(cache), character())
+  expect_null(validation_hidden_key("\u200b", cache))
+  expect_identical(validation_hidden_key("\u200bDisallow", cache)$type,
+                   "disallow")
+  expect_identical(ls(cache), "Disallow")
+})
+
+test_that("a misplaced U+FEFF before a zero-width space", {
+  body <- iv_lines("User-agent: *", "\ufeff\u200bDisallow: /p")
+  # Google does not apply the rule.
+  expect_identical(iv_google(body, "ExampleBot", "/p"), "allow NA")
+  x <- robots_validate_text(body)
+  expect_identical(iv_codes(x), c("2 warning misplaced_byte_order_mark",
+                                  "2 warning unknown_directive",
+                                  "NA info no_rules"))
+  message <- iv_rows(x, "unknown_directive")$message
+  expect_true(endsWith(message, paste0(
+    "Without it and the byte-order mark, this is a Disallow line; Google ",
+    "does not read it as Disallow, so Google does not apply this rule."
+  )))
+  # U+FEFF is named once, by its own row.
+  expect_false(grepl("U+FEFF", message, fixed = TRUE))
+  expect_true(grepl("U+200B ZERO WIDTH SPACE at byte 4", message,
+                    fixed = TRUE))
+})
+
+test_that("the spelling and it/them follow what the sentence names", {
+  spell <- function(value) {
+    iv_rows(iv_text(paste0("User-agent: ", value), "Disallow: /"),
+            "user_agent_cut")$message
+  }
+  # Other non-ASCII text kept, so the spelling says what was done to each.
+  expect_true(grepl(paste0("; with ASCII for the space and the invisible ",
+                           "ones dropped the value is"),
+                    spell("\u00e9\u00a0\u200b\u2060x"), fixed = TRUE))
+  expect_true(grepl(paste0("; with ASCII for the space and the invisible one ",
+                           "dropped the value is"),
+                    spell("\u00e9\u00a0\u200bx"), fixed = TRUE))
+  expect_true(grepl(paste0("; with ASCII for the look-alikes and the spaces ",
+                           "and the invisible ones dropped the value is"),
+                    spell("\u00e9\u0430\u00a0\u3000\u200b\u2060x"),
+                    fixed = TRUE))
+  # One character, repeated: named once, so "it".
+  key_end <- function(...) iv_rows(iv_text("User-agent: *", ...),
+                                   "unknown_directive")$message
+  message <- key_end("\u200b\u200bAllow: /q")
+  expect_true(grepl("at byte 1, which is invisible; without it the key",
+                    message, fixed = TRUE))
+  expect_true(grepl("Without it, this is an Allow line", message,
+                    fixed = TRUE))
+  message <- key_end("\u200bDisallow\u200b\u200b: /x")
+  expect_true(grepl("at byte 1, which is invisible; without it the key",
+                    message, fixed = TRUE))
+  expect_true(grepl("Without it, this is a Disallow line", message,
+                    fixed = TRUE))
+  # Two characters: named both, so "them".
+  message <- key_end("\u200bDisallow\u00a0: /x")
+  expect_true(grepl("characters that are invisible or are non-ASCII spaces",
+                    message, fixed = TRUE))
+  expect_true(grepl("Without them, this is a Disallow line", message,
+                    fixed = TRUE))
+})
+
+# Best of five runs of robots_validate_text().
+iv_time <- function(body) {
+  min(vapply(1:5, function(i) {
+    system.time(robots_validate_text(body))[["elapsed"]]
+  }, 0))
+}
+
+test_that("listed characters keep validation linear in lines", {
+  # Groups whose value is cut by a no-break space and whose rule and second
+  # User-agent line hide behind a zero-width space, beside the same body
+  # cut by `/` and with `x` before the keys: about the same time (a check
+  # that scans the lines again per row: many times over).
+  body <- function(pad, key) {
+    name <- chartr("0123456789", "abcdefghij", seq_len(1500L))
+    paste0("User-agent: bot", name, pad, " # c\n", key, "Disallow: /p", name,
+           "\n", key, "User-agent: x", name, "\n", collapse = "")
+  }
+  expect_lt(iv_time(body("\u00a0", "\u200b")),
+            2.75 * max(iv_time(body("/", "x")), 0.05))
 })

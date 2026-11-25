@@ -113,7 +113,9 @@ test_that("inputs without a look-alike keep today's text exactly", {
         "nothing changes for that crawler."
       )
     )),
-    list("User-agent: *bot\nDisallow: /x\n", la_none()),
+    # `*bot` left for ROBO-jsecjjyo's `*`-led row
+    # (test-user-agent-cut-zvhrayhx.R).
+    list("User-agent: \u00e9bot\nDisallow: /x\n", la_none()),
     list("User-agent: B\xE4r\nDisallow: /x\n", la_read_as("B")),
     list("User-agent: Bingb\xf6t\nDisallow: /x\n", la_read_as("Bingb")),
     list(latin, la_read_as("Caf")),
