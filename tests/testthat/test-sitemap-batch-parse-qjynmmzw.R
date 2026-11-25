@@ -140,14 +140,47 @@ test_that("a value rurl throws on invalidates only its own line", {
   expect_identical(nrow(d), nrow(clean) + 1L)
 })
 
+# The edge values as the parser hands them over: a string each, bytes-marked
+# where the UTF-8 is malformed. The NUL edge has no string form.
+qj_edge_strings <- function() {
+  edges <- qj_edges()
+  edges <- edges[!vapply(edges, function(v) any(v == as.raw(0L)),
+                         logical(1L))]
+  vapply(edges, function(v) {
+    s <- rawToChar(v)
+    Encoding(s) <- if (validUTF8(s)) "UTF-8" else "bytes"
+    s
+  }, character(1L), USE.NAMES = FALSE)
+}
+
+test_that("the document batch gives each value the scalar finding", {
+  values <- qj_edge_strings()
+  set.seed(20261126L)
+  for (mix in list(values, c(values, rev(values)), sample(values),
+                   sample(values, 3L * length(values), replace = TRUE))) {
+    batch <- expect_no_warning(sitemap_value_diagnostics(mix))
+    scalar <- expect_no_warning(lapply(mix, sitemap_value_diagnostic))
+    expect_identical(batch, scalar)
+  }
+  expect_identical(sitemap_value_diagnostics(character()), list())
+})
+
+test_that("a batch that throws falls back to the per-value checks", {
+  body <- qj_body(qj_edge_values())
+  clean <- robots_validate_text(body)$diagnostics
+  local_mocked_bindings(sitemap_parse_batch = function(...) stop("boom"))
+  d <- expect_no_warning(robots_validate_text(body)$diagnostics)
+  expect_identical(d, clean)
+})
+
 # The cost of a Sitemap line next to one the prechecks reject before any URL
 # parse: the same body with relative values. Best of five, interleaved, so a
 # loaded machine slows both sides alike.
 test_that("a thousand Sitemap lines cost about as much as relative ones", {
   skip_on_cran()
   mk <- function(v) {
-    paste0(c("User-agent: *", "Disallow: /private/", paste0("Sitemap: ", v)),
-           collapse = "\n")
+    paste(c("User-agent: *", "Disallow: /private/", paste0("Sitemap: ", v)),
+          collapse = "\n")
   }
   n <- 1000L
   valid <- mk(sprintf("https://www.example.com/sitemap/%d.xml", seq_len(n)))

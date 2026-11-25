@@ -1812,6 +1812,14 @@ validate_document_bytes <- function(bytes, source_id, source_type,
     }),
     groups
   )
+  # The finding of each non-empty Sitemap value, by row of `parsed`: one URL
+  # parse for the document, not one per line (ROBO-qjynmmzw).
+  sitemap_found <- vector("list", nrow(parsed))
+  is_sitemap <- which(parsed$has_directive & parsed$type == "sitemap" &
+                        nzchar(parsed$value))
+  sitemap_found[is_sitemap] <- sitemap_value_diagnostics(
+    parsed$value[is_sitemap]
+  )
   unsupported <- logical(nrow(parsed))
   advisory_count <- 0L
   advisory_chunk <- 0L
@@ -2061,7 +2069,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         full_url <- rule_full_url_message(written, robots_url, cut)
       }
     }
-    for (found in directive_value_diagnostics(type, value)) {
+    for (found in directive_value_diagnostics(type, value,
+                                              sitemap_found[[i]])) {
       message <- found$message
       if (!is.null(full_url) &&
             identical(found$code, "rule_missing_leading_slash")) {
@@ -2864,8 +2873,10 @@ compressed_body_validation <- function(format, bytes, source_id,
 # as a list of list(code, message). An empty value is diagnosed by the caller.
 # Allow and Disallow values arrive already %-escaped (ASCII); only a Sitemap
 # value may be bytes-encoded (malformed UTF-8), so the checks work on raw
-# bytes or with useBytes.
-directive_value_diagnostics <- function(type, value) {
+# bytes or with useBytes. A Sitemap value's finding, from
+# sitemap_value_diagnostics() over the whole document, arrives as
+# `sitemap_found` (ROBO-qjynmmzw).
+directive_value_diagnostics <- function(type, value, sitemap_found) {
   if (!nzchar(value)) {
     return(list())
   }
@@ -2873,8 +2884,7 @@ directive_value_diagnostics <- function(type, value) {
     return(rule_value_diagnostics(value))
   }
   if (identical(type, "sitemap")) {
-    found <- sitemap_value_diagnostic(value)
-    return(if (is.null(found)) list() else list(found))
+    return(if (is.null(sitemap_found)) list() else list(sitemap_found))
   }
   list()
 }
@@ -9728,14 +9738,79 @@ user_agent_lookalike_notes <- function(values) {
   out
 }
 
-# A syntax-only check of a Sitemap value: an absolute http, https or ftp URL
-# with a host. Whether the sitemap exists is not checked (that is sitemapr's
-# job). Returns at most one finding, or NULL.
-sitemap_value_diagnostic <- function(value) {
-  invalid <- list(
+sitemap_invalid_url <- function() {
+  list(
     code = "invalid_sitemap_url",
     message = "Sitemap value is not a valid absolute URL."
   )
+}
+
+# A syntax-only check of a Sitemap value: an absolute http, https or ftp URL
+# with a host. Whether the sitemap exists is not checked (that is sitemapr's
+# job). Returns at most one finding, or NULL. One value, one rurl call: the
+# validator checks a document's values with sitemap_value_diagnostics(), and
+# this is its fallback and the tests' oracle (ROBO-qjynmmzw).
+sitemap_value_diagnostic <- function(value) {
+  pre <- sitemap_value_precheck(value)
+  if (is.null(pre$scheme)) {
+    return(pre$found)
+  }
+  parsed <- tryCatch(
+    rurl::safe_parse_url(value, host_encoding = "idna"),
+    error = function(e) NULL
+  )
+  sitemap_parse_verdict(pre$scheme, parsed$scheme, parsed$host)
+}
+
+# The Sitemap findings of a document's non-empty values, as a list parallel
+# to `values` (a finding or NULL each). The byte prechecks run per value;
+# the values that pass them go to rurl in one call, deduplicated, and each
+# value reads its own parse back by match(). A value rurl throws on would
+# fail the whole call, so on an error every value takes the scalar path,
+# where an error invalidates only its own value (ROBO-qjynmmzw).
+sitemap_value_diagnostics <- function(values) {
+  pre <- lapply(values, sitemap_value_precheck)
+  out <- lapply(pre, `[[`, "found")
+  parse <- which(!vapply(pre, function(p) is.null(p$scheme), logical(1L)))
+  if (length(parse) == 0L) {
+    return(out)
+  }
+  uniq <- unique(values[parse])
+  cols <- tryCatch(sitemap_parse_batch(uniq), error = function(e) NULL)
+  if (is.null(cols)) {
+    out[parse] <- lapply(values[parse], sitemap_value_diagnostic)
+    return(out)
+  }
+  at <- match(values[parse], uniq)
+  out[parse] <- lapply(seq_along(parse), function(j) {
+    sitemap_parse_verdict(pre[[parse[[j]]]]$scheme, cols$scheme[at[[j]]],
+                          cols$host[at[[j]]])
+  })
+  out
+}
+
+# One rurl call over distinct Sitemap values: the scheme and host of each,
+# NA where rurl rejects it (the scalar call's NULL).
+sitemap_parse_batch <- function(values) {
+  parsed <- rurl::safe_parse_urls(values, host_encoding = "idna")
+  list(scheme = parsed$scheme, host = parsed$host)
+}
+
+# A parsed Sitemap value is valid when rurl read the same scheme and a host.
+sitemap_parse_verdict <- function(scheme, parsed_scheme, host) {
+  has_host <- is.character(host) && length(host) == 1L && !is.na(host) &&
+    nzchar(host)
+  if (!identical(parsed_scheme, scheme) || !has_host) {
+    return(sitemap_invalid_url())
+  }
+  NULL
+}
+
+# The byte checks of a Sitemap value that need no URL parse, as
+# list(found, scheme): `found` is the finding they settle, and `scheme` the
+# lower-case scheme of a value that passes them all and goes on to rurl.
+sitemap_value_precheck <- function(value) {
+  invalid <- list(found = sitemap_invalid_url(), scheme = NULL)
   if (!grepl("^[A-Za-z][A-Za-z0-9+.-]*:", value, useBytes = TRUE)) {
     return(invalid)
   }
@@ -9752,12 +9827,12 @@ sitemap_value_diagnostic <- function(value) {
   }
   scheme <- ascii_lower(rawToChar(token))
   if (!scheme %in% c("http", "https", "ftp")) {
-    return(list(
+    return(list(found = list(
       code = "unsupported_sitemap_scheme",
       message = sprintf(
         "Sitemap URL scheme '%s' is not http, https or ftp.", scheme
       )
-    ))
+    ), scheme = NULL))
   }
   # The scheme must be followed by "//" and an authority. This check does not
   # rely on rurl rejecting a scheme without "//" ("http:example.com"): a
@@ -9766,17 +9841,7 @@ sitemap_value_diagnostic <- function(value) {
         !identical(bytes[colon + 1:2], charToRaw("//"))) {
     return(invalid)
   }
-  parsed <- tryCatch(
-    rurl::safe_parse_url(value, host_encoding = "idna"),
-    error = function(e) NULL
-  )
-  host <- parsed$host
-  has_host <- is.character(host) && length(host) == 1L && !is.na(host) &&
-    nzchar(host)
-  if (!identical(parsed$scheme, scheme) || !has_host) {
-    return(invalid)
-  }
-  NULL
+  list(found = NULL, scheme = scheme)
 }
 
 validation_ascii_action <- function(action, type) {
