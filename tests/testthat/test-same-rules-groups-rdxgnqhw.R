@@ -192,7 +192,8 @@ sr_fixtures <- list(
   prefix_key = list(
     body = paste0(sr_group("Foo", "Disallow: /x"),
                   "\nUser-agentx: Bar\nDisallow: /x\n"),
-    today = character(0)
+    # ROBO-lgoehhhq: the prefix key draws its own row.
+    today = "accepted_directive_prefix"
   ),
   agent_typo = list(
     body = paste0(sr_group("Foo", "Disallow: /x"),
@@ -231,12 +232,13 @@ sr_fixtures <- list(
   agent_key_word = list(
     body = paste0("User-agent foo: bingbot\nDisallow: /x\n\n",
                   sr_group("Yandex", "Disallow: /x")),
-    today = character(0)
+    # ROBO-lgoehhhq: Google reads the key `User-agent foo` by prefix.
+    today = "accepted_directive_prefix"
   ),
   agent_tab_word = list(
     body = paste0(sr_group("bingbot", "Disallow: /x"),
                   "\nUser-agent\tfoo: Yandex\nDisallow: /x\n"),
-    today = character(0)
+    today = "accepted_directive_prefix"
   ),
   # The next group starts at a line Bing or Yandex do not read as
   # User-agent, so on them the group before runs on through its rules.
@@ -250,7 +252,7 @@ sr_fixtures <- list(
     body = paste(sr_group("Yandex", c("Disallow: /x", "User-agentx: Bar",
                                       "Disallow: /y")),
                  sr_group("bingbot", "Disallow: /x"), sep = "\n"),
-    today = character(0)
+    today = "accepted_directive_prefix"
   ),
   next_no_colon = list(
     body = paste(sr_group("Yandex", "Disallow: /x"),
@@ -298,7 +300,7 @@ sr_fixtures <- list(
   latin1_key = list(
     body = charToRaw(paste0(sr_group("Foo", "Disallow: /x"),
                             "\nUser-agent\xe9: Bar\nDisallow: /x\n")),
-    today = "invalid_utf8"
+    today = c("invalid_utf8", "accepted_directive_prefix")
   ),
   # Two classes, the later one first by its rules: rows go by line.
   two_classes = list(

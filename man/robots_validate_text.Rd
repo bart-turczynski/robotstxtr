@@ -121,9 +121,9 @@ A directive without a colon, which the parser accepts. \cr
 \code{accepted_directive_typo} \tab warning \tab
 A directive name in an accepted typo spelling. \cr
 \code{accepted_directive_prefix} \tab warning \tab
-A key such as \code{DisallowAITraining} that only starts with
-\code{allow} or \code{disallow}, which the parser reads as that rule.
-\cr
+A key such as \code{DisallowAITraining} or \code{User-agents} that
+only starts with \code{allow}, \code{disallow} or \code{user-agent},
+which the parser reads as that directive. \cr
 \code{unsupported_directive} \tab warning \tab
 A known directive this profile ignores, such as \code{crawl-delay}. \cr
 \code{content_signal_directive} \tab warning \tab
@@ -708,16 +708,19 @@ Any other outcome that left no body; the reason is in
 }
 
 For \code{accepted_directive_prefix}, Google's parser accepts any key that
-starts with \code{allow} or \code{disallow}, ignoring ASCII case, so
+starts with \code{allow}, \code{disallow} or \code{user-agent}, ignoring ASCII case, so
 \verb{DisallowAITraining: /} is read as \verb{Disallow: /} and blocks the group's
-crawlers. The Bing and Yandex matchers compare the whole field name and
-ignore the line, and RFC 9309's grammar (section 2.2) has only \code{allow} and
-\code{disallow} rule records, leaving other records to the crawler (section
-2.2.4). The message names the key as written; for a Disallow key it points
-to a separate \verb{User-agent: __usage_ai-training} group, not stacked under
-another User-agent line, as the AI-training opt-out.
-An accepted typo such as \code{Dissallow} is reported as
-\code{accepted_directive_typo} only.
+crawlers, and \verb{User-agents: *} heads a group as \verb{User-agent: *} does
+(ROBO-lgoehhhq). RFC 9309's grammar (section 2.2) has only \code{user-agent},
+\code{allow} and \code{disallow} records, leaving other records to the crawler
+(section 2.2.4). The message names the key as written, states Google's
+reading of it and says that Bing and Yandex may read the line
+differently; for a Disallow key it points to a separate
+\verb{User-agent: __usage_ai-training} group, not stacked under another
+User-agent line, as the AI-training opt-out.
+An accepted typo such as \code{Dissallow} or \code{Useragents} is reported as
+\code{accepted_directive_typo} only. A prefix-key line can draw a
+\code{user_agent_cut} or \code{directive_in_value} row as well.
 
 For \code{wildcard_rules_not_inherited}, a crawler obeys only the groups that
 name it (combined when several do) and ignores the \verb{User-agent: *} group,
