@@ -154,6 +154,18 @@ test_that("ROBO-dkkbwzur: the oracle sees a change to Foo beside bingbot", {
   expect_identical(rw_free_name("User-agent: renamedbot\n"), "Renamedbotx")
 })
 
+# The oracle's own control for its tokens: Google reads each of these lines
+# as Bar's User-agent line (a missing colon, and the `user agent` and
+# `useragent` typos, KeyIsUserAgent in src/robots.cc), so deleting Bar's
+# rule must show up as a change for Bar.
+test_that("ROBO-dkkbwzur: the oracle reads colon-less and typo User-agents", {
+  for (agent in c("User-agent Bar", "User agent: Bar", "Useragent: Bar")) {
+    body <- ro_lines(agent, "Disallow: /x")
+    bad <- rewrite_oracle(body, ro_replace(body, 2L, character()))
+    expect_true("Bar" %in% bad$token[bad$engine == "google"], label = agent)
+  }
+})
+
 # ---------------------------------------------------------------------------
 # 2. user_agent_repeated_group: "put their rules in one group". The engines
 # already merge the groups, so identity on every engine. The advice does not
@@ -313,7 +325,12 @@ test_that("ROBO-dkkbwzur: one group per repeated crawler keeps decisions", {
 # Known gap, the same class 2 as dup_bom: the bing and yandex backends read
 # no group behind line 1's byte-order mark, so moving that group's rules
 # into the later group gives the crawler rules those backends never read
-# for it. The merged group at line 1 stays behind the mark: no change.
+# for it. The merged group at line 1 stays behind the mark: no change. By
+# B1 (ROBO-bpywsjwv, design/tracker-snapshot.md), Bing's tester also lets a
+# leading mark spoil line 1, so on B1's reading the last placement is wrong
+# for Bing on a body like this one (follow-up ROBO-dmoucgpb); by Y1,
+# Yandex's analyzer skips the mark, which the yandex backend does not yet
+# (ROBO-kuxdvvpi).
 rep_bom <- paste0("\xef\xbb\xbf", ro_lines("User-agent: Foo", "Disallow: /x",
                                            "", "User-agent: Foo",
                                            "Allow: /x/y"))
@@ -386,6 +403,7 @@ lc_fixtures <- c(
     named = "User-agent: Foo\nDisallow: /a%3cb\nAllow: /a%3cb/c\n",
     wild = "User-agent: *\nDisallow: /*%2f$\n",
     star_led = lc_body("Disallow: *%3cb"),
+    trailing_comment = lc_body("Disallow: /a%3cb # c"),
     crlf = "User-agent: *\r\nDisallow: /a%3cb\r\n",
     cr = "User-agent: *\rDisallow: /a%3cb\r",
     bom = "\xef\xbb\xbfUser-agent: *\nDisallow: /a%3cb\n",
@@ -417,6 +435,13 @@ test_that("ROBO-dkkbwzur: an upper-case escape keeps google and bing", {
   expect_gt(rows, 0L)
   # The yandex leg does change: its backend compares escapes as written.
   expect_gt(yandex, 0L)
+})
+
+test_that("ROBO-dkkbwzur: a value before a comment loses its blanks", {
+  # Written out, not taken from rw_split(): the path ends at the escape.
+  urls <- rw_urls(lc_fixtures[["trailing_comment"]])
+  expect_true("https://example.com/a%3cb" %in% urls)
+  expect_false(any(grepl("%20", urls, fixed = TRUE)))
 })
 
 test_that("ROBO-dkkbwzur: a `*`-led value's own URLs reach the comparison", {
