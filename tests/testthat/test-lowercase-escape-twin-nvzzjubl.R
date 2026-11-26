@@ -157,11 +157,13 @@ test_that("the Shopify shape draws no lower-case warning", {
     "Disallow: /*?*ls%3D*%3Fls%3D*",
     "Disallow: /*?*ls%3d*%3fls%3d*"
   )
-  # Line 10's `&` also draws the crawl-not-index note (ROBO-jnnnkyat).
+  # Line 10's `&` also draws the crawl-not-index note (ROBO-jnnnkyat), and
+  # line 14's `&ls=` the valueless note on the group's first line
+  # (ROBO-aswiwvuu).
   expect_identical(
     tw_codes(x),
     c(paste0("rule_lowercase_escape_twin@", c(6L, 9L, 13L, 16L)),
-      "rule_query_crawl_not_index@10")
+      "rule_query_crawl_not_index@10", "rule_query_parameter_valueless@1")
   )
   expect_identical(x$documents$validation_status, "valid")
 })
