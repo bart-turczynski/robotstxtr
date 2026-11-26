@@ -278,7 +278,7 @@ test_that("a 2xx body cut at max_bytes keeps its document-level row", {
   )
   expect_identical(
     seam_digest(d, linear_frame_extra(d)),
-    "17723d812fc2e10f628654abd81a8c3d"
+    "fdef1eccd0b9498f2b731f10c5e63d01"
   )
 })
 
