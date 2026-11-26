@@ -1139,3 +1139,37 @@ test_that("Google's reading where another group or the group reaches it", {
   expect_true(grepl(iv_meant_weak("Googlebot"), iv_cut(iv_other_none)$message,
                     fixed = TRUE))
 })
+
+test_that("a `*` line does not reach a crawler another group names", {
+  for (meant in c("Googlebot", "Googlebot-Image")) {
+    row <- iv_cut(iv_other_named(meant))
+    expect_true(grepl(iv_meant(meant), row$message, fixed = TRUE),
+                label = meant)
+    expect_false(grepl(iv_meant_weak(meant), row$message, fixed = TRUE),
+                 label = meant)
+  }
+  expect_false(grepl("does not get this group", iv_cut(iv_other_none)$message,
+                     fixed = TRUE))
+})
+
+test_that("the exception leaves out crawlers the group's lines read", {
+  row <- iv_cut(iv_lines("User-agent: *", "User-agent: Mediapartners-Google*",
+                         "Disallow: /x"))
+  expect_true(grepl(paste0(
+    "`User-agent: *`. Google's crawlers that ignore `*` (AdsBot-Google, ",
+    "AdsBot-Google-Mobile and APIs-Google) do not get it through its ",
+    "`User-agent: *` line."
+  ), row$message, fixed = TRUE))
+  row <- iv_cut(iv_lines("User-agent: *", "User-agent: AdsBot-Google 1.0",
+                         "Disallow: /x"))
+  expect_true(grepl(paste0(
+    "`User-agent: *`. Google's crawlers that ignore `*` ",
+    "(AdsBot-Google-Mobile, Mediapartners-Google and APIs-Google) do not ",
+    "get it through its `User-agent: *` line."
+  ), row$message, fixed = TRUE))
+  row <- iv_cut(iv_all_exact)
+  expect_true(grepl(paste0(
+    "since the group also names `User-agent: *`. Only Google's parser"
+  ), row$message, fixed = TRUE))
+  expect_false(grepl("ignore `*`", row$message, fixed = TRUE))
+})

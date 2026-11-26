@@ -133,10 +133,13 @@ sw_decide <- function(doc, tokens) {
 }
 
 # The tokens whose loss of the group the sweep looks for: the target's own
-# Google token, and for `*` any crawler.
+# Google token, the token an ASCII value Google cuts was written for
+# (`sw_ascii_meant`), and for `*` any crawler.
 sw_tokens <- function(target) {
   token <- sub("[^A-Za-z_-].*$", "", target)
-  if (identical(target, "*")) {
+  if (target %in% names(sw_ascii_meant)) {
+    unname(sw_ascii_meant[[target]])
+  } else if (identical(target, "*")) {
     c("ExampleBot", "Googlebot", "AdsBot-Google")
   } else if (ascii_lower(token) %in% sw_google) {
     token
@@ -276,16 +279,14 @@ test_that("every generated cut row agrees with Google's reading", {
               }
             }
             # (i) the weaker "Google does not read it so" only where the
-            # crawler meant still gets the group (ROBO-ipzkxzhg: not one
-            # that ignores the group's `*` line).
+            # crawler of the token it quotes still gets the group, asked of
+            # the backend for that token whatever the target (ROBO-ipzkxzhg:
+            # not one that ignores the group's `*` line).
             if (weak[[k]]) {
               meant <- sub("^.*If this line was meant as `([^`]*)`.*$", "\\1",
                            message)
-              meant <- tokens[ascii_lower(tokens) == ascii_lower(meant)]
-              for (token in meant) {
-                expect_identical(after[[token]], "disallow",
-                                 label = paste(label, token))
-              }
+              expect_identical(sw_decide(doc, meant)[[meant]], "disallow",
+                               label = paste(label, meant))
             }
             # The `*` tail: every crawler it does not except keeps the
             # group through the group's `*` line.
@@ -375,17 +376,24 @@ test_that("every generated cut row agrees with Google's reading", {
                              none = c("allow", "allow"))
               expect_identical(unname(fb), want, label = label)
             }
-            # Each crawler the kept fallback excepts is not reached through
-            # the `*` line: allow, unless the line itself reads its token.
-            if (identical(kind, "kept")) {
-              expect_true(grepl("Google's crawlers that ignore `*` (",
-                                message, fixed = TRUE), label = label)
+            # Each crawler the kept fallback excepts gets no rules (allow),
+            # and each crawler that ignores `*` it leaves out gets the group
+            # through a line of its own (ROBO-ipzkxzhg).
+            if (identical(kind, "kept") && fb_new) {
+              listed <- sw_quoted(message, paste0(
+                "Google's crawlers that ignore `\\*` \\(([^)]*)\\) do not ",
+                "get it through"
+              ))
+              listed <- if (is.na(listed)) {
+                character()
+              } else {
+                strsplit(listed, ", | and ")[[1L]]
+              }
               for (token in sw_ignore_star) {
-                if (fb_new && grepl(token, message, fixed = TRUE) &&
-                      !identical(ascii_lower(token), read)) {
-                  expect_identical(got[[paste(token, "/x")]], "allow",
-                                   label = paste(label, token))
-                }
+                expect_identical(got[[paste(token, "/x")]],
+                                 if (token %in% listed) "allow" else
+                                   "disallow",
+                                 label = paste(label, token))
               }
             }
             # Outside the repaired kinds, no claim of what was meant.
