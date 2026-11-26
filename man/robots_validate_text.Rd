@@ -488,11 +488,13 @@ A Disallow pattern ends in a query parameter and its \code{=}, with
 nothing after the \code{=} but \code{*} (\code{/*?s=},
 \code{/*?s=*}, \code{/*&s=}), so it blocks the parameter with a value
 (\code{/x?s=1}) but not the same parameter written without one
-(\code{/x?s}): the pattern matches its bytes literally (RFC 9309
+(\code{/x?s}): the pattern matches the \code{=} literally (RFC 9309
 section 2.2.2). Reported only when the rule decides the URL with a
 value and the URL without one comes out allowed under every rule the
-crawlers have, so a sibling such as \code{Disallow: /*?s} silences
-it. One row per group of crawlers, on its first User-agent line,
+crawlers have, with no rule deciding it, so a sibling such as
+\code{Disallow: /*?s} silences it, and so does an Allow such as
+\code{Allow: /*?s$}: the file opens the URL without a value itself.
+One row per set of crawlers, on its first User-agent line,
 listing five rules at most, then a count; the message shows both
 URLs and suggests no rewrite. A line can also get
 \code{rule_query_parameter_position}: the two gaps differ, and both
@@ -1094,27 +1096,32 @@ gets no row.
 canonical value is led by \code{/} or \code{*} and ends in a parameter name
 (letters, digits, \verb{_}, \code{.} and \code{-}), its \code{=} and only a run of \code{*}. The
 name follows the value's first \verb{?}, as for
-\code{rule_query_parameter_position} (\verb{/*?s=}, \verb{/search?q=*}), or, in a value
-with no \verb{?}, an \code{&} right after a \code{*} that is its first \verb{&name=}
-(\verb{/*&s=}). A value after the \code{=} (\verb{/*?s=shoes}) blocks one value, not the
+\code{rule_query_parameter_position} (\verb{/*?s=}, \verb{/search?q=*}), or an \code{&} right
+after a \code{*} that is its first \verb{?name=} or \verb{&name=} (\verb{/*&s=}, \verb{/*?*&s=}).
+A value after the \code{=} (\verb{/*?s=shoes}) blocks one value, not the
 parameter, and is not read; nor is a value ending in \code{$}, one whose path
 holds a \code{.} or \code{..} segment, or one holding a \verb{\%} that starts no escape
 or a byte no URL carries, as for \code{rule_end_anchor_query}. The URL with a
 value is the pattern as a path, each \code{*} written \code{x}, the final run of
 \code{*} dropped and \code{1} after the \code{=} (\verb{/x?s=1}); a \verb{*&} is written
-\verb{x?a=1&} (\verb{/x?a=1&s=1}). The URL without one is that URL up to the name
-(\verb{/x?s}, \verb{/x?a=1&s}). Where another rule matches those filler bytes, the
-check tries \code{y}, \code{2} and \code{b=2}. Google's matcher makes the decisions over
+\verb{x?a=1&} (\verb{/x?a=1&s=1}), or \verb{x&} where a \verb{?} comes before it
+(\verb{/x?x&s=1}), and the added parameter is \code{c=1} where the rule's own is
+\code{a}. The URL without one is that URL up to the name (\verb{/x?s},
+\verb{/x?a=1&s}). Where another rule matches those filler bytes, the check
+tries \code{y}, \code{2} and \code{b=2}. Google's matcher makes the decisions over
 every rule of the crawler's merged groups: the rule must decide the URL
 with a value, so an Allow that wins it silences the row, and the URL
-without one must come out allowed, so a rule that blocks it
-(\verb{Disallow: /*?s}, \verb{Disallow: /*?s$}) silences it too. A row is reported
-only where every crawler the group names agrees, on the whole-value
-merge and on Google's merge. The row states what the pattern matches; it
-suggests no rewrite, since \code{?s} alone also matches every parameter whose
-name starts with \code{s}. Allow rules are not read. A lower-case-escape twin
-gets no row, and a rule that gets \code{rule_cut_by_nul} takes part with its
-value cut at the NUL, as Google's parser reads it. A body cut at
+without one must come out allowed with no rule deciding it, so a rule
+that blocks it (\verb{Disallow: /*?s}, \verb{Disallow: /*?s$}) silences it too, and
+so does an Allow that decides it (\verb{Allow: /*?s$}): the file opens the
+bare key itself. A row is reported only where every crawler the group
+names agrees, on the whole-value merge and on Google's merge. The row
+states what the pattern matches; it suggests no rewrite, since \code{?s}
+alone also matches every parameter whose name starts with \code{s}. An Allow
+is never a candidate. A lower-case-escape twin gets no row. A lower-case
+escape twin written before its upper-case line silences the row. A rule
+that gets \code{rule_cut_by_nul} takes part with its value cut at the NUL, as
+Google's parser reads it. A body cut at
 \code{max_bytes} is not checked: a later Disallow could block the URL without
 a value. The check reads its candidates within a fixed amount of work,
 as the slash checks do, and a \verb{User-agent: __usage_ai-training} group

@@ -479,11 +479,13 @@ validation_unsupported <- c(
 #'     nothing after the \code{=} but \code{*} (\code{/*?s=},
 #'     \code{/*?s=*}, \code{/*&s=}), so it blocks the parameter with a value
 #'     (\code{/x?s=1}) but not the same parameter written without one
-#'     (\code{/x?s}): the pattern matches its bytes literally (RFC 9309
+#'     (\code{/x?s}): the pattern matches the \code{=} literally (RFC 9309
 #'     section 2.2.2). Reported only when the rule decides the URL with a
 #'     value and the URL without one comes out allowed under every rule the
-#'     crawlers have, so a sibling such as \code{Disallow: /*?s} silences
-#'     it. One row per group of crawlers, on its first User-agent line,
+#'     crawlers have, with no rule deciding it, so a sibling such as
+#'     \code{Disallow: /*?s} silences it, and so does an Allow such as
+#'     \code{Allow: /*?s$}: the file opens the URL without a value itself.
+#'     One row per set of crawlers, on its first User-agent line,
 #'     listing five rules at most, then a count; the message shows both
 #'     URLs and suggests no rewrite. A line can also get
 #'     \code{rule_query_parameter_position}: the two gaps differ, and both
@@ -1085,27 +1087,32 @@ validation_unsupported <- c(
 #' canonical value is led by `/` or `*` and ends in a parameter name
 #' (letters, digits, `_`, `.` and `-`), its `=` and only a run of `*`. The
 #' name follows the value's first `?`, as for
-#' `rule_query_parameter_position` (`/*?s=`, `/search?q=*`), or, in a value
-#' with no `?`, an `&` right after a `*` that is its first `&name=`
-#' (`/*&s=`). A value after the `=` (`/*?s=shoes`) blocks one value, not the
+#' `rule_query_parameter_position` (`/*?s=`, `/search?q=*`), or an `&` right
+#' after a `*` that is its first `?name=` or `&name=` (`/*&s=`, `/*?*&s=`).
+#' A value after the `=` (`/*?s=shoes`) blocks one value, not the
 #' parameter, and is not read; nor is a value ending in `$`, one whose path
 #' holds a `.` or `..` segment, or one holding a `%` that starts no escape
 #' or a byte no URL carries, as for `rule_end_anchor_query`. The URL with a
 #' value is the pattern as a path, each `*` written `x`, the final run of
 #' `*` dropped and `1` after the `=` (`/x?s=1`); a `*&` is written
-#' `x?a=1&` (`/x?a=1&s=1`). The URL without one is that URL up to the name
-#' (`/x?s`, `/x?a=1&s`). Where another rule matches those filler bytes, the
-#' check tries `y`, `2` and `b=2`. Google's matcher makes the decisions over
+#' `x?a=1&` (`/x?a=1&s=1`), or `x&` where a `?` comes before it
+#' (`/x?x&s=1`), and the added parameter is `c=1` where the rule's own is
+#' `a`. The URL without one is that URL up to the name (`/x?s`,
+#' `/x?a=1&s`). Where another rule matches those filler bytes, the check
+#' tries `y`, `2` and `b=2`. Google's matcher makes the decisions over
 #' every rule of the crawler's merged groups: the rule must decide the URL
 #' with a value, so an Allow that wins it silences the row, and the URL
-#' without one must come out allowed, so a rule that blocks it
-#' (`Disallow: /*?s`, `Disallow: /*?s$`) silences it too. A row is reported
-#' only where every crawler the group names agrees, on the whole-value
-#' merge and on Google's merge. The row states what the pattern matches; it
-#' suggests no rewrite, since `?s` alone also matches every parameter whose
-#' name starts with `s`. Allow rules are not read. A lower-case-escape twin
-#' gets no row, and a rule that gets `rule_cut_by_nul` takes part with its
-#' value cut at the NUL, as Google's parser reads it. A body cut at
+#' without one must come out allowed with no rule deciding it, so a rule
+#' that blocks it (`Disallow: /*?s`, `Disallow: /*?s$`) silences it too, and
+#' so does an Allow that decides it (`Allow: /*?s$`): the file opens the
+#' bare key itself. A row is reported only where every crawler the group
+#' names agrees, on the whole-value merge and on Google's merge. The row
+#' states what the pattern matches; it suggests no rewrite, since `?s`
+#' alone also matches every parameter whose name starts with `s`. An Allow
+#' is never a candidate. A lower-case-escape twin gets no row. A lower-case
+#' escape twin written before its upper-case line silences the row. A rule
+#' that gets `rule_cut_by_nul` takes part with its value cut at the NUL, as
+#' Google's parser reads it. A body cut at
 #' `max_bytes` is not checked: a later Disallow could block the URL without
 #' a value. The check reads its candidates within a fixed amount of work,
 #' as the slash checks do, and a `User-agent: __usage_ai-training` group
@@ -2484,19 +2491,26 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   }
   # A `?name=` Disallow that the same parameter written without a value
   # escapes (ROBO-aswiwvuu). A later Disallow could block the witness, so a
-  # cut body is skipped too; a lower-case-escape twin is left out, and a
-  # rule a NUL cuts is read as Google cuts it.
+  # cut body is skipped too; a lower-case-escape twin is left out. A rule a
+  # NUL cuts is read as Google cuts it, from the groups; `written` is
+  # passed for parity with end_anchor_diagnostics().
   if (cut_runs("rule_query_parameter_valueless", body_truncated)) {
     found <- query_valueless_diagnostics(
       groups, written = written, skip = which(!is.na(escape_twin))
     )
+    # Bing/Yandex half left out pending ROBO-xvbrlqln.
+    nul_google <- if (nzchar(nul_reading)) {
+      " This is Google's reading, which ends each line at its first NUL."
+    } else {
+      ""
+    }
     if (nrow(found) > 0L) {
       add_chunk(
         found$line, "info", "rule_query_parameter_valueless",
         found$directive,
         vapply(raw_lines[found$line], render_validation_line, "",
                USE.NAMES = FALSE),
-        paste0(found$message, nul_reading)
+        paste0(found$message, nul_google)
       )
     }
     if (!is.null(attr(found, "stopped"))) {
@@ -7309,7 +7323,7 @@ end_anchor_stop_intro <- function(stop) {
 # A Disallow whose pattern ends in a query parameter and its `=`, with
 # nothing after the `=` but `*` (`/*?s=`, `/*?s=*`, `/*&s=`), blocks the
 # parameter with a value (`/x?s=1`) but not the same parameter written
-# without one (`/x?s`): the pattern matches its bytes literally (RFC 9309
+# without one (`/x?s`): the pattern matches the `=` literally (RFC 9309
 # section 2.2.2), so a URL without the `=` does not match it
 # (ROBO-aswiwvuu). The control is the value as a path with `1` after the
 # `=` and the witness the control up to the name (query_valueless_paths());
@@ -7318,10 +7332,12 @@ end_anchor_stop_intro <- function(stop) {
 # (query_valueless_candidates()) is reported only when, for every crawler
 # class its group names, merged on the whole User-agent value and on
 # Google's token, it is the line that decides the control, so the control
-# is disallowed, and the witness comes out allowed: every rule of the class
-# takes part, so a sibling that blocks the witness (`Disallow: /*?s`,
-# `Disallow: /*?s$`) or an Allow that wins the control silences it, and no
-# sibling needs a case of its own. The decisions are Google's matcher's,
+# is disallowed, and the witness comes out allowed with no rule deciding
+# it: every rule of the class takes part, so a sibling that blocks the
+# witness (`Disallow: /*?s`, `Disallow: /*?s$`), an Allow that wins the
+# control or an Allow that decides the witness (`Allow: /*?s$`, the file
+# opening the bare key itself) silences it, and no sibling needs a case of
+# its own. The decisions are Google's matcher's,
 # read by witness_pair_readings() within `budget` (slash_budget()) in line
 # order, the second pair on what the first left (query_valueless_reads()),
 # and candidates count as checked up to the first one whose reading did
@@ -7330,11 +7346,12 @@ end_anchor_stop_intro <- function(stop) {
 # holding the earliest one (slash_open_rows()). Lines in `skip`
 # (lower-case-escape twins, ROBO-nvzzjubl) get no row. A cut body is not
 # checked: a later Disallow could block the witness. A rule a NUL cuts
-# takes part with its value cut at the NUL, as Google's parser reads it
-# (`written`). The row suggests no rewrite: `?s` alone also matches every
-# parameter whose name starts with `s`. Returns slash_rows() with a
-# `directive` column; when the budget cut candidates, its "stopped"
-# attribute holds slash_stop()'s counts.
+# takes part with its value cut at the NUL, as Google's parser reads it:
+# that reading comes from the groups, and `written` is passed for parity
+# with end_anchor_diagnostics(). The row suggests no rewrite: `?s` alone
+# also matches every parameter whose name starts with `s`. Returns
+# slash_rows() with a `directive` column; when the budget cut candidates,
+# its "stopped" attribute holds slash_stop()'s counts.
 query_valueless_diagnostics <- function(groups, written = NULL,
                                         skip = integer(), budget = NULL) {
   groups <- slash_groups(groups)
@@ -7364,21 +7381,24 @@ query_valueless_diagnostics <- function(groups, written = NULL,
 }
 
 # The filler pairs of query_valueless_reads(), in the order tried: `x`, `1`
-# and `a=1` first, then `y`, `2` and `b=2`, where another rule matches the
+# and `a` first, then `y`, `2` and `b`, where another rule matches the
 # first pair's bytes. `path`: the byte each `*` of the control is written
-# as; `value`: what follows the `=`; `param`: the parameter an `&` rule's
-# control puts before its own.
+# as; `value`: what follows the `=`, the candidate's and the filler
+# parameter's; `param`: the name of the parameter an `&` rule's control
+# puts before its own, `spare` in its place where it is the candidate's own
+# name.
 query_valueless_fillers <- function() {
-  list(path = c("x", "y"), value = c("1", "2"), param = c("a=1", "b=2"))
+  list(path = c("x", "y"), value = c("1", "2"), param = c("a", "b"),
+       spare = "c")
 }
 
 # Indexes of `rules` that are rule_query_parameter_valueless candidates: a
 # non-empty Disallow whose canonical value is led by `/` or `*` and ends in
 # a parameter name ([A-Za-z0-9_.-]+), its `=` and only a run of `*` after
 # it, where the name follows either the value's first `?`
-# (query_parameter_candidates()'s grammar: `/*?s=`, `/search?q=*`) or, in a
-# value holding no `?`, an `&` right after a `*` that is the value's first
-# `&name=` run (`/*&s=`). A value after the `=` (`/*?s=shoes`) blocks one
+# (query_parameter_candidates()'s grammar: `/*?s=`, `/search?q=*`) or an
+# `&` right after a `*` that is the value's first `[?&]name=` run (`/*&s=`,
+# `/*?*&s=`, `/a?b*&s=`). A value after the `=` (`/*?s=shoes`) blocks one
 # value, not the parameter, and a final `$` (`/*?s=$`) is no candidate.
 # Nor is one whose control path (query_valueless_paths()) fails
 # url_safe_path(): a `.` or `..` segment, a stray `%` or a byte no URL
@@ -7388,10 +7408,10 @@ query_valueless_candidates <- function(rules, skip = integer()) {
   value <- rules$value
   name <- "[A-Za-z0-9_.-]+="
   ask <- grepl(paste0("^[/*][^?]*[?]", name, "[*]*$"), value, useBytes = TRUE)
-  amp <- grepl(paste0("^[/*][^?]*[*]&", name, "[*]*$"), value,
-               useBytes = TRUE)
-  # The `*&name=` run must be the first `&name=` run.
-  amp[amp] <- regexpr(paste0("&", name), value[amp], useBytes = TRUE) ==
+  amp <- grepl("^[/*]", value, useBytes = TRUE) &
+    grepl(paste0("[*]&", name, "[*]*$"), value, useBytes = TRUE)
+  # The `*&name=` run must be the first `[?&]name=` run.
+  amp[amp] <- regexpr(paste0("[?&]", name), value[amp], useBytes = TRUE) ==
     regexpr(paste0("[*]&", name, "[*]*$"), value[amp], useBytes = TRUE) + 1L
   hit <- which(rules$type == "disallow" & !rules$empty & (ask | amp) &
                  !rules$line %in% skip)
@@ -7401,19 +7421,20 @@ query_valueless_candidates <- function(rules, skip = integer()) {
 # The parts of each candidate value's control and witness under filler pair
 # `pair` (query_valueless_fillers()): `path`, the text before the `?` or
 # `&` with each `*` written as the filler and led by `/`; `sep`, `?` for a
-# `?name=` rule and `?a=1&` (the pair's parameter) for an `&name=` one,
-# whose `*` before the `&` is written as the filler that ends `path`;
-# `name`; and `tail`, the text after the `=` without its final run of `*`,
-# each other `*` written as the filler, then the pair's value. `control` is
-# `path`, `sep`, `name`, `=` and `tail`, which the rule matches: each `*`
-# matches its filler and every other byte itself; `witness` is `control` up
-# to the name, a prefix of it, which the rule misses: it holds no `=` after
-# the name.
+# `?name=` rule, and for an `&name=` one, whose `*` before the `&` is
+# written as the filler that ends `path`, `&` where `path` already holds a
+# `?` and otherwise `?`, the pair's parameter and `&` (`?a=1&`); `name`;
+# and `tail`, the pair's value: a candidate has only `*` after its `=`.
+# `control` is `path`, `sep`, `name`, `=` and `tail`, which the rule
+# matches: each `*` matches its filler and every other byte itself;
+# `witness` is `control` up to the name, a prefix of it, which the rule
+# misses: it holds no `=` after the name.
 query_valueless_paths <- function(value, pair = 1L) {
   fill <- query_valueless_fillers()
   f <- fill$path[[pair]]
-  ask <- grepl("?", value, fixed = TRUE)
-  # The `?name=` run at the first `?`, or, with no `?`, the first `&name=`.
+  # A `?name=` rule's first `?` starts its run; an `&name=` rule's run is
+  # its first `&name=`.
+  ask <- grepl("^[^?]*[?][A-Za-z0-9_.-]+=", value, useBytes = TRUE)
   run <- regexpr("&[A-Za-z0-9_.-]+=", value, useBytes = TRUE)
   q <- regexpr("[?][A-Za-z0-9_.-]+=", value, useBytes = TRUE)
   start <- ifelse(ask, as.integer(q), as.integer(run))
@@ -7421,13 +7442,15 @@ query_valueless_paths <- function(value, pair = 1L) {
                              attr(run, "match.length"))
   head <- substr(value, 1L, start - 1L)
   name <- substr(value, start + 1L, end - 1L)
-  tail <- sub("[*]+$", "", substr(value, end + 1L, nchar(value, "bytes")),
-              useBytes = TRUE)
   path <- gsub("*", f, head, fixed = TRUE, useBytes = TRUE)
   path <- ifelse(startsWith(path, "/"), path, paste0("/", path))
-  sep <- ifelse(ask, "?", paste0("?", fill$param[[pair]], "&"))
-  tail <- paste0(gsub("*", f, tail, fixed = TRUE, useBytes = TRUE),
-                 fill$value[[pair]])
+  # The filler parameter, renamed where it is the candidate's own name.
+  param <- ifelse(name == fill$param[[pair]], fill$spare, fill$param[[pair]])
+  sep <- rep_len(paste0("?", param, "=", fill$value[[pair]], "&"),
+                 length(value))
+  sep[grepl("?", path, fixed = TRUE)] <- "&"
+  sep[ask] <- "?"
+  tail <- rep_len(fill$value[[pair]], length(value))
   list(path = path, sep = sep, name = name, tail = tail,
        control = paste0(path, sep, name, "=", tail),
        witness = paste0(path, sep, name))
@@ -7436,8 +7459,13 @@ query_valueless_paths <- function(value, pair = 1L) {
 # The filler-pair readings of the candidates `at`, sharing `budget`, as
 # end_anchor_reads() makes them: each pair reads, in line order, the
 # candidates the first read and left unreported. The witness is the short
-# path and the control, which the candidate must decide, the long one.
-# Returns list(pair, finished) as end_anchor_reads() does.
+# path and the control, which the candidate must decide, the long one. A
+# pair counts only where no rule decides the witness: an allowed witness
+# is decided by no rule (line 0) or by an Allow, and an Allow that opens
+# the bare key is the file's own choice. Where the crawler classes or the
+# merges name different lines (NA), one of them is an Allow, so that pair
+# does not count either. Returns list(pair, finished) as end_anchor_reads()
+# does.
 query_valueless_reads <- function(groups, at, written, budget) {
   fill <- query_valueless_fillers()
   value <- groups$rules$value
@@ -7449,11 +7477,12 @@ query_valueless_reads <- function(groups, at, written, budget) {
     read <- witness_pair_readings(groups, at[todo], paths$witness,
                                   paths$control, "long", written, budget)
     budget <- budget - read$spent
-    pair[todo[read$ok]] <- k
-    finished[todo[read$ok]] <- TRUE
+    ok <- read$ok & !is.na(read$line) & read$line == 0L
+    pair[todo[ok]] <- k
+    finished[todo[ok]] <- TRUE
     # The next pair reads only the candidates this one read and left.
     done <- seq_len(read$checked)
-    todo <- todo[done][!read$ok[done]]
+    todo <- todo[done][!ok[done]]
     # A perf shortcut only: with no candidate left, the next pair reads
     # nothing.
     if (length(todo) == 0L) {
@@ -7509,7 +7538,7 @@ query_valueless_message <- function(value, line, cap, pair = 1L) {
 }
 
 query_valueless_why <- function(rule) {
-  paste0(" The pattern matches its bytes literally (RFC 9309 section ",
+  paste0(" The pattern matches the '=' literally (RFC 9309 section ",
          "2.2.2), so a URL that writes the parameter without '=' falls ",
          "outside ", rule, ". The site may link to the parameter without a ",
          "value.")
