@@ -172,8 +172,10 @@ test_that("the frame of a body on every emission path is pinned", {
   # ROBO-lgoehhhq: the three digests here moved only with the message of
   # accepted_directive_prefix@11, which no longer says Bing and Yandex
   # ignore the key.
+  # ROBO-dkkbwzur: the first digest moved only with the message of
+  # rule_prefix_sibling@9, which no longer advises a narrower spelling.
   expect_identical(seam_digest(d, linear_frame_extra(d)),
-                   "876990c14db1bb3a1bcd8128a290cfa2")
+                   "de45c6e0ba591ce26c4aafe3696d30f4")
   d <- d[d$code != "rule_prefix_sibling", , drop = FALSE]
   rownames(d) <- NULL
   expect_identical(

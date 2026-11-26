@@ -510,24 +510,16 @@ test_that("ROBO-rdxgnqhw: robots_validate_url() gives the same row", {
 })
 
 # The oracle: stack a body's groups exactly as a row's message shows them,
-# and every crawler must get the same decisions on Google, Bing and Yandex.
-# The message's `\xHH` escapes are read back to their bytes. Groups start
-# at a User-agent-like line (any spelling Google takes) after a line that
-# is not one; a member's lines run to the next start. The stacked group
-# goes in place of the first member, or of the last, then a blank line, and
-# the other members go. The message's line numbers are Google's, so the
-# body is split as Google splits it: at LF, CR LF and a lone CR. Each
-# engine still reads the body as written its own way (Bing and Yandex end
-# a line at LF only), so a row whose stacking a lone CR upsets shows up as
-# changed decisions.
-sr_lines <- function(body) {
-  strsplit(body, "\r\n|\r|\n", useBytes = TRUE)[[1L]]
-}
-
-sr_agent_like <- function(lines) {
-  grepl("^[ \t]*(user-agent|useragent|user agent)([^:]*:| )", lines,
-        ignore.case = TRUE, useBytes = TRUE)
-}
+# and every crawler must get the same decisions on Google, Bing and Yandex
+# (rewrite_oracle(), helper-rewrite-oracle.R). The message's `\xHH` escapes
+# are read back to their bytes. Groups start at a User-agent-like line (any
+# spelling Google takes) after a line that is not one; a member's lines run
+# to the next start. The stacked group goes in place of the first member, or
+# of the last, then a blank line, and the other members go. The message's
+# line numbers are Google's, so the body is split as Google splits it: at
+# LF, CR LF and a lone CR. Each engine still reads the body as written its
+# own way (the package's bing and yandex backends end a line at LF only), so
+# a row whose stacking a lone CR upsets shows up as changed decisions.
 
 sr_unescape <- function(x) {
   bytes <- charToRaw(x)
@@ -556,8 +548,8 @@ sr_stack <- function(body, message, last = FALSE) {
   item <- regmatches(stack, gregexpr("`[^`]*`", stack))[[1L]]
   item <- gsub("`", "", item, fixed = TRUE)
   item <- vapply(item, sr_unescape, "", USE.NAMES = FALSE)
-  lines <- sr_lines(body)
-  like <- sr_agent_like(lines)
+  lines <- rw_lines(body)
+  like <- rw_agent_like(lines)
   start <- which(like & !c(FALSE, like[-length(like)]))
   end <- c(start[-1L] - 1L, length(lines))
   member <- match(at, start)
@@ -570,62 +562,20 @@ sr_stack <- function(body, message, last = FALSE) {
                collapse = "\n"), "\n")
 }
 
-# Every crawler named in the body (cut at the first byte outside a token),
-# plus Foo and one named nowhere; every rule path in the body, with and
-# without `*` and `$`, and a few longer ones.
-sr_tokens <- function(body) {
-  lines <- sr_lines(body)
-  agent <- sr_agent_like(lines) &
-    grepl(":", lines, fixed = TRUE, useBytes = TRUE)
-  value <- sub("^[^:]*:", "", lines[agent], useBytes = TRUE)
-  value <- sub("^[ \t]*([A-Za-z_-]*).*$", "\\1", value, useBytes = TRUE)
-  unique(c(value[nzchar(value)], "Foo", "Unnamedbot"))
-}
-
-sr_urls <- function(body) {
-  lines <- sr_lines(body)
-  rule <- grepl(":[ \t]*/", lines, useBytes = TRUE) & !sr_agent_like(lines)
-  value <- sub("^[^:]*:[ \t]*", "", lines[rule], useBytes = TRUE)
-  value <- sub("[ \t]*(#.*)?$", "", value, useBytes = TRUE)
-  path <- unique(c("/", "/a", "/x", "/x/y", "/y", "/z", "/X", "/x?q",
-                   value, gsub("[*$]", "", value, useBytes = TRUE)))
-  path <- unique(c(path, paste0(path, "x"), sprintf("%s/y", path)))
-  # A byte outside printable ASCII goes as its `%XX` escape.
-  enc <- vapply(path, function(p) {
-    paste(vapply(charToRaw(p), function(x) {
-      if (x < as.raw(0x21) || x > as.raw(0x7e)) {
-        sprintf("%%%02X", as.integer(x))
-      } else {
-        rawToChar(x)
-      }
-    }, ""), collapse = "")
-  }, "", USE.NAMES = FALSE)
-  paste0("https://example.com", enc)
-}
-
-sr_decisions <- function(body, tokens, urls, engine) {
-  url <- rep(urls, times = length(tokens))
-  token <- rep(tokens, each = length(urls))
-  robots_evaluate_text_v1(body, url, token, engine, engine)$results$
-    url_decision
-}
-
 # For each row of `body`, and each placement, the engines whose decisions
 # change; character(0) when the stacking keeps every decision.
 sr_oracle <- function(body) {
   if (is.raw(body)) body <- rawToChar(body)
   d <- sr_diag(body)
   out <- character()
-  tokens <- sr_tokens(body)
-  urls <- sr_urls(body)
+  tokens <- rw_tokens(body)
+  urls <- rw_urls(body)
   for (msg in d$message[d$code == sr_code]) {
     for (last in c(FALSE, TRUE)) {
-      stacked <- sr_stack(body, msg, last)
-      for (engine in c("google", "bing", "yandex")) {
-        if (!identical(sr_decisions(body, tokens, urls, engine),
-                       sr_decisions(stacked, tokens, urls, engine))) {
-          out <- c(out, paste(engine, if (last) "last" else "first"))
-        }
+      bad <- rewrite_oracle(body, sr_stack(body, msg, last), tokens = tokens,
+                            urls = urls)
+      for (engine in unique(bad$engine)) {
+        out <- c(out, paste(engine, if (last) "last" else "first"))
       }
     }
   }

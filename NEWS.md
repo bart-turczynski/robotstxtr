@@ -1,5 +1,6 @@
 # robotstxtr (development version)
 
+* Validator: `rule_prefix_sibling` no longer advises `P$` together with `P/`; it says only what `P` matches (ROBO-dkkbwzur).
 * Validator: new `rule_star_led_pattern` info, once per file, for Allow or Disallow patterns led by `*`, outside RFC 9309's path-pattern grammar (RFC 9309 §2.2) (ROBO-ktmnbirm).
 * Validator: new `rule_query_parameter_valueless` info for a Disallow like `/*?s=`, which blocks `/x?s=1` but not `/x?s` (RFC 9309 §2.2.2); `rule_check_stopped` covers it too (ROBO-aswiwvuu).
 * Validator: the `body_truncated` row of a body cut at `max_bytes` names, in plain words, each check not run on it, and no longer says its lines were validated (ROBO-mgwiemtw).

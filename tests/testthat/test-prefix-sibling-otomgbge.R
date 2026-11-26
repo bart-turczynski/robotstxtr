@@ -122,9 +122,7 @@ ps_one <- function(line, value, siblings, noun = "Disallow") {
     "The ", noun, " on line ", line, " ('", value, "') also matches ",
     siblings, ", ", listed, " listed separately for the same crawlers. ",
     "A rule with no trailing '/' or '$' matches every path that starts ",
-    "with it (RFC 9309 section 2.2.2). If '", value, "' was meant as one ",
-    "path segment, '", value, "$' together with '", value, "/' is the ",
-    "narrower spelling."
+    "with it (RFC 9309 section 2.2.2)."
   )
 }
 
@@ -138,7 +136,7 @@ ps_line <- function(body) {
   d$line[d$code == ps_code]
 }
 
-test_that("ROBO-otomgbge: the row names both lines and the narrower forms", {
+test_that("ROBO-otomgbge: the row names both lines", {
   body <- ps_fixtures$one$body
   expect_identical(ps_line(body), 2L)
   expect_identical(ps_message(body), ps_one(2L, "/feed", "'/feeds' (line 3)"))
@@ -182,10 +180,8 @@ test_that("ROBO-otomgbge: one row per group, pairs across rules", {
     "Rules for the same crawlers also match paths listed separately: line 3 ",
     "('/feed') matches '/feeds' (line 4) and line 5 ('/login') matches ",
     "'/login.php' (line 6). A rule with no trailing '/' or '$' matches every ",
-    "path that starts with it (RFC 9309 section 2.2.2). If such a rule was ",
-    "meant as one path segment, its narrower spelling is the rule ending in ",
-    "'$' together with the rule ending in '/'. This holds for every crawler ",
-    "the group names: 'Foo' and 'Bar'."
+    "path that starts with it (RFC 9309 section 2.2.2). This holds for ",
+    "every crawler the group names: 'Foo' and 'Bar'."
   ))
   # Two groups of different crawlers: one row each.
   two <- paste0("User-agent: Foo\nDisallow: /feed\nDisallow: /feeds\n\n",
@@ -199,9 +195,7 @@ test_that("ROBO-otomgbge: one row per group, pairs across rules", {
     "Rules for the same crawlers also match paths listed separately: line 2 ",
     "('/a') matches '/ab' (line 3) and line 3 ('/ab') matches '/abc' ",
     "(line 4). A rule with no trailing '/' or '$' matches every path that ",
-    "starts with it (RFC 9309 section 2.2.2). If such a rule was meant as ",
-    "one path segment, its narrower spelling is the rule ending in '$' ",
-    "together with the rule ending in '/'."
+    "starts with it (RFC 9309 section 2.2.2)."
   ))
   # A repeat of the sibling is not named; duplicate_rule reports it.
   dup <- "User-agent: *\nDisallow: /feed\nDisallow: /feeds\nDisallow: /feeds\n"
@@ -244,8 +238,8 @@ test_that("ROBO-otomgbge: one row per `P` line, narrower siblings named", {
 })
 
 test_that("ROBO-otomgbge: long values print apart", {
-  # Past 40 bytes `P` keeps its head and the sibling its tail, so the two,
-  # and `P`'s two narrower spellings, never print alike.
+  # Past 40 bytes `P` keeps its head and the sibling its tail, so the two
+  # never print alike.
   p <- paste0("/", strrep("a", 52L))
   body <- paste0("User-agent: *\nDisallow: ", p, "\nDisallow: ", p, "b\n")
   head <- paste0("/", strrep("a", 35L), "...")
