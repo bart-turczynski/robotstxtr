@@ -162,8 +162,8 @@ the first User-agent line, or, between stacked User-agent lines,
 join the next group) and adds that Bing and Yandex may read the
 following lines differently. In a body over 512,000 bytes it leaves
 out what the line does to the rules after it. That sentence stays
-for ASCII keys. A key led by a non-ASCII space or a zero-width
-character, as \code{user_agent_cut} lists them, names it, and when
+for ASCII keys. A key led by an invisible, space or separator
+character, as \code{user_agent_cut} defines them, names it, and when
 the key without them (and without any before its colon) is
 \code{User-agent}, \code{Allow}, \code{Disallow} or \code{Sitemap},
 says so and gives Google's reading: Google does not apply the rule,
@@ -204,11 +204,16 @@ offset, at most ten, and giving the ASCII spelling, which no byte
 compare matches; U+00AD SOFT HYPHEN is named as invisible and dropped
 from the spelling. The sentence names the package's Bing or Yandex
 matcher only when the spelling is a crawler that backend evaluates
-(\code{bingbot} written with a Cyrillic o). A non-ASCII space
-(U+00A0 NO-BREAK SPACE, U+1680, U+2000 to U+200A, U+202F, U+205F,
-U+3000) or a zero-width character (U+200B to U+200D, U+2060,
-U+FEFF) counts too and is named the same way, as a space or as
-invisible, spelled as an ASCII space or dropped: Google's parser
+(\code{bingbot} written with a Cyrillic o). An invisible, space or
+separator character, chosen by Unicode property (Unicode 17.0.0):
+a non-ASCII space (Zs, such as U+00A0 NO-BREAK SPACE), a line or
+paragraph separator (U+2028, U+2029), a format character (Cf, such
+as U+200B, U+200E and the bidi controls), any other
+default-ignorable code point (such as a variation selector) or a C1
+control (U+0080 to U+009F), counts too and is named the same way,
+as a space or separator or as invisible, spelled as an ASCII space
+or dropped; an unassigned default-ignorable one is named as such,
+with no name. Google's parser
 strips ASCII whitespace only, so a value padded with no-break spaces
 before a comment looks right but is cut there. Such a sentence names
 no package matcher, and the row then ends saying that Bing and
@@ -364,7 +369,19 @@ One per rule line. \cr
 \code{rule_invisible_character} \tab info \tab
 A pattern holds an
 invisible or formatting character, such as U+200B or U+2066. One per
-rule line, naming up to ten. \cr
+rule line, naming up to ten. One that ends the pattern is left to
+\code{rule_trailing_invisible_character}. \cr
+\code{rule_trailing_invisible_character} \tab warning \tab
+A pattern that starts with \code{/} or \code{*} ends, after the ASCII
+whitespace the parser trims and before a final \code{$}, in an
+invisible, space or separator character as \code{user_agent_cut}
+defines them, U+00AD included (\code{Disallow: /private/} followed by
+U+00A0). Google's parser keeps it and percent-encodes it
+(\code{\%C2\%A0}), so the rule matches only URLs holding it there:
+such a Disallow does not block \code{/private/x}. The message names
+each such character by code point and byte and says that Bing and
+Yandex may read the rule differently. Not for a value that is not
+valid UTF-8 or that the line buffer cuts. \cr
 \code{rule_possible_mojibake} \tab info \tab
 A pattern holds two or
 more sequences that read like UTF-8 decoded as Latin-1 and encoded

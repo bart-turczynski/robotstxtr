@@ -318,7 +318,10 @@ test_that("ROBO-qxcwxtbm: a leading U+200B or U+FEFF is the slash row's", {
 test_that("ROBO-qxcwxtbm: one row lists ten code points and counts the rest", {
   points <- c(0x2060, 0x00ad, 0x200b, 0x200c, 0x200d, 0x200e, 0x200f, 0x202a,
               0x202b, 0x202c, 0x202d, 0x202e, 0x200b)
-  value <- paste0("/", intToUtf8(points, multiple = TRUE), collapse = "")
+  # A final "/" keeps the last point inside the value: at its end it gets
+  # rule_trailing_invisible_character instead (ROBO-uphlyomt).
+  value <- paste0(paste0("/", intToUtf8(points, multiple = TRUE),
+                         collapse = ""), "/")
   x <- robots_validate_text(ua_body("Disallow: ", value))
   expect_identical(x$diagnostics$code, "rule_invisible_character")
   # Each "/" is one byte; U+00AD is two bytes, the others three.
@@ -336,7 +339,9 @@ test_that("ROBO-qxcwxtbm: one row lists ten code points and counts the rest", {
 })
 
 test_that("ROBO-qxcwxtbm: a document stops at 100 advisory rows", {
-  rules <- paste0(sprintf("Disallow: /p%d", seq_len(1000L)), ua_chr(0x200b))
+  # Inside the value: at its end U+200B is a warning (ROBO-uphlyomt).
+  rules <- paste0(sprintf("Disallow: /p%d", seq_len(1000L)), ua_chr(0x200b),
+                  "x")
   body <- enc2utf8(paste0("User-agent: *\n", paste(rules, collapse = "\n"),
                           "\n"))
   x <- robots_validate_text(body)

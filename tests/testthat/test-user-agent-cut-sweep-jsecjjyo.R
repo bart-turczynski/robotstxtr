@@ -1,6 +1,6 @@
 # ROBO-jsecjjyo: a generated sweep of cut User-agent rows against Google's
-# reading. Each document puts one inserted character (every listed space
-# and invisible character, U+00AD, U+2028, a Latin-1 A0 byte, a listed
+# reading. Each document puts one inserted character (a sample of the listed
+# space and invisible characters, U+00AD, a Latin-1 A0 byte, a listed
 # sequence cut short, a tab) at one position of a User-agent line (before
 # its value, inside it, after it, before its key), or puts the look-alike
 # U+043E in place of an `o`, in one group context, and every row on that
@@ -27,20 +27,27 @@ sw_code_point <- function(point) {
   sw_insert(sprintf("U+%04X", point), charToRaw(intToUtf8(point)), TRUE)
 }
 # Run in every context: one listed character of each byte width and kind,
-# and each other insert.
+# a line separator (ROBO-uphlyomt), and each other insert.
+sw_full_points <- c(0x00A0, 0x3000, 0x200B, 0xFEFF, 0x2028, 0xE0041)
 sw_full <- c(
-  lapply(c(0x00A0, 0x3000, 0x200B, 0xFEFF), sw_code_point),
+  lapply(sw_full_points, sw_code_point),
   list(sw_insert("U+00AD", charToRaw(intToUtf8(0x00AD)), TRUE),
-       sw_insert("U+2028", charToRaw(intToUtf8(0x2028)), FALSE),
        sw_insert("latin1 A0", as.raw(0xA0), FALSE),
        sw_insert("cut C2", as.raw(0xC2), FALSE),
        sw_insert("tab", as.raw(0x09), FALSE),
        sw_insert("U+043E for o", charToRaw(intToUtf8(0x043E)), FALSE,
                  "substitute"))
 )
-# Every other listed character, in the first context and before or inside
-# the value only: each has the width and kind of one of the four above.
-sw_rest <- lapply(setdiff(sw_listed, c(0x00A0, 0x3000, 0x200B, 0xFEFF)),
+# A sample of the other listed characters (ROBO-uphlyomt: the class has
+# thousands, each read through one table), one or two of each property
+# class, in the first context and before or inside the value only: each
+# has the width and kind of one above. The whole table is checked in
+# test-invisible-class-uphlyomt.R.
+sw_rest_points <- c(0x1680, 0x2009, 0x202F, 0x2029, 0x200E, 0x202E, 0x2066,
+                    0x061C, 0x180E, 0x0085, 0x009F, 0xFE0F, 0x034F, 0x3164,
+                    0x2065, 0xE0080)
+stopifnot(all(c(sw_full_points, sw_rest_points) %in% sw_listed))
+sw_rest <- lapply(sw_rest_points,
                   function(point) {
                     x <- sw_code_point(point)
                     x$positions <- c("before", "inside")
@@ -57,7 +64,7 @@ sw_whole <- function(name, bytes, repaired, target) {
 sw_multi <- list(
   sw_whole("U+200B U+2028 Googlebot",
            charToRaw(intToUtf8(c(0x200B, 0x2028, utf8ToInt("Googlebot")))),
-           FALSE, "Googlebot"),
+           TRUE, "Googlebot"),
   sw_whole("G U+200B oogle U+200B bot",
            charToRaw(paste0("G", intToUtf8(0x200B), "oogle", intToUtf8(0x200B),
                             "bot")), TRUE, "Googlebot"),
