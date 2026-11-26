@@ -87,13 +87,14 @@ each destination row apart, so a destination that reuses an origin's
 result has that body validated once more, under its own \code{source_id}.
 Acquisition failures are retained as evidence and
 produce \code{"not_validated"} document rows. A 2xx body over \code{max_bytes} is cut
-at the limit: its first \code{max_bytes} bytes are validated up to their last
+at the limit: its first \code{max_bytes} bytes are read up to their last
 complete line (the partial line after the last line break is not read), as
 RFC 9309 section 2.5 allows a crawler to parse. The document row reports
 the cut with \code{body_truncated} and \code{limit_exceeded} both \code{TRUE} and
 \code{final_newline = NA} (the file's end was never read), \code{byte_size} is the
-stored size, and a warning diagnostic with code \code{body_truncated} says most
-of the file may not have been validated. A body over \code{max_bytes} with a 3xx
+stored size, and a warning diagnostic with code \code{body_truncated} says how
+many bytes were read and names the checks that were not run, since lines
+past the cut could change their result. A body over \code{max_bytes} with a 3xx
 status, an unknown status, or a 2xx whose libcurl and status-line statuses
 disagree is refused whole and reported as \code{acquisition_limit_exceeded}, and a
 4xx or 5xx keeps its status outcome whatever its body size.

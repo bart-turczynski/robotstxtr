@@ -453,12 +453,14 @@ Separate groups written in plain User-agent, Allow and Disallow lines
 give their crawlers the same rules, as written, so their User-agent
 lines could be stacked in one group (RFC 9309 section 2.2.1).
 Optional cleanup. Anchored on the first group's first line; the
-message names the other groups and the stacked group. \cr
+message names the other groups and the stacked group. Not reported
+for a body cut at \code{max_bytes}. \cr
 \code{empty_disallow_with_full_block} \tab warning \tab
 The rules one crawler follows hold an empty \code{Disallow:} and a
 full block (\code{Disallow: /}, no non-empty Allow): Google and Bing
 block every path, Yandex allows the paths no longer Disallow matches.
-Anchored on the full-block line. \cr
+Anchored on the full-block line. Not reported for a body cut at
+\code{max_bytes}. \cr
 \code{disallow_tied_by_allow} \tab warning \tab
 A Disallow never takes effect: an Allow with the identical pattern
 applies to the same crawlers and wins the tie. Anchored on the
@@ -479,7 +481,8 @@ Allow, the gap can leave such URLs restricted. The message shows one
 such URL. Not reported when the same crawlers also have the rule
 with that \code{?} written \code{*&}, or written \code{&} when a
 \code{*} stands right before that \code{?} (\code{/*?sort=}, not
-\code{/a*b?sort=}). \cr
+\code{/a*b?sort=}). Not reported for a body cut at \code{max_bytes}.
+\cr
 \code{rule_query_crawl_not_index} \tab info \tab
 A Disallow pattern holds \code{?}, \code{=} or \code{&}, so it may
 target URL parameters. The note says robots.txt controls crawling,
@@ -505,7 +508,8 @@ one row per group of crawlers, on its first User-agent line, listing
 five rules at most, then a count. On a file whose rules and crawlers
 would make the check costly, candidates past a fixed amount of work,
 linear in the file's rules, get no row, and
-\code{rule_check_stopped} says so. \cr
+\code{rule_check_stopped} says so. Not reported for a body cut at
+\code{max_bytes}. \cr
 \code{rule_end_anchor_query} \tab info \tab
 A Disallow whose pattern ends in \code{$} and holds no \code{?}
 (\code{/x/edit$}) blocks its path but not the same path with a query
@@ -515,7 +519,8 @@ path and the query URL comes out allowed under every rule the
 crawlers have. One row per group of crawlers, on its first User-agent
 line, listing five rules at most, then a count. Past a fixed amount
 of work, as for \code{rule_slash_split}, candidates get no row and
-\code{rule_check_stopped} says so. \cr
+\code{rule_check_stopped} says so. Not reported for a body cut at
+\code{max_bytes}. \cr
 \code{allow_reopens_through_query} \tab info \tab
 An Allow that opens with \code{*} or \code{/*} and then names a path
 (\code{*/x/}) also matches inside a query, so it allows
@@ -527,7 +532,8 @@ its first User-agent line: the first Allow with the URL it allows and
 the Disallow that blocks the path, then the lines of the other
 Allows, four at most, then a count.
 Past a fixed amount of work, as for \code{rule_slash_split}, Allows
-get no row and \code{rule_check_stopped} says so. \cr
+get no row and \code{rule_check_stopped} says so. Not reported for a
+body cut at \code{max_bytes}. \cr
 \code{rule_render_resource_blocked} \tab info \tab
 A Disallow whose pattern ends in a file type a page may load
 (\code{.js}, \code{.mjs}, \code{.cjs}, \code{.css}, \code{.json},
@@ -541,7 +547,8 @@ per group of crawlers, on its first User-agent line: the first rule
 with a file it blocks, then the lines of the other rules, four at
 most, then a count. Past a fixed amount of work, as for
 \code{rule_slash_split}, rules get no row and
-\code{rule_check_stopped} says so. \cr
+\code{rule_check_stopped} says so. Not reported for a body cut at
+\code{max_bytes}. \cr
 \code{rule_prefix_sibling} \tab info \tab
 A literal rule with no trailing \code{/} or \code{$}
 (\code{Disallow: /feed}) also matches a longer path the same
@@ -555,7 +562,8 @@ neither rule wrong. One row per set of crawlers of the shorter
 rule's group, on its line, listing five pairs at most, then a count;
 a sibling listed for fewer crawlers names them. Past a
 fixed amount of work, as for \code{rule_slash_split}, rules get no
-row and \code{rule_check_stopped} says so. \cr
+row and \code{rule_check_stopped} says so. Not reported for a body
+cut at \code{max_bytes}. \cr
 \code{rule_check_stopped} \tab info \tab
 The file is too large for \code{rule_slash_pair},
 \code{rule_slash_split}, \code{rule_end_anchor_query},
@@ -619,7 +627,10 @@ the NUL only shortens is not. Reported even for a body cut at
 \code{max_bytes}. \cr
 \code{body_truncated} \tab warning \tab
 The body exceeded \code{max_bytes}; only lines before the cut were read
-(beside \code{compressed_body}, none was, and the row says so). \cr
+(beside \code{compressed_body}, none was, and the row says so). The
+message also names, in plain words, every check skipped on such a
+body because lines past the cut could change its result: the codes
+above marked as not reported for a body cut at \code{max_bytes}. \cr
 \code{acquisition_input_invalid} \tab error \tab
 An input URL could not be turned into a robots.txt origin. \cr
 \code{acquisition_missing} \tab info \tab
