@@ -145,10 +145,11 @@ test_that("ROBO-atkmqcov: a BOM on a comment or an empty line is reported", {
 })
 
 test_that("ROBO-atkmqcov: a BOM that does not start the key is not counted", {
-  # Inside a value the BOM is U+FEFF, an invisible character (ROBO-qxcwxtbm).
+  # Inside a value the BOM is U+FEFF, an invisible character (ROBO-qxcwxtbm);
+  # one that ends the value is a trailing one (ROBO-uphlyomt).
   expect_identical(bom_codes(c(ua_star, charToRaw("Allow: /a"), bom,
                                charToRaw("\n"))),
-                   "rule_invisible_character@3")
+                   "rule_trailing_invisible_character@3")
   expect_identical(bom_codes(c(ua_star, charToRaw("Allow: /a"), bom,
                                charToRaw("b\n"))),
                    "rule_invisible_character@3")

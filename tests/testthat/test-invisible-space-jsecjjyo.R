@@ -393,8 +393,8 @@ test_that("a cut value led by `*` is not `*` on Google", {
                                              "U+00A0 NO-BREAK SPACE")))
   expect_true(endsWith(row$message, iv_value_clause))
   expect_identical(iv_count(row$message, "Bing|Yandex"), 2L)
-  # Any kind after `*`, one before it, ASCII after it, or a character
-  # outside the table (U+2028, named by no row here): the same reading.
+  # Any kind after `*`, one before it, ASCII after it, or a line separator
+  # (U+2028, in the table since ROBO-uphlyomt): the same reading.
   for (value in c("*\u3000", "*\u200b", "*\u0430", "\u00a0*", "*foo", "**",
                   "*/1.0", "*\u2028")) {
     body <- iv_lines(paste0("User-agent: ", value), "Disallow: /x")
@@ -420,8 +420,13 @@ test_that("a cut value led by `*` is not `*` on Google", {
                                token, "/private/x"), "disallow 2",
                      label = token)
   }
+  # The row names U+2028 (ROBO-uphlyomt).
   row <- star_row(body)
-  expect_identical(row$message, no_rules)
+  expect_identical(row$message, paste0(
+    no_rules, " The value holds U+2028 LINE SEPARATOR at byte 2, which is a ",
+    "line or paragraph separator; written in ASCII the value is '* ', which ",
+    "no byte compare matches to this value.", iv_value_clause
+  ))
   expect_identical(row$severity, "warning")
   # Beside another User-agent line: that line keeps the group.
   body <- iv_lines("User-agent: *\u00a0", "User-agent: foo", "Disallow: /x")
@@ -840,7 +845,7 @@ test_that("an invalid UTF-8 `*`-led value stays a warning beside `*`", {
                     fixed = TRUE))
   expect_identical(row$severity, "warning")
   # A valid character this row does not name keeps it info there.
-  body <- iv_lines("User-agent: *", "User-agent: *\u2028", "Disallow: /x")
+  body <- iv_lines("User-agent: *", "User-agent: *\u2190", "Disallow: /x")
   expect_identical(iv_cut(body)$severity, "info")
 })
 
@@ -879,7 +884,7 @@ test_that("\"nothing changes for them\" is printed only where proven", {
   # Bytes the repair does not drop, before a Google token: Googlebot loses
   # the group on Google, so the row states Google's reading only, at
   # today's severity.
-  for (value in list("\u2028Googlebot", "\xa0Googlebot", "\xc2Googlebot",
+  for (value in list("\u2190Googlebot", "\xa0Googlebot", "\xc2Googlebot",
                      "\u00e9 Googlebot")) {
     body <- paste0("User-agent: ", value, "\nDisallow: /x\n")
     expect_identical(iv_google(body, "Googlebot", "/x"), "allow NA")
@@ -908,7 +913,7 @@ test_that("\"nothing changes for them\" is printed only where proven", {
                       fixed = TRUE), label = value)
   }
   # A Google token split by a byte Google does not read counts as named.
-  for (value in list("Google\xadbot", "Googl\u2028ebot", "Google\xc2bot")) {
+  for (value in list("Google\xadbot", "Googl\u2190ebot", "Google\xc2bot")) {
     body <- paste0("User-agent: ", value, "\nDisallow: /x\n")
     expect_identical(iv_google(body, "Googlebot", "/x"), "allow NA",
                      label = value)
@@ -926,7 +931,7 @@ test_that("\"nothing changes for them\" is printed only where proven", {
   row <- iv_cut(iv_lines("User-agent: My Googlebot clone", "Disallow: /x"))
   expect_false(grepl("nothing changes", row$message, fixed = TRUE))
   for (value in c("Foo Bot", "\u200bExampleBot",
-                  "\u2028ExampleBot", "bingb\u043et", "a\xa0b")) {
+                  "\u2190ExampleBot", "bingb\u043et", "a\xa0b")) {
     row <- iv_cut(iv_lines(paste0("User-agent: ", value), "Disallow: /x"))
     expect_true(grepl("so nothing changes for them", row$message,
                       fixed = TRUE), label = value)
@@ -934,12 +939,12 @@ test_that("\"nothing changes for them\" is printed only where proven", {
   # An ASCII control is not ASCII clean; with no Google token name, printed.
   row <- iv_cut(iv_lines("User-agent: Exa\tmple", "Disallow: /x"))
   expect_true(grepl("so nothing changes for them", row$message, fixed = TRUE))
-  facts <- user_agent_cut_facts(c("Foo Bot", "Exa\tmple", "\u2028Googlebot",
+  facts <- user_agent_cut_facts(c("Foo Bot", "Exa\tmple", "\u2190Googlebot",
                                   "x GOOGLEBOT"))
   expect_identical(facts$clean, c(TRUE, FALSE, FALSE, TRUE))
   expect_identical(facts$named, c(FALSE, FALSE, TRUE, TRUE))
   expect_identical(user_agent_cut_facts(c("Google\xadbot", "Exa\xadmple",
-                                          "Googl\u2028ebot"))$named,
+                                          "Googl\u2190ebot"))$named,
                    c(TRUE, FALSE, TRUE))
 })
 
