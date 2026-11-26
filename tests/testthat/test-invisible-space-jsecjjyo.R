@@ -1095,10 +1095,10 @@ test_that("the conditional sentence names the crawler as Google spells it", {
 # that ignores `*`.
 iv_other_named <- function(meant) {
   iv_lines("User-agent: Googlebot", "Disallow: /a", "", "User-agent: *",
-           paste0("User-agent: ​", meant), "Disallow: /x")
+           paste0("User-agent: \u200b", meant), "Disallow: /x")
 }
 iv_other_none <- iv_lines("User-agent: Bingbot", "Disallow: /a", "",
-                          "User-agent: *", "User-agent: ​Googlebot",
+                          "User-agent: *", "User-agent: \u200bGooglebot",
                           "Disallow: /x")
 iv_all_exact <- iv_lines("User-agent: *", "User-agent: AdsBot-Google",
                          "User-agent: AdsBot-Google-Mobile",

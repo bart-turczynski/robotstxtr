@@ -2236,7 +2236,8 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # only when a Google crawler reads the cut (ROBO-txnzyugl).
   agents <- groups$agents
   found <- user_agent_cut_rows(agents, has_global_group,
-                               groups$groups$group[groups$groups$global])
+                               groups$groups$group[groups$groups$global],
+                               stored_size > 512000L)
   if (nrow(found) > 0L) {
     add_chunk(
       found$line, found$severity, found$code, found$directive,
@@ -3355,8 +3356,11 @@ validation_google_tokens <- function() {
 # (user_agent_cut_facts()) through one decision table
 # (user_agent_cut_decide(), ROBO-jsecjjyo). A line whose value holds a
 # second directive key gets the directive_in_value row instead, which
-# carries the cut (ROBO-bkzqgvai).
-user_agent_cut_rows <- function(agents, has_global, global_groups) {
+# carries the cut (ROBO-bkzqgvai). `over_window`: the body is over Google's
+# 512,000 bytes, so a User-agent line may lie past what Google reads; the
+# rows then count no other line as reaching or taking a crawler.
+user_agent_cut_rows <- function(agents, has_global, global_groups,
+                                over_window = FALSE) {
   all_agents <- agents
   agents <- agents[agents$cut & !agents$hidden, , drop = FALSE]
   if (nrow(agents) == 0L) {
@@ -3402,11 +3406,13 @@ user_agent_cut_rows <- function(agents, has_global, global_groups) {
   # but Google's crawlers that ignore `*` (google_crawler_tokens_v1(),
   # "exact_only") are not reached through that line (ROBO-ipzkxzhg). Each
   # row leaves out of that list the crawlers some User-agent line of its
-  # group reads, the cut line included, as the group reaches them anyway
+  # group reads, the cut line included, as the group reaches them anyway,
+  # except in a body over Google's 512,000 bytes
   # (user_agent_cut_ignore_star()).
   fallback <- rep(fallback, nrow(agents))
   kept <- agents$group %in% global_groups
-  ignore_star <- user_agent_cut_ignore_star(agents$group, all_agents)
+  ignore_star <- user_agent_cut_ignore_star(agents$group, all_agents,
+                                            over_window)
   excepted <- ifelse(
     nzchar(ignore_star$crawlers),
     paste0(" ", ignore_star$crawlers, ifelse(ignore_star$one, " does", " do"),
@@ -3461,7 +3467,7 @@ user_agent_cut_rows <- function(agents, has_global, global_groups) {
   # where it names the token Google does read as a crawler that follows the
   # group.
   conditional <- user_agent_cut_meant_sentence(
-    facts$repaired, agents$group, kept, all_agents
+    facts$repaired, agents$group, kept, all_agents, over_window
   )
   is_meant <- case == "meant"
   message[is_meant] <- paste0(
@@ -3488,12 +3494,19 @@ user_agent_cut_rows <- function(agents, has_global, global_groups) {
 # `all_agents`, every User-agent line) reads, for the exceptions of the
 # kept fallback and the `*`-led tail (ROBO-ipzkxzhg): `crawlers` names them
 # ("Google's crawler that ignores `*` (APIs-Google)", plural for more, ""
-# for none) and `one` says whether one is left.
-user_agent_cut_ignore_star <- function(group, all_agents) {
+# for none) and `one` says whether one is left. In a body over Google's
+# 512,000 bytes (`over_window`) a line of the group may lie past what Google
+# reads, so none is left out.
+user_agent_cut_ignore_star <- function(group, all_agents,
+                                       over_window = FALSE) {
   table <- google_crawler_tokens_v1()
   ignore_star <- table$crawler_token[table$group_selection == "exact_only"]
   missed <- lapply(group, function(g) {
-    own <- all_agents$key[all_agents$group == g]
+    own <- if (over_window) {
+      character()
+    } else {
+      all_agents$key[all_agents$group == g]
+    }
     ignore_star[!ascii_lower(ignore_star) %in% own]
   })
   count <- lengths(missed)
@@ -3653,9 +3666,12 @@ user_agent_cut_facts <- function(values) {
 # (google_crawler_tokens_v1() "exact_only"), nor one that another group
 # names, by its token or its parent's: Google gives it that group
 # (ROBO-ipzkxzhg). Otherwise the row says only that Google does not read
-# the line so. The crawler is named as Google documents its token
+# the line so. In a body over Google's 512,000 bytes (`over_window`) the
+# other group may lie past what Google reads, so no other group is counted.
+# The crawler is named as Google documents its token
 # (validation_google_tokens()), not in the value's case.
-user_agent_cut_meant_sentence <- function(repaired, group, kept, all_agents) {
+user_agent_cut_meant_sentence <- function(repaired, group, kept, all_agents,
+                                          over_window = FALSE) {
   table <- google_crawler_tokens_v1()
   folded <- ascii_lower(repaired)
   row <- match(folded, ascii_lower(table$crawler_token))
@@ -3666,7 +3682,7 @@ user_agent_cut_meant_sentence <- function(repaired, group, kept, all_agents) {
   # the crawler that group, not this one through its `*` line.
   elsewhere <- function(token) {
     vapply(seq_along(token), function(k) {
-      !is.na(token[[k]]) &&
+      !over_window && !is.na(token[[k]]) &&
         any(all_agents$key == token[[k]] & all_agents$group != group[[k]])
     }, logical(1L))
   }

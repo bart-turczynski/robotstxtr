@@ -133,8 +133,10 @@ sw_decide <- function(doc, tokens) {
 }
 
 # The tokens whose loss of the group the sweep looks for: the target's own
-# Google token, the token an ASCII value Google cuts was written for
-# (`sw_ascii_meant`), and for `*` any crawler.
+# Google token, and for `*` any crawler. For an ASCII value Google cuts
+# (`sw_ascii_meant`) it is the token the value was written for, but `before`
+# is that value as written, which Google cuts too, so no loss against it is
+# seen: check (i) asks the backend for that token directly.
 sw_tokens <- function(target) {
   token <- sub("[^A-Za-z_-].*$", "", target)
   if (target %in% names(sw_ascii_meant)) {
@@ -378,7 +380,9 @@ test_that("every generated cut row agrees with Google's reading", {
             }
             # Each crawler the kept fallback excepts gets no rules (allow),
             # and each crawler that ignores `*` it leaves out gets the group
-            # through a line of its own (ROBO-ipzkxzhg).
+            # through a line of its own (ROBO-ipzkxzhg). The `*` tail's list
+            # is not checked so here; the hand pins in
+            # test-invisible-space-jsecjjyo.R check it.
             if (identical(kind, "kept") && fb_new) {
               listed <- sw_quoted(message, paste0(
                 "Google's crawlers? that ignores? `\\*` \\(([^)]*)\\) ",
