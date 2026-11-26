@@ -1088,3 +1088,54 @@ test_that("the conditional sentence names the crawler as Google spells it", {
   expect_true(grepl("Google's AdsBot-Google-Mobile does not get",
                     iv_cut(body)$message, fixed = TRUE))
 })
+
+# ROBO-ipzkxzhg review 1: a `*` line does not reach the crawler a "meant"
+# row names when another group names that crawler, or names its parent
+# where no group names the crawler; and a group's own lines reach a crawler
+# that ignores `*`.
+iv_other_named <- function(meant) {
+  iv_lines("User-agent: Googlebot", "Disallow: /a", "", "User-agent: *",
+           paste0("User-agent: ​", meant), "Disallow: /x")
+}
+iv_other_none <- iv_lines("User-agent: Bingbot", "Disallow: /a", "",
+                          "User-agent: *", "User-agent: ​Googlebot",
+                          "Disallow: /x")
+iv_all_exact <- iv_lines("User-agent: *", "User-agent: AdsBot-Google",
+                         "User-agent: AdsBot-Google-Mobile",
+                         "User-agent: Mediapartners-Google",
+                         "User-agent: APIs-Google", "User-agent: Foo Bar",
+                         "Disallow: /x")
+
+test_that("Google's reading where another group or the group reaches it", {
+  # Another group names Googlebot: it leaves the `*` group.
+  expect_identical(iv_google(iv_other_named("Googlebot"), "Googlebot", "/x"),
+                   "allow NA")
+  # Googlebot-Image falls back to its parent's group.
+  body <- iv_other_named("Googlebot-Image")
+  expect_identical(iv_google(body, "Googlebot-Image", "/x"), "allow NA")
+  expect_identical(iv_google(body, "Googlebot-Image", "/a"), "disallow 2")
+  # No other group names it: the `*` line still reaches Googlebot.
+  expect_identical(iv_google(iv_other_none, "Googlebot", "/x"), "disallow 6")
+  # A group's own lines reach the crawlers that ignore `*`.
+  body <- iv_lines("User-agent: *", "User-agent: Mediapartners-Google*",
+                   "Disallow: /x")
+  expect_identical(iv_google(body, "Mediapartners-Google", "/x"),
+                   "disallow 3")
+  expect_identical(iv_google(body, "AdsBot-Google", "/x"), "allow NA")
+  body <- iv_lines("User-agent: *", "User-agent: AdsBot-Google 1.0",
+                   "Disallow: /x")
+  expect_identical(iv_google(body, "AdsBot-Google", "/x"), "disallow 3")
+  expect_identical(iv_google(body, "AdsBot-Google-Mobile", "/x"), "allow NA")
+  for (token in c("AdsBot-Google", "AdsBot-Google-Mobile",
+                  "Mediapartners-Google", "APIs-Google")) {
+    expect_identical(iv_google(iv_all_exact, token, "/x"), "disallow 7",
+                     label = token)
+  }
+  # Severity stays: the meant rows warn, the clean ones are info.
+  expect_identical(iv_cut(iv_other_named("Googlebot"))$severity, "warning")
+  expect_identical(iv_cut(iv_other_none)$severity, "warning")
+  expect_identical(iv_cut(iv_all_exact)$severity, "info")
+  # The control keeps today's weak sentence.
+  expect_true(grepl(iv_meant_weak("Googlebot"), iv_cut(iv_other_none)$message,
+                    fixed = TRUE))
+})
