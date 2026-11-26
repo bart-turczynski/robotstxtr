@@ -940,3 +940,54 @@ test_that("\"nothing changes for them\" is printed only where proven", {
                                           "Googl\u2028ebot"))$named,
                    c(TRUE, FALSE, TRUE))
 })
+
+# ROBO-ipzkxzhg: the fallback and effect sentences against Google's reading
+# of the shapes that review 4 of ROBO-jsecjjyo left open.
+test_that("Google's reading of the ipzkxzhg shapes", {
+  # A crawler that ignores `*` is not reached through the group's `*` line.
+  body <- iv_lines("User-agent: *", "User-agent: \u200bAdsBot-Google",
+                   "Disallow: /x")
+  expect_identical(iv_google(body, "AdsBot-Google", "/x"), "allow NA")
+  expect_identical(iv_google(body, "Googlebot", "/x"), "disallow 3")
+  expect_identical(iv_google(body, "ZzSweepBot", "/x"), "disallow 3")
+  # A clean ASCII value holding a Google token's name: Googlebot gets no
+  # rules.
+  for (value in c("\"Googlebot\"", "Google bot", "My Googlebot clone")) {
+    body <- iv_lines(paste0("User-agent: ", value), "Disallow: /x")
+    expect_identical(iv_google(body, "Googlebot", "/x"), "allow NA",
+                     label = value)
+  }
+  # A no-break space inside or after the token.
+  body <- iv_lines("User-agent: Google\u00a0bot", "Disallow: /x")
+  expect_identical(iv_google(body, "Googlebot", "/x"), "allow NA")
+  body <- iv_lines("User-agent: Googlebot\u00a01.0", "Disallow: /x")
+  expect_identical(iv_google(body, "Googlebot", "/x"), "disallow 2")
+  # The token in another case behind a zero-width space.
+  body <- iv_lines("User-agent: \u200bGOOGLEBOT", "Disallow: /x")
+  expect_identical(iv_google(body, "Googlebot", "/x"), "allow NA")
+})
+
+test_that("ipzkxzhg leaves severity and non-Google wording as they were", {
+  # A value naming no Google token keeps "nothing changes for them".
+  for (value in c("Foo Bar", "Foo Bot", "\u200bExampleBot")) {
+    row <- iv_cut(iv_lines(paste0("User-agent: ", value), "Disallow: /x"))
+    expect_true(grepl("so nothing changes for them", row$message,
+                      fixed = TRUE), label = value)
+  }
+  # A space or invisible character in a cut value keeps warning
+  # (ROBO-wtixhwlo, ROBO-jsecjjyo), whatever its repair reads.
+  for (value in c("Google\u00a0bot", "Googlebot\u00a01.0",
+                  "\u200bGOOGLEBOT", "\u200bExampleBot")) {
+    row <- iv_cut(iv_lines(paste0("User-agent: ", value), "Disallow: /x"))
+    expect_identical(row$severity, "warning", label = value)
+  }
+  # Clean ASCII values keep their severity.
+  for (value in c("\"Googlebot\"", "Google bot", "Foo Bar", "Foo Bot")) {
+    row <- iv_cut(iv_lines(paste0("User-agent: ", value), "Disallow: /x"))
+    expect_identical(row$severity, "info", label = value)
+  }
+  # The note spells a no-break space as an ASCII space.
+  row <- iv_cut(iv_lines("User-agent: Google\u00a0bot", "Disallow: /x"))
+  expect_true(grepl("written in ASCII the value is 'Google bot'",
+                    row$message, fixed = TRUE))
+})
