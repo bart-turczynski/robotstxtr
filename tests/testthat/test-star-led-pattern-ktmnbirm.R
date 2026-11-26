@@ -117,6 +117,33 @@ test_that("ROBO-ktmnbirm: Google matches `*X` on the paths `/*X` matches", {
   expect_identical(x$results$allowed, c(FALSE, TRUE))
 })
 
+test_that("ROBO-ktmnbirm: a `*/X` rule also matches the paths `/X` matches", {
+  # src/robots.cc Matches() anchors at the path's first byte and lets `*`
+  # match nothing, so `*/a` reads `/a` from byte 0 too; `/*/a` cannot.
+  paths <- c("/", "/a", "/a/", "/a/b.pdf", "/aprivate", "/x/a", "/x/ab",
+             "/x", "/b/c")
+  decide <- function(pattern) {
+    body <- paste0(sl_ua, "Disallow: ", pattern, "\n")
+    robots_evaluate_text_v1(body, paste0("https://example.com", paths),
+                            "googlebot", "google", "google")$results$url_decision
+  }
+  blocked <- function(pattern) paths[decide(pattern) == "disallow"]
+  expect_identical(blocked("*/a"),
+                   c("/a", "/a/", "/a/b.pdf", "/aprivate", "/x/a", "/x/ab"))
+  expect_identical(blocked("/*/a"), c("/x/a", "/x/ab"))
+  expect_identical(blocked("/a"), c("/a", "/a/", "/a/b.pdf", "/aprivate"))
+  # `*/` blocks every path; `/*/` only a path with a second `/`.
+  expect_identical(blocked("*/"), paths)
+  expect_identical(blocked("/*/"), c("/a/", "/a/b.pdf", "/x/a", "/x/ab",
+                                     "/b/c"))
+})
+
+test_that("ROBO-ktmnbirm: the note for a `*/`-led rule", {
+  d <- sl_diag(paste0(sl_ua, "Disallow: */feed/\n"))
+  expect_identical(d$code, sl_code)
+  expect_identical(d$message, sl_one(2L, "*/feed/"))
+})
+
 test_that("ROBO-ktmnbirm: a `*` lead ranks one byte below a `/*` lead", {
   # src/robots.cc ranks a match by the pattern's byte length: `*.pdf` (5)
   # loses to `/a.pdf` (6), and `/*.pdf` (6) ties it, so the Allow wins.
@@ -125,11 +152,11 @@ test_that("ROBO-ktmnbirm: a `*` lead ranks one byte below a `/*` lead", {
   x <- allowed_by_robots_text(
     paste0(sl_ua, "Allow: *.pdf\nDisallow: /a.pdf\n"), url, "FooBot"
   )
-  expect_identical(x$results$allowed, FALSE)
+  expect_false(x$results$allowed)
   y <- allowed_by_robots_text(
     paste0(sl_ua, "Allow: /*.pdf\nDisallow: /a.pdf\n"), url, "FooBot"
   )
-  expect_identical(y$results$allowed, TRUE)
+  expect_true(y$results$allowed)
   d <- sl_diag(paste0(sl_ua, "Allow: *.pdf\nDisallow: /a.pdf\n"))
   expect_no_match(d$message[d$code == sl_code], "write", fixed = TRUE)
 })
@@ -195,6 +222,11 @@ test_that("ROBO-ktmnbirm: NUL, malformed bytes and long lines", {
   latin1 <- c(charToRaw(paste0(sl_ua, "Disallow: *caf")), as.raw(0xe9),
               charToRaw("\n"))
   expect_identical(sl_diag(latin1)$code, c("invalid_utf8", sl_code))
+  # A control byte is shown escaped, not raw.
+  ctl <- c(charToRaw(paste0(sl_ua, "Disallow: *")), as.raw(1),
+           charToRaw("x\n"))
+  d <- sl_diag(ctl)
+  expect_identical(d$message[d$code == sl_code], sl_one(2L, "*\\x01x"))
   long <- paste0(sl_ua, "Disallow: *", strrep("x", 17000L), "\n")
   d <- sl_diag(long)
   expect_identical(d$code, c("line_too_long", sl_code))
