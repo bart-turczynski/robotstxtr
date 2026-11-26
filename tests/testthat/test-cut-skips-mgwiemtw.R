@@ -21,6 +21,7 @@ cs_fixtures <- list(
   rule_query_parameter_position = "User-agent: *\nDisallow: /search?page=\n",
   rule_slash_split = "User-agent: *\nDisallow: /a/\n",
   rule_end_anchor_query = "User-agent: *\nDisallow: /a$\n",
+  rule_query_parameter_valueless = "User-agent: *\nDisallow: /*&s=\n",
   allow_reopens_through_query =
     "User-agent: *\nDisallow: /my/\nAllow: */s/\n",
   rule_render_resource_blocked = "User-agent: *\nDisallow: /*.js\n",
@@ -80,8 +81,9 @@ test_that("ROBO-mgwiemtw: the body_truncated message of a cut body", {
     "rules; an empty Disallow beside a full block; a query parameter rule ",
     "that misses the parameter in a later position; a path whose bare and ",
     "slash forms get different decisions; a `$` rule that the same path ",
-    "with a query added gets past; an Allow that reopens a blocked path ",
-    "through a query; a Disallow that blocks page resources such as ",
+    "with a query added gets past; a query parameter rule that the ",
+    "parameter without a value gets past; an Allow that reopens a blocked ",
+    "path through a query; a Disallow that blocks page resources such as ",
     "scripts or styles; a rule that also matches a longer path listed ",
     "separately; the note that the file has no rules."
   ))

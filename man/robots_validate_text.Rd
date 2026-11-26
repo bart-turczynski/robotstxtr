@@ -483,6 +483,23 @@ with that \code{?} written \code{*&}, or written \code{&} when a
 \code{*} stands right before that \code{?} (\code{/*?sort=}, not
 \code{/a*b?sort=}). Not reported for a body cut at \code{max_bytes}.
 \cr
+\code{rule_query_parameter_valueless} \tab info \tab
+A Disallow pattern ends in a query parameter and its \code{=}, with
+nothing after the \code{=} but \code{*} (\code{/*?s=},
+\code{/*?s=*}, \code{/*&s=}), so it blocks the parameter with a value
+(\code{/x?s=1}) but not the same parameter written without one
+(\code{/x?s}): the pattern matches its bytes literally (RFC 9309
+section 2.2.2). Reported only when the rule decides the URL with a
+value and the URL without one comes out allowed under every rule the
+crawlers have, so a sibling such as \code{Disallow: /*?s} silences
+it. One row per group of crawlers, on its first User-agent line,
+listing five rules at most, then a count; the message shows both
+URLs and suggests no rewrite. A line can also get
+\code{rule_query_parameter_position}: the two gaps differ, and both
+rows stand. Past a fixed amount of work, as for
+\code{rule_slash_split}, candidates get no row and
+\code{rule_check_stopped} says so. Not reported for a body cut at
+\code{max_bytes}. \cr
 \code{rule_query_crawl_not_index} \tab info \tab
 A Disallow pattern holds \code{?}, \code{=} or \code{&}, so it may
 target URL parameters. The note says robots.txt controls crawling,
@@ -567,6 +584,7 @@ cut at \code{max_bytes}. \cr
 \code{rule_check_stopped} \tab info \tab
 The file is too large for \code{rule_slash_pair},
 \code{rule_slash_split}, \code{rule_end_anchor_query},
+\code{rule_query_parameter_valueless},
 \code{allow_reopens_through_query},
 \code{rule_render_resource_blocked} or
 \code{rule_prefix_sibling} to check
@@ -1072,6 +1090,36 @@ query URL. The check reads its candidates within a fixed amount of work,
 as the slash checks do, and a \verb{User-agent: __usage_ai-training} group
 gets no row.
 
+\code{rule_query_parameter_valueless} reads a non-empty Disallow whose
+canonical value is led by \code{/} or \code{*} and ends in a parameter name
+(letters, digits, \verb{_}, \code{.} and \code{-}), its \code{=} and only a run of \code{*}. The
+name follows the value's first \verb{?}, as for
+\code{rule_query_parameter_position} (\verb{/*?s=}, \verb{/search?q=*}), or, in a value
+with no \verb{?}, an \code{&} right after a \code{*} that is its first \verb{&name=}
+(\verb{/*&s=}). A value after the \code{=} (\verb{/*?s=shoes}) blocks one value, not the
+parameter, and is not read; nor is a value ending in \code{$}, one whose path
+holds a \code{.} or \code{..} segment, or one holding a \verb{\%} that starts no escape
+or a byte no URL carries, as for \code{rule_end_anchor_query}. The URL with a
+value is the pattern as a path, each \code{*} written \code{x}, the final run of
+\code{*} dropped and \code{1} after the \code{=} (\verb{/x?s=1}); a \verb{*&} is written
+\verb{x?a=1&} (\verb{/x?a=1&s=1}). The URL without one is that URL up to the name
+(\verb{/x?s}, \verb{/x?a=1&s}). Where another rule matches those filler bytes, the
+check tries \code{y}, \code{2} and \code{b=2}. Google's matcher makes the decisions over
+every rule of the crawler's merged groups: the rule must decide the URL
+with a value, so an Allow that wins it silences the row, and the URL
+without one must come out allowed, so a rule that blocks it
+(\verb{Disallow: /*?s}, \verb{Disallow: /*?s$}) silences it too. A row is reported
+only where every crawler the group names agrees, on the whole-value
+merge and on Google's merge. The row states what the pattern matches; it
+suggests no rewrite, since \code{?s} alone also matches every parameter whose
+name starts with \code{s}. Allow rules are not read. A lower-case-escape twin
+gets no row, and a rule that gets \code{rule_cut_by_nul} takes part with its
+value cut at the NUL, as Google's parser reads it. A body cut at
+\code{max_bytes} is not checked: a later Disallow could block the URL without
+a value. The check reads its candidates within a fixed amount of work,
+as the slash checks do, and a \verb{User-agent: __usage_ai-training} group
+gets no row.
+
 \code{allow_reopens_through_query} reads an Allow whose pattern is led by \code{*}
 or \verb{/*} and whose rest after that run of \code{*} is a path: a \code{/} and at
 least one more byte before any final \code{*} or \code{$} (\verb{*/x/}, \verb{/*/x/},
@@ -1166,8 +1214,9 @@ On a document holding a NUL byte, \code{wildcard_rules_not_inherited},
 \code{disallow_tied_by_allow}, \code{duplicate_rule},
 \code{rule_query_parameter_position}, \code{rule_query_crawl_not_index},
 \code{rule_slash_pair}, \code{rule_slash_split},
-\code{rule_end_anchor_query}, \code{allow_reopens_through_query},
-\code{rule_render_resource_blocked}, \code{rule_prefix_sibling},
+\code{rule_end_anchor_query}, \code{rule_query_parameter_valueless},
+\code{allow_reopens_through_query}, \code{rule_render_resource_blocked},
+\code{rule_prefix_sibling},
 \code{user_agent_groups_same_rules} and the AI-training codes follow Google's
 reading: the parser and Google's matcher end a line at its
 first NUL, while the Bing and Yandex matchers read the NUL as an ordinary
