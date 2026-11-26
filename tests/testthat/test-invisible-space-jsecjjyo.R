@@ -921,9 +921,11 @@ test_that("\"nothing changes for them\" is printed only where proven", {
                  label = value)
     expect_identical(row$severity, "info", label = value)
   }
-  # ASCII, or other bytes naming no Google token: printed, valid UTF-8
-  # or not.
-  for (value in c("Foo Bot", "My Googlebot clone", "\u200bExampleBot",
+  # Bytes naming no Google token, ASCII or not: printed, valid UTF-8 or
+  # not. An ASCII value naming one is left out (ROBO-ipzkxzhg).
+  row <- iv_cut(iv_lines("User-agent: My Googlebot clone", "Disallow: /x"))
+  expect_false(grepl("nothing changes", row$message, fixed = TRUE))
+  for (value in c("Foo Bot", "\u200bExampleBot",
                   "\u2028ExampleBot", "bingb\u043et", "a\xa0b")) {
     row <- iv_cut(iv_lines(paste0("User-agent: ", value), "Disallow: /x"))
     expect_true(grepl("so nothing changes for them", row$message,
@@ -939,4 +941,329 @@ test_that("\"nothing changes for them\" is printed only where proven", {
   expect_identical(user_agent_cut_facts(c("Google\xadbot", "Exa\xadmple",
                                           "Googl\u2028ebot"))$named,
                    c(TRUE, FALSE, TRUE))
+})
+
+# ROBO-ipzkxzhg: the fallback and effect sentences against Google's reading
+# of the shapes that review 4 of ROBO-jsecjjyo left open.
+test_that("Google's reading of the ipzkxzhg shapes", {
+  # A crawler that ignores `*` is not reached through the group's `*` line.
+  body <- iv_lines("User-agent: *", "User-agent: \u200bAdsBot-Google",
+                   "Disallow: /x")
+  expect_identical(iv_google(body, "AdsBot-Google", "/x"), "allow NA")
+  expect_identical(iv_google(body, "Googlebot", "/x"), "disallow 3")
+  expect_identical(iv_google(body, "ZzSweepBot", "/x"), "disallow 3")
+  # A clean ASCII value holding a Google token's name: Googlebot gets no
+  # rules.
+  for (value in c("\"Googlebot\"", "Google bot", "My Googlebot clone")) {
+    body <- iv_lines(paste0("User-agent: ", value), "Disallow: /x")
+    expect_identical(iv_google(body, "Googlebot", "/x"), "allow NA",
+                     label = value)
+  }
+  # A no-break space inside or after the token.
+  body <- iv_lines("User-agent: Google\u00a0bot", "Disallow: /x")
+  expect_identical(iv_google(body, "Googlebot", "/x"), "allow NA")
+  body <- iv_lines("User-agent: Googlebot\u00a01.0", "Disallow: /x")
+  expect_identical(iv_google(body, "Googlebot", "/x"), "disallow 2")
+  # The token in another case behind a zero-width space.
+  body <- iv_lines("User-agent: \u200bGOOGLEBOT", "Disallow: /x")
+  expect_identical(iv_google(body, "Googlebot", "/x"), "allow NA")
+})
+
+test_that("ipzkxzhg leaves severity and non-Google wording as they were", {
+  # A value naming no Google token keeps "nothing changes for them".
+  for (value in c("Foo Bar", "Foo Bot", "\u200bExampleBot")) {
+    row <- iv_cut(iv_lines(paste0("User-agent: ", value), "Disallow: /x"))
+    expect_true(grepl("so nothing changes for them", row$message,
+                      fixed = TRUE), label = value)
+  }
+  # A space or invisible character in a cut value keeps warning
+  # (ROBO-wtixhwlo, ROBO-jsecjjyo), whatever its repair reads.
+  for (value in c("Google\u00a0bot", "Googlebot\u00a01.0",
+                  "\u200bGOOGLEBOT", "\u200bExampleBot")) {
+    row <- iv_cut(iv_lines(paste0("User-agent: ", value), "Disallow: /x"))
+    expect_identical(row$severity, "warning", label = value)
+  }
+  # Clean ASCII values keep their severity.
+  for (value in c("\"Googlebot\"", "Google bot", "Foo Bar", "Foo Bot")) {
+    row <- iv_cut(iv_lines(paste0("User-agent: ", value), "Disallow: /x"))
+    expect_identical(row$severity, "info", label = value)
+  }
+  # The note spells a no-break space as an ASCII space.
+  row <- iv_cut(iv_lines("User-agent: Google\u00a0bot", "Disallow: /x"))
+  expect_true(grepl("written in ASCII the value is 'Google bot'",
+                    row$message, fixed = TRUE))
+})
+
+iv_ignore_star <- paste0(
+  " Google's crawlers that ignore `*` (AdsBot-Google, AdsBot-Google-Mobile, ",
+  "Mediapartners-Google and APIs-Google) do not get it through its ",
+  "`User-agent: *` line."
+)
+iv_kept <- paste0(
+  "Unless another group names it, a crawler going by the full value still ",
+  "gets this group from Google's matcher, since the group also names ",
+  "`User-agent: *`.", iv_ignore_star
+)
+
+test_that("a crawler that ignores `*` is not reached through the group's `*`", {
+  body <- iv_lines("User-agent: *", "User-agent: \u200bAdsBot-Google",
+                   "Disallow: /x")
+  row <- iv_cut(body)
+  expect_identical(row$message, paste0(
+    "User-agent value names no crawler for Google's matcher, which reads a ",
+    "product token only from a leading run of letters, '_' and '-', so ",
+    "there this line matches no crawler. ", iv_kept, " ",
+    iv_meant("AdsBot-Google"), " The value holds U+200B ZERO WIDTH SPACE at ",
+    "byte 1, which is invisible; without it the value is 'AdsBot-Google', ",
+    "which no byte compare matches to this value.", iv_value_clause
+  ))
+  expect_identical(row$severity, "warning")
+  # A crawler that follows `*` still gets the weak sentence there.
+  body <- iv_lines("User-agent: *", "User-agent: \u200bGooglebot",
+                   "Disallow: /x")
+  expect_identical(iv_google(body, "Googlebot", "/x"), "disallow 3")
+  expect_true(grepl(iv_meant_weak("Googlebot"), iv_cut(body)$message,
+                    fixed = TRUE))
+  # Every cut row in a `*` group carries the exception, a non-Google one
+  # too; each crawler it names is allow there.
+  body <- iv_lines("User-agent: *", "User-agent: Foo Bar", "Disallow: /x")
+  row <- iv_cut(body)
+  expect_true(grepl(iv_kept, row$message, fixed = TRUE))
+  expect_true(grepl("so nothing changes for them", row$message,
+                    fixed = TRUE))
+  for (token in c("AdsBot-Google", "AdsBot-Google-Mobile",
+                  "Mediapartners-Google", "APIs-Google")) {
+    expect_identical(iv_google(body, token, "/x"), "allow NA", label = token)
+  }
+  expect_identical(iv_google(body, "ZzSweepBot", "/x"), "disallow 3")
+})
+
+test_that("a clean ASCII value naming a Google token claims nothing", {
+  for (value in c("\"Googlebot\"", "Google bot")) {
+    row <- iv_cut(iv_lines(paste0("User-agent: ", value), "Disallow: /x"))
+    expect_false(grepl("nothing changes", row$message, fixed = TRUE),
+                 label = value)
+    expect_true(endsWith(row$message, paste0(
+      "gets no rules from Google's matcher: the file has no ",
+      "`User-agent: *` group."
+    )), label = value)
+  }
+})
+
+test_that("a space-kind character repairs to an ASCII space", {
+  facts <- user_agent_cut_facts(c("Google\u00a0bot", "Googlebot\u00a01.0",
+                                  "\u3000Googlebot", "Google\u200bbot",
+                                  "Google\u202f\u200bbot"))
+  expect_identical(facts$repaired_value,
+                   c("Google bot", "Googlebot 1.0", "Googlebot", "Googlebot",
+                     "Google bot"))
+  expect_identical(facts$repaired,
+                   c("Google", "Googlebot", "Googlebot", "Googlebot",
+                     "Google"))
+  # Google<U+00A0>bot reads as `Google bot` does: no conditional reading,
+  # beside the note's 'Google bot'.
+  row <- iv_cut(iv_lines("User-agent: Google\u00a0bot", "Disallow: /x"))
+  expect_false(grepl("If this line was meant", row$message, fixed = TRUE))
+  expect_false(grepl("nothing changes", row$message, fixed = TRUE))
+  # Googlebot<U+00A0>1.0 names Googlebot as `Googlebot 1.0` does; the
+  # no-break space keeps the row a warning.
+  row <- iv_cut(iv_lines("User-agent: Googlebot\u00a01.0", "Disallow: /x"))
+  expect_true(grepl(paste0(
+    "'Googlebot' is the Google crawler token the value names, so nothing ",
+    "changes for that crawler."
+  ), row$message, fixed = TRUE))
+  expect_false(grepl("follows this group", row$message, fixed = TRUE))
+  expect_identical(row$severity, "warning")
+})
+
+test_that("the conditional sentence names the crawler as Google spells it", {
+  body <- iv_lines("User-agent: \u200bGOOGLEBOT", "Disallow: /x")
+  row <- iv_cut(body)
+  expect_true(grepl(paste0(
+    "If this line was meant as `GOOGLEBOT`, Google's Googlebot does not get ",
+    "this group through it."
+  ), row$message, fixed = TRUE))
+  body <- iv_lines("User-agent: \u200badsbot-google-mobile", "Disallow: /x")
+  expect_identical(iv_google(body, "AdsBot-Google-Mobile", "/x"), "allow NA")
+  expect_true(grepl("Google's AdsBot-Google-Mobile does not get",
+                    iv_cut(body)$message, fixed = TRUE))
+})
+
+# ROBO-ipzkxzhg review 1: a `*` line does not reach the crawler a "meant"
+# row names when another group names that crawler, or names its parent
+# where no group names the crawler; and a group's own lines reach a crawler
+# that ignores `*`.
+iv_other_named <- function(meant) {
+  iv_lines("User-agent: Googlebot", "Disallow: /a", "", "User-agent: *",
+           paste0("User-agent: \u200b", meant), "Disallow: /x")
+}
+iv_other_none <- iv_lines("User-agent: Bingbot", "Disallow: /a", "",
+                          "User-agent: *", "User-agent: \u200bGooglebot",
+                          "Disallow: /x")
+iv_all_exact <- iv_lines("User-agent: *", "User-agent: AdsBot-Google",
+                         "User-agent: AdsBot-Google-Mobile",
+                         "User-agent: Mediapartners-Google",
+                         "User-agent: APIs-Google", "User-agent: Foo Bar",
+                         "Disallow: /x")
+
+test_that("Google's reading where another group or the group reaches it", {
+  # Another group names Googlebot: it leaves the `*` group.
+  expect_identical(iv_google(iv_other_named("Googlebot"), "Googlebot", "/x"),
+                   "allow NA")
+  # Googlebot-Image falls back to its parent's group.
+  body <- iv_other_named("Googlebot-Image")
+  expect_identical(iv_google(body, "Googlebot-Image", "/x"), "allow NA")
+  expect_identical(iv_google(body, "Googlebot-Image", "/a"), "disallow 2")
+  # No other group names it: the `*` line still reaches Googlebot.
+  expect_identical(iv_google(iv_other_none, "Googlebot", "/x"), "disallow 6")
+  # A group's own lines reach the crawlers that ignore `*`.
+  body <- iv_lines("User-agent: *", "User-agent: Mediapartners-Google*",
+                   "Disallow: /x")
+  expect_identical(iv_google(body, "Mediapartners-Google", "/x"),
+                   "disallow 3")
+  expect_identical(iv_google(body, "AdsBot-Google", "/x"), "allow NA")
+  body <- iv_lines("User-agent: *", "User-agent: AdsBot-Google 1.0",
+                   "Disallow: /x")
+  expect_identical(iv_google(body, "AdsBot-Google", "/x"), "disallow 3")
+  expect_identical(iv_google(body, "AdsBot-Google-Mobile", "/x"), "allow NA")
+  for (token in c("AdsBot-Google", "AdsBot-Google-Mobile",
+                  "Mediapartners-Google", "APIs-Google")) {
+    expect_identical(iv_google(iv_all_exact, token, "/x"), "disallow 7",
+                     label = token)
+  }
+  # Severity stays: the meant rows warn, the clean ones are info.
+  expect_identical(iv_cut(iv_other_named("Googlebot"))$severity, "warning")
+  expect_identical(iv_cut(iv_other_none)$severity, "warning")
+  expect_identical(iv_cut(iv_all_exact)$severity, "info")
+  # The control keeps today's weak sentence.
+  expect_true(grepl(iv_meant_weak("Googlebot"), iv_cut(iv_other_none)$message,
+                    fixed = TRUE))
+})
+
+test_that("a `*` line does not reach a crawler another group names", {
+  for (meant in c("Googlebot", "Googlebot-Image")) {
+    row <- iv_cut(iv_other_named(meant))
+    expect_true(grepl(iv_meant(meant), row$message, fixed = TRUE),
+                label = meant)
+    expect_false(grepl(iv_meant_weak(meant), row$message, fixed = TRUE),
+                 label = meant)
+  }
+  expect_false(grepl("does not get this group", iv_cut(iv_other_none)$message,
+                     fixed = TRUE))
+})
+
+test_that("the exception leaves out crawlers the group's lines read", {
+  row <- iv_cut(iv_lines("User-agent: *", "User-agent: Mediapartners-Google*",
+                         "Disallow: /x"))
+  expect_true(grepl(paste0(
+    "`User-agent: *`. Google's crawlers that ignore `*` (AdsBot-Google, ",
+    "AdsBot-Google-Mobile and APIs-Google) do not get it through its ",
+    "`User-agent: *` line."
+  ), row$message, fixed = TRUE))
+  row <- iv_cut(iv_lines("User-agent: *", "User-agent: AdsBot-Google 1.0",
+                         "Disallow: /x"))
+  expect_true(grepl(paste0(
+    "`User-agent: *`. Google's crawlers that ignore `*` ",
+    "(AdsBot-Google-Mobile, Mediapartners-Google and APIs-Google) do not ",
+    "get it through its `User-agent: *` line."
+  ), row$message, fixed = TRUE))
+  row <- iv_cut(iv_all_exact)
+  expect_true(grepl(paste0(
+    "since the group also names `User-agent: *`. Only Google's parser"
+  ), row$message, fixed = TRUE))
+  expect_false(grepl("ignore `*`", row$message, fixed = TRUE))
+})
+
+# The `*`-led tail's exception is filtered as the kept fallback's is, and
+# both say "crawler ... ignores ... does" when one crawler is left.
+iv_star_line <- function(body, line) {
+  row <- iv_cut(body)
+  row[row$line == line, , drop = FALSE]
+}
+iv_three <- c("User-agent: *", "User-agent: AdsBot-Google",
+              "User-agent: AdsBot-Google-Mobile",
+              "User-agent: Mediapartners-Google")
+iv_reaches <- paste0(
+  "; the group still reaches every crawler that no other group names, as ",
+  "another of its lines is `User-agent: *`"
+)
+
+test_that("the `*`-led exception leaves out crawlers the group's lines read", {
+  body <- iv_lines("User-agent: *", "User-agent: Mediapartners-Google*",
+                   "User-agent: *bot", "Disallow: /x")
+  expect_identical(iv_google(body, "Mediapartners-Google", "/x"),
+                   "disallow 4")
+  for (token in c("AdsBot-Google", "AdsBot-Google-Mobile", "APIs-Google")) {
+    expect_identical(iv_google(body, token, "/x"), "allow NA", label = token)
+  }
+  expect_true(endsWith(iv_star_line(body, 3L)$message, paste0(
+    iv_reaches, ", except Google's crawlers that ignore `*` (AdsBot-Google, ",
+    "AdsBot-Google-Mobile and APIs-Google)."
+  )))
+  body <- iv_lines(iv_three, "User-agent: APIs-Google", "User-agent: *bot",
+                   "Disallow: /x")
+  for (token in c("AdsBot-Google", "AdsBot-Google-Mobile",
+                  "Mediapartners-Google", "APIs-Google")) {
+    expect_identical(iv_google(body, token, "/x"), "disallow 7",
+                     label = token)
+  }
+  row <- iv_star_line(body, 6L)
+  expect_true(endsWith(row$message, paste0(iv_reaches, ".")))
+  expect_false(grepl("ignore", row$message, fixed = TRUE))
+  expect_identical(row$severity, "info")
+})
+
+test_that("one crawler left that ignores `*` is named in the singular", {
+  body <- iv_lines(iv_three, "User-agent: *bot", "Disallow: /x")
+  expect_identical(iv_google(body, "APIs-Google", "/x"), "allow NA")
+  expect_identical(iv_google(body, "AdsBot-Google", "/x"), "disallow 6")
+  expect_true(endsWith(iv_star_line(body, 5L)$message, paste0(
+    iv_reaches, ", except Google's crawler that ignores `*` (APIs-Google)."
+  )))
+  body <- iv_lines(iv_three, "User-agent: Foo Bar", "Disallow: /x")
+  expect_identical(iv_google(body, "APIs-Google", "/x"), "allow NA")
+  expect_true(grepl(paste0(
+    "names `User-agent: *`. Google's crawler that ignores `*` (APIs-Google) ",
+    "does not get it through its `User-agent: *` line."
+  ), iv_star_line(body, 5L)$message, fixed = TRUE))
+  # The plural for more than one, in both sentences.
+  body <- iv_lines("User-agent: *", "User-agent: Foo Bar", "Disallow: /x")
+  expect_true(grepl(iv_kept, iv_cut(body)$message, fixed = TRUE))
+  body <- iv_lines("User-agent: *", "User-agent: *bot", "Disallow: /x")
+  expect_true(endsWith(iv_cut(body)$message, paste0(
+    iv_reaches, ", except Google's crawlers that ignore `*` (AdsBot-Google, ",
+    "AdsBot-Google-Mobile, Mediapartners-Google and APIs-Google)."
+  )))
+})
+
+# ROBO-ipzkxzhg review 2: Google reads only the first 512,000 bytes, so a
+# User-agent line past them is not counted as naming a crawler elsewhere or
+# as one of the group's own lines: past the window the row keeps the weak
+# sentence and the full list of crawlers that ignore `*`.
+iv_window <- function(head, tail) {
+  filler <- rep(paste0("# ", strrep("x", 97)), 5300L)
+  iv_lines(head, filler, tail)
+}
+
+test_that("cut rows count no User-agent line past the 512,000-byte window", {
+  head <- c("User-agent: *", "User-agent: \u200bGooglebot", "Disallow: /x")
+  body <- iv_window(head, c("User-agent: Googlebot", "Disallow: /a"))
+  expect_gt(nchar(body, "bytes"), 512000L)
+  expect_identical(iv_google(body, "Googlebot", "/x"), "disallow 3")
+  row <- iv_cut(body)
+  expect_false(grepl("does not get this group", row$message, fixed = TRUE))
+  expect_true(grepl(iv_meant_weak("Googlebot"), row$message, fixed = TRUE))
+  expect_identical(row$severity, "warning")
+  # AdsBot-Google named in the group only past the window: Google gives it
+  # no group, so the exception still names it.
+  body <- iv_window(head[1:2], c("User-agent: AdsBot-Google", "Disallow: /x"))
+  expect_identical(iv_google(body, "AdsBot-Google", "/x"), "allow NA")
+  expect_true(grepl(iv_kept, iv_cut(body)$message, fixed = TRUE))
+  body <- iv_window(c("User-agent: *", "User-agent: *bot"),
+                    c("User-agent: AdsBot-Google", "Disallow: /x"))
+  expect_identical(iv_google(body, "AdsBot-Google", "/x"), "allow NA")
+  expect_true(endsWith(iv_cut(body)$message, paste0(
+    iv_reaches, ", except Google's crawlers that ignore `*` (AdsBot-Google, ",
+    "AdsBot-Google-Mobile, Mediapartners-Google and APIs-Google)."
+  )))
 })
