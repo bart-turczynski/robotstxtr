@@ -2,11 +2,12 @@
 # R/invisible-class-ucd.R from the Unicode Character Database.
 #
 # The class is every code point that is General_Category Zs (other than
-# U+0020), Zl, Zp or Cf, or Default_Ignorable_Code_Point, and the C1
-# controls U+0080 to U+009F. Zs, Zl and Zp are of kind "space"; the rest
-# are of kind "invisible". An assigned point carries its UnicodeData name
-# (a C1 control its Unicode 1.0 name, or "<control>" when it has none); an
-# unassigned default-ignorable point carries none.
+# U+0020), Zl, Zp or Cf (other than the prepended concatenation marks
+# below), or Default_Ignorable_Code_Point, and the C1 controls U+0080 to
+# U+009F. Zs, Zl and Zp are of kind "space"; the rest are of kind
+# "invisible". An assigned point carries its UnicodeData name (a C1 control
+# its Unicode 1.0 name, or "<control>" when it has none); an unassigned
+# default-ignorable point carries none.
 #
 # Run from the package root with the folder that holds the two UCD files
 # of the pinned version as the one argument:
@@ -29,6 +30,16 @@ ucd_sha256 <- c(
     "24c7fed1195c482faaefd5c1e7eb821c5ee1fb6de07ecdbaa64b56a99da22c08"
 )
 output <- file.path("R", "invisible-class-ucd.R")
+
+# The Cf points with the Prepended_Concatenation_Mark property (PropList.txt
+# 17.0.0, Prepended_Concatenation_Mark): number signs and marks that show a
+# glyph (ARABIC NUMBER SIGN, SYRIAC ABBREVIATION MARK, KAITHI NUMBER SIGN),
+# so they are not invisible and stay out of the class. PropList.txt is not
+# among the files read here, so the 13 points are written out; each is
+# checked below to be Cf in UnicodeData.txt.
+prepended_marks <- c(
+  0x0600:0x0605, 0x06DD, 0x070F, 0x0890, 0x0891, 0x08E2, 0x110BD, 0x110CD
+)
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) != 1L) {
@@ -73,8 +84,11 @@ ignorable <- unlist(lapply(strsplit(ranges, "..", fixed = TRUE),
                            }))
 
 space <- data_point[category %in% c("Zs", "Zl", "Zp") & data_point != 0x20]
+stopifnot(identical(category[match(prepended_marks, data_point)],
+                    rep("Cf", length(prepended_marks))),
+          !any(prepended_marks %in% ignorable))
 invisible <- c(data_point[category == "Cf"], 0x80:0x9F, ignorable)
-invisible <- setdiff(invisible, space)
+invisible <- setdiff(invisible, c(space, prepended_marks))
 class <- sort(unique(c(space, invisible)))
 assigned <- class[class %in% data_point]
 unassigned <- setdiff(class, assigned)
@@ -105,10 +119,12 @@ out <- c(
   sprintf("#   %s", ucd_sha256[["DerivedCoreProperties"]]),
   "#",
   "# The invisible, space and separator class: Zs other than U+0020, Zl, Zp,",
-  "# Cf, Default_Ignorable_Code_Point and the C1 controls. Each assigned",
-  "# point is one record \"XXXX|kind|NAME\": kind \"space\" for Zs, Zl and",
-  "# Zp, \"invisible\" for the rest; a C1 control's name is its Unicode 1.0",
-  "# name, or \"<control>\" when it has none.",
+  "# Cf other than the 13 prepended concatenation marks (PropList.txt",
+  "# 17.0.0, Prepended_Concatenation_Mark), Default_Ignorable_Code_Point",
+  "# and the C1 controls. Each assigned point is one record",
+  "# \"XXXX|kind|NAME\": kind \"space\" for Zs, Zl and Zp, \"invisible\" for",
+  "# the rest; a C1 control's name is its Unicode 1.0 name, or \"<control>\"",
+  "# when it has none.",
   sprintf("# %d assigned points, %d unassigned.", length(assigned),
           length(unassigned)),
   "validation_unicode_class_records <- c(",

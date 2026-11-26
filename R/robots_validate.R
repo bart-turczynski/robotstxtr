@@ -199,7 +199,8 @@ validation_unsupported <- c(
 #'     separator character, chosen by Unicode property (Unicode 17.0.0):
 #'     a non-ASCII space (Zs, such as U+00A0 NO-BREAK SPACE), a line or
 #'     paragraph separator (U+2028, U+2029), a format character (Cf, such
-#'     as U+200B, U+200E and the bidi controls), any other
+#'     as U+200B, U+200E and the bidi controls, other than the prepended
+#'     concatenation marks such as U+0600, which show a glyph), any other
 #'     default-ignorable code point (such as a variation selector) or a C1
 #'     control (U+0080 to U+009F), counts too and is named the same way,
 #'     as a space or separator or as invisible, spelled as an ASCII space
@@ -360,8 +361,8 @@ validation_unsupported <- c(
 #'   \code{rule_invisible_character} \tab info \tab
 #'     A pattern holds an
 #'     invisible or formatting character, such as U+200B or U+2066. One per
-#'     rule line, naming up to ten. One that ends the pattern is left to
-#'     \code{rule_trailing_invisible_character}. \cr
+#'     rule line, naming up to ten. One that ends a pattern led by \code{/}
+#'     or \code{*} is left to \code{rule_trailing_invisible_character}. \cr
 #'   \code{rule_trailing_invisible_character} \tab warning \tab
 #'     A pattern that starts with \code{/} or \code{*} ends, after the ASCII
 #'     whitespace the parser trims and before a final \code{$}, in an
@@ -370,7 +371,8 @@ validation_unsupported <- c(
 #'     U+00A0). Google's parser keeps it and percent-encodes it
 #'     (\code{\%C2\%A0}), so the rule matches only URLs holding it there:
 #'     such a Disallow does not block \code{/private/x}. The message names
-#'     each such character by code point and byte and says that Bing and
+#'     each distinct such character once by code point and first byte, up
+#'     to ten, and says that Bing and
 #'     Yandex may read the rule differently. Not for a value that is not
 #'     valid UTF-8 or that the line buffer cuts. \cr
 #'   \code{rule_possible_mojibake} \tab info \tab
@@ -3578,7 +3580,7 @@ user_agent_cut_ignore_star <- function(group, all_agents,
 #   no Google token name in them      printed (`Foo Bar`, `B\xE4r`,
 #   (`named`)                         `\u200bExampleBot`)
 #   naming a Google token             left out (`"Googlebot"`, `Google bot`,
-#                                     `\xA0Googlebot`, U+2028 before
+#                                     `\xA0Googlebot`, U+2190 before
 #                                     `Googlebot`): the value may be meant
 #                                     as that token, whose crawler then
 #                                     loses the group (ROBO-ipzkxzhg)
@@ -3614,7 +3616,7 @@ user_agent_cut_decide <- function(facts, key, kept, effect_warn, lookalike) {
 #   (validation_agent_readings(): "*", a token, or "" for none); NA when
 #   unknown.
 # - `star_led`: the value starts with `*` after ASCII blanks and any bytes
-#   over 0x7F (a listed character, U+2028, a Latin-1 A0, a sequence cut
+#   over 0x7F (a listed character, U+2190, a Latin-1 A0, a sequence cut
 #   short): Google reads none of them as a token character, and a cut value
 #   is not `*` on Google, so the line is not `User-agent: *` there.
 # - `clean`: the value holds no byte over 0x7F and no ASCII control.
@@ -10085,14 +10087,23 @@ rule_trailing_invisible_diagnostic <- function(value, type) {
     return(NULL)
   }
   run <- (start + 1L):end
+  # Each distinct point once, at its first byte ("first at" when the run
+  # holds it more than once), at most ten (unicode_advisory_list()).
+  first <- run[!duplicated(points[run])]
+  repeated <- points[first] %in% points[run][duplicated(points[run])]
   table <- validation_lookalike_code_points
   named <- validation_code_point_names(
-    points[run], table$name[match(points[run], table$point)], offsets[run]
+    points[first], table$name[match(points[first], table$point)],
+    offsets[first], repeated
   )
-  escaped <- paste(sprintf("%%%02X", as.integer(charToRaw(
+  # The escape and the pattern before the run, cut as other rows cut a
+  # quoted value (query_parameter_cap(), ai_training_name()).
+  escaped <- query_parameter_cap(paste(sprintf("%%%02X", as.integer(charToRaw(
     intToUtf8(points[run])
-  ))), collapse = "")
-  shown <- render_validation_line(charToRaw(intToUtf8(points[seq_len(start)])))
+  ))), collapse = ""), 64L)
+  shown <- ai_training_name(render_validation_line(charToRaw(
+    intToUtf8(points[seq_len(start)])
+  )))
   one <- length(run) == 1L
   label <- if (type == "allow") "Allow" else "Disallow"
   list(
@@ -10106,8 +10117,9 @@ rule_trailing_invisible_diagnostic <- function(value, type) {
       "whitespace from a value, so it keeps ", if (one) "it" else "them",
       " and percent-encodes ", if (one) "it" else "them", " as ", escaped,
       ": this ", label, " matches only URLs with ", escaped, " at that ",
-      "point, so it does not ", if (type == "allow") "allow" else "block",
-      " '", shown, "' or any other URL without ", if (one) "it" else "them",
+      "point, so it does not ",
+      if (type == "allow") "apply to" else "block", " the URLs '", shown,
+      "' matches, or any other URL, without ", if (one) "it" else "them",
       " there. Bing and Yandex may read this rule differently."
     )
   )
@@ -10175,13 +10187,14 @@ mojibake_units <- function(points) {
 # among them; "space", spelled as an ASCII space, and "invisible", dropped
 # from the spelling, for the invisible, space and separator class
 # (ROBO-uphlyomt): every Zs other than U+0020, Zl and Zp is a space; every
-# Cf, Default_Ignorable_Code_Point and C1 control (U+0080 to U+009F) is
-# invisible. The class comes by Unicode property from the generated
-# R/invisible-class-ucd.R (Unicode 17.0.0), not from a hand list; U+00AD,
-# in it too, keeps its look-alike row. An unassigned default-ignorable
-# point has no name (NA). Google's parser strips ASCII whitespace only
-# (AsciiIsSpace(), src/robots.cc), so a value or key holding one looks
-# right but is read with it.
+# Cf other than the prepended concatenation marks (U+0600 and the like,
+# which show a glyph), Default_Ignorable_Code_Point and C1 control (U+0080
+# to U+009F) is invisible. The class comes by Unicode property from the
+# generated R/invisible-class-ucd.R (Unicode 17.0.0), not from a hand
+# list; U+00AD, in it too, keeps its look-alike row. An unassigned
+# default-ignorable point has no name (NA). Google's parser strips ASCII
+# whitespace only (AsciiIsSpace(), src/robots.cc), so a value or key
+# holding one looks right but is read with it.
 validation_lookalike_code_points <- local({
   lookalikes <- data.frame(
     point = c(
@@ -10253,14 +10266,22 @@ validation_trailing_class_points <- c(
 
 # "U+XXXX NAME at byte N" for each code point of the table (`points`, with
 # its `names` from the table and byte `offsets`); an unassigned point, whose
-# name is NA, is called "an unassigned default-ignorable character".
-validation_code_point_names <- function(points, names, offsets) {
-  out <- sprintf("U+%04X %s at byte %d", points, names, offsets)
+# name is NA, is called "an unassigned default-ignorable character", and a
+# C1 control with no Unicode 1.0 name (the table's "<control>") "a C1
+# control character". Where `repeated` is TRUE the offset is the first of
+# several: "first at byte N".
+validation_code_point_names <- function(points, names, offsets,
+                                        repeated = FALSE) {
+  at <- rep_len(ifelse(repeated, "first at byte", "at byte"), length(points))
+  out <- sprintf("U+%04X %s %s %d", points, names, at, offsets)
   unnamed <- is.na(names)
   out[unnamed] <- sprintf(
-    "U+%04X, an unassigned default-ignorable character, at byte %d",
-    points[unnamed], offsets[unnamed]
+    "U+%04X, an unassigned default-ignorable character, %s %d",
+    points[unnamed], at[unnamed], offsets[unnamed]
   )
+  control <- !unnamed & names == "<control>"
+  out[control] <- sprintf("U+%04X, a C1 control character, %s %d",
+                          points[control], at[control], offsets[control])
   out
 }
 

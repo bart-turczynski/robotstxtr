@@ -54,6 +54,8 @@ ic_named <- function(point, at) {
   if (is.na(name)) {
     sprintf("U+%04X, an unassigned default-ignorable character, at byte %d",
             point, at)
+  } else if (name == "<control>") {
+    sprintf("U+%04X, a C1 control character, at byte %d", point, at)
   } else {
     sprintf("U+%04X %s at byte %d", point, name, at)
   }
@@ -66,8 +68,8 @@ ic_trailing_message <- function(named, escaped, directive, shown) {
     ". Google's parser trims only ASCII whitespace from a value, so it ",
     "keeps it and percent-encodes it as ", escaped, ": this ", directive,
     " matches only URLs with ", escaped, " at that point, so it does not ",
-    if (directive == "Allow") "allow" else "block", " '", shown,
-    "' or any other URL without it there.", ic_rule_clause
+    if (directive == "Allow") "apply to" else "block", " the URLs '", shown,
+    "' matches, or any other URL, without it there.", ic_rule_clause
   )
 }
 
@@ -253,8 +255,9 @@ test_that("a trailing class character in a rule value is one warning", {
     ic_named(0x200E, 10L), ", ", ic_named(0x00A0, 13L), ". Google's parser ",
     "trims only ASCII whitespace from a value, so it keeps them and ",
     "percent-encodes them as %E2%80%8E%C2%A0: this Disallow matches only ",
-    "URLs with %E2%80%8E%C2%A0 at that point, so it does not block ",
-    "'/private/' or any other URL without them there.", ic_rule_clause
+    "URLs with %E2%80%8E%C2%A0 at that point, so it does not block the ",
+    "URLs '/private/' matches, or any other URL, without them there.",
+    ic_rule_clause
   ))
   # U+00AD, a look-alike row, and an unassigned point count too.
   for (point in c(0x00AD, 0xE0080, 0x0085)) {
@@ -268,6 +271,106 @@ test_that("a trailing class character in a rule value is one warning", {
   # No message advises a rewrite.
   expect_false(grepl("remove|delete|write ", x$diagnostics$message,
                      ignore.case = TRUE))
+})
+
+test_that("the trailing warning names each point once and stays bounded", {
+  nbsp <- ic_chr(0x00A0)
+  # Three U+00A0: named once, at its first byte; the escape spans all three.
+  x <- ic_text("User-agent: *", paste0("Disallow: /x", strrep(nbsp, 3L)))
+  expect_identical(ic_codes(x), "2 warning rule_trailing_invisible_character")
+  expect_identical(x$diagnostics$message, paste0(
+    "Pattern ends in invisible, space or separator characters: U+00A0 ",
+    "NO-BREAK SPACE first at byte 3. Google's parser trims only ASCII ",
+    "whitespace from a value, so it keeps them and percent-encodes them as ",
+    "%C2%A0%C2%A0%C2%A0: this Disallow matches only URLs with ",
+    "%C2%A0%C2%A0%C2%A0 at that point, so it does not block the URLs '/x' ",
+    "matches, or any other URL, without them there.", ic_rule_clause
+  ))
+  # 3,000 U+200B: one name and a cut escape.
+  x <- ic_text("User-agent: *",
+               paste0("Disallow: /x", strrep(ic_chr(0x200B), 3000L)))
+  message <- x$diagnostics$message
+  expect_identical(x$diagnostics$code, "rule_trailing_invisible_character")
+  expect_lt(nchar(message), 1000L)
+  expect_true(grepl(paste0(
+    "characters: U+200B ZERO WIDTH SPACE first at byte 3. Google's parser"
+  ), message, fixed = TRUE))
+  expect_true(grepl(paste0(
+    "as ", strrep("%E2%80%8B", 6L), "%E2%80...: this Disallow"
+  ), message, fixed = TRUE))
+  # Twelve distinct points: ten named, then a count.
+  points <- c(0x00A0, 0x1680, 0x2000:0x2009)
+  x <- ic_text("User-agent: *", paste0("Disallow: /x", ic_chr(points)))
+  message <- x$diagnostics$message
+  widths <- vapply(points, function(p) nchar(ic_chr(p), "bytes"), 1L)
+  offsets <- 3L + cumsum(c(0L, widths[-12L]))
+  named <- vapply(1:10, function(k) ic_named(points[[k]], offsets[[k]]), "")
+  expect_true(grepl(paste0("characters: ", toString(named), ", and 2 more. "),
+                    message, fixed = TRUE))
+  expect_false(grepl("U+2008", message, fixed = TRUE))
+  # The pattern before the run is cut past 64 bytes.
+  x <- ic_text("User-agent: *",
+               paste0("Disallow: /", strrep("a", 300L), nbsp))
+  expect_true(grepl(paste0("block the URLs '/", strrep("a", 59L), "...' ",
+                           "matches,"), x$diagnostics$message, fixed = TRUE))
+  expect_lt(nchar(x$diagnostics$message), 500L)
+})
+
+test_that("a trailing point after a pattern is worded on Google's reading", {
+  nbsp <- ic_chr(0x00A0)
+  # Disallow /a* then U+00A0: the URLs '/a*' matches are not blocked.
+  body <- ic_lines("User-agent: *", paste0("Disallow: /a*", nbsp))
+  expect_identical(ic_google(body, "/a/x"), "allow")
+  expect_identical(ic_google(body, "/a/x%C2%A0"), "disallow")
+  expect_true(grepl("does not block the URLs '/a*' matches, or any other",
+                    robots_validate_text(body)$diagnostics$message,
+                    fixed = TRUE))
+  # Allow /a, U+00A0, $ under Disallow: /: the Allow does not apply to /a.
+  body <- ic_lines("User-agent: *", "Disallow: /",
+                   paste0("Allow: /a", nbsp, "$"))
+  expect_identical(ic_google(body, "/a"), "disallow")
+  expect_identical(ic_google(body, "/a%C2%A0"), "allow")
+  expect_true(grepl("does not apply to the URLs '/a' matches, or any other",
+                    robots_validate_text(body)$diagnostics$message,
+                    fixed = TRUE))
+})
+
+test_that("a C1 control with no name is called a C1 control character", {
+  x <- ic_text("User-agent: *", paste0("Disallow: /a", ic_chr(0x0080)))
+  expect_true(grepl(
+    "character: U+0080, a C1 control character, at byte 3. Google's parser",
+    x$diagnostics$message, fixed = TRUE
+  ))
+  expect_identical(
+    lookalike_note(ic_chr(0x61, 0x0099, 0x62), "value")$sentence,
+    paste0("The value holds U+0099, a C1 control character, at byte 2, ",
+           "which is invisible; without it the value is 'ab'")
+  )
+})
+
+test_that("the prepended concatenation marks are outside the class", {
+  marks <- c(0x0600:0x0605, 0x06DD, 0x070F, 0x0890, 0x0891, 0x08E2, 0x110BD,
+             0x110CD)
+  expect_false(any(marks %in% ic_table$point))
+  expect_false(any(marks %in% validation_trailing_class_points))
+  # As before the class was widened: the cut row is info and says nothing
+  # of the mark; the rule draws no row.
+  x <- ic_text(paste0("User-agent: Bot", ic_chr(0x0600)), "Disallow: /")
+  expect_identical(ic_codes(x), "1 info user_agent_cut")
+  expect_identical(x$documents$validation_status, "valid")
+  expect_identical(x$diagnostics$message, paste0(
+    "User-agent value is read as 'Bot' by Google's matcher, which stops at ",
+    "the first character outside letters, '_' and '-'. There the full ",
+    "written value does not match this record, and a crawler whose token is ",
+    "'Bot' matches it instead. Unless another group names it, a crawler ",
+    "going by the full value gets no rules from Google's matcher: the file ",
+    "has no `User-agent: *` group. Only Google's parser shortens the value, ",
+    "and Google's crawlers do not go by it, so nothing changes for them; how ",
+    "the named crawler's own parser reads it is unknown."
+  ))
+  x <- ic_text("User-agent: *", paste0("Disallow: /x", ic_chr(0x0600)))
+  expect_identical(nrow(x$diagnostics), 0L)
+  expect_identical(x$documents$validation_status, "valid")
 })
 
 test_that("an interior class character keeps today's rows", {

@@ -6,11 +6,13 @@
 #   24c7fed1195c482faaefd5c1e7eb821c5ee1fb6de07ecdbaa64b56a99da22c08
 #
 # The invisible, space and separator class: Zs other than U+0020, Zl, Zp,
-# Cf, Default_Ignorable_Code_Point and the C1 controls. Each assigned
-# point is one record "XXXX|kind|NAME": kind "space" for Zs, Zl and
-# Zp, "invisible" for the rest; a C1 control's name is its Unicode 1.0
-# name, or "<control>" when it has none.
-# 487 assigned points, 3769 unassigned.
+# Cf other than the 13 prepended concatenation marks (PropList.txt
+# 17.0.0, Prepended_Concatenation_Mark), Default_Ignorable_Code_Point
+# and the C1 controls. Each assigned point is one record
+# "XXXX|kind|NAME": kind "space" for Zs, Zl and Zp, "invisible" for
+# the rest; a C1 control's name is its Unicode 1.0 name, or "<control>"
+# when it has none.
+# 474 assigned points, 3769 unassigned.
 validation_unicode_class_records <- c(
   "0080|invisible|<control>",
   "0081|invisible|<control>",
@@ -47,18 +49,7 @@ validation_unicode_class_records <- c(
   "00A0|space|NO-BREAK SPACE",
   "00AD|invisible|SOFT HYPHEN",
   "034F|invisible|COMBINING GRAPHEME JOINER",
-  "0600|invisible|ARABIC NUMBER SIGN",
-  "0601|invisible|ARABIC SIGN SANAH",
-  "0602|invisible|ARABIC FOOTNOTE MARKER",
-  "0603|invisible|ARABIC SIGN SAFHA",
-  "0604|invisible|ARABIC SIGN SAMVAT",
-  "0605|invisible|ARABIC NUMBER MARK ABOVE",
   "061C|invisible|ARABIC LETTER MARK",
-  "06DD|invisible|ARABIC END OF AYAH",
-  "070F|invisible|SYRIAC ABBREVIATION MARK",
-  "0890|invisible|ARABIC POUND MARK ABOVE",
-  "0891|invisible|ARABIC PIASTRE MARK ABOVE",
-  "08E2|invisible|ARABIC DISPUTED END OF AYAH",
   "115F|invisible|HANGUL CHOSEONG FILLER",
   "1160|invisible|HANGUL JUNGSEONG FILLER",
   "1680|space|OGHAM SPACE MARK",
@@ -132,8 +123,6 @@ validation_unicode_class_records <- c(
   "FFF9|invisible|INTERLINEAR ANNOTATION ANCHOR",
   "FFFA|invisible|INTERLINEAR ANNOTATION SEPARATOR",
   "FFFB|invisible|INTERLINEAR ANNOTATION TERMINATOR",
-  "110BD|invisible|KAITHI NUMBER SIGN",
-  "110CD|invisible|KAITHI NUMBER SIGN ABOVE",
   "13430|invisible|EGYPTIAN HIEROGLYPH VERTICAL JOINER",
   "13431|invisible|EGYPTIAN HIEROGLYPH HORIZONTAL JOINER",
   "13432|invisible|EGYPTIAN HIEROGLYPH INSERT AT TOP START",

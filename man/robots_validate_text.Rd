@@ -208,7 +208,8 @@ matcher only when the spelling is a crawler that backend evaluates
 separator character, chosen by Unicode property (Unicode 17.0.0):
 a non-ASCII space (Zs, such as U+00A0 NO-BREAK SPACE), a line or
 paragraph separator (U+2028, U+2029), a format character (Cf, such
-as U+200B, U+200E and the bidi controls), any other
+as U+200B, U+200E and the bidi controls, other than the prepended
+concatenation marks such as U+0600, which show a glyph), any other
 default-ignorable code point (such as a variation selector) or a C1
 control (U+0080 to U+009F), counts too and is named the same way,
 as a space or separator or as invisible, spelled as an ASCII space
@@ -369,8 +370,8 @@ One per rule line. \cr
 \code{rule_invisible_character} \tab info \tab
 A pattern holds an
 invisible or formatting character, such as U+200B or U+2066. One per
-rule line, naming up to ten. One that ends the pattern is left to
-\code{rule_trailing_invisible_character}. \cr
+rule line, naming up to ten. One that ends a pattern led by \code{/}
+or \code{*} is left to \code{rule_trailing_invisible_character}. \cr
 \code{rule_trailing_invisible_character} \tab warning \tab
 A pattern that starts with \code{/} or \code{*} ends, after the ASCII
 whitespace the parser trims and before a final \code{$}, in an
@@ -379,7 +380,8 @@ defines them, U+00AD included (\code{Disallow: /private/} followed by
 U+00A0). Google's parser keeps it and percent-encodes it
 (\code{\%C2\%A0}), so the rule matches only URLs holding it there:
 such a Disallow does not block \code{/private/x}. The message names
-each such character by code point and byte and says that Bing and
+each distinct such character once by code point and first byte, up
+to ten, and says that Bing and
 Yandex may read the rule differently. Not for a value that is not
 valid UTF-8 or that the line buffer cuts. \cr
 \code{rule_possible_mojibake} \tab info \tab
