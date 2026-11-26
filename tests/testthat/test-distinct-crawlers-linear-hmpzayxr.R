@@ -300,6 +300,71 @@ test_that("reopen rows hold for values over 10,000 bytes", {
   )
 })
 
+# The reopen check reads each (`*` Disallow, path) pair once per call and
+# keys what it read by Disallow and path id. Three bodies whose crawlers
+# meet the same path under the same Disallow in different checks: path ids
+# shared across checks (A's /p/a is not B's /p/b), stored under each path's
+# own id when a check reads only some of its paths (B reads /p/b after A
+# read /p/a), and kept apart per Disallow (/a/x is reopened under
+# Disallow: /a/x only, never under Disallow: /a, which Allow: /a/ wins).
+dc_info_one <- function(who, rule) {
+  paste0(who, " obeys only this group, so this `User-agent: *` rule does ",
+         "not apply to it: ", rule, ". ", dc_ignores)
+}
+
+test_that("reopen rows hold for paths met in several checks", {
+  star_p <- "Disallow: /p on line 2"
+  expect_identical(
+    dc_rows(dc_lines("User-agent: *", "Disallow: /p", "Allow: /p/a", "",
+                     "User-agent: A", "Disallow: /", "Allow: /p/a", "",
+                     "User-agent: B", "Disallow: /", "Allow: /p/b")),
+    dc_frame(c(5, 9, 9), c("info", "reopen", "info"),
+             c("info", "warning", "info"), c(
+               dc_info_one("A", "Disallow: /p (line 2)"),
+               dc_reopen_one("B", "/p/b", 11, star_p),
+               dc_info_one("B", "Allow: /p/a (line 3)")
+             ))
+  )
+  expect_identical(
+    dc_rows(dc_lines("User-agent: *", "Disallow: /p", "Allow: /p/b", "",
+                     "User-agent: A", "Disallow: /", "Allow: /p/a", "",
+                     "User-agent: B", "Disallow: /", "Allow: /p/a",
+                     "Allow: /p/b", "",
+                     "User-agent: C", "Disallow: /", "Allow: /p/a",
+                     "Allow: /q")),
+    dc_frame(c(5, 5, 9, 14), c("reopen", "info", "reopen", "reopen"),
+             c("warning", "info", "warning", "warning"), c(
+               dc_reopen_one("A", "/p/a", 7, star_p),
+               paste0(
+                 "A (line 5); and C (line 14) each obey only the groups ",
+                 "that name them, so this `User-agent: *` rule does not ",
+                 "apply to them: Allow: /p/b (line 3). ", dc_ignores
+               ),
+               dc_reopen_one("B", "/p/a", 11, star_p),
+               dc_reopen_one("C", "/p/a", 16, star_p)
+             ))
+  )
+  star_ax <- "Disallow: /a/x on line 3"
+  expect_identical(
+    dc_rows(dc_lines("User-agent: *", "Disallow: /a", "Disallow: /a/x",
+                     "Allow: /a/", "",
+                     "User-agent: A", "Disallow: /", "Allow: /a/x", "",
+                     "User-agent: B", "Disallow: /", "Allow: /a/x",
+                     "Allow: /zz")),
+    dc_frame(c(6, 6, 10), c("reopen", "info", "reopen"),
+             c("warning", "info", "warning"), c(
+               dc_reopen_one("A", "/a/x", 8, star_ax),
+               paste0(
+                 "A (line 6); and B (line 10) each obey only the groups ",
+                 "that name them, so these `User-agent: *` rules do not ",
+                 "apply to them: Disallow: /a (line 2), Allow: /a/ (line ",
+                 "4). ", dc_ignores
+               ),
+               dc_reopen_one("B", "/a/x", 12, star_ax)
+             ))
+  )
+})
+
 # Groups with no rule a crawler is judged on: an empty Disallow and an
 # empty Allow (W4), or an empty Allow alone (W5). Neither is allow-all, so
 # W4 draws only its lost row and W5 keeps its info row.
@@ -383,9 +448,11 @@ dc_elapsed <- function(check, groups) {
 
 dc_shapes <- list(
   # Each crawler loses the `*` Disallow /k, reopens /a with its own Allow
-  # (through the `*`-side reopen cache) and misses the `*` Allow: every row
-  # kind, and no two crawlers share a body.
+  # (through the `*`-side read; each crawler's paths are its own, so every
+  # cache lookup misses) and misses the `*` Allow: every row kind, and no
+  # two crawlers share a body.
   wildcard = list(
+    n = 1000L,
     body = function(n) {
       t <- dc_letters(n)
       dc_lines("User-agent: *", "Disallow: /a", "Disallow: /k", "Allow: /x",
@@ -397,7 +464,12 @@ dc_shapes <- list(
   ),
   # Each crawler its own full block that loses the `*` Allow: one info row
   # merging every crawler's group, which names five and counts the rest.
+  # Timed at 2000 vs 16000: at 1000 vs 8000 a quadratic group label stays
+  # near 14x and slips under the bound. The bound does not see a scan as
+  # cheap as a per-group vapply over wildcard_group_line() for `owned`
+  # (about 9.6x at 2000 vs 16000).
   full_block = list(
+    n = 2000L,
     body = function(n) {
       dc_lines("User-agent: *", "Disallow: /a", "Allow: /x",
                sprintf("User-agent: %s\nDisallow: /", dc_letters(n)))
@@ -409,6 +481,7 @@ dc_shapes <- list(
   # Each crawler its own full block with an empty Disallow: one row and
   # one anchor set per crawler.
   empty = list(
+    n = 1000L,
     body = function(n) {
       dc_lines(sprintf("User-agent: %s\nDisallow:\nDisallow: /",
                        dc_letters(n)))
@@ -423,10 +496,10 @@ for (shape in names(dc_shapes)) {
   test_that(paste("time is linear in distinct crawlers:", shape), {
     skip_on_cran()
     x <- dc_shapes[[shape]]
-    small <- dc_groups(x$body(1000L))
-    large <- dc_groups(x$body(8000L))
-    expect_length(unique(small$agents$key), x$keys(1000L))
-    expect_length(unique(large$agents$key), x$keys(8000L))
+    small <- dc_groups(x$body(x$n))
+    large <- dc_groups(x$body(8L * x$n))
+    expect_length(unique(small$agents$key), x$keys(x$n))
+    expect_length(unique(large$agents$key), x$keys(8L * x$n))
     if (!is.null(x$code)) {
       rows <- x$check(dc_groups(x$body(20L)))
       expect_true(x$code %in% vapply(rows, `[[`, "", "code"))
