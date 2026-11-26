@@ -92,8 +92,9 @@ complete line (the partial line after the last line break is not read), as
 RFC 9309 section 2.5 allows a crawler to parse. The document row reports
 the cut with \code{body_truncated} and \code{limit_exceeded} both \code{TRUE} and
 \code{final_newline = NA} (the file's end was never read), \code{byte_size} is the
-stored size, and a warning diagnostic with code \code{body_truncated} says most
-of the file may not have been validated. A body over \code{max_bytes} with a 3xx
+stored size, and a warning diagnostic with code \code{body_truncated} says how
+many bytes were read and names the checks that were not run, since lines
+past the cut could change their result. A body over \code{max_bytes} with a 3xx
 status, an unknown status, or a 2xx whose libcurl and status-line statuses
 disagree is refused whole and reported as \code{acquisition_limit_exceeded}, and a
 4xx or 5xx keeps its status outcome whatever its body size.

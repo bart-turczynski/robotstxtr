@@ -1,5 +1,6 @@
 # robotstxtr (development version)
 
+* Validator: the `body_truncated` row of a body cut at `max_bytes` names, in plain words, each check not run on it, and no longer says its lines were validated (ROBO-mgwiemtw).
 * `robots_validate_text()` takes time linear in the number of distinct crawlers on wildcard and empty-`Disallow` checks (ROBO-hmpzayxr).
 * `robots_validate_text()` checks many `Sitemap` lines faster: one URL parse per file (ROBO-qjynmmzw).
 * Validator: `accepted_directive_prefix` also flags a key Google reads as User-agent by prefix (`User-agents: *`); prefix rows no longer say Bing and Yandex ignore the key (ROBO-lgoehhhq).

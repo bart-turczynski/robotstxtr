@@ -444,12 +444,14 @@ validation_unsupported <- c(
 #'     give their crawlers the same rules, as written, so their User-agent
 #'     lines could be stacked in one group (RFC 9309 section 2.2.1).
 #'     Optional cleanup. Anchored on the first group's first line; the
-#'     message names the other groups and the stacked group. \cr
+#'     message names the other groups and the stacked group. Not reported
+#'     for a body cut at \code{max_bytes}. \cr
 #'   \code{empty_disallow_with_full_block} \tab warning \tab
 #'     The rules one crawler follows hold an empty \code{Disallow:} and a
 #'     full block (\code{Disallow: /}, no non-empty Allow): Google and Bing
 #'     block every path, Yandex allows the paths no longer Disallow matches.
-#'     Anchored on the full-block line. \cr
+#'     Anchored on the full-block line. Not reported for a body cut at
+#'     \code{max_bytes}. \cr
 #'   \code{disallow_tied_by_allow} \tab warning \tab
 #'     A Disallow never takes effect: an Allow with the identical pattern
 #'     applies to the same crawlers and wins the tie. Anchored on the
@@ -470,7 +472,8 @@ validation_unsupported <- c(
 #'     such URL. Not reported when the same crawlers also have the rule
 #'     with that \code{?} written \code{*&}, or written \code{&} when a
 #'     \code{*} stands right before that \code{?} (\code{/*?sort=}, not
-#'     \code{/a*b?sort=}). \cr
+#'     \code{/a*b?sort=}). Not reported for a body cut at \code{max_bytes}.
+#'     \cr
 #'   \code{rule_query_crawl_not_index} \tab info \tab
 #'     A Disallow pattern holds \code{?}, \code{=} or \code{&}, so it may
 #'     target URL parameters. The note says robots.txt controls crawling,
@@ -496,7 +499,8 @@ validation_unsupported <- c(
 #'     five rules at most, then a count. On a file whose rules and crawlers
 #'     would make the check costly, candidates past a fixed amount of work,
 #'     linear in the file's rules, get no row, and
-#'     \code{rule_check_stopped} says so. \cr
+#'     \code{rule_check_stopped} says so. Not reported for a body cut at
+#'     \code{max_bytes}. \cr
 #'   \code{rule_end_anchor_query} \tab info \tab
 #'     A Disallow whose pattern ends in \code{$} and holds no \code{?}
 #'     (\code{/x/edit$}) blocks its path but not the same path with a query
@@ -506,7 +510,8 @@ validation_unsupported <- c(
 #'     crawlers have. One row per group of crawlers, on its first User-agent
 #'     line, listing five rules at most, then a count. Past a fixed amount
 #'     of work, as for \code{rule_slash_split}, candidates get no row and
-#'     \code{rule_check_stopped} says so. \cr
+#'     \code{rule_check_stopped} says so. Not reported for a body cut at
+#'     \code{max_bytes}. \cr
 #'   \code{allow_reopens_through_query} \tab info \tab
 #'     An Allow that opens with \code{*} or \code{/*} and then names a path
 #'     (\code{*/x/}) also matches inside a query, so it allows
@@ -518,7 +523,8 @@ validation_unsupported <- c(
 #'     the Disallow that blocks the path, then the lines of the other
 #'     Allows, four at most, then a count.
 #'     Past a fixed amount of work, as for \code{rule_slash_split}, Allows
-#'     get no row and \code{rule_check_stopped} says so. \cr
+#'     get no row and \code{rule_check_stopped} says so. Not reported for a
+#'     body cut at \code{max_bytes}. \cr
 #'   \code{rule_render_resource_blocked} \tab info \tab
 #'     A Disallow whose pattern ends in a file type a page may load
 #'     (\code{.js}, \code{.mjs}, \code{.cjs}, \code{.css}, \code{.json},
@@ -532,7 +538,8 @@ validation_unsupported <- c(
 #'     with a file it blocks, then the lines of the other rules, four at
 #'     most, then a count. Past a fixed amount of work, as for
 #'     \code{rule_slash_split}, rules get no row and
-#'     \code{rule_check_stopped} says so. \cr
+#'     \code{rule_check_stopped} says so. Not reported for a body cut at
+#'     \code{max_bytes}. \cr
 #'   \code{rule_prefix_sibling} \tab info \tab
 #'     A literal rule with no trailing \code{/} or \code{$}
 #'     (\code{Disallow: /feed}) also matches a longer path the same
@@ -546,7 +553,8 @@ validation_unsupported <- c(
 #'     rule's group, on its line, listing five pairs at most, then a count;
 #'     a sibling listed for fewer crawlers names them. Past a
 #'     fixed amount of work, as for \code{rule_slash_split}, rules get no
-#'     row and \code{rule_check_stopped} says so. \cr
+#'     row and \code{rule_check_stopped} says so. Not reported for a body
+#'     cut at \code{max_bytes}. \cr
 #'   \code{rule_check_stopped} \tab info \tab
 #'     The file is too large for \code{rule_slash_pair},
 #'     \code{rule_slash_split}, \code{rule_end_anchor_query},
@@ -610,7 +618,10 @@ validation_unsupported <- c(
 #'     \code{max_bytes}. \cr
 #'   \code{body_truncated} \tab warning \tab
 #'     The body exceeded \code{max_bytes}; only lines before the cut were read
-#'     (beside \code{compressed_body}, none was, and the row says so). \cr
+#'     (beside \code{compressed_body}, none was, and the row says so). The
+#'     message also names, in plain words, every check not run on such a
+#'     body because lines past the cut could change its result: the codes
+#'     above marked as not reported for a body cut at \code{max_bytes}. \cr
 #'   \code{acquisition_input_invalid} \tab error \tab
 #'     An input URL could not be turned into a robots.txt origin. \cr
 #'   \code{acquisition_missing} \tab info \tab
@@ -1258,8 +1269,9 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' RFC 9309 section 2.5 allows a crawler to parse. The document row reports
 #' the cut with `body_truncated` and `limit_exceeded` both `TRUE` and
 #' `final_newline = NA` (the file's end was never read), `byte_size` is the
-#' stored size, and a warning diagnostic with code `body_truncated` says most
-#' of the file may not have been validated. A body over `max_bytes` with a 3xx
+#' stored size, and a warning diagnostic with code `body_truncated` says how
+#' many bytes were read and names the checks that were not run, since lines
+#' past the cut could change their result. A body over `max_bytes` with a 3xx
 #' status, an unknown status, or a 2xx whose libcurl and status-line statuses
 #' disagree is refused whole and reported as `acquisition_limit_exceeded`, and a
 #' 4xx or 5xx keeps its status outcome whatever its body size.
@@ -2209,8 +2221,13 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # A named group drops the `*` rules for its crawlers (ROBO-gfjotdrr). On
   # a cut body a group's rules may lie past the cut, so it is skipped. Its
   # rows are added below; its lines are known here for the repeat check.
-  inheritance <- if (body_truncated) list() else
+  # Every check a cut body skips asks cut_runs() (validation_cut_skips).
+  inheritance <- if (cut_runs("wildcard_disallows_not_inherited",
+                              body_truncated)) {
     wildcard_inheritance_diagnostics(groups)
+  } else {
+    list()
+  }
   # A crawler named again in a later group (ROBO-vnhirero); a line a join,
   # cut, hidden-directive or inheritance report owns is skipped (one line,
   # one report).
@@ -2250,12 +2267,14 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # 512,000 bytes, so a group moved across either limit changes its rules.
   # A User-agent line whose value holds a second directive key is cut, or
   # makes its group a `*` group, so its group is out already (ROBO-bkzqgvai).
-  if (!body_truncated) {
-    rule_line <- groups$rules$line
-    written <- slash_written_rules(
-      raw_lines[rule_line], rule_line,
-      parsed$missing_colon[match(rule_line, parsed$line)], groups$rules$empty
-    )
+  # `written` is read on a cut body too, so no check that reads it can see
+  # the per-line `written` of the rule-value loop above.
+  rule_line <- groups$rules$line
+  written <- slash_written_rules(
+    raw_lines[rule_line], rule_line,
+    parsed$missing_colon[match(rule_line, parsed$line)], groups$rules$empty
+  )
+  if (cut_runs("user_agent_groups_same_rules", body_truncated)) {
     found <- if (lone_cr || stored_size > 500000L) {
       ai_training_rows()
     } else {
@@ -2276,7 +2295,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # An empty Disallow and a full block one crawler follows: Google and Bing
   # block, Yandex allows (ROBO-vnhirero). A cut body is skipped: lines past
   # the cut could add an Allow.
-  if (!body_truncated) {
+  if (cut_runs("empty_disallow_with_full_block", body_truncated)) {
     found <- empty_disallow_full_block_diagnostics(groups)
     if (nrow(found) > 0L) {
       add_chunk(
@@ -2325,7 +2344,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # is skipped; a lower-case-escape twin is left out, as above.
   # A twin cut by a NUL is Google's reading only: Bing and Yandex read
   # another rule, which still misses the URL, so it silences nothing.
-  if (!body_truncated) {
+  if (cut_runs("rule_query_parameter_position", body_truncated)) {
     nul_rules <- groups$rules$line[nul_counts[groups$rules$line] > 0L &
                                      !groups$rules$empty]
     nul_cut <- nul_rules[vapply(raw_lines[nul_rules], rule_cut_by_nul,
@@ -2377,7 +2396,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   # A crawler decides the bare URL `P` and the slash URL `P/` of a literal
   # rule differently (ROBO-roypaoox). A later Allow could change a decision,
   # so a cut body is skipped. `written` is the rules as written, read above.
-  if (!body_truncated) {
+  if (cut_runs("rule_slash_split", body_truncated)) {
     found <- slash_split_diagnostics(groups, written = written)
     if (nrow(found) > 0L) {
       add_chunk(
@@ -2393,9 +2412,11 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         slash_stop_message("split", attr(found, "stopped"))
       )
     }
-    # A `$`-anchored Disallow that the same path with a query added escapes
-    # (ROBO-nzcvlsvk). A later Disallow could block the witness, so a cut
-    # body is skipped too. A rule a NUL cuts is read as Google cuts it.
+  }
+  # A `$`-anchored Disallow that the same path with a query added escapes
+  # (ROBO-nzcvlsvk). A later Disallow could block the witness, so a cut
+  # body is skipped too. A rule a NUL cuts is read as Google cuts it.
+  if (cut_runs("rule_end_anchor_query", body_truncated)) {
     found <- end_anchor_diagnostics(groups, written = written)
     if (nrow(found) > 0L) {
       add_chunk(
@@ -2411,9 +2432,11 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         slash_stop_message("end_anchor", attr(found, "stopped"))
       )
     }
-    # An Allow led by `*` or `/*` that names a path and so also matches
-    # inside a query, reopening a URL a Disallow blocks (ROBO-micbpqbc). A
-    # later rule could decide the witness, so a cut body is skipped too.
+  }
+  # An Allow led by `*` or `/*` that names a path and so also matches
+  # inside a query, reopening a URL a Disallow blocks (ROBO-micbpqbc). A
+  # later rule could decide the witness, so a cut body is skipped too.
+  if (cut_runs("allow_reopens_through_query", body_truncated)) {
     found <- allow_reopens_diagnostics(groups, written = written)
     if (nrow(found) > 0L) {
       add_chunk(
@@ -2429,9 +2452,11 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         slash_stop_message("allow_reopen", attr(found, "stopped"))
       )
     }
-    # A Disallow that blocks a file type a page may load to show its
-    # content (ROBO-dwywkpes). A later rule could decide the witness, so a
-    # cut body is skipped too.
+  }
+  # A Disallow that blocks a file type a page may load to show its
+  # content (ROBO-dwywkpes). A later rule could decide the witness, so a
+  # cut body is skipped too.
+  if (cut_runs("rule_render_resource_blocked", body_truncated)) {
     found <- render_resource_diagnostics(groups, written = written)
     if (nrow(found) > 0L) {
       add_chunk(
@@ -2447,9 +2472,11 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         slash_stop_message("render_resource", attr(found, "stopped"))
       )
     }
-    # A literal rule whose path the same crawlers' rules also list as a
-    # sibling it matches, with the same type (ROBO-otomgbge). A later rule
-    # could decide the sibling's path, so a cut body is skipped too.
+  }
+  # A literal rule whose path the same crawlers' rules also list as a
+  # sibling it matches, with the same type (ROBO-otomgbge). A later rule
+  # could decide the sibling's path, so a cut body is skipped too.
+  if (cut_runs("rule_prefix_sibling", body_truncated)) {
     found <- prefix_sibling_diagnostics(groups, written = written)
     if (nrow(found) > 0L) {
       add_chunk(
@@ -2579,7 +2606,7 @@ validate_document_bytes <- function(bytes, source_id, source_type,
         nul_free_rules
       )
     )
-  } else if (rule_count == 0L && !body_truncated) {
+  } else if (rule_count == 0L && cut_runs("no_rules", body_truncated)) {
     add_diagnostic(
       NA_integer_, "info", "no_rules", NA_character_,
       paste0("Document has no Allow or Disallow rules, so it places no ",
@@ -2651,6 +2678,50 @@ validate_document_bytes <- function(bytes, source_id, source_type,
   list(document = document, diagnostics = diagnostic_frame)
 }
 
+# The checks a body cut at max_bytes skips (ROBO-mgwiemtw), keyed by the
+# code each reports, in the order validate_document_bytes() runs them, with
+# what each looks for in the words the body_truncated row names it by. Lines
+# past the cut could add rules or User-agent lines that change what these
+# checks find, so they are not run; their rule_check_stopped rows go with
+# them. The wildcard entry stands for all three wildcard inheritance codes.
+# Every guard asks cut_runs() with its code, and
+# test-cut-skips-mgwiemtw.R walks validate_document_bytes() for a guard that
+# reads body_truncated without it. A new check skipped on a cut body adds
+# its code here.
+validation_cut_skips <- c(
+  wildcard_disallows_not_inherited =
+    "`User-agent: *` rules a named group does not inherit",
+  user_agent_groups_same_rules = "groups that could share one set of rules",
+  empty_disallow_with_full_block = "an empty Disallow beside a full block",
+  rule_query_parameter_position =
+    "a query parameter rule that misses the parameter in a later position",
+  rule_slash_split =
+    "a path whose bare and slash forms get different decisions",
+  rule_end_anchor_query =
+    "a `$` rule the same path with a query added escapes",
+  allow_reopens_through_query =
+    "an Allow that reopens a blocked path through a query",
+  rule_render_resource_blocked =
+    "a Disallow that blocks page resources such as scripts or styles",
+  rule_prefix_sibling =
+    "a rule that also matches a longer path listed separately",
+  no_rules = "whether the file has no rules"
+)
+
+# TRUE when the check that reports `code`, a validation_cut_skips name,
+# runs: on every body but one cut at max_bytes.
+cut_runs <- function(code, body_truncated) {
+  !body_truncated
+}
+
+# The sentence of the body_truncated row that names the skipped checks.
+cut_skips_sentence <- function() {
+  paste0(
+    "Lines past the cut could change what these checks find, so they were ",
+    "not run: ", paste(validation_cut_skips, collapse = "; "), "."
+  )
+}
+
 # The document rows about how the body was acquired, as a list of
 # list(severity, code, message), drawn whatever the body holds, a compressed
 # one included (ROBO-rozvglkd).
@@ -2667,12 +2738,15 @@ validation_acquisition_rows <- function(bytes, max_bytes, body_truncated,
   rows <- list()
   if (body_truncated) {
     message <- if (read) {
-      sprintf(
-        paste0(
-          "Decoded body exceeded max_bytes (%d); only its first %d bytes ",
-          "up to the last complete line were validated."
+      paste(
+        sprintf(
+          paste0(
+            "Decoded body exceeded max_bytes (%d); only its first %d bytes ",
+            "up to the last complete line were read."
+          ),
+          as.integer(max_bytes), length(bytes)
         ),
-        as.integer(max_bytes), length(bytes)
+        cut_skips_sentence()
       )
     } else {
       sprintf(
