@@ -566,9 +566,9 @@ cn_shapes <- list(
     },
     check = function(groups, parsed) ai_training_diagnostics(groups, parsed)
   ),
-  # `n` distinct cut crawlers, each its own wildcard row. The check itself
-  # is not linear in them (each crawler scans the agent and rule lines,
-  # before this sentence too), so only the share guard below covers it.
+  # `n` distinct cut crawlers, each its own wildcard row. The check reads
+  # each crawler's own rows by index (ROBO-hmpzayxr), so it is linear in
+  # them too.
   wildcard_rows = list(
     body = function(n) {
       cn_lines("User-agent: *", "Disallow: /a", "Allow: /x",
@@ -579,7 +579,7 @@ cn_shapes <- list(
   )
 )
 
-for (shape in setdiff(names(cn_shapes), "wildcard_rows")) {
+for (shape in names(cn_shapes)) {
   test_that(paste("the sentence costs time linear in the file:", shape), {
     skip_on_cran()
     # Four times the file: linear is about four times the time, quadratic

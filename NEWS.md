@@ -1,5 +1,6 @@
 # robotstxtr (development version)
 
+* `robots_validate_text()` takes time linear in the number of distinct crawlers on wildcard and empty-`Disallow` checks (ROBO-hmpzayxr).
 * `robots_validate_text()` checks many `Sitemap` lines faster: one URL parse per file (ROBO-qjynmmzw).
 * Validator: `accepted_directive_prefix` also flags a key Google reads as User-agent by prefix (`User-agents: *`); prefix rows no longer say Bing and Yandex ignore the key (ROBO-lgoehhhq).
 * Validator: `user_agent_cut` and `unknown_directive` name a non-ASCII or zero-width space in a User-agent value or before a key and say what Google reads; a cut `*`-led value says it is not `*` (ROBO-jsecjjyo).
