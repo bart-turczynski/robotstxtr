@@ -1235,3 +1235,35 @@ test_that("one crawler left that ignores `*` is named in the singular", {
     "AdsBot-Google-Mobile, Mediapartners-Google and APIs-Google)."
   )))
 })
+
+# ROBO-ipzkxzhg review 2: Google reads only the first 512,000 bytes, so a
+# User-agent line past them is not counted as naming a crawler elsewhere or
+# as one of the group's own lines: past the window the row keeps the weak
+# sentence and the full list of crawlers that ignore `*`.
+iv_window <- function(head, tail) {
+  filler <- rep(paste0("# ", strrep("x", 97)), 5300L)
+  iv_lines(head, filler, tail)
+}
+
+test_that("cut rows count no User-agent line past the 512,000-byte window", {
+  head <- c("User-agent: *", "User-agent: \u200bGooglebot", "Disallow: /x")
+  body <- iv_window(head, c("User-agent: Googlebot", "Disallow: /a"))
+  expect_gt(nchar(body, "bytes"), 512000L)
+  expect_identical(iv_google(body, "Googlebot", "/x"), "disallow 3")
+  row <- iv_cut(body)
+  expect_false(grepl("does not get this group", row$message, fixed = TRUE))
+  expect_true(grepl(iv_meant_weak("Googlebot"), row$message, fixed = TRUE))
+  expect_identical(row$severity, "warning")
+  # AdsBot-Google named in the group only past the window: Google gives it
+  # no group, so the exception still names it.
+  body <- iv_window(head[1:2], c("User-agent: AdsBot-Google", "Disallow: /x"))
+  expect_identical(iv_google(body, "AdsBot-Google", "/x"), "allow NA")
+  expect_true(grepl(iv_kept, iv_cut(body)$message, fixed = TRUE))
+  body <- iv_window(c("User-agent: *", "User-agent: *bot"),
+                    c("User-agent: AdsBot-Google", "Disallow: /x"))
+  expect_identical(iv_google(body, "AdsBot-Google", "/x"), "allow NA")
+  expect_true(endsWith(iv_cut(body)$message, paste0(
+    iv_reaches, ", except Google's crawlers that ignore `*` (AdsBot-Google, ",
+    "AdsBot-Google-Mobile, Mediapartners-Google and APIs-Google)."
+  )))
+})
