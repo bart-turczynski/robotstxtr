@@ -504,16 +504,15 @@ validation_unsupported <- c(
 #'   \code{rule_star_led_pattern} \tab info \tab
 #'     An Allow or Disallow pattern starts with \code{*} (\code{*.pdf}),
 #'     outside RFC 9309's path-pattern grammar, \code{path-pattern = "/"
-#'     *UTF8-char-noctl} (section 2.2). Google's matcher anchors a pattern
-#'     at the path's first byte and lets a \code{*} match nothing, so
-#'     \code{*.pdf} matches the same paths as \code{/*.pdf}, while
-#'     \code{*/feed/} matches those of \code{/*/feed/} and also those of
-#'     \code{/feed/}; either way its priority, the pattern's length, is one
-#'     byte below the \code{/*} form's. Bing and Yandex may read it
-#'     differently. Only rules inside a group count. One row per file, on
-#'     the first such line, listing five lines at most, then a count; it
-#'     suggests no rewrite, since the added byte can change which rule
-#'     wins. A body cut at \code{max_bytes} is checked on the lines read. \cr
+#'     *UTF8-char-noctl} (section 2.2). Google's matcher lets a \code{*}
+#'     match any run of bytes, none included, from the path's first byte
+#'     on, and counts each \code{*} as one byte of the rule's length when
+#'     the longest matching rule decides. Bing and Yandex may read it
+#'     differently. Only rules of a group with a non-empty User-agent
+#'     count. One row per file, on the first such line, listing five lines
+#'     at most, then a count; it suggests no rewrite, since the added byte
+#'     of a \code{/*} form can change which rule wins. A body cut at
+#'     \code{max_bytes} is checked on the lines read. \cr
 #'   \code{rule_slash_pair} \tab info \tab
 #'     The same crawlers have a literal Allow or Disallow pattern both
 #'     without and with a trailing \code{/} (\code{/notes} and
@@ -6198,24 +6197,26 @@ query_index_note_message <- function(lines, first, cap = 5L) {
 # per file (ROBO-ktmnbirm). RFC 9309 section 2.2 writes `path-pattern = "/"
 # *UTF8-char-noctl`, so a `*` lead is outside that grammar; ROBO-xblfzkid
 # settled that it is no rule_missing_leading_slash warning. Google's
-# matcher (src/robots.cc, RobotsMatchStrategy::Matches()) anchors a pattern
-# at the path's first byte (`pos[0] = 0`), and a `*` may match no byte. So
-# with `Y` the value after its run of leading `*`: when `Y` does not start
-# with `/`, it cannot match at byte 0, where every path has `/`, and `*Y`
-# matches exactly the paths `/*Y` matches; when `Y` starts with `/`, `*Y`
-# matches those and also the paths `Y` matches from byte 0 (`*/feed/` blocks
-# `/feed/`, which `/*/feed/` does not). The priority is the pattern's byte
-# length (`return Matches(path, pattern) ? pattern.length() : -1;`), one
-# byte below `/*Y`. No recorded source says how Bing or Yandex read a `*`
-# lead, so the note names neither. The parser's value is read: trimmed, cut
-# at `#` and at a NUL, with its bytes escaped, so only the first byte is
-# tested. Only rules inside a group count, as Google reads no other rule;
-# one before any User-agent line draws rule_without_user_agent instead.
-# Returns a data frame of `line` (the first such line), `directive` and
-# `message`, with one row or none.
+# matcher (src/robots.cc, RobotsMatchStrategy::Matches()) matches a pattern
+# from the path's first byte (`pos[0] = 0`), and a `*` adds every position
+# from the current one on, so it matches any run of bytes, none included.
+# The priority is the pattern's byte length (`return Matches(path, pattern)
+# ? pattern.length() : -1;`), each `*` one byte of it. No recorded source
+# says how Bing or Yandex read a `*` lead, so the note names neither. The
+# parser's value is read: trimmed, cut at `#` and at a NUL, with its bytes
+# escaped, so only the first byte is tested. Only rules of a group some
+# crawler reads count, as Google reads no other rule; one before any
+# User-agent line, or in a group whose User-agent lines are all empty,
+# draws rule_without_user_agent instead. Returns a data frame of `line`
+# (the first such line), `directive` and `message`, with one row or none.
 star_led_pattern_diagnostics <- function(groups) {
   rules <- groups$rules
   at <- which(startsWith(rules$value, "*"))
+  # The read-group test of query_index_note_diagnostics(): a group names `*`
+  # or a non-empty whole value (`agents$uncut`).
+  agents <- groups$agents
+  read <- agents$group[agents$global | nzchar(agents$uncut)]
+  at <- at[rules$group[at] %in% read]
   if (length(at) == 0L) {
     return(data.frame(line = integer(), directive = character(),
                       message = character(), stringsAsFactors = FALSE))
@@ -6229,29 +6230,13 @@ star_led_pattern_diagnostics <- function(groups) {
 }
 
 # The note's text: the lines, five at most, then a count, and the first
-# one's pattern, elided past 40 bytes; then what the grammar and Google's
-# matcher do with it, and the generic clause for Bing and Yandex. It
-# suggests no rewrite: `/*X` is one byte longer, which can flip a rule that
-# ties it in length.
+# one's pattern, elided past 40 bytes; then what the grammar says, one
+# sentence on Google's matcher built from no value, and the generic clause
+# for Bing and Yandex. It suggests no rewrite: `/*X` is one byte longer,
+# which can flip a rule that ties it in length.
 star_led_pattern_message <- function(lines, first, cap = 5L) {
   shown <- query_parameter_render(query_parameter_cap(first, 40L))
-  rest <- sub("^[*]+", "", first)
   several <- length(lines) > 1L
-  google <- if (startsWith(rest, "/")) {
-    rest <- query_parameter_render(query_parameter_cap(rest, 40L))
-    paste0(
-      "Google's matcher lets a leading '*' match nothing at the path's ",
-      "first byte: '", shown, "' matches the paths '/", shown, "' matches ",
-      "and also those '", rest, "' matches, but counts one byte less than ",
-      "'/", shown, "' when the longest matching rule decides. "
-    )
-  } else {
-    paste0(
-      "Google's matcher reads ", if (several) "such a pattern" else "it",
-      " as if led by '/': '", shown, "' matches the same paths as '/", shown,
-      "', but counts one byte less when the longest matching rule decides. "
-    )
-  }
   lead <- if (several) {
     sprintf("The rules on lines %s (the first '%s') start",
             joined_and(as.character(utils::head(lines, cap)),
@@ -6262,9 +6247,11 @@ star_led_pattern_message <- function(lines, first, cap = 5L) {
   }
   paste0(
     lead, " with '*', which is outside RFC 9309's path-pattern grammar: ",
-    "there a pattern starts with '/' (RFC 9309 section 2.2). ", google,
-    "Bing and Yandex may read ", if (several) "these rules" else "this rule",
-    " differently."
+    "there a pattern starts with '/' (RFC 9309 section 2.2). Google's ",
+    "matcher lets a '*' match any run of bytes, none included, from the ",
+    "path's first byte on, and counts each '*' as one byte of the rule's ",
+    "length when the longest matching rule decides. Bing and Yandex may ",
+    "read ", if (several) "these rules" else "this rule", " differently."
   )
 }
 
