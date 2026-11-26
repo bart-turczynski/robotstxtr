@@ -212,9 +212,12 @@ test_that("well-formed patterns stay clean of the value checks", {
   )) {
     x <- vc_validate(line)
     # A `$`-anchored Disallow a query escapes gets its own info row
-    # (ROBO-nzcvlsvk), no value-check finding.
+    # (ROBO-nzcvlsvk), no value-check finding; a `*`-led pattern gets the
+    # info note that it is outside RFC 9309's grammar (ROBO-ktmnbirm).
     expected <- if (line == "Disallow: /*.pdf$") {
       "rule_end_anchor_query"
+    } else if (line == "Disallow: *.pdf") {
+      "rule_star_led_pattern"
     } else {
       character(0)
     }

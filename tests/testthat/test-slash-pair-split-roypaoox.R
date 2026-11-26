@@ -175,14 +175,15 @@ sp_fixtures <- list(
   ),
   # Rules a literal head lookup must still find: the `/x/$` Google's
   # matcher adds for an Allow ending in `/index.html`, a `*`-led rule and a
-  # `$`-anchored one each decide `/x/`.
+  # `$`-anchored one each decide `/x/`. The `*`-led one draws only the
+  # grammar note (ROBO-ktmnbirm).
   index_allow = list(
     body = "User-agent: %s\nAllow: /x/index.html\nDisallow: /x/\n",
     codes = character(0), lines = integer(0)
   ),
   star_led = list(
     body = "User-agent: %s\nDisallow: /x/\nAllow: */x/$\n",
-    codes = character(0), lines = integer(0)
+    codes = "rule_star_led_pattern", lines = 3L
   ),
   dollar_head = list(
     body = "User-agent: %s\nDisallow: /x/\nAllow: /x/$\n",

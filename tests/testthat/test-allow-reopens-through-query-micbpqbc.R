@@ -17,18 +17,20 @@ ar_code <- "allow_reopens_through_query"
 
 # Each fixture: a body (`%s` stands for the crawler token, so the backends
 # can read it) and `today`, the codes it got before ROBO-micbpqbc (plus
-# rule_query_crawl_not_index, added later by ROBO-jnnnkyat). A bare
-# `Disallow: /my/` also gets rule_slash_split: it blocks `/my/` and leaves
-# `/my` allowed.
+# rule_query_crawl_not_index, added later by ROBO-jnnnkyat, and
+# rule_star_led_pattern, the note on a `*`-led rule added by ROBO-ktmnbirm).
+# A bare `Disallow: /my/` also gets rule_slash_split: it blocks `/my/` and
+# leaves `/my` allowed.
 ar_split <- "rule_slash_split"
+ar_star <- "rule_star_led_pattern"
 ar_fixtures <- list(
   positive = list(
     body = "User-agent: %s\nDisallow: /my/\nAllow: */sitemap_output/\n",
-    today = ar_split
+    today = c(ar_star, ar_split)
   ),
   global = list(
     body = "User-agent: *\nDisallow: /my/\nAllow: */sitemap_output/\n",
-    today = ar_split
+    today = c(ar_star, ar_split)
   ),
   slash_led = list(
     body = "User-agent: %s\nDisallow: /my/\nAllow: /*/sitemap_output/\n",
@@ -37,34 +39,34 @@ ar_fixtures <- list(
   stars = list(body = "User-agent: %s\nDisallow: /my\nAllow: /**/x$\n",
                today = character(0)),
   star_dollar = list(body = "User-agent: %s\nDisallow: /my\nAllow: */x/$\n",
-                     today = character(0)),
+                     today = ar_star),
   wild_disallow = list(
     body = "User-agent: %s\nDisallow: /*/my/\nAllow: */sitemap_output/\n",
-    today = character(0)
+    today = ar_star
   ),
   # Two shape-A Allows that each reopen `/my/`: the longer one also
   # matches the shorter one's witness.
   cause_short = list(
     body = "User-agent: %s\nDisallow: /my/\nAllow: */output/\n",
-    today = ar_split
+    today = c(ar_star, ar_split)
   ),
   two_cause = list(
     body = paste0("User-agent: %s\nDisallow: /my/\n",
                   "Allow: */sitemap_output/\nAllow: */output/\n"),
-    today = ar_split
+    today = c(ar_star, ar_split)
   ),
   # An Allow of another shape opens the witness too: removing the shape-A
   # Allow leaves it open, so the shape-A Allow is not the cause.
   non_a_opener = list(
     body = paste0("User-agent: %s\nDisallow: /my/\n",
                   "Allow: */sitemap_output/\nAllow: /my/?\n"),
-    today = ar_split
+    today = c(ar_star, ar_split)
   ),
   # A longer Disallow that is no control decides the control.
   decider = list(
     body = paste0("User-agent: %s\nDisallow: /my/\nDisallow: /my/$\n",
                   "Allow: */sitemap_output/\n"),
-    today = character(0)
+    today = ar_star
   ),
   # Three Disallows that fail (a longer Disallow covers the witness, an
   # Allow wins the control, a query Disallow covers the witness) and a
@@ -76,29 +78,29 @@ ar_fixtures <- list(
                   "Disallow: /c/?q=/sitemap_output/\n",
                   "Allow: */sitemap_output/\n"),
     today = c("disallow_tied_by_allow", "rule_query_parameter_position",
-              "rule_query_crawl_not_index", ar_split)
+              "rule_query_crawl_not_index", ar_star, ar_split)
   ),
   # Google ranks by pattern length and an Allow wins a tie.
   tie = list(body = "User-agent: %s\nDisallow: /abc/\nAllow: */ss/\n",
-             today = ar_split),
+             today = c(ar_star, ar_split)),
   shorter = list(body = "User-agent: %s\nDisallow: /abc/\nAllow: */s/\n",
-                 today = ar_split),
+                 today = c(ar_star, ar_split)),
   # Negatives.
   longer_cover = list(
     body = paste0("User-agent: %s\nDisallow: /my/\n",
                   "Disallow: /my/*sitemap_output\n",
                   "Allow: */sitemap_output/\n"),
-    today = ar_split
+    today = c(ar_star, ar_split)
   ),
   cross_group = list(
     body = paste0("User-agent: %s\nDisallow: /my/\n\n",
                   "User-agent: Other\nAllow: */sitemap_output/\n"),
-    today = ar_split
+    today = c(ar_star, ar_split)
   ),
   star_group = list(
     body = paste0("User-agent: *\nDisallow: /my/\n\n",
                   "User-agent: %s\nAllow: */sitemap_output/\n"),
-    today = c("wildcard_disallows_not_inherited", ar_split)
+    today = c("wildcard_disallows_not_inherited", ar_star, ar_split)
   ),
   prefixed = list(body = "User-agent: %s\nDisallow: /my/\nAllow: /my/*x\n",
                   today = ar_split),
@@ -111,64 +113,66 @@ ar_fixtures <- list(
   css = list(body = "User-agent: %s\nDisallow: /my/\nAllow: /*.css\n",
              today = ar_split),
   shape_b = list(body = "User-agent: %s\nDisallow: /my/\nAllow: *?next=\n",
-                 today = c("rule_query_parameter_position", ar_split)),
+                 today = c("rule_query_parameter_position", ar_star,
+                           ar_split)),
   query_disallow = list(
     body = "User-agent: %s\nDisallow: /my/?\nAllow: */s/\n",
-    today = "rule_query_crawl_not_index"
+    today = c("rule_query_crawl_not_index", ar_star)
   ),
   dollar_disallow = list(
     body = "User-agent: %s\nDisallow: /my/$\nAllow: */s/\n",
-    today = "rule_end_anchor_query"
+    today = c(ar_star, "rule_end_anchor_query")
   ),
   dot_disallow = list(body = "User-agent: %s\nDisallow: /a/./\nAllow: */s/\n",
-                      today = "rule_dot_segment"),
+                      today = c("rule_dot_segment", ar_star)),
   dot_allow = list(body = "User-agent: %s\nDisallow: /my/\nAllow: */./s/\n",
-                   today = ar_split),
+                   today = c(ar_star, ar_split)),
   dot_escaped_allow = list(
     body = "User-agent: %s\nDisallow: /my/\nAllow: */%2E%2E/s/\n",
-    today = c("rule_escaped_unreserved", ar_split)
+    today = c("rule_escaped_unreserved", ar_star, ar_split)
   ),
   stray_disallow = list(
     body = "User-agent: %s\nDisallow: /a%4/\nAllow: */s/\n",
-    today = "rule_invalid_percent_escape"
+    today = c("rule_invalid_percent_escape", ar_star)
   ),
   stray_allow = list(
     body = "User-agent: %s\nDisallow: /my/\nAllow: */s%4/\n",
-    today = c("rule_invalid_percent_escape", ar_split)
+    today = c("rule_invalid_percent_escape", ar_star, ar_split)
   ),
   ai = list(
     body = "User-agent: __usage_ai-training\nDisallow: /my/\nAllow: */s/\n",
-    today = "ai_training_preference"
+    today = c("ai_training_preference", ar_star)
   ),
   ai_anchor = list(
     body = paste0("User-agent: __usage_ai-training\nUser-agent: %s\n",
                   "Disallow: /my/\nAllow: */s/\n"),
-    today = c("ai_training_preference", ar_split)
+    today = c("ai_training_preference", ar_star, ar_split)
   ),
   # AdsBot-Google ignores the `*` group and is judged on its own rules.
   adsbot = list(
     body = paste0("User-agent: *\nDisallow: /my/\nAllow: */s/\n\n",
                   "User-agent: AdsBot-Google\nDisallow: /my/\n"),
-    today = c("wildcard_rules_not_inherited", ar_split, ar_split)
+    today = c("wildcard_rules_not_inherited", ar_star, ar_split, ar_split)
   ),
   repeated = list(
     body = paste0("User-agent: %s\nDisallow: /my/\nAllow: */a/\n\n",
                   "User-agent: %s\nAllow: */b/\n"),
-    today = c("user_agent_repeated_group", ar_split)
+    today = c("user_agent_repeated_group", ar_star, ar_split)
   ),
   seven = list(
     body = paste0("User-agent: %s\nDisallow: /my/\n",
                   paste0("Allow: */", letters[1:7], "x/\n", collapse = "")),
-    today = ar_split
+    today = c(ar_star, ar_split)
   ),
   two_crawlers = list(
     body = paste0("User-agent: %s\nUser-agent: Bar\nDisallow: /my/\n",
                   "Allow: */sx/\n"),
-    today = ar_split
+    today = c(ar_star, ar_split)
   ),
   # Also rule_query_parameter_position's: both rows stand.
   overlap = list(body = "User-agent: %s\nDisallow: /my/\nAllow: */x?p=\n",
-                 today = c("rule_query_parameter_position", ar_split)),
+                 today = c("rule_query_parameter_position", ar_star,
+                           ar_split)),
   empty_allow = list(body = "User-agent: %s\nDisallow: /my/\nAllow:\n",
                      today = c("empty_rule_value", ar_split))
 )
@@ -346,7 +350,7 @@ test_that("ROBO-micbpqbc: the row names the line deciding the control", {
   # `/my/$` is longer than `/my/` and decides the control; it is no control
   # itself (a final `$`).
   d <- ar_diag(ar_body("decider"))
-  expect_identical(d$message, ar_sitemap(4L, 3L))
+  expect_identical(d$message[d$code == ar_code], ar_sitemap(4L, 3L))
   # Three Disallows fail and the fourth proves: every pair is read.
   d <- ar_diag(ar_body("fourth"))
   expect_identical(d$message[d$code == ar_code],
@@ -356,10 +360,10 @@ test_that("ROBO-micbpqbc: the row names the line deciding the control", {
 test_that("ROBO-micbpqbc: the removal read leaves out every shape-A Allow", {
   # Each Allow alone, and both: the longer one also matches the shorter
   # one's witness, and both are named.
-  expect_identical(ar_diag(ar_body("positive"))$message[[2L]], ar_sitemap())
-  expect_identical(ar_diag(ar_body("cause_short"))$message[[2L]],
+  expect_identical(ar_diag(ar_body("positive"))$message[[3L]], ar_sitemap())
+  expect_identical(ar_diag(ar_body("cause_short"))$message[[3L]],
                    ar_one(3L, "*/output/", "/my/", "/output/", 2L))
-  expect_identical(ar_diag(ar_body("two_cause"))$message[[2L]], ar_one(
+  expect_identical(ar_diag(ar_body("two_cause"))$message[[3L]], ar_one(
     3L, "*/sitemap_output/", "/my/", "/sitemap_output/", 2L,
     ar_same("4", one = TRUE)
   ))
@@ -450,7 +454,8 @@ test_that("ROBO-micbpqbc: rows group by crawler set, five Allows named", {
   ))
   # The AI-training token's group gets no row; the row sits on the first
   # User-agent line the check reads.
-  expect_identical(ar_codes(ar_body("ai")), "ai_training_preference")
+  expect_identical(ar_codes(ar_body("ai")),
+                   c("ai_training_preference", ar_star))
   d <- ar_diag(ar_body("ai_anchor"))
   expect_identical(d$raw_text[d$code == ar_code], "User-agent: Foo")
   # A crawler that ignores `*` is judged on its own group.
@@ -478,7 +483,7 @@ test_that("ROBO-micbpqbc: every class on both merges must agree", {
   # `B` blocks the witness with a longer rule, or opens it with an Allow
   # of another shape: no row for the group naming A and B.
   shared <- "User-agent: A\nUser-agent: B\nDisallow: /my/\nAllow: */s/\n"
-  expect_identical(ar_codes(shared), c(ar_split, ar_code))
+  expect_identical(ar_codes(shared), c(ar_star, ar_split, ar_code))
   for (rule in c("Disallow: /my/?q=", "Allow: /my/?")) {
     body <- paste0(shared, "\nUser-agent: B\n", rule, "\n")
     expect_false(ar_code %in% ar_codes(body), label = rule)
@@ -618,8 +623,9 @@ test_that("ROBO-micbpqbc: a cut body is skipped, a NUL body is Google's", {
   allow <- c(charToRaw("User-agent: *\nDisallow: /my/\nAllow: */s/"),
              as.raw(0), charToRaw("zz\n"))
   d <- ar_diag(allow)
-  expect_identical(d$code, c("nul_byte", "rule_cut_by_nul", ar_split, ar_code))
-  expect_identical(d$message[[4L]],
+  expect_identical(d$code, c("nul_byte", "rule_cut_by_nul", ar_star, ar_split,
+                             ar_code))
+  expect_identical(d$message[[5L]],
                    paste0(ar_one(3L, "*/s/", "/my/", "/s/", 2L), ar_nul))
   disallow <- c(charToRaw("User-agent: *\nDisallow: /my/"), as.raw(0),
                 charToRaw("zz\nAllow: */s/\n"))
@@ -1243,7 +1249,7 @@ test_that("ROBO-micbpqbc: robots_validate_url() gives the same rows", {
   })
   x <- robots_validate_url("https://e.example/page")
   d <- x$diagnostics
-  expect_identical(d$code, c(ar_split, ar_code))
+  expect_identical(d$code, c(ar_star, ar_split, ar_code))
   expect_identical(d$message, ar_diag(ar_body("global"))$message)
   expect_identical(x$documents$validation_status, "valid")
 })
