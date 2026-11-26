@@ -578,10 +578,10 @@ validation_unsupported <- c(
 #'     (\code{Disallow: /feeds}), which goes on from it without a
 #'     \code{/}. Reported only when, with that line left out, the shorter
 #'     rule decides its path, under every rule the crawlers have. The
-#'     message names \code{P$} together with \code{P/} as the narrower
-#'     spelling (either one alone drops paths \code{P} matches) and calls
-#'     neither rule wrong. One row per set of crawlers of the shorter
-#'     rule's group, on its line, listing five pairs at most, then a count;
+#'     message says what the shorter rule matches, calls neither rule
+#'     wrong and suggests no rewrite. One row per set of crawlers of the
+#'     shorter rule's group, on its line, listing five pairs at most, then a
+#'     count;
 #'     a sibling listed for fewer crawlers names them. Past a
 #'     fixed amount of work, as for \code{rule_slash_split}, rules get no
 #'     row and \code{rule_check_stopped} says so. Not reported for a body
@@ -8847,11 +8847,11 @@ prefix_sibling_tail <- function(x, cap = 40L) {
 # One row's text: each `P` (its type, value and line) and the sibling it
 # matches (value and line, and `who`, the sibling's crawlers, when given),
 # five pairs at most, then a count. `P` is elided past 40 bytes
-# (query_parameter_cap()) and its narrower spellings are that text with
-# `$` and with `/` after it; a sibling keeps its tail
-# (prefix_sibling_tail()), so no two of them print alike. It says what `P`
-# matches and names `P$` together with `P/`, as either one alone stops
-# matching paths `P` matches, calling no rule wrong.
+# (query_parameter_cap()) and a sibling keeps its tail
+# (prefix_sibling_tail()), so the two never print alike. It says what `P`
+# matches, calling no rule wrong, and suggests no rewrite (ROBO-dkkbwzur):
+# `P$` together with `P/` would also stop matching `P`'s query URLs, as
+# Google's `$` ends the match at the end of the path and query together.
 prefix_sibling_message <- function(type, value, line, sib_value, sib_line,
                                    who = NULL, cap = 5L) {
   value <- query_parameter_cap(value, 40L)
@@ -8875,19 +8875,14 @@ prefix_sibling_message <- function(type, value, line, sib_value, sib_line,
       sprintf("The %s on line %d ('%s') also matches %s, %s listed ",
               noun, line[[1L]], value[[1L]],
               joined_and(sib[shown], more), listed),
-      "separately for the same crawlers.", rule,
-      sprintf(paste0(" If '%s' was meant as one path segment, '%s$' ",
-                     "together with '%s/' is the narrower spelling."),
-              value[[1L]], value[[1L]], value[[1L]])
+      "separately for the same crawlers.", rule
     ))
   }
   pairs <- sprintf("line %d ('%s') matches %s", line[shown], value[shown],
                    sib[shown])
   paste0(
     "Rules for the same crawlers also match paths listed separately: ",
-    joined_and(pairs, more), ".", rule,
-    " If such a rule was meant as one path segment, its narrower spelling ",
-    "is the rule ending in '$' together with the rule ending in '/'."
+    joined_and(pairs, more), ".", rule
   )
 }
 

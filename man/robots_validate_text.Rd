@@ -587,10 +587,10 @@ crawlers' rules list separately with the same type
 (\code{Disallow: /feeds}), which goes on from it without a
 \code{/}. Reported only when, with that line left out, the shorter
 rule decides its path, under every rule the crawlers have. The
-message names \code{P$} together with \code{P/} as the narrower
-spelling (either one alone drops paths \code{P} matches) and calls
-neither rule wrong. One row per set of crawlers of the shorter
-rule's group, on its line, listing five pairs at most, then a count;
+message says what the shorter rule matches, calls neither rule
+wrong and suggests no rewrite. One row per set of crawlers of the
+shorter rule's group, on its line, listing five pairs at most, then a
+count;
 a sibling listed for fewer crawlers names them. Past a
 fixed amount of work, as for \code{rule_slash_split}, rules get no
 row and \code{rule_check_stopped} says so. Not reported for a body

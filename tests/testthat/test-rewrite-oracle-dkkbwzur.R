@@ -373,7 +373,7 @@ test_that("ROBO-dkkbwzur: an upper-case escape keeps google and bing", {
       bad <- rewrite_oracle(body, function(b) lc_rewrite(b, line),
                             expect_change = lc_change(esc))
       expect_identical(nrow(bad), 0L, label = label)
-      yandex <- yandex + nrow(attr(bad, "changed"))
+      yandex <- yandex + sum(attr(bad, "changed")$engine == "yandex")
     }
   }
   expect_gt(rows, 0L)
@@ -385,25 +385,20 @@ test_that("ROBO-dkkbwzur: an upper-case escape keeps google and bing", {
 # 7. rule_prefix_sibling. A rule `P` read as one path segment matches `P`,
 # `P/...` and `P?...`; `P` also matches the paths that go on from it with a
 # path byte other than `/`, and only those may change when advice narrows
-# `P` to one segment.
+# `P` to one segment. The row used to advise `P$` together with `P/` as the
+# narrower spelling; on Google's reading `$` ends the match at the end of
+# the path and query together (src/robots.cc), so that spelling also
+# dropped `P?x=1`. The row now says only what `P` matches (ROBO-dkkbwzur).
 
 ps_code <- "rule_prefix_sibling"
 
-# The `P` lines a row advises to respell as `P$` together with `P/`, as a
-# data frame (line, value), or NULL when the row advises no spelling.
-ps_advice <- function(message) {
-  one <- regmatches(message, regexec(paste0(
-    "on line ([0-9]+) \\('([^']*)'\\) also matches.* If '([^']*)' was meant ",
-    "as one path segment, '([^']*)\\$' together with '([^']*)/' is the ",
-    "narrower spelling\\."
-  ), message))[[1L]]
+# The `P` lines a row names, as a data frame (line, value).
+ps_named <- function(message) {
+  one <- regmatches(message, regexec(
+    "^The [A-Za-z]+ on line ([0-9]+) \\('([^']*)'\\) also matches", message
+  ))[[1L]]
   if (length(one)) {
     return(data.frame(line = as.integer(one[[2L]]), value = one[[3L]]))
-  }
-  if (!grepl(paste0("its narrower spelling is the rule ending in '$' ",
-                    "together with the rule ending in '/'"), message,
-             fixed = TRUE)) {
-    return(NULL)
   }
   pairs <- regmatches(message, gregexpr("line [0-9]+ \\('[^']*'\\) matches",
                                         message))[[1L]]
@@ -411,7 +406,20 @@ ps_advice <- function(message) {
              value = sub("^[^']*'([^']*)'.*", "\\1", pairs))
 }
 
-# Respell each advised `P` line as `P$`, then `P/`, under its own key.
+# The `P` lines a row advises to respell as `P$` together with `P/` (the
+# old wording, either form), or NULL when the row advises no spelling.
+ps_advice <- function(message) {
+  old <- c(
+    "was meant as one path segment, '[^']*\\$' together with '[^']*/' is",
+    "its narrower spelling is the rule ending in '\\$' together with"
+  )
+  if (!any(vapply(old, grepl, NA, x = message))) {
+    return(NULL)
+  }
+  ps_named(message)
+}
+
+# Respell each `P` line as `P$`, then `P/`, under its own key.
 ps_rewrite <- function(body, advice) {
   for (k in rev(order(advice$line))) {
     text <- rw_chunks(body)[[advice$line[[k]]]]
@@ -429,14 +437,18 @@ ps_rewrite <- function(body, advice) {
 ps_change <- function(values) {
   function(engine, token, url) {
     path <- sub("^https://example\\.com", "", url)
-    hit <- vapply(path, function(p) {
+    vapply(path, function(p) {
       any(vapply(values, function(v) {
         startsWith(p, v) && nchar(p) > nchar(v) &&
           !substr(p, nchar(v) + 1L, nchar(v) + 1L) %in% c("/", "?")
       }, NA))
     }, NA, USE.NAMES = FALSE)
-    hit
   }
+}
+
+ps_oracle <- function(body, advice) {
+  rewrite_oracle(body, ps_rewrite(body, advice),
+                 expect_change = ps_change(advice$value))
 }
 
 # test-prefix-sibling-otomgbge.R's bodies that give the row, then edge
@@ -473,33 +485,35 @@ ps_fixtures <- list(
   bom = "\xef\xbb\xbfUser-agent: *\nDisallow: /feed\nDisallow: /feeds\n"
 )
 
-# The advice each fixture's rows give, with the decisions it changes that
-# narrowing to one segment may not.
-ps_oracle <- function(body) {
-  out <- list()
-  for (msg in ro_rows(body, ps_code)$message) {
-    advice <- ps_advice(msg)
-    if (is.null(advice)) next
-    out[[length(out) + 1L]] <- rewrite_oracle(
-      body, ps_rewrite(body, advice), expect_change = ps_change(advice$value)
-    )
-  }
-  out
-}
-
-test_that("ROBO-dkkbwzur: known gap, `P$` and `P/` drop `P`'s query URLs", {
-  # Known gap, pinned on today's message: on Google's reading `P$` ends the
-  # match at the end of the path and query together (src/robots.cc), so
-  # `P?x=1`, which `P` matched, is matched by neither `P$` nor `P/`: the
-  # decisions that change and may not are those of `P`'s query URLs. Under
-  # `allow_pair` every path is allowed with or without the Allow, so
-  # nothing changes there.
+test_that("ROBO-dkkbwzur: a prefix-sibling row advises no spelling", {
   rows <- 0L
   for (name in names(ps_fixtures)) {
     body <- ps_fixtures[[name]]
-    expect_true(ps_code %in% ro_rows(body, ps_code)$code, label = name)
-    for (bad in ps_oracle(body)) {
-      rows <- rows + 1L
+    msgs <- ro_rows(body, ps_code)$message
+    rows <- rows + length(msgs)
+    expect_gt(length(msgs), 0L, label = name)
+    for (msg in msgs) {
+      expect_false(grepl("spelling|together with|meant as", msg), label = name)
+      # Any advice a row gives must pass the oracle.
+      advice <- ps_advice(msg)
+      expect_null(advice, label = name)
+      if (!is.null(advice)) {
+        expect_identical(nrow(ps_oracle(body, advice)), 0L, label = name)
+      }
+    }
+  }
+  expect_gt(rows, length(ps_fixtures))
+})
+
+test_that("ROBO-dkkbwzur: the dropped `P$` and `P/` lose `P`'s query URLs", {
+  # Why the advice went: respelling each named `P` as `P$` and `P/`
+  # changes, on Google's reading, the decisions of `P`'s query URLs, which
+  # narrowing to one segment may not. Under `allow_pair` every path is
+  # allowed with or without the Allow, so nothing changes there.
+  for (name in names(ps_fixtures)) {
+    body <- ps_fixtures[[name]]
+    for (msg in ro_rows(body, ps_code)$message) {
+      bad <- ps_oracle(body, ps_named(msg))
       path <- sub("^https://example\\.com", "", bad$url)
       expect_true(all(grepl("?", path, fixed = TRUE)), label = name)
       if (name != "allow_pair") {
@@ -507,5 +521,4 @@ test_that("ROBO-dkkbwzur: known gap, `P$` and `P/` drop `P`'s query URLs", {
       }
     }
   }
-  expect_gt(rows, length(ps_fixtures))
 })
