@@ -3402,21 +3402,17 @@ user_agent_cut_rows <- function(agents, has_global, global_groups) {
   # but Google's crawlers that ignore `*` (google_crawler_tokens_v1(),
   # "exact_only") are not reached through that line (ROBO-ipzkxzhg). Each
   # row leaves out of that list the crawlers some User-agent line of its
-  # group reads, the cut line included, as the group reaches them anyway.
-  crawlers <- google_crawler_tokens_v1()
-  ignore_star <- crawlers$crawler_token[crawlers$group_selection ==
-                                          "exact_only"]
+  # group reads, the cut line included, as the group reaches them anyway
+  # (user_agent_cut_ignore_star()).
   fallback <- rep(fallback, nrow(agents))
   kept <- agents$group %in% global_groups
-  excepted <- vapply(agents$group, function(group) {
-    own <- all_agents$key[all_agents$group == group]
-    missed <- ignore_star[!ascii_lower(ignore_star) %in% own]
-    if (length(missed) == 0L) {
-      return("")
-    }
-    paste0(" Google's crawlers that ignore `*` (", joined_and(missed, 0L),
-           ") do not get it through its `User-agent: *` line.")
-  }, "", USE.NAMES = FALSE)
+  ignore_star <- user_agent_cut_ignore_star(agents$group, all_agents)
+  excepted <- ifelse(
+    nzchar(ignore_star$crawlers),
+    paste0(" ", ignore_star$crawlers, ifelse(ignore_star$one, " does", " do"),
+           " not get it through its `User-agent: *` line."),
+    ""
+  )
   fallback[kept] <- paste0(
     "Unless another group names it, a crawler going by the full value ",
     "still gets this group from Google's matcher, since the group also ",
@@ -3444,12 +3440,15 @@ user_agent_cut_rows <- function(agents, has_global, global_groups) {
     "; a crawler that no group names gets no rules."
   }
   star_tail <- rep(star_tail, nrow(agents))
-  # Except Google's crawlers that ignore `*` (`ignore_star`), as above.
+  # Except Google's crawlers that ignore `*` and that no line of the group
+  # reads (`ignore_star`), as above.
   star_tail[kept] <- paste0("; the group still reaches every crawler that ",
                             "no other group names, as another of its lines ",
-                            "is `User-agent: *`, except Google's crawlers ",
-                            "that ignore `*` (", joined_and(ignore_star, 0L),
-                            ").")
+                            "is `User-agent: *`",
+                            ifelse(nzchar(ignore_star$crawlers[kept]),
+                                   paste0(", except ",
+                                          ignore_star$crawlers[kept]), ""),
+                            ".")
   message[star] <- paste0(
     read_as[star], " Google does not read this line as `User-agent: *`, so ",
     "on Google no crawler, Google's included, gets this group through it",
@@ -3482,6 +3481,33 @@ user_agent_cut_rows <- function(agents, has_global, global_groups) {
                                       lookalike[nzchar(lookalike)])
   ai_training_rows(agents$line, ifelse(decided$warn, "warning", "info"),
                    "user_agent_cut", "user-agent", message)
+}
+
+# Google's crawlers that ignore `*` (google_crawler_tokens_v1(),
+# "exact_only") and that no User-agent line of each row's group (`group`;
+# `all_agents`, every User-agent line) reads, for the exceptions of the
+# kept fallback and the `*`-led tail (ROBO-ipzkxzhg): `crawlers` names them
+# ("Google's crawler that ignores `*` (APIs-Google)", plural for more, ""
+# for none) and `one` says whether one is left.
+user_agent_cut_ignore_star <- function(group, all_agents) {
+  table <- google_crawler_tokens_v1()
+  ignore_star <- table$crawler_token[table$group_selection == "exact_only"]
+  missed <- lapply(group, function(g) {
+    own <- all_agents$key[all_agents$group == g]
+    ignore_star[!ascii_lower(ignore_star) %in% own]
+  })
+  count <- lengths(missed)
+  crawlers <- vapply(missed, function(names) {
+    if (length(names) == 0L) {
+      ""
+    } else if (length(names) == 1L) {
+      paste0("Google's crawler that ignores `*` (", names, ")")
+    } else {
+      paste0("Google's crawlers that ignore `*` (", joined_and(names, 0L),
+             ")")
+    }
+  }, "", USE.NAMES = FALSE)
+  list(crawlers = crawlers, one = count == 1L)
 }
 
 # Which wording and severity a cut User-agent row gets (ROBO-jsecjjyo),

@@ -381,8 +381,8 @@ test_that("every generated cut row agrees with Google's reading", {
             # through a line of its own (ROBO-ipzkxzhg).
             if (identical(kind, "kept") && fb_new) {
               listed <- sw_quoted(message, paste0(
-                "Google's crawlers that ignore `\\*` \\(([^)]*)\\) do not ",
-                "get it through"
+                "Google's crawlers? that ignores? `\\*` \\(([^)]*)\\) ",
+                "do[es]{0,2} not get it through"
               ))
               listed <- if (is.na(listed)) {
                 character()

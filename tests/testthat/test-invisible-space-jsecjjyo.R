@@ -1173,3 +1173,65 @@ test_that("the exception leaves out crawlers the group's lines read", {
   ), row$message, fixed = TRUE))
   expect_false(grepl("ignore `*`", row$message, fixed = TRUE))
 })
+
+# The `*`-led tail's exception is filtered as the kept fallback's is, and
+# both say "crawler ... ignores ... does" when one crawler is left.
+iv_star_line <- function(body, line) {
+  row <- iv_cut(body)
+  row[row$line == line, , drop = FALSE]
+}
+iv_three <- c("User-agent: *", "User-agent: AdsBot-Google",
+              "User-agent: AdsBot-Google-Mobile",
+              "User-agent: Mediapartners-Google")
+iv_reaches <- paste0(
+  "; the group still reaches every crawler that no other group names, as ",
+  "another of its lines is `User-agent: *`"
+)
+
+test_that("the `*`-led exception leaves out crawlers the group's lines read", {
+  body <- iv_lines("User-agent: *", "User-agent: Mediapartners-Google*",
+                   "User-agent: *bot", "Disallow: /x")
+  expect_identical(iv_google(body, "Mediapartners-Google", "/x"),
+                   "disallow 4")
+  for (token in c("AdsBot-Google", "AdsBot-Google-Mobile", "APIs-Google")) {
+    expect_identical(iv_google(body, token, "/x"), "allow NA", label = token)
+  }
+  expect_true(endsWith(iv_star_line(body, 3L)$message, paste0(
+    iv_reaches, ", except Google's crawlers that ignore `*` (AdsBot-Google, ",
+    "AdsBot-Google-Mobile and APIs-Google)."
+  )))
+  body <- iv_lines(iv_three, "User-agent: APIs-Google", "User-agent: *bot",
+                   "Disallow: /x")
+  for (token in c("AdsBot-Google", "AdsBot-Google-Mobile",
+                  "Mediapartners-Google", "APIs-Google")) {
+    expect_identical(iv_google(body, token, "/x"), "disallow 7",
+                     label = token)
+  }
+  row <- iv_star_line(body, 6L)
+  expect_true(endsWith(row$message, paste0(iv_reaches, ".")))
+  expect_false(grepl("ignore", row$message, fixed = TRUE))
+  expect_identical(row$severity, "info")
+})
+
+test_that("one crawler left that ignores `*` is named in the singular", {
+  body <- iv_lines(iv_three, "User-agent: *bot", "Disallow: /x")
+  expect_identical(iv_google(body, "APIs-Google", "/x"), "allow NA")
+  expect_identical(iv_google(body, "AdsBot-Google", "/x"), "disallow 6")
+  expect_true(endsWith(iv_star_line(body, 5L)$message, paste0(
+    iv_reaches, ", except Google's crawler that ignores `*` (APIs-Google)."
+  )))
+  body <- iv_lines(iv_three, "User-agent: Foo Bar", "Disallow: /x")
+  expect_identical(iv_google(body, "APIs-Google", "/x"), "allow NA")
+  expect_true(grepl(paste0(
+    "names `User-agent: *`. Google's crawler that ignores `*` (APIs-Google) ",
+    "does not get it through its `User-agent: *` line."
+  ), iv_star_line(body, 5L)$message, fixed = TRUE))
+  # The plural for more than one, in both sentences.
+  body <- iv_lines("User-agent: *", "User-agent: Foo Bar", "Disallow: /x")
+  expect_true(grepl(iv_kept, iv_cut(body)$message, fixed = TRUE))
+  body <- iv_lines("User-agent: *", "User-agent: *bot", "Disallow: /x")
+  expect_true(endsWith(iv_cut(body)$message, paste0(
+    iv_reaches, ", except Google's crawlers that ignore `*` (AdsBot-Google, ",
+    "AdsBot-Google-Mobile, Mediapartners-Google and APIs-Google)."
+  )))
+})
