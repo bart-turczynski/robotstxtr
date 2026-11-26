@@ -266,6 +266,105 @@ test_that("empty-Disallow rows hold for `*` and split signatures", {
   ))
 })
 
+# A rule value over R's 10,000-byte cap on variable names (Google keeps
+# lines up to 16,663 bytes), and two values whose combined candidate path
+# passes it: the reopen check reads them as it does a short value.
+dc_long_a <- strrep("a", 10050L)
+dc_long_b <- strrep("b", 6000L)
+dc_long_c <- strrep("c", 6000L)
+
+test_that("reopen rows hold for values over 10,000 bytes", {
+  path <- paste0("/", dc_long_a)
+  expect_identical(
+    dc_rows(dc_lines("User-agent: *", paste0("Disallow: ", path), "",
+                     "User-agent: examplebot", "Disallow: /",
+                     paste0("Allow: ", path))),
+    dc_frame(4, "reopen", "warning", dc_reopen_one(
+      "examplebot", path, 6, paste0("Disallow: ", path, " on line 2")
+    ))
+  )
+  star <- paste0("/*", dc_long_c)
+  allow <- paste0("/", dc_long_b, "/")
+  expect_identical(
+    dc_rows(dc_lines("User-agent: *", paste0("Disallow: ", star), "",
+                     "User-agent: examplebot", "Disallow: /",
+                     paste0("Allow: ", allow))),
+    dc_frame(4, "reopen", "warning", paste0(
+      "examplebot obeys only this group, so Allows there reopen this path, ",
+      "which `User-agent: *` disallows: ", allow, dc_long_c, " (allowed by ",
+      "Allow: ", allow, " on line 6; disallowed for `*` by Disallow: ", star,
+      " on line 2). ", dc_replaces, "If this path was meant to stay blocked ",
+      "for it, add a Disallow to this group longer than the Allow matching ",
+      "the path."
+    ))
+  )
+})
+
+# Groups with no rule a crawler is judged on: an empty Disallow and an
+# empty Allow (W4), or an empty Allow alone (W5). Neither is allow-all, so
+# W4 draws only its lost row and W5 keeps its info row.
+test_that("wildcard rows hold for groups of empty rules", {
+  star <- c("User-agent: *", "Disallow: /a", "Allow: /x", "")
+  lost <- paste0(
+    "Foo obeys only this group, so this `User-agent: *` Disallow does not ",
+    "apply to it: Disallow: /a (line 2). This group holds no Disallow, so ",
+    "it blocks nothing for it. ", dc_replaces, "If the group was meant to ",
+    "add to `User-agent: *`, repeat this Disallow in it."
+  )
+  expect_identical(
+    dc_rows(dc_lines(star, "User-agent: Foo", "Disallow:", "Allow:")),
+    dc_frame(5, "lost", "info", lost)
+  )
+  expect_identical(
+    dc_rows(dc_lines(star, "User-agent: Foo", "Allow:")),
+    dc_frame(c(5, 5), c("lost", "info"), c("warning", "info"), c(
+      lost,
+      paste0(
+        "Foo obeys only this group, so this `User-agent: *` rule does not ",
+        "apply to it: Allow: /x (line 3). ", dc_ignores
+      )
+    ))
+  )
+})
+
+# E1: a first group that names no crawler (`1bot` holds no token Google
+# reads), so group numbers and the groups naming crawlers do not line up;
+# line 6 is shared with Other, so a let-in Foo gets a group of its own.
+# E16: two anchor sets, each anchor's value read from its own rule row.
+test_that("empty-Disallow rows hold for group numbers and anchor values", {
+  expect_identical(
+    dc_rows(dc_lines("User-agent: 1bot", "Disallow: /q", "",
+                     "User-agent: Foo", "User-agent: Other", "Disallow: /",
+                     "", "User-agent: Foo", "Disallow:", "",
+                     "User-agent: Other", "Allow: /k")),
+    dc_frame(6, "empty", "warning", paste0(
+      "`Disallow: /` (line 6) blocks every path for Foo, and the empty ",
+      "`Disallow:` on line 9 reaches Foo through the group merge. ",
+      dc_empty_tail, " and blocks nothing. If Foo is meant to be let in, ",
+      "give it a group of its own without line 6, which other crawlers ",
+      "share; if it is meant to be kept out, delete line 9."
+    ))
+  )
+  expect_identical(
+    dc_rows(dc_lines("User-agent: Foo", "Disallow:", "Disallow: /*", "",
+                     "User-agent: Bar", "Disallow:", "Disallow: /")),
+    dc_frame(c(3, 7), c("empty", "empty"), c("warning", "warning"), c(
+      paste0(
+        "`Disallow: /*` (line 3) blocks every path for Foo, and the empty ",
+        "`Disallow:` on line 2 is in the same group. ", dc_empty_tail,
+        " and blocks nothing. If Foo is meant to be let in, delete line 3; ",
+        "if it is meant to be kept out, delete line 2."
+      ),
+      paste0(
+        "`Disallow: /` (line 7) blocks every path for Bar, and the empty ",
+        "`Disallow:` on line 6 is in the same group. ", dc_empty_tail,
+        " and blocks nothing. If Bar is meant to be let in, delete line 7; ",
+        "if it is meant to be kept out, delete line 6."
+      )
+    ))
+  )
+})
+
 # Timing guards: `n` distinct crawlers (letter-only tokens, so each is its
 # own key), each builder timed on its own.
 dc_letters <- function(n) {
@@ -283,18 +382,29 @@ dc_elapsed <- function(check, groups) {
 }
 
 dc_shapes <- list(
-  # Each crawler loses one `*` Disallow, reopens the other with its own
-  # Allow and misses the `*` Allow: every row kind, and no two crawlers
-  # share a body.
+  # Each crawler loses the `*` Disallow /k, reopens /a with its own Allow
+  # (through the `*`-side reopen cache) and misses the `*` Allow: every row
+  # kind, and no two crawlers share a body.
   wildcard = list(
     body = function(n) {
       t <- dc_letters(n)
-      dc_lines("User-agent: *", "Disallow: /a", "Allow: /x",
-               sprintf("User-agent: %s\nDisallow: /b%s\nAllow: /a/%s",
-                       t, t, t))
+      dc_lines("User-agent: *", "Disallow: /a", "Disallow: /k", "Allow: /x",
+               sprintf("User-agent: %s\nDisallow: /a\nAllow: /a/%s", t, t))
     },
     keys = function(n) n + 1L,
-    check = wildcard_inheritance_diagnostics
+    check = wildcard_inheritance_diagnostics,
+    code = "allow_reopens_wildcard_disallow"
+  ),
+  # Each crawler its own full block that loses the `*` Allow: one info row
+  # merging every crawler's group, which names five and counts the rest.
+  full_block = list(
+    body = function(n) {
+      dc_lines("User-agent: *", "Disallow: /a", "Allow: /x",
+               sprintf("User-agent: %s\nDisallow: /", dc_letters(n)))
+    },
+    keys = function(n) n + 1L,
+    check = wildcard_inheritance_diagnostics,
+    code = "wildcard_rules_not_inherited"
   ),
   # Each crawler its own full block with an empty Disallow: one row and
   # one anchor set per crawler.
@@ -304,7 +414,8 @@ dc_shapes <- list(
                        dc_letters(n)))
     },
     keys = function(n) n,
-    check = empty_disallow_full_block_diagnostics
+    check = empty_disallow_full_block_diagnostics,
+    code = NULL
   )
 )
 
@@ -316,6 +427,10 @@ for (shape in names(dc_shapes)) {
     large <- dc_groups(x$body(8000L))
     expect_length(unique(small$agents$key), x$keys(1000L))
     expect_length(unique(large$agents$key), x$keys(8000L))
+    if (!is.null(x$code)) {
+      rows <- x$check(dc_groups(x$body(20L)))
+      expect_true(x$code %in% vapply(rows, `[[`, "", "code"))
+    }
     # Eight times the crawlers: linear is about eight times the time,
     # quadratic sixty-four. 14x and a 0.05 s floor leave room for load.
     # Best of five on each side; the large side stops at its first run
