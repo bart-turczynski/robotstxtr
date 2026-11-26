@@ -154,6 +154,25 @@ test_that("every class point is named in a value and found before a key", {
                    ifelse(ic_class$kind == "space", "a b", "ab"))
 })
 
+test_that("a note naming separators says which classes it holds", {
+  # A separator beside a non-ASCII space: both classes are named.
+  note <- lookalike_note(ic_chr(0x61, 0x2028, 0x62, 0x00A0, 0x63), "value")
+  expect_identical(note$sentence, paste0(
+    "The value holds characters that are non-ASCII spaces or are line or ",
+    "paragraph separators: U+2028 LINE SEPARATOR at byte 2 (a line or ",
+    "paragraph separator), U+00A0 NO-BREAK SPACE at byte 6 (a no-break ",
+    "space); written in ASCII the value is 'a b c'"
+  ))
+  # Two separators: only the separator class.
+  note <- lookalike_note(ic_chr(0x61, 0x2028, 0x62, 0x2029, 0x63), "value")
+  expect_identical(note$sentence, paste0(
+    "The value holds characters that are line or paragraph separators: ",
+    "U+2028 LINE SEPARATOR at byte 2 (a line or paragraph separator), ",
+    "U+2029 PARAGRAPH SEPARATOR at byte 6 (a line or paragraph separator); ",
+    "written in ASCII the value is 'a b c'"
+  ))
+})
+
 test_that("the control's cut row names U+2028 and its rule warns", {
   x <- robots_validate_text(ic_control)
   expect_setequal(ic_codes(x), c("1 warning user_agent_cut",
