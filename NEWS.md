@@ -1,5 +1,6 @@
 # robotstxtr (development version)
 
+* Validator: new `rule_query_parameter_valueless` info for a Disallow like `/*?s=`, which blocks `/x?s=1` but not `/x?s` (RFC 9309 §2.2.2); `rule_check_stopped` covers it too (ROBO-aswiwvuu).
 * Validator: the `body_truncated` row of a body cut at `max_bytes` names, in plain words, each check not run on it, and no longer says its lines were validated (ROBO-mgwiemtw).
 * `robots_validate_text()` takes time linear in the number of distinct crawlers on wildcard and empty-`Disallow` checks (ROBO-hmpzayxr).
 * `robots_validate_text()` checks many `Sitemap` lines faster: one URL parse per file (ROBO-qjynmmzw).

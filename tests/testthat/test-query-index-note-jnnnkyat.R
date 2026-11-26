@@ -5,7 +5,12 @@
 # file's patterns without its host.
 
 qi_diag <- function(body) {
-  robots_validate_text(body)$diagnostics
+  d <- robots_validate_text(body)$diagnostics
+  # The valueless-key row (ROBO-aswiwvuu), which several `?name=` fixtures
+  # here also draw, has its own tests; leave it out.
+  d <- d[d$code != "rule_query_parameter_valueless", , drop = FALSE]
+  rownames(d) <- NULL
+  d
 }
 
 qi_code <- "rule_query_crawl_not_index"
@@ -300,7 +305,9 @@ test_that("ROBO-jnnnkyat: robots_validate_url() gives the same row", {
     fake_response(200L, url = req$url, body = body)
   })
   x <- robots_validate_url("https://e.example/page")
+  # The valueless-key row (ROBO-aswiwvuu) is left out, as qi_diag() does.
   d <- x$diagnostics
+  d <- d[d$code != "rule_query_parameter_valueless", , drop = FALSE]
   expect_identical(d$code, c("rule_query_parameter_position", qi_code))
   expect_identical(d$message, qi_diag(body)$message)
   expect_identical(x$documents$validation_status, "valid")

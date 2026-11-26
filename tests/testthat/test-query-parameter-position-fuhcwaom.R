@@ -8,9 +8,13 @@ qp_code <- "rule_query_parameter_position"
 
 qp_diag <- function(body) {
   d <- robots_validate_text(body)$diagnostics
-  # The crawl-not-index note (ROBO-jnnnkyat) has its own tests; leave it out.
-  d[d$code != "rule_query_crawl_not_index", , drop = FALSE]
+  # The crawl-not-index note (ROBO-jnnnkyat) and the valueless-key row
+  # (ROBO-aswiwvuu, which many `?name=` fixtures here also draw) have their
+  # own tests; leave them out.
+  d[!d$code %in% qp_other, , drop = FALSE]
 }
+
+qp_other <- c("rule_query_crawl_not_index", "rule_query_parameter_valueless")
 
 qp_codes <- function(body) {
   qp_diag(body)$code
@@ -99,9 +103,11 @@ qp_dot_controls <- list(
 
 test_that("ROBO-fuhcwaom: a query-parameter rule is one info row", {
   x <- robots_validate_text("User-agent: *\nDisallow: /items/*?sort=\n")
-  # A Disallow also draws the crawl-not-index note (ROBO-jnnnkyat).
+  # A Disallow also draws the crawl-not-index note (ROBO-jnnnkyat), and
+  # this one the valueless-key row (ROBO-aswiwvuu): both rows stand.
   expect_identical(x$diagnostics$code,
-                   c(qp_code, "rule_query_crawl_not_index"))
+                   c(qp_code, "rule_query_crawl_not_index",
+                     "rule_query_parameter_valueless"))
   d <- x$diagnostics[x$diagnostics$code == qp_code, , drop = FALSE]
   expect_identical(d$line, 2L)
   expect_identical(d$severity, "info")

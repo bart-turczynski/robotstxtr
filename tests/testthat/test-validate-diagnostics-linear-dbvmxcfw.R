@@ -276,9 +276,11 @@ test_that("a 2xx body cut at max_bytes keeps its document-level row", {
     c("rule_missing_leading_slash@2", "rule_missing_leading_slash@3",
       "rule_missing_leading_slash@4", "body_truncated@NA")
   )
+  # ROBO-aswiwvuu: body_truncated names one more skipped check; only its
+  # message moved.
   expect_identical(
     seam_digest(d, linear_frame_extra(d)),
-    "fdef1eccd0b9498f2b731f10c5e63d01"
+    "c2b1944231d41d30c77d82b852552542"
   )
 })
 
@@ -344,4 +346,44 @@ test_that("the batches and document-level rows share that one build", {
   expect_identical(calls$n, 1L)
   # 45 with ROBO-otomgbge's rule_prefix_sibling row.
   expect_identical(nrow(d), 45L)
+})
+
+# ROBO-aswiwvuu: the valueless-key check's worst case. `n` `?name=`
+# Disallows in one group naming `n / 10` crawlers, each with a group of its
+# own, so every candidate is read once per class: the reads alone would
+# grow with `n` squared, and slash_budget() keeps them linear.
+linear_valueless <- function(n) {
+  k <- seq_len(n)
+  bots <- seq_len(n %/% 10L)
+  paste0(paste0("User-agent: bot", bots, "\n", collapse = ""),
+         paste0("Disallow: /*?p", k, "=\n", collapse = ""), "\n",
+         paste0("User-agent: bot", bots, "\nDisallow: /z", bots, "\n",
+                collapse = "\n"))
+}
+
+# Best of five runs, so a loaded machine cannot fail the ratio.
+linear_best <- function(expr_fn) {
+  min(vapply(1:5, function(i) system.time(expr_fn())[["elapsed"]], 0))
+}
+
+linear_groups <- function(body) {
+  validation_groups(as.data.frame(
+    robotstxtr_validation_parse_(charToRaw(body)), stringsAsFactors = FALSE
+  ))
+}
+
+test_that("the valueless-key check stays linear across many classes", {
+  skip_on_cran()
+  # Past the budget the check stops: one stop row, no row of its own.
+  d <- robots_validate_text(linear_valueless(1000L))$diagnostics
+  stop <- d$message[d$code == "rule_check_stopped"]
+  expect_length(grep("query parameter name and '='", stop, fixed = TRUE), 1L)
+  expect_false("rule_query_parameter_valueless" %in% d$code)
+  # The check alone: the whole validator also runs other checks on this
+  # shape.
+  small_groups <- linear_groups(linear_valueless(1000L))
+  large_groups <- linear_groups(linear_valueless(4000L))
+  small <- linear_best(function() query_valueless_diagnostics(small_groups))
+  large <- linear_best(function() query_valueless_diagnostics(large_groups))
+  expect_lt(large, 8 * max(small, 0.05))
 })
