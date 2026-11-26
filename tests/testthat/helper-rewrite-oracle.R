@@ -40,35 +40,58 @@ rw_agent_like <- function(lines) {
         ignore.case = TRUE, useBytes = TRUE)
 }
 
+# Each line's key and value as Google splits them (GetKeyAndValueFrom,
+# src/robots.cc): after dropping a comment, at the first colon, or, on a
+# line with none and exactly two runs of non-blank bytes, at the blanks
+# between them. `head` is the line's bytes before the value; all three are
+# NA on a line with no key.
+rw_split <- function(x) {
+  x <- sub("(\r\n|\r|\n)$", "", x, useBytes = TRUE)
+  text <- sub("#.*$", "", x, useBytes = TRUE)
+  colon <- grepl(":", text, fixed = TRUE, useBytes = TRUE)
+  bare <- !colon & grepl("^[ \t]*[^ \t]+[ \t]+[^ \t]+[ \t]*$", text,
+                         useBytes = TRUE)
+  head <- rep(NA_character_, length(x))
+  head[colon] <- sub("^([^:]*:[ \t]*).*$", "\\1", text[colon],
+                     useBytes = TRUE)
+  head[bare] <- sub("^([ \t]*[^ \t]+[ \t]+).*$", "\\1", text[bare],
+                    useBytes = TRUE)
+  key <- sub("[ \t]*:?[ \t]*$", "", head, useBytes = TRUE)
+  key <- sub("^[ \t]*", "", key, useBytes = TRUE)
+  value <- rep(NA_character_, length(x))
+  for (k in which(!is.na(head))) {
+    value[[k]] <- rw_drop(text[[k]], nchar(head[[k]], "bytes"))
+  }
+  value <- sub("[ \t]*$", "", value, useBytes = TRUE)
+  list(key = key, value = value, head = head)
+}
+
+# Keys Google reads as User-agent, and as Allow or Disallow (KeyIsUserAgent,
+# KeyIsAllow and KeyIsDisallow, src/robots.cc: a key that starts with one
+# of the spellings).
+rw_is_agent <- function(key) {
+  !is.na(key) & grepl("^(user-agent|useragent|user agent)", key,
+                      ignore.case = TRUE, useBytes = TRUE)
+}
+rw_is_rule <- function(key) {
+  !is.na(key) & grepl(
+    "^(allow|disallow|dissallow|dissalow|disalow|diasllow|disallaw)", key,
+    ignore.case = TRUE, useBytes = TRUE
+  )
+}
+
 # Every crawler named in the body (cut at the first byte outside a token),
 # plus Foo and one named nowhere.
 rw_tokens <- function(body) {
-  lines <- rw_lines(body)
-  agent <- rw_agent_like(lines) &
-    grepl(":", lines, fixed = TRUE, useBytes = TRUE)
-  value <- sub("^[^:]*:", "", lines[agent], useBytes = TRUE)
-  value <- sub("^[ \t]*([A-Za-z_-]*).*$", "\\1", value, useBytes = TRUE)
+  s <- rw_split(rw_lines(body))
+  value <- s$value[rw_is_agent(s$key)]
+  value <- sub("^([A-Za-z_-]*).*$", "\\1", value, useBytes = TRUE)
   unique(c(value[nzchar(value)], "Foo", "Unnamedbot"))
 }
 
-# Every rule path in the body, led by `/` or `*`, as written (when led by
-# `/`) and without `*` and `$`, a few fixed ones, and each with `x` and `/y`
-# after it. Each path a rule spells without `*` and `$` also goes with a
-# query (`?x=1`, `/?x=1`) and with `&x`, so that advice which drops the
-# query URLs a rule matched shows up. A byte outside printable ASCII goes as
-# its `%XX` escape.
-rw_urls <- function(body) {
-  lines <- rw_lines(body)
-  rule <- grepl(":[ \t]*[/*]", lines, useBytes = TRUE) & !rw_agent_like(lines)
-  value <- sub("^[^:]*:[ \t]*", "", lines[rule], useBytes = TRUE)
-  value <- sub("[ \t]*(#.*)?$", "", value, useBytes = TRUE)
-  plain <- gsub("[*$]", "", value, useBytes = TRUE)
-  plain <- ifelse(startsWith(plain, "/"), plain, paste0("/", plain))
-  path <- unique(c("/", "/a", "/x", "/x/y", "/y", "/z", "/X", "/x?q",
-                   value[startsWith(value, "/")], plain))
-  path <- unique(c(path, paste0(path, "x"), sprintf("%s/y", path),
-                   paste0(plain, "?x=1"), sprintf("%s/?x=1", plain),
-                   paste0(plain, "&x")))
+# A path as a URL on example.com, each byte outside printable ASCII as its
+# `%XX` escape.
+rw_url <- function(path) {
   enc <- vapply(path, function(p) {
     paste(vapply(charToRaw(p), function(x) {
       if (x < as.raw(0x21) || x > as.raw(0x7e)) {
@@ -81,35 +104,71 @@ rw_urls <- function(body) {
   paste0("https://example.com", enc)
 }
 
+# An Allow or Disallow value as the path the URL set holds for it: without
+# `*` and `$`, led by `/`.
+rw_plain <- function(value) {
+  plain <- gsub("[*$]", "", value, useBytes = TRUE)
+  ifelse(startsWith(plain, "/"), plain, paste0("/", plain))
+}
+
+# Every Allow and Disallow path in the body, led by `/` or `*`, as written
+# (when led by `/`) and as rw_plain() gives it, a few fixed ones, and each
+# with `x` and `/y` after it. Each plain path also goes with a query
+# (`?x=1`, `/?x=1`) and with `&x`, so that advice which drops the query URLs
+# a rule matched shows up.
+rw_urls <- function(body) {
+  s <- rw_split(rw_lines(body))
+  value <- s$value[rw_is_rule(s$key)]
+  value <- value[grepl("^[/*]", value, useBytes = TRUE)]
+  plain <- rw_plain(value)
+  path <- unique(c("/", "/a", "/x", "/x/y", "/y", "/z", "/X", "/x?q",
+                   value[startsWith(value, "/")], plain))
+  path <- unique(c(path, paste0(path, "x"), sprintf("%s/y", path),
+                   paste0(plain, "?x=1"), sprintf("%s/?x=1", plain),
+                   paste0(plain, "&x")))
+  rw_url(path)
+}
+
 # The bing and yandex backends answer only for their own crawlers (any other
 # token is an unsupported profile, with no decision), so a body's crawler is
 # read there under the backend's token instead: its User-agent lines are
-# renamed to it, and lines already naming that token to one named nowhere.
+# renamed to it, and lines already naming that token to one named nowhere
+# in the body (rw_free_name()), so that the two crawlers' groups never merge.
 rw_selector <- c(bing = "bingbot", yandex = "Yandex")
+
+rw_free_name <- function(body) {
+  name <- "Renamedbot"
+  while (grepl(name, body, ignore.case = TRUE, useBytes = TRUE)) {
+    name <- paste0(name, "x")
+  }
+  name
+}
 
 rw_rename <- function(body, token, selector) {
   if (identical(ascii_lower(token), ascii_lower(selector))) {
     return(body)
   }
-  # Line 1 behind a byte-order mark is renamed too; the mark stays.
+  # Line 1 behind a byte-order mark is renamed too; the mark stays. Today
+  # the bing and yandex backends read no User-agent on such a line, so this
+  # changes nothing yet; it matters once the yandex backend skips the mark
+  # (ROBO-kuxdvvpi).
   bytes <- charToRaw(body)
   mark <- as.raw(c(0xef, 0xbb, 0xbf))
   if (length(bytes) >= 3L && identical(bytes[1:3], mark)) {
     return(paste0(rawToChar(mark),
                   rw_rename(rawToChar(bytes[-(1:3)]), token, selector)))
   }
+  free <- rw_free_name(body)
   chunks <- rw_chunks(body)
-  agent <- which(rw_agent_like(chunks) &
-                   grepl(":", chunks, fixed = TRUE, useBytes = TRUE))
-  for (k in agent) {
-    head <- regmatches(chunks[[k]], regexpr("^[^:]*:[ \t]*", chunks[[k]],
-                                            useBytes = TRUE))
+  s <- rw_split(chunks)
+  for (k in which(rw_is_agent(s$key))) {
+    head <- s$head[[k]]
     rest <- rw_drop(chunks[[k]], nchar(head, "bytes"))
     name <- regmatches(rest, regexpr("^[A-Za-z_-]*", rest, useBytes = TRUE))
     new <- if (identical(ascii_lower(name), ascii_lower(token))) {
       selector
     } else if (identical(ascii_lower(name), ascii_lower(selector))) {
-      "Renamedbot"
+      free
     } else {
       next
     }

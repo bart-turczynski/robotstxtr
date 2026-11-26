@@ -16,13 +16,14 @@ ro_rows <- function(body, code) {
 }
 
 # A body's lines (rw_chunks()) with line `n` replaced by `new`, each new
-# line taking line `n`'s own line end (LF when it had none).
+# line taking line `n`'s own line end (LF when it had none). No new lines
+# deletes line `n`, its line end too.
 ro_replace <- function(body, n, new) {
   chunks <- rw_chunks(body)
   end <- regmatches(chunks[[n]], regexpr("(\r\n|\r|\n)$", chunks[[n]],
                                          useBytes = TRUE))
   if (length(end) == 0L) end <- "\n"
-  chunks[[n]] <- paste0(new, end, collapse = "")
+  chunks[[n]] <- if (length(new) == 0L) "" else paste0(new, end, collapse = "")
   paste(chunks, collapse = "")
 }
 
@@ -79,8 +80,7 @@ dup_fixtures <- list(
   crlf = gsub("\n", "\r\n", ro_lines("User-agent: Acme-Bot",
                                      "User-agent: acme-bot", "Disallow: /a"),
               fixed = TRUE),
-  cr = "User-agent: Acme-Bot\rUser-agent: acme-bot\rDisallow: /a\r",
-  cr_mid = "User-agent: Acme-Bot\nUser-agent: acme-bot\rDisallow: /a\n"
+  cr = "User-agent: Acme-Bot\rUser-agent: acme-bot\rDisallow: /a\r"
 )
 
 dup_oracle <- function(body, rewrite = dup_rewrite) {
@@ -107,8 +107,12 @@ test_that("ROBO-dkkbwzur: deleting a repeated name keeps every decision", {
 # yandex backends keep a byte-order mark as part of line 1, so they read no
 # User-agent line there, and the repeat on line 2 is the only name they
 # read. Deleting it changes their decisions; Google skips the mark and keeps
-# its own. The backends' reading of the mark is unevidenced (B1, Y1), so the
-# note is not changed here.
+# its own. The tester records (ROBO-bpywsjwv, design/tracker-snapshot.md)
+# split: by B1, Bing's tester lets a leading mark spoil line 1, as the bing
+# backend does, so on B1's reading "the line can be deleted" is wrong for
+# Bing on a body like this one (follow-up ROBO-dmoucgpb); by Y1, Yandex's
+# analyzer skips the mark, which the yandex backend does not yet
+# (ROBO-kuxdvvpi). The note is not changed here.
 dup_bom <- paste0("\xef\xbb\xbf", ro_lines("User-agent: Acme-Bot",
                                            "User-agent: acme-bot",
                                            "Disallow: /a"))
@@ -119,6 +123,35 @@ test_that("ROBO-dkkbwzur: known gap, a repeat behind a byte-order mark", {
   bad <- found[[1L]]
   expect_gt(nrow(bad), 0L)
   expect_setequal(unique(bad$engine), c("bing", "yandex"))
+})
+
+# Known gap: a repeat that ends at a lone CR. Google ends line 2 there, so
+# the Disallow is line 3 and deleting line 2 keeps its decisions. The
+# package's bing and yandex backends end a line at LF only, so to them the
+# Disallow sits inside the repeated User-agent line, and deleting that line
+# hands the crawler the rule. B4 and Y6 (ROBO-bpywsjwv) record both testers
+# ending a line at a lone CR; the backends' fix is ROBO-gwmdrbrv.
+dup_cr_mid <- "User-agent: Acme-Bot\nUser-agent: acme-bot\rDisallow: /a\n"
+
+test_that("ROBO-dkkbwzur: known gap, a repeat ended by a lone CR", {
+  found <- dup_oracle(dup_cr_mid)
+  expect_length(found, 1L)
+  bad <- found[[1L]]
+  expect_gt(nrow(bad), 0L)
+  expect_setequal(unique(bad$engine), c("bing", "yandex"))
+})
+
+# The oracle's own control: the bing leg reads Foo under bingbot, so a body
+# naming both must move bingbot's lines out of the way first, or Foo's
+# groups would merge with bingbot's and hide a change to Foo's rules.
+test_that("ROBO-dkkbwzur: the oracle sees a change to Foo beside bingbot", {
+  body <- ro_lines("User-agent: Foo", "Disallow: /x", "",
+                   "User-agent: bingbot", "Allow: /x")
+  bad <- rewrite_oracle(body, ro_replace(body, 2L, character()))
+  expect_true("Foo" %in% bad$token[bad$engine == "bing"])
+  expect_false("bingbot" %in% bad$token[bad$engine == "bing"])
+  # The displaced name is one the body does not hold.
+  expect_identical(rw_free_name("User-agent: renamedbot\n"), "Renamedbotx")
 })
 
 # ---------------------------------------------------------------------------
@@ -352,6 +385,7 @@ lc_fixtures <- c(
     escaped_unreserved = lc_body("Disallow: /%7ejoe%3c"),
     named = "User-agent: Foo\nDisallow: /a%3cb\nAllow: /a%3cb/c\n",
     wild = "User-agent: *\nDisallow: /*%2f$\n",
+    star_led = lc_body("Disallow: *%3cb"),
     crlf = "User-agent: *\r\nDisallow: /a%3cb\r\n",
     cr = "User-agent: *\rDisallow: /a%3cb\r",
     bom = "\xef\xbb\xbfUser-agent: *\nDisallow: /a%3cb\n",
@@ -369,7 +403,11 @@ test_that("ROBO-dkkbwzur: an upper-case escape keeps google and bing", {
     rows <- rows + nrow(found)
     expect_gt(nrow(found), 0L, label = label)
     for (line in found$line) {
-      esc <- lc_escapes(rw_chunks(body)[[line]])
+      text <- rw_chunks(body)[[line]]
+      esc <- lc_escapes(text)
+      # The URLs compared hold the rewritten line's own path.
+      own <- rw_url(rw_plain(rw_split(text)$value))
+      expect_true(own %in% rw_urls(body), label = label)
       bad <- rewrite_oracle(body, function(b) lc_rewrite(b, line),
                             expect_change = lc_change(esc))
       expect_identical(nrow(bad), 0L, label = label)
@@ -379,6 +417,18 @@ test_that("ROBO-dkkbwzur: an upper-case escape keeps google and bing", {
   expect_gt(rows, 0L)
   # The yandex leg does change: its backend compares escapes as written.
   expect_gt(yandex, 0L)
+})
+
+test_that("ROBO-dkkbwzur: a `*`-led value's own URLs reach the comparison", {
+  # Only the URLs made from `*%3cb` hold the escape, so only they can show
+  # the yandex backend's change.
+  body <- lc_fixtures[["star_led"]]
+  bad <- rewrite_oracle(body, function(b) lc_rewrite(b, 2L),
+                        expect_change = lc_change("%3c"))
+  expect_identical(nrow(bad), 0L)
+  changed <- attr(bad, "changed")
+  expect_gt(nrow(changed), 0L)
+  expect_setequal(unique(changed$engine), "yandex")
 })
 
 # ---------------------------------------------------------------------------
@@ -422,12 +472,18 @@ ps_advice <- function(message) {
 # Respell each `P` line as `P$`, then `P/`, under its own key.
 ps_rewrite <- function(body, advice) {
   for (k in rev(order(advice$line))) {
-    text <- rw_chunks(body)[[advice$line[[k]]]]
-    key <- sub(":.*", "", text, useBytes = TRUE)
+    text <- sub("(\r\n|\r|\n)$", "", rw_chunks(body)[[advice$line[[k]]]],
+                useBytes = TRUE)
+    # The key as lc_rewrite() takes it: up to the colon, or the first word.
+    key <- regmatches(text, regexpr("^[^:]*:", text, useBytes = TRUE))
+    if (length(key) == 0L) {
+      key <- paste0(regmatches(text, regexpr("^[ \t]*[A-Za-z-]+", text,
+                                             useBytes = TRUE)), ":")
+    }
     p <- advice$value[[k]]
     stopifnot(!grepl("...", p, fixed = TRUE))
     body <- ro_replace(body, advice$line[[k]],
-                       paste0(key, ": ", p, c("$", "/")))
+                       paste0(key, " ", p, c("$", "/")))
   }
   body
 }
@@ -494,6 +550,9 @@ test_that("ROBO-dkkbwzur: a prefix-sibling row advises no spelling", {
     expect_gt(length(msgs), 0L, label = name)
     for (msg in msgs) {
       expect_false(grepl("spelling|together with|meant as", msg), label = name)
+      # The URLs compared hold each named `P` line's own path.
+      expect_true(all(rw_url(ps_named(msg)$value) %in% rw_urls(body)),
+                  label = name)
       # Any advice a row gives must pass the oracle.
       advice <- ps_advice(msg)
       expect_null(advice, label = name)

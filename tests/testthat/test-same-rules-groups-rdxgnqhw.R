@@ -518,8 +518,8 @@ test_that("ROBO-rdxgnqhw: robots_validate_url() gives the same row", {
 # of the last, then a blank line, and the other members go. The message's
 # line numbers are Google's, so the body is split as Google splits it: at
 # LF, CR LF and a lone CR. Each engine still reads the body as written its
-# own way (Bing and Yandex end a line at LF only), so a row whose stacking a
-# lone CR upsets shows up as changed decisions.
+# own way (the package's bing and yandex backends end a line at LF only), so
+# a row whose stacking a lone CR upsets shows up as changed decisions.
 
 sr_unescape <- function(x) {
   bytes <- charToRaw(x)
