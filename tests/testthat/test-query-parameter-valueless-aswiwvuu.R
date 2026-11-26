@@ -68,16 +68,17 @@ qv_fixtures <- list(
     body = "User-agent: %s\nDisallow: /*?s=\nAllow: /*?s=\n",
     today = c("disallow_tied_by_allow", qv_position, qv_position)
   ),
-  # An Allow that decides the witness: the file opens the bare key itself.
-  # One that opens only the first filler's witness leaves the second.
-  allow_bare_dollar = list(
-    body = "User-agent: %s\nDisallow: /*?s=\nAllow: /*?s$\n",
+  # An Allow that decides the witness keeps the row: a broad one, before
+  # or after the candidate, and one opening the bare key itself, which the
+  # file may mean.
+  allow_root = list(body = "User-agent: %s\nAllow: /\nDisallow: /*?s=\n",
+                    today = qv_position),
+  allow_root_after = list(
+    body = "User-agent: %s\nDisallow: /*?s=\nAllow: /\n",
     today = qv_position
   ),
-  allow_bare = list(body = "User-agent: %s\nDisallow: /*?s=\nAllow: /*?s\n",
-                    today = qv_position),
-  allow_filler = list(
-    body = "User-agent: %s\nDisallow: /*?s=\nAllow: /x?s$\n",
+  allow_bare_dollar = list(
+    body = "User-agent: %s\nDisallow: /*?s=\nAllow: /*?s$\n",
     today = qv_position
   ),
   # An Allow is not this check's, though it leaves `/x?s` restricted.
@@ -228,11 +229,10 @@ qv_decisions <- list(
   list("amp_q_path", c("/p?x&s=1", "/p?x&s"), qv_blocked),
   list("amp_q_lit", c("/a?bx&s=1", "/a?bx&s"), qv_blocked),
   list("amp_a", c("/x?c=1&a=1", "/x?c=1&a"), qv_blocked),
-  # The file opens the witness with an Allow, or only the first filler's.
+  # An Allow decides the witness: a broad one, or the bare key's own.
+  list("allow_root", c("/x?s=1", "/x?s"), qv_blocked),
+  list("allow_root_after", c("/x?s=1", "/x?s"), qv_blocked),
   list("allow_bare_dollar", c("/x?s=1", "/x?s"), qv_blocked),
-  list("allow_bare", c("/x?s=1", "/x?s"), qv_blocked),
-  list("allow_filler", c("/x?s=1", "/x?s", "/y?s=2", "/y?s"),
-       rep(qv_blocked, 2L)),
   list("path_eq", c("/search?q=1", "/search?q"), qv_blocked),
   list("star_led", c("/x?s=1", "/x?s"), qv_blocked),
   list("root", c("/?s=1", "/?s"), qv_blocked),
@@ -287,7 +287,8 @@ qv_rows <- list(
   star_led = 1L, root = 1L, names = 1L, q_and_amp = 1L, two_sets = 1L,
   two_crawlers = 1L, filler = 1L, filler_amp = 1L, lower_twin = 1L,
   lower = 1L, seven = 1L, dup = 1L, amp_q_star = 1L, amp_q_path = 1L,
-  amp_q_lit = 1L, amp_a = 1L, allow_filler = 1L
+  amp_q_lit = 1L, amp_a = 1L, allow_root = 1L, allow_root_after = 1L,
+  allow_bare_dollar = 1L
 )
 
 test_that("ROBO-aswiwvuu: each fixture's new rows are all the change", {
@@ -415,14 +416,6 @@ test_that("ROBO-aswiwvuu: a rule matching the first filler gets the second", {
   expect_identical(d$message[d$code == qv_code],
                    qv_one_message(2L, "/y?b=2&s=2", "/y?b=2&s"))
   expect_false(qv_code %in% qv_codes(qv_body("filler_both")))
-  # An Allow that decides the witness silences the row: the file opens the
-  # bare key itself. One that opens only the first filler's witness leaves
-  # the second.
-  expect_false(qv_code %in% qv_codes(qv_body("allow_bare_dollar")))
-  expect_false(qv_code %in% qv_codes(qv_body("allow_bare")))
-  d <- qv_diag(qv_body("allow_filler"))
-  expect_identical(d$message[d$code == qv_code],
-                   qv_one_message(2L, "/y?s=2", "/y?s"))
   # A list shows each rule with its own pair.
   d <- qv_diag(paste0("User-agent: *\nDisallow: /*?s=\nDisallow: /*?t=\n",
                       "Disallow: /x?s\n"))
@@ -494,6 +487,51 @@ test_that("ROBO-aswiwvuu: every class on both merges must agree", {
     "User-agent: Foo web\nDisallow: /*?s=\n\n",
     "User-agent: Foo blog\nDisallow: /b\n"
   )))
+})
+
+test_that("ROBO-aswiwvuu: an Allow that decides the witness keeps the row", {
+  # Google decides the control disallow and the witness allow for the
+  # token the row is about, whichever rule allows the witness.
+  google <- function(body, token) {
+    robots_evaluate_text_v1(
+      body, paste0("https://example.com", c("/x?s=1", "/x?s")), token,
+      "google", "google"
+    )$results$url_decision
+  }
+  cases <- list(
+    list("User-agent: *\nAllow: /\nDisallow: /*?s=\n", 3L),
+    list("User-agent: *\nDisallow: /*?s=\nAllow: /\n", 2L),
+    list("User-agent: *\nDisallow: /*?s=\nAllow: /*?s$\n", 2L)
+  )
+  for (case in cases) {
+    expect_identical(google(case[[1L]], "Foo"), qv_blocked,
+                     label = case[[1L]])
+    d <- qv_diag(case[[1L]])
+    expect_identical(d$message[d$code == qv_code],
+                     qv_one_message(case[[2L]], "/x?s=1", "/x?s"),
+                     label = case[[1L]])
+    expect_identical(d$line[d$code == qv_code], 1L, label = case[[1L]])
+  }
+  # A crawler class whose own group opens the bare key (`b`) and one with
+  # no rule deciding the witness (`a`): the row stays.
+  body <- paste0("User-agent: a\nUser-agent: b\nDisallow: /*?s=\n\n",
+                 "User-agent: b\nAllow: /*?s$\n")
+  for (token in c("a", "b")) {
+    expect_identical(google(body, token), qv_blocked, label = token)
+  }
+  d <- qv_diag(body)
+  expect_identical(d$message[d$code == qv_code], paste0(
+    qv_one_message(3L, "/x?s=1", "/x?s"),
+    " This holds for every crawler the group names: 'a' and 'b'."
+  ))
+})
+
+test_that("ROBO-aswiwvuu: a long path is elided before its query", {
+  d <- qv_diag(paste0("User-agent: Foo\nDisallow: /", strrep("a", 50L),
+                      "?b*&s=\n"))
+  shown <- paste0("/", strrep("a", 35L), "...?bx&s")
+  expect_identical(d$message[d$code == qv_code],
+                   qv_one_message(2L, paste0(shown, "=1"), shown))
 })
 
 test_that("ROBO-aswiwvuu: a cut body is skipped, a NUL body is Google's", {

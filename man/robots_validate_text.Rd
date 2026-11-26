@@ -491,9 +491,9 @@ nothing after the \code{=} but \code{*} (\code{/*?s=},
 (\code{/x?s}): the pattern matches the \code{=} literally (RFC 9309
 section 2.2.2). Reported only when the rule decides the URL with a
 value and the URL without one comes out allowed under every rule the
-crawlers have, with no rule deciding it, so a sibling such as
-\code{Disallow: /*?s} silences it, and so does an Allow such as
-\code{Allow: /*?s$}: the file opens the URL without a value itself.
+crawlers have, so a sibling such as \code{Disallow: /*?s} silences
+it. The row also appears where the file's own Allow opens the URL
+without a value (\code{Allow: /*?s$}), since the file may mean it.
 One row per set of crawlers, on its first User-agent line,
 listing five rules at most, then a count; the message shows both
 URLs and suggests no rewrite. A line can also get
@@ -1107,25 +1107,25 @@ value is the pattern as a path, each \code{*} written \code{x}, the final run of
 \verb{x?a=1&} (\verb{/x?a=1&s=1}), or \verb{x&} where a \verb{?} comes before it
 (\verb{/x?x&s=1}), and the added parameter is \code{c=1} where the rule's own is
 \code{a}. The URL without one is that URL up to the name (\verb{/x?s},
-\verb{/x?a=1&s}). Where another rule matches those filler bytes, the check
-tries \code{y}, \code{2} and \code{b=2}. Google's matcher makes the decisions over
-every rule of the crawler's merged groups: the rule must decide the URL
-with a value, so an Allow that wins it silences the row, and the URL
-without one must come out allowed with no rule deciding it, so a rule
-that blocks it (\verb{Disallow: /*?s}, \verb{Disallow: /*?s$}) silences it too, and
-so does an Allow that decides it (\verb{Allow: /*?s$}): the file opens the
-bare key itself. A row is reported only where every crawler the group
-names agrees, on the whole-value merge and on Google's merge. The row
-states what the pattern matches; it suggests no rewrite, since \code{?s}
-alone also matches every parameter whose name starts with \code{s}. An Allow
-is never a candidate. A lower-case-escape twin gets no row. A lower-case
-escape twin written before its upper-case line silences the row. A rule
-that gets \code{rule_cut_by_nul} takes part with its value cut at the NUL, as
-Google's parser reads it. A body cut at
-\code{max_bytes} is not checked: a later Disallow could block the URL without
-a value. The check reads its candidates within a fixed amount of work,
-as the slash checks do, and a \verb{User-agent: __usage_ai-training} group
-gets no row.
+\verb{/x?a=1&s}). The check tries \code{y}, \code{2} and \code{b=2} (\code{c=2} where the rule's
+own name is \code{b}) where another rule matches the first pair's bytes.
+Google's matcher makes the decisions over every rule of the crawler's
+merged groups: the rule must decide the URL with a value, so an Allow
+that wins it silences the row, and the URL without one must come out
+allowed, so a rule that blocks it (\verb{Disallow: /*?s}, \verb{Disallow: /*?s$})
+silences it too. The row also appears where the file's own Allow opens
+the URL without a value (\verb{Allow: /*?s$}), since the file may mean it, and
+where a broad Allow (\verb{Allow: /}) decides it. A row is reported only where
+every crawler the group names agrees, on the whole-value merge and on
+Google's merge. The row states what the pattern matches; it suggests no
+rewrite, since \code{?s} alone also matches every parameter whose name starts
+with \code{s}. An Allow is never a candidate. A lower-case-escape twin gets no
+row, and one written before its upper-case line silences that line's row
+too. A rule that gets \code{rule_cut_by_nul} takes part with its value cut at
+the NUL, as Google's parser reads it. A body cut at \code{max_bytes} is not
+checked: a later Disallow could block the URL without a value. The check
+reads its candidates within a fixed amount of work, as the slash checks
+do, and a \verb{User-agent: __usage_ai-training} group gets no row.
 
 \code{allow_reopens_through_query} reads an Allow whose pattern is led by \code{*}
 or \verb{/*} and whose rest after that run of \code{*} is a path: a \code{/} and at

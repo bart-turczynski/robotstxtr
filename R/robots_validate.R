@@ -482,9 +482,9 @@ validation_unsupported <- c(
 #'     (\code{/x?s}): the pattern matches the \code{=} literally (RFC 9309
 #'     section 2.2.2). Reported only when the rule decides the URL with a
 #'     value and the URL without one comes out allowed under every rule the
-#'     crawlers have, with no rule deciding it, so a sibling such as
-#'     \code{Disallow: /*?s} silences it, and so does an Allow such as
-#'     \code{Allow: /*?s$}: the file opens the URL without a value itself.
+#'     crawlers have, so a sibling such as \code{Disallow: /*?s} silences
+#'     it. The row also appears where the file's own Allow opens the URL
+#'     without a value (\code{Allow: /*?s$}), since the file may mean it.
 #'     One row per set of crawlers, on its first User-agent line,
 #'     listing five rules at most, then a count; the message shows both
 #'     URLs and suggests no rewrite. A line can also get
@@ -1098,25 +1098,25 @@ validation_unsupported <- c(
 #' `x?a=1&` (`/x?a=1&s=1`), or `x&` where a `?` comes before it
 #' (`/x?x&s=1`), and the added parameter is `c=1` where the rule's own is
 #' `a`. The URL without one is that URL up to the name (`/x?s`,
-#' `/x?a=1&s`). Where another rule matches those filler bytes, the check
-#' tries `y`, `2` and `b=2`. Google's matcher makes the decisions over
-#' every rule of the crawler's merged groups: the rule must decide the URL
-#' with a value, so an Allow that wins it silences the row, and the URL
-#' without one must come out allowed with no rule deciding it, so a rule
-#' that blocks it (`Disallow: /*?s`, `Disallow: /*?s$`) silences it too, and
-#' so does an Allow that decides it (`Allow: /*?s$`): the file opens the
-#' bare key itself. A row is reported only where every crawler the group
-#' names agrees, on the whole-value merge and on Google's merge. The row
-#' states what the pattern matches; it suggests no rewrite, since `?s`
-#' alone also matches every parameter whose name starts with `s`. An Allow
-#' is never a candidate. A lower-case-escape twin gets no row. A lower-case
-#' escape twin written before its upper-case line silences the row. A rule
-#' that gets `rule_cut_by_nul` takes part with its value cut at the NUL, as
-#' Google's parser reads it. A body cut at
-#' `max_bytes` is not checked: a later Disallow could block the URL without
-#' a value. The check reads its candidates within a fixed amount of work,
-#' as the slash checks do, and a `User-agent: __usage_ai-training` group
-#' gets no row.
+#' `/x?a=1&s`). The check tries `y`, `2` and `b=2` (`c=2` where the rule's
+#' own name is `b`) where another rule matches the first pair's bytes.
+#' Google's matcher makes the decisions over every rule of the crawler's
+#' merged groups: the rule must decide the URL with a value, so an Allow
+#' that wins it silences the row, and the URL without one must come out
+#' allowed, so a rule that blocks it (`Disallow: /*?s`, `Disallow: /*?s$`)
+#' silences it too. The row also appears where the file's own Allow opens
+#' the URL without a value (`Allow: /*?s$`), since the file may mean it, and
+#' where a broad Allow (`Allow: /`) decides it. A row is reported only where
+#' every crawler the group names agrees, on the whole-value merge and on
+#' Google's merge. The row states what the pattern matches; it suggests no
+#' rewrite, since `?s` alone also matches every parameter whose name starts
+#' with `s`. An Allow is never a candidate. A lower-case-escape twin gets no
+#' row, and one written before its upper-case line silences that line's row
+#' too. A rule that gets `rule_cut_by_nul` takes part with its value cut at
+#' the NUL, as Google's parser reads it. A body cut at `max_bytes` is not
+#' checked: a later Disallow could block the URL without a value. The check
+#' reads its candidates within a fixed amount of work, as the slash checks
+#' do, and a `User-agent: __usage_ai-training` group gets no row.
 #'
 #' `allow_reopens_through_query` reads an Allow whose pattern is led by `*`
 #' or `/*` and whose rest after that run of `*` is a path: a `/` and at
@@ -7332,12 +7332,13 @@ end_anchor_stop_intro <- function(stop) {
 # (query_valueless_candidates()) is reported only when, for every crawler
 # class its group names, merged on the whole User-agent value and on
 # Google's token, it is the line that decides the control, so the control
-# is disallowed, and the witness comes out allowed with no rule deciding
-# it: every rule of the class takes part, so a sibling that blocks the
-# witness (`Disallow: /*?s`, `Disallow: /*?s$`), an Allow that wins the
-# control or an Allow that decides the witness (`Allow: /*?s$`, the file
-# opening the bare key itself) silences it, and no sibling needs a case of
-# its own. The decisions are Google's matcher's,
+# is disallowed, and the witness comes out allowed: every rule of the class
+# takes part, so a sibling that blocks the witness (`Disallow: /*?s`,
+# `Disallow: /*?s$`) or an Allow that wins the control silences it, and no
+# sibling needs a case of its own. An Allow that decides the witness keeps
+# the row, broad (`Allow: /`) or opening the bare key itself
+# (`Allow: /*?s$`), which the file may mean. The decisions are Google's
+# matcher's,
 # read by witness_pair_readings() within `budget` (slash_budget()) in line
 # order, the second pair on what the first left (query_valueless_reads()),
 # and candidates count as checked up to the first one whose reading did
@@ -7460,11 +7461,10 @@ query_valueless_paths <- function(value, pair = 1L) {
 # end_anchor_reads() makes them: each pair reads, in line order, the
 # candidates the first read and left unreported. The witness is the short
 # path and the control, which the candidate must decide, the long one. A
-# pair counts only where no rule decides the witness: an allowed witness
-# is decided by no rule (line 0) or by an Allow, and an Allow that opens
-# the bare key is the file's own choice. Where the crawler classes or the
-# merges name different lines (NA), one of them is an Allow, so that pair
-# does not count either. Returns list(pair, finished) as end_anchor_reads()
+# pair counts wherever the witness comes out allowed, whichever rule allows
+# it: a broad Allow (`Allow: /`) leaves the gap real, and one that opens
+# the bare key (`Allow: /*?s$`) may be what the file means, which the row
+# leaves to the reader. Returns list(pair, finished) as end_anchor_reads()
 # does.
 query_valueless_reads <- function(groups, at, written, budget) {
   fill <- query_valueless_fillers()
@@ -7477,7 +7477,7 @@ query_valueless_reads <- function(groups, at, written, budget) {
     read <- witness_pair_readings(groups, at[todo], paths$witness,
                                   paths$control, "long", written, budget)
     budget <- budget - read$spent
-    ok <- read$ok & !is.na(read$line) & read$line == 0L
+    ok <- read$ok
     pair[todo[ok]] <- k
     finished[todo[ok]] <- TRUE
     # The next pair reads only the candidates this one read and left.
@@ -7497,15 +7497,19 @@ query_valueless_reads <- function(groups, at, written, budget) {
 }
 
 # The control and witness of filler pair `pair` as the messages show them:
-# the path before the query elided as query_parameter_cap() elides past 40
-# bytes, the name as ai_training_name() elides it, so the two stay apart
+# the part of the path before its first `?` elided as query_parameter_cap()
+# elides past 40 bytes, the query part kept whole so that a `?` always
+# shows, the name as ai_training_name() elides it, so the two stay apart
 # however long the value is. A candidate value is printable ASCII
 # (url_safe_path() leaves out control bytes, and the canonical value
 # escapes the rest), so it shows as is.
 query_valueless_shown <- function(value, pair = 1L) {
   paths <- query_valueless_paths(value, pair)
-  witness <- paste0(query_parameter_cap(paths$path, 40L), paths$sep,
-                    ai_training_name(paths$name, 40L))
+  q <- regexpr("?", paths$path, fixed = TRUE)
+  cut <- ifelse(q > 0L, q - 1L, nchar(paths$path, "bytes"))
+  path <- paste0(query_parameter_cap(substr(paths$path, 1L, cut), 40L),
+                 substring(paths$path, cut + 1L))
+  witness <- paste0(path, paths$sep, ai_training_name(paths$name, 40L))
   list(control = paste0(witness, "=",
                         query_parameter_cap(paths$tail, 40L)),
        witness = witness)
