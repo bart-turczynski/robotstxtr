@@ -4368,7 +4368,9 @@ same_rules_list <- function(items, cap, noun) {
 # allows, and `Allow: /` is disallow_tied_by_allow's. One warning per
 # full-block line, on the first one a token follows, naming every token
 # whose first it is. Linear in the agent and rule lines: flags are summed
-# per group, then per token. Returns a data frame of `line` and `message`.
+# per group, then per token, and each message reads only its own tokens'
+# groups and lines, through lookups by integer index built once
+# (ROBO-hmpzayxr). Returns a data frame of `line` and `message`.
 empty_disallow_full_block_diagnostics <- function(groups, cap = 5L) {
   none <- data.frame(line = integer(), message = character(),
                      stringsAsFactors = FALSE)
@@ -4415,20 +4417,37 @@ empty_disallow_full_block_diagnostics <- function(groups, cap = 5L) {
   if (length(hit) == 0L) {
     return(none)
   }
-  # Every crawler a group names, before the pairs are cut to the hits.
-  ids_of_group <- split(pair$id, pair$group)
+  # Every crawler a group names, before the pairs are cut to the hits,
+  # indexed by group number.
+  ids_of_group <- split(pair$id, factor(pair$group, seq_len(n_groups)))
   pair <- pair[pair$id %in% hit, , drop = FALSE]
   root_at <- first_root[pair$group]
+  # Both split by id in factor()'s level order, the session collation's,
+  # which is the order a message names its crawlers: kept as it was.
   anchor <- vapply(split(root_at, pair$id), min, 0L, na.rm = TRUE)
   groups_of <- split(pair$group, pair$id)
+  # Lookups by integer index, built once (ROBO-hmpzayxr): each id's place
+  # in `written` and `cut_rows`, each anchor's rule row, and each group's
+  # empty and root rule lines. A set reads only its own.
+  in_written <- match(names(anchor), names(written))
+  anchor_row <- match(anchor, rules$line)
+  by_group <- function(flag) {
+    split(rules$line[flag], factor(rules$group[flag], seq_len(n_groups)))
+  }
+  empty_lines <- by_group(is_empty)
+  root_lines <- by_group(is_root)
+  longer_in <- tabulate(rules$group[rules$type == "disallow" & !rules$empty &
+                                      !is_root], n_groups) > 0L
   # A group's rule lines that a set's message names.
-  lines_in <- function(flag, gs) sort(rules$line[flag & rules$group %in% gs])
-  sets <- split(names(anchor), factor(anchor, sort(unique(anchor))))
-  message <- vapply(sets, function(ids) {
-    names <- unlist(lapply(ids, function(id) {
-      if (id == "*") "*" else ai_training_name(written[[id]])
+  lines_in <- function(by, gs) sort(unlist(by[gs], use.names = FALSE))
+  sets <- split(seq_along(anchor), factor(anchor, sort(unique(anchor))))
+  message <- vapply(sets, function(at_set) {
+    ids <- names(anchor)[at_set]
+    names <- unlist(lapply(seq_along(ids), function(i) {
+      if (ids[[i]] == "*") "*" else
+        ai_training_name(written[[in_written[[at_set[[i]]]]]])
     }), use.names = FALSE)
-    cut_at <- unlist(cut_rows[ids], use.names = FALSE)
+    cut_at <- unlist(cut_rows[in_written[at_set]], use.names = FALSE)
     note <- cut_agent_note(kept_name[cut_at], kept_line[cut_at],
                            kept_hidden[cut_at])
     global_only <- identical(names, "*")
@@ -4440,16 +4459,19 @@ empty_disallow_full_block_diagnostics <- function(groups, cap = 5L) {
       shown[shown == "*"] <- "every crawler without a group of its own"
       joined_and(shown, length(names) - length(shown))
     }
-    gs <- unique(unlist(groups_of[ids], use.names = FALSE))
-    empties <- lines_in(is_empty, gs)
-    roots <- lines_in(is_root, gs)
-    at <- as.integer(anchor[[ids[[1L]]]])
-    anchor_group <- rules$group[[match(at, rules$line)]]
-    signature <- vapply(groups_of[ids], function(g) {
-      paste(sort(rules$line[is_empty & rules$group %in% g]), collapse = " ")
+    gs <- unique(unlist(groups_of[at_set], use.names = FALSE))
+    empties <- lines_in(empty_lines, gs)
+    roots <- lines_in(root_lines, gs)
+    # The groups holding the lines named: each rule line is in one group.
+    with_empty <- gs[lengths(empty_lines[gs]) > 0L]
+    with_root <- gs[lengths(root_lines[gs]) > 0L]
+    first <- at_set[[1L]]
+    at <- as.integer(anchor[[first]])
+    anchor_group <- rules$group[[anchor_row[[first]]]]
+    signature <- vapply(groups_of[at_set], function(g) {
+      paste(lines_in(empty_lines, g), collapse = " ")
     }, "")
-    reach <- if (all(rules$group[rules$line %in% c(empties, roots)] ==
-                       anchor_group)) {
+    reach <- if (all(c(with_empty, with_root) == anchor_group)) {
       if (length(empties) == 1L) "is in the same group" else
         "are in the same group"
     } else if (length(unique(signature)) > 1L) {
@@ -4459,8 +4481,7 @@ empty_disallow_full_block_diagnostics <- function(groups, cap = 5L) {
               if (length(empties) == 1L) "reaches" else "reach",
               if (global_only) "the same crawlers" else crawlers)
     }
-    longer <- any(rules$type == "disallow" & !rules$empty & !is_root &
-                    rules$group %in% gs)
+    longer <- any(longer_in[gs])
     yandex <- if (longer) {
       "allowing every path that no longer `Disallow` matches"
     } else {
@@ -4468,12 +4489,11 @@ empty_disallow_full_block_diagnostics <- function(groups, cap = 5L) {
     }
     # Deleting a line is offered only when its group names no crawler
     # outside this report; otherwise it would change their rules too.
-    only_these <- function(lines) {
-      lg <- unique(rules$group[rules$line %in% lines])
-      all(unlist(ids_of_group[as.character(lg)], use.names = FALSE) %in% ids)
+    only_these <- function(lg) {
+      all(unlist(ids_of_group[lg], use.names = FALSE) %in% ids)
     }
-    advice <- function(lines) {
-      if (only_these(lines)) {
+    advice <- function(lines, lg) {
+      if (only_these(lg)) {
         paste("delete", joined_rule_lines(lines))
       } else {
         sprintf(paste0("give %s a group of %s own without %s, which other ",
@@ -4488,11 +4508,12 @@ empty_disallow_full_block_diagnostics <- function(groups, cap = 5L) {
              "`Disallow:` and block every path; Yandex reads it as %s. If ",
              "%s meant to be let in, %s; if %s meant to be kept out, %s."),
       ai_training_name(render_validation_line(charToRaw(
-        rules$value[[match(at, rules$line)]]
+        rules$value[[anchor_row[[first]]]]
       ))),
       at, crawlers, joined_rule_lines(empties), reach, yandex,
       if (several) "these crawlers are" else paste(names[[1L]], "is"),
-      advice(roots), if (several) "they are" else "it is", advice(empties)
+      advice(roots, with_root), if (several) "they are" else "it is",
+      advice(empties, with_empty)
     ), note)
   }, "")
   data.frame(line = as.integer(names(sets)), message = unname(message),
@@ -4728,31 +4749,41 @@ wildcard_inheritance_diagnostics <- function(groups) {
   exempt_keys <- ascii_lower(
     table$crawler_token[table$group_selection == "exact_only"]
   )
+  # Each crawler's groups and rule rows by integer index, built once
+  # (ROBO-hmpzayxr): a crawler reads its own rows, not every rule line.
+  # The witness body and `rows` share one order (file order), which
+  # wildcard_reopened_disallows() relies on.
+  rows_by_group <- split(seq_len(nrow(rules)),
+                         factor(rules$group, seq_len(max(c(0L, rules$group,
+                                                             agents$group)))))
+  groups_by_key <- lapply(split(agents$group, factor(agents$key, keys)),
+                          unique)
+  disallow <- rules$type == "disallow" & !rules$empty
+  allow <- rules$type == "allow" & !rules$empty
+  grants <- every_path | (rules$type == "disallow" & rules$empty)
+  root_block <- !is.na(rules$key) & rules$key == "disallow /"
   losers <- lapply(seq_along(keys), function(k) {
     key <- keys[[k]]
-    agent_groups <- unique(agents$group[agents$key == key])
-    in_effect <- rules$group %in% agent_groups
-    judged <- in_effect & !no_op
-    root_block <- in_effect & !is.na(rules$key) & rules$key == "disallow /"
+    agent_groups <- groups_by_key[[k]]
+    own <- sort(unlist(rows_by_group[agent_groups], use.names = FALSE))
+    judged <- own[!no_op[own]]
     list(
       names = written[[k]],
       cut_names = agents$name[cut_rows[[k]]],
       cut_lines = agents$line[cut_rows[[k]]],
       cut_hidden = agents$hidden[cut_rows[[k]]],
       groups = agent_groups,
+      rows = own,
       first_group = min(agent_groups),
       one_group = length(agent_groups) == 1L,
-      open = any(judged) && all(allow_all[judged]),
-      allow_only = !any(in_effect & rules$type == "disallow" & !rules$empty),
+      open = length(judged) > 0L && all(allow_all[judged]),
+      allow_only = !any(disallow[own]),
       # An explicit grant: `Allow: /` (any every-path Allow) or an empty
       # `Disallow:`, and no other Disallow (owner decision, 2026-11-18).
-      grant = !any(in_effect & rules$type == "disallow" & !rules$empty) &&
-        any(in_effect & (every_path | (rules$type == "disallow" &
-                                          rules$empty))),
-      full_block = any(root_block) &&
-        !any(in_effect & rules$type == "allow" & !rules$empty),
+      grant = !any(disallow[own]) && any(grants[own]),
+      full_block = any(root_block[own]) && !any(allow[own]),
       exempt = key %in% exempt_keys,
-      missing = which(!global$key %in% rules$key[in_effect])
+      missing = which(!global$key %in% rules$key[own])
     )
   })
   lost <- wildcard_lost_disallows(losers, rules, global, groups)
@@ -4793,12 +4824,14 @@ wildcard_lost_disallows <- function(losers, rules, global, groups) {
   star <- rules$group %in% groups$groups$group[groups$groups$global]
   blocked <- rep(list(character()), nrow(global))
   blocked[need] <- wildcard_star_blocked(global$value[need], rules, star)
+  is_rule_disallow <- rules$type == "disallow"
   bodies <- vapply(losers[checked], function(x) {
-    wildcard_witness_body(rules, rules$group %in% x$groups &
-                            rules$type == "disallow")
+    wildcard_witness_body(rules, x$rows[is_rule_disallow[x$rows]])
   }, "")
-  for (body in unique(bodies)) {
-    members <- checked[bodies == body]
+  # One check per distinct body, its crawlers in first-seen order.
+  for (at in split(seq_along(checked), factor(bodies, unique(bodies)))) {
+    members <- checked[at]
+    body <- bodies[[at[[1L]]]]
     miss <- unique(unlist(lapply(losers[members], `[[`, "missing")))
     miss <- miss[lengths(blocked[miss]) > 0L]
     open <- miss[wildcard_named_open(body, blocked[miss])]
@@ -4906,10 +4939,11 @@ wildcard_witness_paths <- function(value, suffixes = TRUE) {
   unique(bases)
 }
 
-# A robots.txt body of the Allow and Disallow rules in `keep`, in file order,
-# under one group naming the witness crawler.
+# A robots.txt body of the Allow and Disallow rules in `keep` (a logical
+# mask, or row indices in file order), under one group naming the witness
+# crawler.
 wildcard_witness_body <- function(rules, keep) {
-  rows <- which(keep)
+  rows <- if (is.logical(keep)) which(keep) else keep
   paste0("User-agent: witness\n",
          paste0(ifelse(rules$type[rows] == "allow", "Allow: ", "Disallow: "),
                 rules$value[rows], "\n", collapse = ""))
@@ -4962,30 +4996,51 @@ wildcard_witness_decide <- function(bodies, ids, paths) {
 wildcard_reopened_disallows <- function(losers, lost, rules, global, groups) {
   out <- rep(list(wildcard_reopen_none()), length(losers))
   star_disallows <- which(global$type == "disallow")
+  allow <- rules$type == "allow" & !rules$empty
   has_allow <- vapply(losers, function(x) {
-    !x$exempt && any(rules$group %in% x$groups & rules$type == "allow" &
-                       !rules$empty)
+    !x$exempt && any(allow[x$rows])
   }, TRUE)
   checked <- which(has_allow)
   if (length(checked) == 0L || length(star_disallows) == 0L) {
     return(out)
   }
-  star <- rules$group %in% groups$groups$group[groups$groups$global]
+  # The `*` rules alone: a `*`-side read needs no other rule line.
+  star_rules <- rules[rules$group %in%
+                        groups$groups$group[groups$groups$global], ,
+                      drop = FALSE]
   bodies <- vapply(losers[checked], function(x) {
-    wildcard_witness_body(rules, rules$group %in% x$groups)
+    wildcard_witness_body(rules, x$rows)
   }, "")
-  cache <- new.env(parent = emptyenv())
-  cache$done <- rep(list(character()), nrow(global))
-  cache$hit <- rep(list(character()), nrow(global))
-  for (body in unique(bodies)) {
-    members <- checked[bodies == body]
-    in_effect <- rules$group %in% losers[[members[[1L]]]]$groups
-    found <- wildcard_reopen_witnesses(rules, in_effect, star, global,
-                                       star_disallows, cache)
+  # One check per distinct body, its crawlers in first-seen order.
+  sets <- split(seq_along(checked), factor(bodies, unique(bodies)))
+  # Each set's candidate paths, and each path's id in this call's distinct
+  # paths, found by one match(): the cache is keyed by Disallow and path
+  # id, so no rule value (up to 16,663 bytes) becomes a variable name,
+  # which R caps at 10,000 (ROBO-hmpzayxr).
+  candidates <- lapply(sets, function(at) {
+    own <- losers[[checked[[at[[1L]]]]]]$rows
+    wildcard_reopen_paths(rules$value[own][allow[own]],
+                          global$value[star_disallows])
+  })
+  flat <- unlist(candidates, use.names = FALSE)
+  flat_id <- match(flat, unique(flat))
+  per_set <- rep(seq_along(candidates), vapply(candidates, function(x) {
+    sum(lengths(x))
+  }, 0L))
+  candidate_ids <- Map(function(x, id) {
+    unname(split(id, factor(rep(seq_along(x), lengths(x)), seq_along(x))))
+  }, candidates, split(flat_id, factor(per_set, seq_along(candidates))))
+  cache <- new.env(hash = TRUE, parent = emptyenv())
+  for (s in seq_along(sets)) {
+    members <- checked[sets[[s]]]
+    found <- wildcard_reopen_witnesses(
+      rules[losers[[members[[1L]]]]$rows, , drop = FALSE], star_rules,
+      global, star_disallows, cache, candidates[[s]], candidate_ids[[s]]
+    )
     for (m in members) {
       # The same body lists the same rules in the same order, so the
       # Allow's position among the crawler's own rules gives its line.
-      own <- which(rules$group %in% losers[[m]]$groups)[found$allow_at]
+      own <- losers[[m]]$rows[found$allow_at]
       out[[m]] <- data.frame(
         found[c("global", "path", "star_line", "star_value")],
         allow_line = rules$line[own], allow_value = rules$value[own]
@@ -5032,49 +5087,48 @@ wildcard_reopen_paths <- function(allows, disallows) {
 }
 
 # The witnesses for wildcard_reopened_disallows() of the crawler whose rules
-# are `in_effect`, one per `*` Disallow (`star_disallows`, indices into
-# `global`): a path without an empty segment (`//`) if there is one, then
-# the shortest, then the first in byte order. `allow_at` is the deciding
-# Allow's position among the crawler's rules. The named reads come first,
-# on each candidate path once; only the paths the crawler's Allows reopen
-# reach the `*` side, read through `cache` (wildcard_reopen_star()).
-wildcard_reopen_witnesses <- function(rules, in_effect, star, global,
-                                      star_disallows, cache) {
-  full <- which(in_effect)
+# are `rules` (its own rows, in file order), one per `*` Disallow
+# (`star_disallows`, indices into `global`): a path without an empty segment
+# (`//`) if there is one, then the shortest, then the first in byte order.
+# `allow_at` is the deciding Allow's position among the crawler's rules. The
+# named reads come first, on each candidate path once; only the paths the
+# crawler's Allows reopen reach the `*` side (`star_rules`, the `*` groups'
+# rules), read through `cache` (wildcard_reopen_star()). `candidates` are
+# wildcard_reopen_paths() of the crawler's Allows, one list item per `*`
+# Disallow, and `candidate_ids` their path ids, in the same shape.
+wildcard_reopen_witnesses <- function(rules, star_rules, global,
+                                      star_disallows, cache, candidates,
+                                      candidate_ids) {
   read <- function(rows, at) {
-    wildcard_witness_decide(
-      wildcard_witness_body(rules, seq_len(nrow(rules)) %in% rows),
-      rep(1L, length(at)), at
-    )
+    wildcard_witness_decide(wildcard_witness_body(rules, rows),
+                            rep(1L, length(at)), at)
   }
-  candidates <- wildcard_reopen_paths(
-    rules$value[in_effect & rules$type == "allow" & !rules$empty],
-    global$value[star_disallows]
-  )
   paths <- unique(unlist(candidates, use.names = FALSE))
-  named <- read(full, paths)
+  named <- read(seq_len(nrow(rules)), paths)
   # Line 0: no rule matched. Such a path is allowed by the Disallows alone
   # too, so it drops out below; NA keeps the vectors aligned until then.
   at <- named$line[named$allowed]
   allow_at <- ifelse(at > 1L, at - 1L, NA)
   paths <- paths[named$allowed]
-  reopened <- !read(which(in_effect & rules$type == "disallow"),
-                    paths)$allowed
+  reopened <- !read(which(rules$type == "disallow"), paths)$allowed
   allow_at <- allow_at[reopened]
   paths <- paths[reopened]
   # One membership test over every (Disallow, path) pair, not one per
   # Disallow against every reopened path.
   ids <- rep(seq_along(candidates), lengths(candidates))
   flat <- unlist(candidates, use.names = FALSE)
+  flat_id <- unlist(candidate_ids, use.names = FALSE)
   kept <- flat %in% paths
-  candidates <- unname(split(flat[kept],
-                             factor(ids[kept], seq_along(candidates))))
+  by <- factor(ids[kept], seq_along(candidates))
+  candidates <- unname(split(flat[kept], by))
+  candidate_ids <- unname(split(flat_id[kept], by))
   some <- which(lengths(candidates) > 0L)
   if (length(some) == 0L) {
     return(wildcard_reopen_none())
   }
   blocked <- wildcard_reopen_star(star_disallows[some], candidates[some],
-                                  rules, star, global, cache)
+                                  candidate_ids[some], star_rules, global,
+                                  cache)
   hit <- lengths(blocked) > 0L
   if (!any(hit)) {
     return(wildcard_reopen_none())
@@ -5092,18 +5146,37 @@ wildcard_reopen_witnesses <- function(rules, in_effect, star, global,
 }
 
 # wildcard_star_blocked() for `*` Disallows `g` (indices into `global`) and
-# their candidate `paths`, reading only the (Disallow, path) pairs `cache`
-# has not seen; `cache$hit` keeps the blocked paths per Disallow.
-wildcard_reopen_star <- function(g, paths, rules, star, global, cache) {
-  fresh <- Map(setdiff, paths, cache$done[g])
+# their candidate `paths`, as the blocked paths of each, in `paths` order.
+# Only the (Disallow, path) pairs `cache` has not seen are read. `cache` is
+# a hashed environment keyed by Disallow and path id (`path_ids`, the
+# paths' ids in wildcard_reopened_disallows(); never the path itself, which
+# may pass R's 10,000-byte cap on names), holding whether the `*` side
+# blocks the path, so a lookup does not grow with the pairs read for other
+# crawlers (ROBO-hmpzayxr). `star_rules` are the `*` groups' rules only, so
+# a read costs nothing per other rule line.
+wildcard_reopen_star <- function(g, paths, path_ids, star_rules, global,
+                                 cache) {
+  keys <- Map(function(i, id) paste(i, id, sep = "\n"), g, path_ids)
+  state <- lapply(keys, function(k) {
+    unlist(mget(k, envir = cache, ifnotfound = list(NA)), use.names = FALSE)
+  })
+  fresh <- Map(function(p, s) unique(p[is.na(s)]), paths, state)
   todo <- which(lengths(fresh) > 0L)
   if (length(todo) > 0L) {
-    found <- wildcard_star_blocked(global$value[g[todo]], rules, star,
-                                   fresh[todo])
-    cache$done[g[todo]] <- Map(c, cache$done[g[todo]], fresh[todo])
-    cache$hit[g[todo]] <- Map(c, cache$hit[g[todo]], found)
+    found <- wildcard_star_blocked(global$value[g[todo]], star_rules,
+                                   rep(TRUE, nrow(star_rules)), fresh[todo])
+    for (j in seq_along(todo)) {
+      i <- todo[[j]]
+      blocked <- as.list(fresh[[i]] %in% found[[j]])
+      names(blocked) <- paste(g[[i]],
+                              path_ids[[i]][match(fresh[[i]], paths[[i]])],
+                              sep = "\n")
+      list2env(blocked, envir = cache)
+      new <- is.na(state[[i]])
+      state[[i]][new] <- paths[[i]][new] %in% found[[j]]
+    }
   }
-  Map(intersect, paths, cache$hit[g])
+  Map(function(p, s) unique(p[s]), paths, state)
 }
 
 # One wildcard_disallows_not_inherited row per group and set of lost `*`
@@ -5217,8 +5290,7 @@ wildcard_inheritance_rows <- function(losers, lost, global, groups) {
       agents = tokens, missing = missing$line,
       # Every merged group's first line stays this report's (one line, one
       # report), not only the anchor's.
-      owned = vapply(sort(unique(first)), wildcard_group_line, 0L,
-                     groups = groups),
+      owned = wildcard_group_line(groups, sort(unique(first))),
       message = paste0(wildcard_inheritance_message(
         tokens, all(vapply(members, `[[`, TRUE, "one_group")), missing,
         full_block = members[[1L]]$full_block, exempt = members[[1L]]$exempt,
@@ -5228,23 +5300,28 @@ wildcard_inheritance_rows <- function(losers, lost, global, groups) {
   })
 }
 
+# The first User-agent line of each group number in `group`, by one match()
+# over the groups (ROBO-hmpzayxr).
 wildcard_group_line <- function(groups, group) {
-  groups$groups$first_line[[match(group, groups$groups$group)]]
+  groups$groups$first_line[match(group, groups$groups$group)]
 }
 
 # The groups of a merged info row, in file order, as "A and B (line 5); and
 # C (line 9)", five at most, then "and N more groups": semicolons part the
-# groups, since a group's own names are joined with "and".
+# groups, since a group's own names are joined with "and". Only the shown
+# groups get a label, each read by position, so a row merging many groups
+# costs linear time in them (ROBO-hmpzayxr).
 wildcard_group_labels <- function(members, first, groups, cap = 5L) {
-  by_group <- split(seq_along(members), factor(first, sort(unique(first))))
-  labels <- vapply(names(by_group), function(g) {
-    names <- ai_training_name(unlist(lapply(members[by_group[[g]]], `[[`,
+  group <- sort(unique(first))
+  by_group <- unname(split(seq_along(members), factor(first, group)))
+  at <- seq_len(min(cap, length(group)))
+  line <- wildcard_group_line(groups, group[at])
+  shown <- vapply(at, function(j) {
+    names <- ai_training_name(unlist(lapply(members[by_group[[j]]], `[[`,
                                             "names"), use.names = FALSE))
-    sprintf("%s (line %d)", joined_and(names, 0L),
-            wildcard_group_line(groups, as.integer(g)))
-  }, "", USE.NAMES = FALSE)
-  shown <- labels[seq_len(min(cap, length(labels)))]
-  more <- length(labels) - length(shown)
+    sprintf("%s (line %d)", joined_and(names, 0L), line[[j]])
+  }, "")
+  more <- length(group) - length(shown)
   if (more > 0L) {
     shown <- c(shown, sprintf("and %d more %s", more,
                               if (more == 1L) "group" else "groups"))
