@@ -921,9 +921,11 @@ test_that("\"nothing changes for them\" is printed only where proven", {
                  label = value)
     expect_identical(row$severity, "info", label = value)
   }
-  # ASCII, or other bytes naming no Google token: printed, valid UTF-8
-  # or not.
-  for (value in c("Foo Bot", "My Googlebot clone", "\u200bExampleBot",
+  # Bytes naming no Google token, ASCII or not: printed, valid UTF-8 or
+  # not. An ASCII value naming one is left out (ROBO-ipzkxzhg).
+  row <- iv_cut(iv_lines("User-agent: My Googlebot clone", "Disallow: /x"))
+  expect_false(grepl("nothing changes", row$message, fixed = TRUE))
+  for (value in c("Foo Bot", "\u200bExampleBot",
                   "\u2028ExampleBot", "bingb\u043et", "a\xa0b")) {
     row <- iv_cut(iv_lines(paste0("User-agent: ", value), "Disallow: /x"))
     expect_true(grepl("so nothing changes for them", row$message,
@@ -990,4 +992,99 @@ test_that("ipzkxzhg leaves severity and non-Google wording as they were", {
   row <- iv_cut(iv_lines("User-agent: Google\u00a0bot", "Disallow: /x"))
   expect_true(grepl("written in ASCII the value is 'Google bot'",
                     row$message, fixed = TRUE))
+})
+
+iv_ignore_star <- paste0(
+  " Google's crawlers that ignore `*` (AdsBot-Google, AdsBot-Google-Mobile, ",
+  "Mediapartners-Google and APIs-Google) do not get it through its ",
+  "`User-agent: *` line."
+)
+iv_kept <- paste0(
+  "Unless another group names it, a crawler going by the full value still ",
+  "gets this group from Google's matcher, since the group also names ",
+  "`User-agent: *`.", iv_ignore_star
+)
+
+test_that("a crawler that ignores `*` is not reached through the group's `*`", {
+  body <- iv_lines("User-agent: *", "User-agent: \u200bAdsBot-Google",
+                   "Disallow: /x")
+  row <- iv_cut(body)
+  expect_identical(row$message, paste0(
+    "User-agent value names no crawler for Google's matcher, which reads a ",
+    "product token only from a leading run of letters, '_' and '-', so ",
+    "there this line matches no crawler. ", iv_kept, " ",
+    iv_meant("AdsBot-Google"), " The value holds U+200B ZERO WIDTH SPACE at ",
+    "byte 1, which is invisible; without it the value is 'AdsBot-Google', ",
+    "which no byte compare matches to this value.", iv_value_clause
+  ))
+  expect_identical(row$severity, "warning")
+  # A crawler that follows `*` still gets the weak sentence there.
+  body <- iv_lines("User-agent: *", "User-agent: \u200bGooglebot",
+                   "Disallow: /x")
+  expect_identical(iv_google(body, "Googlebot", "/x"), "disallow 3")
+  expect_true(grepl(iv_meant_weak("Googlebot"), iv_cut(body)$message,
+                    fixed = TRUE))
+  # Every cut row in a `*` group carries the exception, a non-Google one
+  # too; each crawler it names is allow there.
+  body <- iv_lines("User-agent: *", "User-agent: Foo Bar", "Disallow: /x")
+  row <- iv_cut(body)
+  expect_true(grepl(iv_kept, row$message, fixed = TRUE))
+  expect_true(grepl("so nothing changes for them", row$message,
+                    fixed = TRUE))
+  for (token in c("AdsBot-Google", "AdsBot-Google-Mobile",
+                  "Mediapartners-Google", "APIs-Google")) {
+    expect_identical(iv_google(body, token, "/x"), "allow NA", label = token)
+  }
+  expect_identical(iv_google(body, "ZzSweepBot", "/x"), "disallow 3")
+})
+
+test_that("a clean ASCII value naming a Google token claims nothing", {
+  for (value in c("\"Googlebot\"", "Google bot")) {
+    row <- iv_cut(iv_lines(paste0("User-agent: ", value), "Disallow: /x"))
+    expect_false(grepl("nothing changes", row$message, fixed = TRUE),
+                 label = value)
+    expect_true(endsWith(row$message, paste0(
+      "gets no rules from Google's matcher: the file has no ",
+      "`User-agent: *` group."
+    )), label = value)
+  }
+})
+
+test_that("a space-kind character repairs to an ASCII space", {
+  facts <- user_agent_cut_facts(c("Google\u00a0bot", "Googlebot\u00a01.0",
+                                  "\u3000Googlebot", "Google\u200bbot",
+                                  "Google\u202f\u200bbot"))
+  expect_identical(facts$repaired_value,
+                   c("Google bot", "Googlebot 1.0", "Googlebot", "Googlebot",
+                     "Google bot"))
+  expect_identical(facts$repaired,
+                   c("Google", "Googlebot", "Googlebot", "Googlebot",
+                     "Google"))
+  # Google<U+00A0>bot reads as `Google bot` does: no conditional reading,
+  # beside the note's 'Google bot'.
+  row <- iv_cut(iv_lines("User-agent: Google\u00a0bot", "Disallow: /x"))
+  expect_false(grepl("If this line was meant", row$message, fixed = TRUE))
+  expect_false(grepl("nothing changes", row$message, fixed = TRUE))
+  # Googlebot<U+00A0>1.0 names Googlebot as `Googlebot 1.0` does; the
+  # no-break space keeps the row a warning.
+  row <- iv_cut(iv_lines("User-agent: Googlebot\u00a01.0", "Disallow: /x"))
+  expect_true(grepl(paste0(
+    "'Googlebot' is the Google crawler token the value names, so nothing ",
+    "changes for that crawler."
+  ), row$message, fixed = TRUE))
+  expect_false(grepl("follows this group", row$message, fixed = TRUE))
+  expect_identical(row$severity, "warning")
+})
+
+test_that("the conditional sentence names the crawler as Google spells it", {
+  body <- iv_lines("User-agent: \u200bGOOGLEBOT", "Disallow: /x")
+  row <- iv_cut(body)
+  expect_true(grepl(paste0(
+    "If this line was meant as `GOOGLEBOT`, Google's Googlebot does not get ",
+    "this group through it."
+  ), row$message, fixed = TRUE))
+  body <- iv_lines("User-agent: \u200badsbot-google-mobile", "Disallow: /x")
+  expect_identical(iv_google(body, "AdsBot-Google-Mobile", "/x"), "allow NA")
+  expect_true(grepl("Google's AdsBot-Google-Mobile does not get",
+                    iv_cut(body)$message, fixed = TRUE))
 })

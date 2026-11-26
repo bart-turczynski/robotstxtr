@@ -47,9 +47,40 @@ sw_rest <- lapply(setdiff(sw_listed, c(0x00A0, 0x3000, 0x200B, 0xFEFF)),
                     x
                   })
 
+# Values written as a whole, each for one target and in the `alone` and
+# `same_star` contexts only (ROBO-ipzkxzhg): more than one insert.
+sw_whole <- function(name, bytes, repaired, target) {
+  x <- sw_insert(name, bytes, repaired, "whole")
+  x$target <- target
+  x
+}
+sw_multi <- list(
+  sw_whole("U+200B U+2028 Googlebot",
+           charToRaw(intToUtf8(c(0x200B, 0x2028, utf8ToInt("Googlebot")))),
+           FALSE, "Googlebot"),
+  sw_whole("G U+200B oogle U+200B bot",
+           charToRaw(paste0("G", intToUtf8(0x200B), "oogle", intToUtf8(0x200B),
+                            "bot")), TRUE, "Googlebot"),
+  sw_whole("U+00A0 U+200B AdsBot-Google",
+           charToRaw(intToUtf8(c(0x00A0, 0x200B,
+                                 utf8ToInt("AdsBot-Google")))),
+           TRUE, "AdsBot-Google")
+)
+
 sw_targets <- c("Googlebot", "Googlebot-Image", "*", "ExampleBot",
                 "Mediapartners-Google*")
+# Targets run in the `alone` and `same_star` contexts only (ROBO-ipzkxzhg):
+# a crawler that ignores `*`, and ASCII values that Google cuts, with the
+# Google token each was written for, independent of the code's predicates.
+sw_new_targets <- c("AdsBot-Google", "\"Googlebot\"", "Google bot")
+sw_new_contexts <- c("alone", "same_star")
+sw_ascii_meant <- c("\"Googlebot\"" = "Googlebot", "Google bot" = "Googlebot")
 sw_google <- ascii_lower(validation_google_tokens())
+sw_crawlers <- google_crawler_tokens_v1()
+sw_ignore_star <- sw_crawlers$crawler_token[sw_crawlers$group_selection ==
+                                              "exact_only"]
+# A crawler that no group of any document names.
+sw_stand_in <- "ZzSweepBot"
 
 # The User-agent line with `x` at `position`.
 sw_line <- function(target, x, position) {
@@ -59,6 +90,7 @@ sw_line <- function(target, x, position) {
                            substring(target, 2L)),
          after = sw_bytes("User-agent: ", target, x, " # c"),
          key = sw_bytes(x, "User-agent: ", target),
+         whole = sw_bytes("User-agent: ", x),
          substitute = sw_bytes(
            "User-agent: ", sub("o.*$", "", target), x,
            sub("^[^o]*o", "", target)
@@ -113,6 +145,29 @@ sw_tokens <- function(target) {
   }
 }
 
+# Google's decisions in one call, named "<token> <path>": each `quoted`
+# token on /x and, with `fallback`, what the fallback sentences need: the
+# stand-in crawler on /x and /y (every `*` group of a context disallows
+# /y, the line's group /x), and each crawler that ignores `*` on /x.
+sw_query <- function(doc, quoted, fallback) {
+  tokens <- quoted
+  paths <- rep("/x", length(quoted))
+  if (fallback) {
+    tokens <- c(tokens, sw_stand_in, sw_stand_in, sw_ignore_star)
+    paths <- c(paths, "/x", "/y", rep("/x", length(sw_ignore_star)))
+  }
+  r <- robots_evaluate_text_v1(rawToChar(doc),
+                               paste0("https://example.com", paths), tokens,
+                               "google", "google")$results
+  stats::setNames(r$url_decision, paste(tokens, paths))
+}
+
+# The token a row quotes in `pattern` (one `%s` group), or NA.
+sw_quoted <- function(message, pattern) {
+  hit <- regmatches(message, regexec(pattern, message))[[1L]]
+  if (length(hit) == 2L) hit[[2L]] else NA_character_
+}
+
 sw_spelled_google <- function(message) {
   spelled <- regmatches(message, gregexpr("value is '[^']*'", message))[[1L]]
   spelled <- trimws(sub("^value is '(.*)'$", "\\1", spelled))
@@ -126,14 +181,26 @@ test_that("every generated cut row agrees with Google's reading", {
   rows_checked <- 0L
   google_tokens <- validation_google_tokens()
   runs <- c(
-    lapply(sw_full, function(x) list(x = x, contexts = names(sw_contexts))),
-    lapply(sw_rest, function(x) list(x = x, contexts = "alone"))
+    lapply(sw_full, function(x) {
+      list(x = x, contexts = names(sw_contexts), new = TRUE)
+    }),
+    lapply(sw_rest, function(x) list(x = x, contexts = "alone", new = FALSE)),
+    lapply(sw_multi, function(x) {
+      list(x = x, contexts = sw_new_contexts, new = FALSE)
+    })
   )
   for (run in runs) {
     x <- run$x
     for (context in run$contexts) {
       line <- sw_contexts[[context]]$line
-      for (target in sw_targets) {
+      targets <- sw_targets
+      if (run$new && context %in% sw_new_contexts) {
+        targets <- c(targets, sw_new_targets)
+      }
+      if (!is.null(x$target)) {
+        targets <- x$target
+      }
+      for (target in targets) {
         tokens <- sw_tokens(target)
         key <- paste(context, target)
         plain <- sw_document(context, sw_line(target, "", "before"))
@@ -164,12 +231,14 @@ test_that("every generated cut row agrees with Google's reading", {
           loses <- grepl("does not get this group", cut$message, fixed = TRUE)
           reaches <- grepl("the group still reaches every crawler",
                            cut$message, fixed = TRUE)
+          weak <- grepl("Google does not read it so.", cut$message,
+                        fixed = TRUE)
           # Whether the backend is needed: a claim to check, or a loss
           # that a row on the line would have to warn about.
           scoped <- x$repaired || identical(target, "*") ||
             identical(position, "key")
           need <- length(tokens) > 0L &&
-            (any(claims | loses | reaches) ||
+            (any(claims | loses | reaches | weak) ||
                (scoped && !any(d$severity == "warning")))
           after <- if (need) sw_decide(doc, tokens)
           lost <- if (need) {
@@ -206,6 +275,18 @@ test_that("every generated cut row agrees with Google's reading", {
                              label = label)
               }
             }
+            # (i) the weaker "Google does not read it so" only where the
+            # crawler meant still gets the group (ROBO-ipzkxzhg: not one
+            # that ignores the group's `*` line).
+            if (weak[[k]]) {
+              meant <- sub("^.*If this line was meant as `([^`]*)`.*$", "\\1",
+                           message)
+              meant <- tokens[ascii_lower(tokens) == ascii_lower(meant)]
+              for (token in meant) {
+                expect_identical(after[[token]], "disallow",
+                                 label = paste(label, token))
+              }
+            }
             # The `*` tail: every crawler it does not except keeps the
             # group through the group's `*` line.
             if (reaches[[k]]) {
@@ -224,6 +305,88 @@ test_that("every generated cut row agrees with Google's reading", {
             # `*` or a Google token.
             if (grepl("nothing changes for them", message, fixed = TRUE)) {
               expect_false(sw_spelled_google(message), label = label)
+            }
+            # ... nor on a value written for a Google token that Google
+            # cuts in ASCII (ROBO-ipzkxzhg), by the sweep's own list.
+            if (target %in% names(sw_ascii_meant)) {
+              expect_false(grepl("nothing changes for them", message,
+                                 fixed = TRUE), label = label)
+            }
+            # (f) "follows this group" and (h) "nothing changes for that
+            # crawler" quote a Google token; (g) the fallback sentence is
+            # checked for a crawler no group names and, beside `*`, for
+            # each crawler that ignores `*`. One backend call per row at
+            # most; (g) once per context, position and token read, as no
+            # other byte of the value moves a crawler the line does not
+            # name.
+            follows <- sw_quoted(message, paste0(
+              "'([^']*)' is a Google crawler token, so that Google crawler ",
+              "follows this group"
+            ))
+            same <- sw_quoted(message, paste0(
+              "'([^']*)' is the Google crawler token the value names, so ",
+              "nothing changes for that crawler"
+            ))
+            # (h) against the target written plainly, when it is that token.
+            if (!is.na(same) && !identical(
+              ascii_lower(same), ascii_lower(sub("[^A-Za-z_-].*$", "", target))
+            )) {
+              same <- NA_character_
+            }
+            kind <- if (grepl("still gets this group from Google's", message,
+                              fixed = TRUE)) {
+              "kept"
+            } else if (grepl("value gets the `User-agent: *` group", message,
+                             fixed = TRUE)) {
+              "star"
+            } else if (grepl("value gets no rules from Google's", message,
+                             fixed = TRUE)) {
+              "none"
+            } else {
+              NA_character_
+            }
+            read <- sw_quoted(message, "value is read as '([^']*)'")
+            read <- if (is.na(read)) "" else ascii_lower(read)
+            fb_key <- paste("fallback", context, position, read, kind)
+            fb_new <- !is.na(kind) && is.null(clean[[fb_key]])
+            quoted <- as.character(stats::na.omit(c(follows, same)))
+            got <- if (length(quoted) > 0L || fb_new) {
+              sw_query(doc, quoted, fb_new)
+            }
+            if (!is.na(follows)) {
+              expect_identical(got[[paste(follows, "/x")]], "disallow",
+                               label = paste(label, follows))
+            }
+            if (!is.na(same)) {
+              same_key <- paste(key, "same", same)
+              if (is.null(clean[[same_key]])) {
+                assign(same_key, sw_decide(plain, same), envir = clean)
+              }
+              expect_identical(got[[paste(same, "/x")]],
+                               clean[[same_key]][[same]],
+                               label = paste(label, same))
+            }
+            if (fb_new) {
+              assign(fb_key, TRUE, envir = clean)
+              fb <- got[paste(sw_stand_in, c("/x", "/y"))]
+              want <- switch(kind,
+                             kept = c("disallow", "allow"),
+                             star = c("allow", "disallow"),
+                             none = c("allow", "allow"))
+              expect_identical(unname(fb), want, label = label)
+            }
+            # Each crawler the kept fallback excepts is not reached through
+            # the `*` line: allow, unless the line itself reads its token.
+            if (identical(kind, "kept")) {
+              expect_true(grepl("Google's crawlers that ignore `*` (",
+                                message, fixed = TRUE), label = label)
+              for (token in sw_ignore_star) {
+                if (fb_new && grepl(token, message, fixed = TRUE) &&
+                      !identical(ascii_lower(token), read)) {
+                  expect_identical(got[[paste(token, "/x")]], "allow",
+                                   label = paste(label, token))
+                }
+              }
             }
             # Outside the repaired kinds, no claim of what was meant.
             if (!x$repaired) {
