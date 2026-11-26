@@ -87,7 +87,7 @@ each destination row apart, so a destination that reuses an origin's
 result has that body validated once more, under its own \code{source_id}.
 Acquisition failures are retained as evidence and
 produce \code{"not_validated"} document rows. A 2xx body over \code{max_bytes} is cut
-at the limit: its first \code{max_bytes} bytes are validated up to their last
+at the limit: its first \code{max_bytes} bytes are read up to their last
 complete line (the partial line after the last line break is not read), as
 RFC 9309 section 2.5 allows a crawler to parse. The document row reports
 the cut with \code{body_truncated} and \code{limit_exceeded} both \code{TRUE} and

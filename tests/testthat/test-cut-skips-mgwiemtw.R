@@ -79,11 +79,11 @@ test_that("ROBO-mgwiemtw: the body_truncated message of a cut body", {
     "named group does not inherit; groups that could share one set of ",
     "rules; an empty Disallow beside a full block; a query parameter rule ",
     "that misses the parameter in a later position; a path whose bare and ",
-    "slash forms get different decisions; a `$` rule the same path with a ",
-    "query added escapes; an Allow that reopens a blocked path through a ",
-    "query; a Disallow that blocks page resources such as scripts or ",
-    "styles; a rule that also matches a longer path listed separately; ",
-    "whether the file has no rules."
+    "slash forms get different decisions; a `$` rule that the same path ",
+    "with a query added gets past; an Allow that reopens a blocked path ",
+    "through a query; a Disallow that blocks page resources such as ",
+    "scripts or styles; a rule that also matches a longer path listed ",
+    "separately; the note that the file has no rules."
   ))
   expect_no_match(cs_cut_message(x), "validated", fixed = TRUE)
   # The sentence says what the validator did, not what an engine does.
@@ -143,6 +143,8 @@ test_that("ROBO-mgwiemtw: every cut-body skip goes through the registry", {
   found <- cs_guards(validate_document_bytes)
   expect_identical(found$bare, character())
   expect_identical(found$asked, names(validation_cut_skips))
+  # A code the registry does not hold is refused, not silently skipped.
+  expect_error(cut_runs("rule_slash_splt", TRUE))
   # The walk sees a bare guard.
   probe <- function() {
     if (!body_truncated) found <- slash_split_diagnostics(groups)
@@ -158,7 +160,7 @@ test_that("ROBO-mgwiemtw: a cut before any line break reads nothing", {
   expect_identical(x$document$line_count, 0L)
   expect_identical(x$diagnostics$code, "body_truncated")
   expect_match(cs_cut_message(x), "only its first 0 bytes", fixed = TRUE)
-  expect_match(cs_cut_message(x), "whether the file has no rules",
+  expect_match(cs_cut_message(x), "the note that the file has no rules",
                fixed = TRUE)
 })
 

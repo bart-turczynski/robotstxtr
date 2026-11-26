@@ -619,7 +619,7 @@ validation_unsupported <- c(
 #'   \code{body_truncated} \tab warning \tab
 #'     The body exceeded \code{max_bytes}; only lines before the cut were read
 #'     (beside \code{compressed_body}, none was, and the row says so). The
-#'     message also names, in plain words, every check not run on such a
+#'     message also names, in plain words, every check skipped on such a
 #'     body because lines past the cut could change its result: the codes
 #'     above marked as not reported for a body cut at \code{max_bytes}. \cr
 #'   \code{acquisition_input_invalid} \tab error \tab
@@ -1264,7 +1264,7 @@ robots_validate_text <- function(robots_txt, source_id = "supplied") {
 #' result has that body validated once more, under its own `source_id`.
 #' Acquisition failures are retained as evidence and
 #' produce `"not_validated"` document rows. A 2xx body over `max_bytes` is cut
-#' at the limit: its first `max_bytes` bytes are validated up to their last
+#' at the limit: its first `max_bytes` bytes are read up to their last
 #' complete line (the partial line after the last line break is not read), as
 #' RFC 9309 section 2.5 allows a crawler to parse. The document row reports
 #' the cut with `body_truncated` and `limit_exceeded` both `TRUE` and
@@ -2698,19 +2698,21 @@ validation_cut_skips <- c(
   rule_slash_split =
     "a path whose bare and slash forms get different decisions",
   rule_end_anchor_query =
-    "a `$` rule the same path with a query added escapes",
+    "a `$` rule that the same path with a query added gets past",
   allow_reopens_through_query =
     "an Allow that reopens a blocked path through a query",
   rule_render_resource_blocked =
     "a Disallow that blocks page resources such as scripts or styles",
   rule_prefix_sibling =
     "a rule that also matches a longer path listed separately",
-  no_rules = "whether the file has no rules"
+  no_rules = "the note that the file has no rules"
 )
 
 # TRUE when the check that reports `code`, a validation_cut_skips name,
-# runs: on every body but one cut at max_bytes.
+# runs: on every body but one cut at max_bytes. A code missing from the
+# registry is an error, so a guard cannot skip a check the row leaves out.
 cut_runs <- function(code, body_truncated) {
+  stopifnot(code %in% names(validation_cut_skips))
   !body_truncated
 }
 

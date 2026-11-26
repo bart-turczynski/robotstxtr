@@ -628,7 +628,7 @@ the NUL only shortens is not. Reported even for a body cut at
 \code{body_truncated} \tab warning \tab
 The body exceeded \code{max_bytes}; only lines before the cut were read
 (beside \code{compressed_body}, none was, and the row says so). The
-message also names, in plain words, every check not run on such a
+message also names, in plain words, every check skipped on such a
 body because lines past the cut could change its result: the codes
 above marked as not reported for a body cut at \code{max_bytes}. \cr
 \code{acquisition_input_invalid} \tab error \tab
