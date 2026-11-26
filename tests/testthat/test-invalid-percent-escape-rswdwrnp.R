@@ -150,7 +150,8 @@ ip_stray <- list(
   "/a%F*b%f" = list(ip_new, ip_b("'%F*', '%f'", lower = TRUE)),
   "/a%*" = list(ip_new, ip_b("'%*'")),
   "/a%4*" = list(ip_new, ip_b("'%4*'")),
-  "*%*" = list(ip_new, ip_b("'%*'")),
+  # A `*` lead also draws the grammar note (ROBO-ktmnbirm).
+  "*%*" = list(c(ip_new, "rule_star_led_pattern"), ip_b("'%*'")),
   "/a%*b%" = list(ip_new, ip_b("'%*b', '%'")),
   # A name of exactly two hex digits is an escape and a stray `%`, no
   # placeholder: the class comes from the stray `%` alone.

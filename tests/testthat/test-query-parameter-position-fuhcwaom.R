@@ -81,7 +81,7 @@ qp_misses <- list(
   "/a/./p?q=" = "rule_dot_segment",
   # A dot segment after a `*` or escaped, anywhere before the first `?`.
   "/*/../p?q=" = character(0),
-  "*/../p?q=" = character(0),
+  "*/../p?q=" = "rule_star_led_pattern",
   "/*/./p?q=" = character(0),
   "/a/*/../p?q=" = character(0),
   "/a/*/..?q=" = character(0),
@@ -128,8 +128,11 @@ test_that("ROBO-fuhcwaom: each positive shape names its example", {
     for (value in names(qp_hits)) {
       hit <- qp_hits[[value]]
       d <- qp_diag(paste0("User-agent: *\n", type, ": ", value, "\n"))
+      # A `*`-led value also draws the grammar note (ROBO-ktmnbirm).
       expected <- if (value == "/p?q=%") {
         c("rule_invalid_percent_escape", qp_code)
+      } else if (value == "*?q=") {
+        c(qp_code, "rule_star_led_pattern")
       } else {
         qp_code
       }
@@ -372,8 +375,9 @@ test_that("ROBO-fuhcwaom: a twin with no `*` before it keeps the row", {
   d <- qp_diag("User-agent: *\nAllow: /p/a?q=x*\nAllow: /p/a&q=x*\n")
   expect_identical(d$message, qp_message("q", "/p/a?a=1&q=xx", "allow"))
   # A `*` right before the `?` makes the twin reach: silent, led by `*` too.
+  # The `*` lead draws only the grammar note (ROBO-ktmnbirm).
   expect_identical(qp_codes("User-agent: *\nDisallow: *?q=\nDisallow: *&q=\n"),
-                   character(0))
+                   "rule_star_led_pattern")
   expect_identical(
     qp_lines("User-agent: *\nDisallow: /a*?q=\nDisallow: /a*&q=\n"),
     integer(0)

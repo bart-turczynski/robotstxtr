@@ -161,18 +161,22 @@ test_that("ROBO-dwywkpes: today's codes on every candidate shape and skip", {
   }
   # Each recognized value alone: only rule_end_anchor_query, on a final
   # `$` with no `*` before it, rule_query_parameter_position on a
-  # `?name=`, and on any `?` the crawl-not-index note (ROBO-jnnnkyat).
+  # `?name=`, on any `?` the crawl-not-index note (ROBO-jnnnkyat), and on
+  # a `*` lead the grammar note (ROBO-ktmnbirm), before rule_end_anchor_query.
   for (value in rr_positive) {
     codes <- rr_codes(sprintf("User-agent: Foo\nDisallow: %s\n", value))
     today <- character(0)
-    if (grepl("[^*][$]$", value)) {
-      today <- "rule_end_anchor_query"
-    }
     if (grepl("?v=", value, fixed = TRUE)) {
       today <- "rule_query_parameter_position"
     }
     if (grepl("?", value, fixed = TRUE)) {
       today <- c(today, "rule_query_crawl_not_index")
+    }
+    if (startsWith(value, "*")) {
+      today <- c(today, "rule_star_led_pattern")
+    }
+    if (grepl("[^*][$]$", value)) {
+      today <- c(today, "rule_end_anchor_query")
     }
     expect_identical(codes[codes != rr_code], today, label = value)
   }

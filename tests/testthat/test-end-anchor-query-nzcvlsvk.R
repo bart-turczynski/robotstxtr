@@ -32,7 +32,8 @@ ea_fixtures <- list(
   ),
   one = list(body = ea_one("/x/edit$"), today = character(0)),
   home = list(body = ea_one("/$"), today = character(0)),
-  star_led = list(body = ea_one("*/edit$"), today = character(0)),
+  # A `*` lead also draws the grammar note (ROBO-ktmnbirm).
+  star_led = list(body = ea_one("*/edit$"), today = "rule_star_led_pattern"),
   slash_end = list(body = ea_one("/x/$"), today = character(0)),
   escaped_dollar = list(body = ea_one("/a%24$"), today = character(0)),
   two_crawlers = list(
@@ -71,7 +72,7 @@ ea_fixtures <- list(
   # A `*` right before the `$` matches every extension: the `$` anchors
   # nothing.
   star_end = list(body = ea_one("/*$"), today = character(0)),
-  bare_star_end = list(body = ea_one("*$"), today = character(0)),
+  bare_star_end = list(body = ea_one("*$"), today = "rule_star_led_pattern"),
   word_star_end = list(body = ea_one("/a*$"), today = character(0)),
   # URL normalization removes a dot segment from the control.
   dot = list(body = ea_one("/a/.$"), today = "rule_dot_segment"),
@@ -214,7 +215,8 @@ test_that("ROBO-nzcvlsvk: one info row per group, on its User-agent line", {
                    ea_one_message(2L, "/x/edit"))
   # The home page alone, a `*`-led value, a final `/` and an escape.
   expect_identical(ea_diag(ea_body("home"))$message, ea_one_message(2L, "/"))
-  expect_identical(ea_diag(ea_body("star_led"))$message,
+  d <- ea_diag(ea_body("star_led"))
+  expect_identical(d$message[d$code == ea_code],
                    ea_one_message(2L, "/x/edit"))
   expect_identical(ea_diag(ea_body("slash_end"))$message,
                    ea_one_message(2L, "/x/"))

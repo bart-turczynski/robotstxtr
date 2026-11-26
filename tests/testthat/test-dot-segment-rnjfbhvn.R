@@ -33,7 +33,8 @@ ds_misses <- list(
   "/.well-known/" = character(0),
   "/?q=/../z" = "rule_query_parameter_position",
   "/*/../x" = character(0),
-  "*/./b" = character(0),
+  # A `*` lead draws the grammar note (ROBO-ktmnbirm).
+  "*/./b" = "rule_star_led_pattern",
   "/a/..$x" = "rule_inner_dollar",
   "/a/%2e/b" = c("rule_escaped_unreserved", "rule_lowercase_escape"),
   "/a/%2E%2E/b" = "rule_escaped_unreserved",

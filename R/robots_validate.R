@@ -501,6 +501,16 @@ validation_unsupported <- c(
 #'     \code{rel=canonical} consolidates rather than excludes. One row per
 #'     file, on the first such line, listing five lines at most, then a
 #'     count. A heuristic on the pattern text. \cr
+#'   \code{rule_star_led_pattern} \tab info \tab
+#'     An Allow or Disallow pattern starts with \code{*} (\code{*.pdf}),
+#'     outside RFC 9309's path-pattern grammar, \code{path-pattern = "/"
+#'     *UTF8-char-noctl} (section 2.2). Google's matcher reads it as if led
+#'     by \code{/}: \code{*.pdf} matches the same paths as \code{/*.pdf},
+#'     but its priority, the pattern's length, is one byte lower. Bing and
+#'     Yandex may read it differently. One row per file, on the first such
+#'     line, listing five lines at most, then a count; it suggests no
+#'     rewrite, since the added byte can change which rule wins. A body cut
+#'     at \code{max_bytes} is checked on the lines read. \cr
 #'   \code{rule_slash_pair} \tab info \tab
 #'     The same crawlers have a literal Allow or Disallow pattern both
 #'     without and with a trailing \code{/} (\code{/notes} and
@@ -2430,6 +2440,14 @@ validate_document_bytes <- function(bytes, source_id, source_type,
       found$line, "info", "rule_query_crawl_not_index", "disallow",
       paste0(found$message, nul_reading)
     )
+  }
+  # Allow and Disallow patterns led by `*`, outside RFC 9309's path-pattern
+  # grammar (ROBO-ktmnbirm). One note for the file. Each line is read on its
+  # own, so a cut body is checked too, on the lines read.
+  found <- star_led_pattern_diagnostics(parsed)
+  if (nrow(found) > 0L) {
+    add_diagnostic(found$line, "info", "rule_star_led_pattern",
+                   found$directive, found$message)
   }
   # A literal `P` and `P/` of one type for the same crawlers (ROBO-roypaoox).
   # Later lines cannot undo a pair, so a cut body is checked too.
@@ -6167,6 +6185,62 @@ query_index_note_message <- function(lines, first, cap = 5L) {
     "URLs, rel=canonical is a consolidation hint, not an exclusion. ",
     "Blocking faceted, sort or filter URLs can be deliberate crawl control, ",
     "which is fine where that is the intent."
+  )
+}
+
+# The Allow and Disallow lines whose pattern starts with `*`, for one note
+# per file (ROBO-ktmnbirm). RFC 9309 section 2.2 writes `path-pattern = "/"
+# *UTF8-char-noctl`, so a `*` lead is outside that grammar; ROBO-xblfzkid
+# settled that it is no rule_missing_leading_slash warning. Google's
+# matcher (src/robots.cc, RobotsMatchStrategy::Matches()) anchors a pattern
+# at the path's first byte, and every path starts with `/`, so `*X` matches
+# exactly the paths `/*X` matches; the priority is the pattern's byte length
+# (`return Matches(path, pattern) ? pattern.length() : -1;`), one byte below
+# `/*X`. No recorded source says how Bing or Yandex read a `*` lead, so the
+# note names neither. The parser's value is read: trimmed, cut at `#` and
+# at a NUL, with its bytes escaped, so only the first byte is tested. Every
+# such line counts, in a group or not. Returns a data frame of `line` (the
+# first such line), `directive` and `message`, with one row or none.
+star_led_pattern_diagnostics <- function(parsed) {
+  at <- which(parsed$has_directive &
+                parsed$type %in% c("allow", "disallow") &
+                startsWith(parsed$value, "*"))
+  if (length(at) == 0L) {
+    return(data.frame(line = integer(), directive = character(),
+                      message = character(), stringsAsFactors = FALSE))
+  }
+  at <- at[order(parsed$line[at])]
+  data.frame(line = parsed$line[[at[[1L]]]],
+             directive = parsed$type[[at[[1L]]]],
+             message = star_led_pattern_message(parsed$line[at],
+                                                parsed$value[[at[[1L]]]]),
+             stringsAsFactors = FALSE)
+}
+
+# The note's text: the lines, five at most, then a count, and the first
+# one's pattern, elided past 40 bytes; then what the grammar and Google's
+# matcher do with it, and the generic clause for Bing and Yandex. It
+# suggests no rewrite: `/*X` is one byte longer, which can flip a rule that
+# ties it in length.
+star_led_pattern_message <- function(lines, first, cap = 5L) {
+  shown <- query_parameter_render(query_parameter_cap(first, 40L))
+  several <- length(lines) > 1L
+  lead <- if (several) {
+    sprintf("The rules on lines %s (the first '%s') start",
+            joined_and(as.character(utils::head(lines, cap)),
+                       length(lines) - min(length(lines), cap)),
+            shown)
+  } else {
+    sprintf("The rule on line %d ('%s') starts", lines, shown)
+  }
+  paste0(
+    lead, " with '*', which is outside RFC 9309's path-pattern grammar: ",
+    "there a pattern starts with '/' (RFC 9309 section 2.2). Google's ",
+    "matcher reads ", if (several) "such a pattern" else "it",
+    " as if led by '/': '", shown, "' matches the same paths as '/", shown,
+    "', but counts one byte less when the longest matching rule decides. ",
+    "Bing and Yandex may read ", if (several) "these rules" else "this rule",
+    " differently."
   )
 }
 

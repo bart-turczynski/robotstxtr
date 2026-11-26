@@ -34,7 +34,9 @@ qv_fixtures <- list(
   eq_stars = list(body = qv_one("/*?s=**"), today = qv_position),
   amp = list(body = qv_one("/*&s="), today = character(0)),
   path_eq = list(body = qv_one("/search?q="), today = qv_position),
-  star_led = list(body = qv_one("*?s="), today = qv_position),
+  # Also the grammar note on a `*` lead (ROBO-ktmnbirm): both rows stand.
+  star_led = list(body = qv_one("*?s="),
+                  today = c(qv_position, "rule_star_led_pattern")),
   root = list(body = qv_one("/?s="), today = qv_position),
   names = list(
     body = paste0("User-agent: %s\nDisallow: /*?utm_source=\n",
@@ -344,7 +346,8 @@ test_that("ROBO-aswiwvuu: one info row per group, on its User-agent line", {
   expect_no_match(d$message, "Google|Bing|Yandex|add |write ")
   # A `*` tail reads as no tail; the `&` form puts a parameter first.
   for (name in c("eq_star", "eq_stars", "star_led")) {
-    expect_identical(qv_diag(qv_body(name))$message[[2L]],
+    d <- qv_diag(qv_body(name))
+    expect_identical(d$message[d$code == qv_code],
                      qv_one_message(2L, "/x?s=1", "/x?s"), label = name)
   }
   d <- qv_diag(qv_body("amp"))
