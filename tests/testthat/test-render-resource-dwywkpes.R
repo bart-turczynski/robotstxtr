@@ -6,7 +6,12 @@
 # Yandex backends.
 
 rr_diag <- function(body) {
-  robots_validate_text(body)$diagnostics
+  d <- robots_validate_text(body)$diagnostics
+  # The valueless-key row (ROBO-aswiwvuu), which the `query` fixture here
+  # also draws, has its own tests; leave it out.
+  d <- d[d$code != "rule_query_parameter_valueless", , drop = FALSE]
+  rownames(d) <- NULL
+  d
 }
 
 rr_codes <- function(body) {

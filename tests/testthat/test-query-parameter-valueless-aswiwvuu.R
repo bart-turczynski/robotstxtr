@@ -43,6 +43,13 @@ qv_fixtures <- list(
   ),
   q_and_amp = list(body = "User-agent: %s\nDisallow: /*?s=\nDisallow: /*&s=\n",
                    today = character(0)),
+  # An `&` form after a `?` that starts no `?name=` run: the control keeps
+  # that `?` and adds only `&`.
+  amp_q_star = list(body = qv_one("/*?*&s="), today = character(0)),
+  amp_q_path = list(body = qv_one("/p?*&s="), today = character(0)),
+  amp_q_lit = list(body = qv_one("/a?b*&s="), today = character(0)),
+  # The filler parameter is not the candidate's own name.
+  amp_a = list(body = qv_one("/*&a="), today = character(0)),
   # A sibling rule that blocks the valueless witness.
   sibling = list(body = "User-agent: %s\nDisallow: /*?s=\nDisallow: /*?s\n",
                  today = qv_position),
@@ -61,6 +68,18 @@ qv_fixtures <- list(
     body = "User-agent: %s\nDisallow: /*?s=\nAllow: /*?s=\n",
     today = c("disallow_tied_by_allow", qv_position, qv_position)
   ),
+  # An Allow that decides the witness: the file opens the bare key itself.
+  # One that opens only the first filler's witness leaves the second.
+  allow_bare_dollar = list(
+    body = "User-agent: %s\nDisallow: /*?s=\nAllow: /*?s$\n",
+    today = qv_position
+  ),
+  allow_bare = list(body = "User-agent: %s\nDisallow: /*?s=\nAllow: /*?s\n",
+                    today = qv_position),
+  allow_filler = list(
+    body = "User-agent: %s\nDisallow: /*?s=\nAllow: /x?s$\n",
+    today = qv_position
+  ),
   # An Allow is not this check's, though it leaves `/x?s` restricted.
   allow_only = list(body = "User-agent: %s\nDisallow: /\nAllow: /*?s=\n",
                     today = qv_position),
@@ -73,7 +92,7 @@ qv_fixtures <- list(
   dot = list(body = qv_one("/a/.?s="), today = "rule_dot_segment"),
   dot_dot = list(body = qv_one("/a/..?s="), today = "rule_dot_segment"),
   # Not the parameter grammar: a `*` before the `=`, a later `?`, an `&`
-  # with no `*` before it or after a `?`, no name.
+  # with no `*` before it or after an earlier `?name=` run, no name.
   star_name = list(body = qv_one("/*?*s="), today = character(0)),
   later_q = list(body = qv_one("/a?b*?s="), today = character(0)),
   amp_no_star = list(body = qv_one("/a&s="), today = character(0)),
@@ -156,7 +175,8 @@ qv_cut <- function() {
 }
 
 # A sibling a NUL cuts: Google reads `Disallow: /*?s`, which blocks the
-# witness; Bing and Yandex read the value with the NUL and `zz`.
+# witness; the package's Bing and Yandex matchers read the value with the
+# NUL and `zz`.
 qv_nul_sibling <- c(charToRaw("User-agent: *\nDisallow: /*?s=\nDisallow: /*?s"),
                     as.raw(0), charToRaw("zz\n"))
 
@@ -204,6 +224,15 @@ qv_decisions <- list(
   list("eq_star", c("/x?s=1", "/x?s"), qv_blocked),
   list("eq_stars", c("/x?s=1", "/x?s"), qv_blocked),
   list("amp", c("/x?a=1&s=1", "/x?a=1&s"), qv_blocked),
+  list("amp_q_star", c("/x?x&s=1", "/x?x&s"), qv_blocked),
+  list("amp_q_path", c("/p?x&s=1", "/p?x&s"), qv_blocked),
+  list("amp_q_lit", c("/a?bx&s=1", "/a?bx&s"), qv_blocked),
+  list("amp_a", c("/x?c=1&a=1", "/x?c=1&a"), qv_blocked),
+  # The file opens the witness with an Allow, or only the first filler's.
+  list("allow_bare_dollar", c("/x?s=1", "/x?s"), qv_blocked),
+  list("allow_bare", c("/x?s=1", "/x?s"), qv_blocked),
+  list("allow_filler", c("/x?s=1", "/x?s", "/y?s=2", "/y?s"),
+       rep(qv_blocked, 2L)),
   list("path_eq", c("/search?q=1", "/search?q"), qv_blocked),
   list("star_led", c("/x?s=1", "/x?s"), qv_blocked),
   list("root", c("/?s=1", "/?s"), qv_blocked),
@@ -257,7 +286,8 @@ qv_rows <- list(
   eq = 1L, eq_star = 1L, eq_stars = 1L, amp = 1L, path_eq = 1L,
   star_led = 1L, root = 1L, names = 1L, q_and_amp = 1L, two_sets = 1L,
   two_crawlers = 1L, filler = 1L, filler_amp = 1L, lower_twin = 1L,
-  lower = 1L, seven = 1L, dup = 1L
+  lower = 1L, seven = 1L, dup = 1L, amp_q_star = 1L, amp_q_path = 1L,
+  amp_q_lit = 1L, amp_a = 1L, allow_filler = 1L
 )
 
 test_that("ROBO-aswiwvuu: each fixture's new rows are all the change", {
@@ -276,7 +306,7 @@ test_that("ROBO-aswiwvuu: each fixture's new rows are all the change", {
 })
 
 qv_why <- function(rule = "the rule") {
-  paste0(" The pattern matches its bytes literally (RFC 9309 section ",
+  paste0(" The pattern matches the '=' literally (RFC 9309 section ",
          "2.2.2), so a URL that writes the parameter without '=' falls ",
          "outside ", rule, ". The site may link to the parameter without a ",
          "value.")
@@ -296,9 +326,10 @@ qv_list_message <- function(listed) {
          "same parameter without one: ", listed, ".", qv_why("each rule"))
 }
 
+# Google's half of the shared NUL sentence only: the Bing/Yandex half is
+# left out pending ROBO-xvbrlqln.
 qv_nul <- paste0(" This is Google's reading, which ends each line at its ",
-                 "first NUL; Bing and Yandex read the NUL as an ordinary ",
-                 "byte.")
+                 "first NUL.")
 
 test_that("ROBO-aswiwvuu: one info row per group, on its User-agent line", {
   x <- robots_validate_text(qv_body("eq"))
@@ -318,6 +349,19 @@ test_that("ROBO-aswiwvuu: one info row per group, on its User-agent line", {
   d <- qv_diag(qv_body("amp"))
   expect_identical(d$message[d$code == qv_code],
                    qv_one_message(2L, "/x?a=1&s=1", "/x?a=1&s"))
+  # After a `?` that starts no `?name=` run, the `&` form adds only `&`.
+  for (case in list(list("amp_q_star", "/x?x&s=1", "/x?x&s"),
+                    list("amp_q_path", "/p?x&s=1", "/p?x&s"),
+                    list("amp_q_lit", "/a?bx&s=1", "/a?bx&s"))) {
+    d <- qv_diag(qv_body(case[[1L]]))
+    expect_identical(d$message[d$code == qv_code],
+                     qv_one_message(2L, case[[2L]], case[[3L]]),
+                     label = case[[1L]])
+  }
+  # The filler parameter differs from the candidate's name.
+  d <- qv_diag(qv_body("amp_a"))
+  expect_identical(d$message[d$code == qv_code],
+                   qv_one_message(2L, "/x?c=1&a=1", "/x?c=1&a"))
   d <- qv_diag(qv_body("path_eq"))
   expect_identical(d$message[d$code == qv_code],
                    qv_one_message(2L, "/search?q=1", "/search?q"))
@@ -371,6 +415,14 @@ test_that("ROBO-aswiwvuu: a rule matching the first filler gets the second", {
   expect_identical(d$message[d$code == qv_code],
                    qv_one_message(2L, "/y?b=2&s=2", "/y?b=2&s"))
   expect_false(qv_code %in% qv_codes(qv_body("filler_both")))
+  # An Allow that decides the witness silences the row: the file opens the
+  # bare key itself. One that opens only the first filler's witness leaves
+  # the second.
+  expect_false(qv_code %in% qv_codes(qv_body("allow_bare_dollar")))
+  expect_false(qv_code %in% qv_codes(qv_body("allow_bare")))
+  d <- qv_diag(qv_body("allow_filler"))
+  expect_identical(d$message[d$code == qv_code],
+                   qv_one_message(2L, "/y?s=2", "/y?s"))
   # A list shows each rule with its own pair.
   d <- qv_diag(paste0("User-agent: *\nDisallow: /*?s=\nDisallow: /*?t=\n",
                       "Disallow: /x?s\n"))
@@ -398,7 +450,8 @@ test_that("ROBO-aswiwvuu: the scan makes each exclusion", {
   expect_identical(groups$rules$value[seq_along(misses)], misses)
   expect_identical(query_valueless_candidates(groups$rules), integer(0))
   hits <- c("/*?s=", "/*?s=*", "/*?s=**", "*?s=", "/?s=", "/search?q=",
-            "/*&s=", "**&s=", "/a&b*&s=", "/a&b=?s=", "/*?a-b_c.d=")
+            "/*&s=", "**&s=", "/a&b*&s=", "/a&b=?s=", "/*?a-b_c.d=",
+            "/*?*&s=", "/p?*&s=", "/a?b*&s=", "/*&a=")
   groups <- qv_groups(paste0("User-agent: *\n",
                              paste0("Disallow: ", hits, "\n", collapse = "")))
   expect_identical(query_valueless_candidates(groups$rules), seq_along(hits))
@@ -406,11 +459,14 @@ test_that("ROBO-aswiwvuu: the scan makes each exclusion", {
   expect_identical(paths$control,
                    c("/x?s=1", "/x?s=1", "/x?s=1", "/x?s=1", "/?s=1",
                      "/search?q=1", "/x?a=1&s=1", "/xx?a=1&s=1",
-                     "/a&bx?a=1&s=1", "/a&b=?s=1", "/x?a-b_c.d=1"))
+                     "/a&bx?a=1&s=1", "/a&b=?s=1", "/x?a-b_c.d=1",
+                     "/x?x&s=1", "/p?x&s=1", "/a?bx&s=1", "/x?c=1&a=1"))
   expect_identical(paths$witness, sub("=[12]$", "", paths$control))
   expect_identical(query_valueless_paths("/*&s=", 2L)$control, "/y?b=2&s=2")
+  expect_identical(query_valueless_paths("/*&b=", 2L)$control, "/y?c=2&b=2")
+  expect_identical(query_valueless_paths("/*?*&s=", 2L)$control, "/y?y&s=2")
   # Skipped lines (file lines, not indexes) are left out.
-  expect_identical(query_valueless_candidates(groups$rules, skip = 3:12),
+  expect_identical(query_valueless_candidates(groups$rules, skip = 3:16),
                    1L)
   # No candidate: an empty frame before any expander is built.
   local({
@@ -532,6 +588,27 @@ test_that("ROBO-aswiwvuu: candidates past the work budget get no row", {
   found <- query_valueless_diagnostics(groups, budget = 5)
   expect_identical(found$message, qv_one_message(2L, "/x?s=1", "/x?s"))
   expect_identical(attr(found, "stopped"), qv_stopped(2L, 1L, "/*?t="))
+  # The budget runs out inside the second filler pair: the first pair reads
+  # both candidates (line 4 ok, line 2 left by `Disallow: /x?s`), the second
+  # cannot reach line 2 with what the first left, so line 4 is past the
+  # first unfinished candidate and gets no row either.
+  found <- query_valueless_diagnostics(qv_groups(paste0(
+    "User-agent: Foo\nDisallow: /*?s=\nDisallow: /x?s\nDisallow: /*?t=\n"
+  )), budget = 10)
+  expect_identical(nrow(found), 0L)
+  expect_identical(attr(found, "stopped"), qv_stopped(2L, 0L, "/*?s="))
+  # One candidate: the singular form.
+  found <- query_valueless_diagnostics(
+    qv_groups("User-agent: Foo\nDisallow: /*?s=\n"), budget = 0
+  )
+  expect_identical(slash_stop_message("query_valueless",
+                                      attr(found, "stopped")), paste0(
+    "This file has 1 Disallow rule that this check reads (a pattern that ",
+    "ends in a query parameter name and '='), such as '/*?s='. For each ",
+    "one, the validator checks whether the rule blocks '/x?s=1' but not ",
+    "'/x?s'. This file is too large to check it quickly, so it was not ",
+    "checked. It was skipped, and it may have the same problem."
+  ))
   # A normal file gets no such row.
   for (name in names(qv_fixtures)) {
     expect_false("rule_check_stopped" %in% qv_codes(qv_body(name)),
