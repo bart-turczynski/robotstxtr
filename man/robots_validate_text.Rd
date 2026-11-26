@@ -513,13 +513,16 @@ count. A heuristic on the pattern text. \cr
 \code{rule_star_led_pattern} \tab info \tab
 An Allow or Disallow pattern starts with \code{*} (\code{*.pdf}),
 outside RFC 9309's path-pattern grammar, \code{path-pattern = "/"
-    *UTF8-char-noctl} (section 2.2). Google's matcher reads it as if led
-by \code{/}: \code{*.pdf} matches the same paths as \code{/*.pdf},
-but its priority, the pattern's length, is one byte lower. Bing and
-Yandex may read it differently. One row per file, on the first such
-line, listing five lines at most, then a count; it suggests no
-rewrite, since the added byte can change which rule wins. A body cut
-at \code{max_bytes} is checked on the lines read. \cr
+    *UTF8-char-noctl} (section 2.2). Google's matcher anchors a pattern
+at the path's first byte and lets a \code{*} match nothing, so
+\code{*.pdf} matches the same paths as \code{/*.pdf}, while
+\code{*/feed/} matches those of \code{/*/feed/} and also those of
+\code{/feed/}; either way its priority, the pattern's length, is one
+byte below the \code{/*} form's. Bing and Yandex may read it
+differently. Only rules inside a group count. One row per file, on
+the first such line, listing five lines at most, then a count; it
+suggests no rewrite, since the added byte can change which rule
+wins. A body cut at \code{max_bytes} is checked on the lines read. \cr
 \code{rule_slash_pair} \tab info \tab
 The same crawlers have a literal Allow or Disallow pattern both
 without and with a trailing \code{/} (\code{/notes} and

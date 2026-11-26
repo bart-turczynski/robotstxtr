@@ -1,6 +1,7 @@
 # ROBO-ktmnbirm: an Allow or Disallow pattern led by `*` (`*.pdf`) is outside
-# RFC 9309's path-pattern grammar. Google's matcher matches it as if led by
-# `/`, with a priority one byte lower.
+# RFC 9309's path-pattern grammar. Google's matcher matches `*X` as if led by
+# `/` when X is not `/`-led (`*/X` also matches what `/X` matches), with a
+# priority one byte lower. Only rules inside a group count.
 
 sl_code <- "rule_star_led_pattern"
 sl_ua <- "User-agent: *\n"
@@ -53,8 +54,8 @@ sl_cases <- list(
        shown = "*.pdf", directive = "disallow"),
   list(body = "User-agent: *\rDisallow: *.pdf\r", codes = character(),
        shown = "*.pdf", directive = "disallow"),
-  list(body = "Disallow: *.pdf\nUser-agent: *\nAllow: /\n",
-       codes = "rule_without_user_agent", shown = "*.pdf", line = 1L,
+  list(body = "User-agent: *\nAllow: /\nDisallow: *.pdf\n",
+       codes = character(), shown = "*.pdf", line = 3L,
        directive = "disallow")
 )
 
@@ -68,7 +69,10 @@ sl_silent <- list(
   list(body = paste0(sl_ua, "Disallow: /a # *x\n# Disallow: *.y\n"),
        codes = character()),
   list(body = "User-agent: *\nUser-agent: *bot\nDisallow: /x\n",
-       codes = "user_agent_cut")
+       codes = "user_agent_cut"),
+  # A rule before any User-agent line is in no group: Google reads none.
+  list(body = "Disallow: *.pdf\nUser-agent: *\nAllow: /\n",
+       codes = "rule_without_user_agent")
 )
 
 test_that("ROBO-ktmnbirm: a `*`-led rule gets one info row", {
@@ -124,8 +128,9 @@ test_that("ROBO-ktmnbirm: a `*/X` rule also matches the paths `/X` matches", {
              "/x", "/b/c")
   decide <- function(pattern) {
     body <- paste0(sl_ua, "Disallow: ", pattern, "\n")
-    robots_evaluate_text_v1(body, paste0("https://example.com", paths),
-                            "googlebot", "google", "google")$results$url_decision
+    r <- robots_evaluate_text_v1(body, paste0("https://example.com", paths),
+                                 "googlebot", "google", "google")
+    r$results$url_decision
   }
   blocked <- function(pattern) paths[decide(pattern) == "disallow"]
   expect_identical(blocked("*/a"),
@@ -141,7 +146,21 @@ test_that("ROBO-ktmnbirm: a `*/X` rule also matches the paths `/X` matches", {
 test_that("ROBO-ktmnbirm: the note for a `*/`-led rule", {
   d <- sl_diag(paste0(sl_ua, "Disallow: */feed/\n"))
   expect_identical(d$code, sl_code)
-  expect_identical(d$message, sl_one(2L, "*/feed/"))
+  expect_identical(d$message, paste0(
+    "The rule on line 2 ('*/feed/') starts with '*', which is outside RFC ",
+    "9309's path-pattern grammar: there a pattern starts with '/' (RFC 9309 ",
+    "section 2.2). Google's matcher lets a leading '*' match nothing at the ",
+    "path's first byte: '*/feed/' matches the paths '/*/feed/' matches and ",
+    "also those '/feed/' matches, but counts one byte less than '/*/feed/' ",
+    "when the longest matching rule decides. Bing and Yandex may read this ",
+    "rule differently."
+  ))
+  # A run of `*` is read past whole; several lines take the same sentence.
+  d <- sl_diag(paste0(sl_ua, "Disallow: **/a\nAllow: *.css\n"))
+  expect_match(d$message, paste0("'**/a' matches the paths '/**/a' matches ",
+                                 "and also those '/a' matches"),
+               fixed = TRUE)
+  expect_match(d$message, "lines 2 and 3", fixed = TRUE)
 })
 
 test_that("ROBO-ktmnbirm: a `*` lead ranks one byte below a `/*` lead", {
