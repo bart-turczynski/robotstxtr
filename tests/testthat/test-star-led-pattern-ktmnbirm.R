@@ -1,22 +1,27 @@
 # ROBO-ktmnbirm: an Allow or Disallow pattern led by `*` (`*.pdf`) is outside
-# RFC 9309's path-pattern grammar. Google's matcher matches `*X` as if led by
-# `/` when X is not `/`-led (`*/X` also matches what `/X` matches), with a
-# priority one byte lower. Only rules inside a group count.
+# RFC 9309's path-pattern grammar. Google's matcher lets a `*` match any run
+# of bytes, none included, from the path's first byte on, and ranks a rule by
+# its byte length. Only rules inside a group some crawler reads count.
 
 sl_code <- "rule_star_led_pattern"
 sl_ua <- "User-agent: *\n"
 
 sl_diag <- function(body) robots_validate_text(body)$diagnostics
 
+# Google's reading, one sentence for every value.
+sl_google <- paste0(
+  "Google's matcher lets a '*' match any run of bytes, none included, from ",
+  "the path's first byte on, and counts each '*' as one byte of the rule's ",
+  "length when the longest matching rule decides. "
+)
+
 # The note for one line, as the validator writes it.
 sl_one <- function(line, shown) {
   paste0(
     "The rule on line ", line, " ('", shown, "') starts with '*', which is ",
     "outside RFC 9309's path-pattern grammar: there a pattern starts with ",
-    "'/' (RFC 9309 section 2.2). Google's matcher reads it as if led by ",
-    "'/': '", shown, "' matches the same paths as '/", shown, "', but ",
-    "counts one byte less when the longest matching rule decides. Bing and ",
-    "Yandex may read this rule differently."
+    "'/' (RFC 9309 section 2.2). ", sl_google, "Bing and Yandex may read ",
+    "this rule differently."
   )
 }
 
@@ -25,10 +30,8 @@ sl_many <- function(listed, shown) {
   paste0(
     "The rules on lines ", listed, " (the first '", shown, "') start with ",
     "'*', which is outside RFC 9309's path-pattern grammar: there a pattern ",
-    "starts with '/' (RFC 9309 section 2.2). Google's matcher reads such a ",
-    "pattern as if led by '/': '", shown, "' matches the same paths as '/",
-    shown, "', but counts one byte less when the longest matching rule ",
-    "decides. Bing and Yandex may read these rules differently."
+    "starts with '/' (RFC 9309 section 2.2). ", sl_google, "Bing and Yandex ",
+    "may read these rules differently."
   )
 }
 
@@ -143,24 +146,17 @@ test_that("ROBO-ktmnbirm: a `*/X` rule also matches the paths `/X` matches", {
                                      "/b/c"))
 })
 
-test_that("ROBO-ktmnbirm: the note for a `*/`-led rule", {
+test_that("ROBO-ktmnbirm: every value takes the same Google sentence", {
   d <- sl_diag(paste0(sl_ua, "Disallow: */feed/\n"))
   expect_identical(d$code, sl_code)
-  expect_identical(d$message, paste0(
-    "The rule on line 2 ('*/feed/') starts with '*', which is outside RFC ",
-    "9309's path-pattern grammar: there a pattern starts with '/' (RFC 9309 ",
-    "section 2.2). Google's matcher lets a leading '*' match nothing at the ",
-    "path's first byte: '*/feed/' matches the paths '/*/feed/' matches and ",
-    "also those '/feed/' matches, but counts one byte less than '/*/feed/' ",
-    "when the longest matching rule decides. Bing and Yandex may read this ",
-    "rule differently."
-  ))
-  # A run of `*` is read past whole; several lines take the same sentence.
+  expect_identical(d$message, sl_one(2L, "*/feed/"))
+  # A run of `*` and a later `*/` line take it too.
   d <- sl_diag(paste0(sl_ua, "Disallow: **/a\nAllow: *.css\n"))
-  expect_match(d$message, paste0("'**/a' matches the paths '/**/a' matches ",
-                                 "and also those '/a' matches"),
-               fixed = TRUE)
-  expect_match(d$message, "lines 2 and 3", fixed = TRUE)
+  expect_identical(d$message, sl_many("2 and 3", "**/a"))
+  d <- sl_diag(paste0(sl_ua, "Allow: *.css\nDisallow: */a\n"))
+  expect_identical(d$code, sl_code)
+  expect_identical(d$line, 2L)
+  expect_identical(d$message, sl_many("2 and 3", "*.css"))
 })
 
 test_that("ROBO-ktmnbirm: a `*` lead ranks one byte below a `/*` lead", {
@@ -196,6 +192,22 @@ test_that("ROBO-ktmnbirm: one row per file, five lines then a count", {
   five <- paste0(sl_ua, paste0("Disallow: *.e", 1:5, "\n", collapse = ""))
   expect_identical(sl_diag(five)$message,
                    sl_many("2, 3, 4, 5 and 6", "*.e1"))
+})
+
+test_that("ROBO-ktmnbirm: rules under an empty User-agent stay silent", {
+  # As query_index_note_diagnostics(): a group read by no crawler, here one
+  # whose User-agent lines are all empty, draws rule_without_user_agent.
+  expect_identical(sl_diag("User-agent:\nDisallow: *.pdf\n")$code,
+                   c("empty_user_agent", "rule_without_user_agent",
+                     "missing_user_agent"))
+  d <- sl_diag("User-agent: a\nDisallow: /x\nUser-agent:\nDisallow: *.pdf\n")
+  expect_false(sl_code %in% d$code)
+  expect_true("rule_without_user_agent" %in% d$code)
+  # One named agent beside the empty one: the group is read, so the row.
+  d <- sl_diag("User-agent: a\nUser-agent:\nDisallow: *.pdf\n")
+  row <- d[d$code == sl_code, , drop = FALSE]
+  expect_identical(row$line, 3L)
+  expect_identical(row$message, sl_one(3L, "*.pdf"))
 })
 
 test_that("ROBO-ktmnbirm: lines in several groups still give one row", {
