@@ -154,11 +154,13 @@ input URL, so the mode never changes what is fetched. Every row carries
 
 \code{preset} reads the fetched file as in \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}, and
 fetches with \code{fetch_user_agent}, never as the agent. How the agents read
-a response other than 2xx, a redirect past the budget or a transport
-failure was not measured, so under a preset those rows are
-\code{policy_status = "documentation_gap"} (\code{policy_reason = "policy_documentation_gap"}), not Google's cells; a 2xx body is read
-with the rules. The live agents do not read the file this call fetches:
-ChatGPT-User follows \code{OAI-SearchBot}'s stored copy.
+a 206 or any other response that is not a 2xx, a redirect past the
+budget or a transport failure was not measured, so under a preset those
+rows are \code{policy_status = "documentation_gap"} (\code{policy_action} \code{NA},
+\code{policy_reason = "policy_documentation_gap"}, \code{policy_provenance = "documentation_gap"}), not Google's cells; a 200 or another 2xx body
+other than 206 is read with the rules. The live agents do not read the
+file this call fetches: ChatGPT-User follows \code{OAI-SearchBot}'s stored
+copy, and the Claude API reuses a recent read of its own.
 }
 \examples{
 # A refused origin is decided before any request, so this runs offline. The

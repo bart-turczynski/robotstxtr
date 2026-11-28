@@ -425,21 +425,38 @@ test_that("a 2xx body is read under a preset (fake ssrfr)", {
   chatgpt <- robots_evaluate_url_v1("http://a/d/x", preset = "chatgpt_user")
   expect_identical(chatgpt$results$url_decision, "allow")
   expect_identical(chatgpt$results$group_token, NA_character_)
+  # Another 2xx than 206 reads Google's use_rules cell too.
+  local_fake_ssrfr(function(req) {
+    fake_response(203L, body = "User-agent: *\nDisallow: /d/\n")
+  })
+  other <- robots_evaluate_url_v1("http://a/d/x", preset = "claude_user")
+  expect_identical(other$results$policy_reason, "http_2xx_use_rules")
+  expect_identical(other$results$url_decision, "disallow")
 })
 
 test_that("a non-2xx cell is documentation_gap under a preset (fake ssrfr)", {
-  for (status in c(404L, 429L, 503L)) {
+  for (status in c(206L, 404L, 410L, 429L, 503L)) {
     local_fake_ssrfr(function(req) fake_response(status, body = "x"))
     for (preset in c("chatgpt_user", "claude_user")) {
-      row <- robots_evaluate_url_v1("http://a/x", preset = preset)$results
+      x <- robots_evaluate_url_v1("http://a/x", preset = preset)
+      row <- x$results
       info <- paste(preset, status)
       expect_identical(row$policy_status, "documentation_gap", info = info)
+      expect_identical(row$policy_action, NA_character_, info = info)
       expect_identical(row$policy_reason, "policy_documentation_gap",
                        info = info)
+      expect_identical(row$policy_provenance, "documentation_gap",
+                       info = info)
       expect_identical(row$policy_source,
-                       "design/engine-contract-v1.md#agent-presets",
+                       "design/engine-profiles.md#agent-presets",
                        info = info)
       expect_identical(row$url_decision, NA_character_, info = info)
+      # The legacy adapter keeps the row undecided: never Google's
+      # missing_allow for a 404 or 410.
+      legacy <- as_legacy_robots_decisions_v1(x)$results
+      expect_identical(legacy$allowed, NA, info = info)
+      expect_identical(legacy$decision_source, "policy_documentation_gap",
+                       info = info)
     }
   }
   # Google's own cells, which the presets do not inherit.
@@ -452,5 +469,33 @@ test_that("a non-2xx cell is documentation_gap under a preset (fake ssrfr)", {
       "http://a/x", "Claude-User", "google", "google"
     )$results
     expect_identical(row$policy_status, google[[status]], info = status)
+  }
+})
+
+test_that("the legacy adapter keeps Google's 404 and 410 without a preset", {
+  for (status in c(404L, 410L)) {
+    local_fake_ssrfr(function(req) fake_response(status, body = "x"))
+    x <- robots_evaluate_url_v1(
+      c("http://a/x", "http://a/y"), c("Claude-User", "Googlebot/2.1"),
+      "google", "google"
+    )
+    legacy <- as_legacy_robots_decisions_v1(x)$results
+    info <- as.character(status)
+    expect_identical(legacy$allowed, c(TRUE, NA), info = info)
+    expect_identical(legacy$decision_source,
+                     c("missing_allow", "input_unknown"), info = info)
+    expect_identical(legacy$matched_rule_type, c("unknown", "unknown"),
+                     info = info)
+    expect_identical(legacy$http_status, c(status, NA), info = info)
+    expect_identical(legacy$fetch_outcome, c("missing", "input_invalid"),
+                     info = info)
+    # The adapter refuses bing and yandex rows, preset or not.
+    for (engine in list(c("bingbot", "bing"), c("Yandex", "yandex"))) {
+      other <- robots_evaluate_url_v1(
+        "http://a/x", engine[[1L]], engine[[2L]], engine[[2L]]
+      )
+      expect_error(as_legacy_robots_decisions_v1(other),
+                   class = "robotstxtr_incompatible_legacy_adapter")
+    }
   }
 })

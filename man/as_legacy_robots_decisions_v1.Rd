@@ -54,6 +54,12 @@ the result was built with: under the default \code{"rfc3986"},
 \code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}} reads it as given. The \code{matcher_url},
 \code{url_preprocessing_note}, \code{preprocessing_disagreement} and
 \code{disagreement_clients} columns are not carried over.
+
+A row built under a \code{preset} whose status cell the preset leaves
+unmeasured (\code{policy_status = "documentation_gap"}, such as a 404 or 410
+robots.txt) converts to \code{allowed = NA} with
+\code{decision_source = "policy_documentation_gap"}, not to the
+\code{missing_allow} that Google's 404 and 410 cells give.
 }
 \examples{
 # Build a v1 engine result offline, then adapt it for a legacy consumer.

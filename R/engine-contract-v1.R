@@ -436,8 +436,9 @@ agent_preset_behaviors_v1 <- function() {
       unmeasured(
         preset, "status_policy", ports,
         paste(
-          "only a 2xx response is read (use_rules); every other status,",
-          "redirect and transport cell is documentation_gap"
+          "only a 200 or another 2xx other than 206 is read (use_rules);",
+          "206, every other status, redirect and transport cell is",
+          "documentation_gap"
         )
       )
     )
@@ -631,9 +632,17 @@ agent_preset_matcher_v1 <- function(preset, n) {
   )
 }
 
-# The status policy under a preset: Google's 2xx cells (use_rules), and
-# documentation_gap for every other google cell, since no probe measured how
-# the agents read them. A supplied body is not read from this table.
+# The `policy_source` of a status cell a preset leaves unmeasured: the
+# presets' section of design/engine-profiles.md (section 5i), whose anchor
+# scripts/check-policy-anchors.R verifies.
+agent_preset_policy_source_v1 <- function() {
+  "design/engine-profiles.md#agent-presets"
+}
+
+# The status policy under a preset: Google's 200 and other 2xx cells
+# (use_rules), and documentation_gap for every other google cell, 206
+# included, since no probe measured how the agents read them. A supplied
+# body is not read from this table.
 agent_preset_policy_table_v1 <- function(policy_table) {
   gap <- policy_table$ruleset == "google" &
     !policy_table$category %in% c("status_200", "status_other_2xx")
@@ -641,8 +650,7 @@ agent_preset_policy_table_v1 <- function(policy_table) {
   policy_table$policy_action[gap] <- NA_character_
   policy_table$policy_reason[gap] <- "policy_documentation_gap"
   policy_table$policy_provenance[gap] <- "documentation_gap"
-  policy_table$policy_source[gap] <-
-    "design/engine-contract-v1.md#agent-presets"
+  policy_table$policy_source[gap] <- agent_preset_policy_source_v1()
   policy_table
 }
 
@@ -2833,12 +2841,14 @@ robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
 #'
 #' `preset` reads the fetched file as in [robots_evaluate_text_v1()], and
 #' fetches with `fetch_user_agent`, never as the agent. How the agents read
-#' a response other than 2xx, a redirect past the budget or a transport
-#' failure was not measured, so under a preset those rows are
-#' `policy_status = "documentation_gap"` (`policy_reason =
-#' "policy_documentation_gap"`), not Google's cells; a 2xx body is read
-#' with the rules. The live agents do not read the file this call fetches:
-#' ChatGPT-User follows `OAI-SearchBot`'s stored copy.
+#' a 206 or any other response that is not a 2xx, a redirect past the
+#' budget or a transport failure was not measured, so under a preset those
+#' rows are `policy_status = "documentation_gap"` (`policy_action` `NA`,
+#' `policy_reason = "policy_documentation_gap"`, `policy_provenance =
+#' "documentation_gap"`), not Google's cells; a 200 or another 2xx body
+#' other than 206 is read with the rules. The live agents do not read the
+#' file this call fetches: ChatGPT-User follows `OAI-SearchBot`'s stored
+#' copy, and the Claude API reuses a recent read of its own.
 #'
 #' @inheritParams robots_evaluate_text_v1
 #' @inheritParams robots_fetch
@@ -2981,6 +2991,12 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
 #' `url_preprocessing_note`, `preprocessing_disagreement` and
 #' `disagreement_clients` columns are not carried over.
 #'
+#' A row built under a `preset` whose status cell the preset leaves
+#' unmeasured (`policy_status = "documentation_gap"`, such as a 404 or 410
+#' robots.txt) converts to `allowed = NA` with
+#' `decision_source = "policy_documentation_gap"`, not to the
+#' `missing_allow` that Google's 404 and 410 cells give.
+#'
 #' @param x A `robots_engine_decisions_v1` object using the Google policy and
 #'   Google matcher backend for every row.
 #'
@@ -3022,7 +3038,13 @@ as_legacy_robots_decisions_v1 <- function(x) {
   legacy_status <- x$evidence$legacy_http_status[evidence_index]
   source_kind <- x$evidence$source_kind[evidence_index]
   matched <- result$matcher_status == "evaluated"
-  missing <- !is.na(final_status) & final_status %in% c(404L, 410L)
+  # A status cell an agent preset leaves unmeasured (ROBO-uyfryhlz) is no
+  # decision, so its 404 or 410 is not Google's allow. Only a preset row
+  # carries this source; every other row converts as before.
+  preset_gap <- result$policy_status == "documentation_gap" &
+    result$policy_source == agent_preset_policy_source_v1()
+  missing <- !is.na(final_status) & final_status %in% c(404L, 410L) &
+    !preset_gap
   supplied <- !is.na(source_kind) & source_kind == "supplied"
   input_invalid <- result$reason == "input_invalid"
   allowed <- rep(NA, nrow(result))
@@ -3031,6 +3053,7 @@ as_legacy_robots_decisions_v1 <- function(x) {
   decision_source <- rep("fetch_unknown", nrow(result))
   decision_source[matched] <- result$reason[matched]
   decision_source[missing] <- "missing_allow"
+  decision_source[preset_gap] <- "policy_documentation_gap"
   decision_source[input_invalid] <- "input_unknown"
   decision_source[supplied & !matched] <- "fetch_unknown"
   matched_rule_type <- result$matched_rule_type

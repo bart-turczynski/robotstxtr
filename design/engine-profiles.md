@@ -593,6 +593,8 @@ Disallow, ten at most, and those Disallows leave the group's `wildcard_rules_not
 A crawler whose value Google's matcher cuts gets the §5g sentence pointing to its
 `user_agent_cut` row (ROBO-zqyqbudf).
 
+<a id="agent-presets"></a>
+
 ### 5i. ChatGPT-User and Claude-User presets (ROBO-uyfryhlz; probes of 2026-11-26)
 
 The v1 facades' `preset` argument reads a file as ChatGPT-User (OpenAI Responses API

@@ -418,9 +418,13 @@ caller's token, or the preset's when it was left out.
   fetched 2xx body (`status_200`, `status_other_2xx`) reads Google's
   `use_rules` cell. Every other google cell (206, 4xx, 429, 5xx,
   transport, `unreachable_local`, a redirect over the budget, a protocol
-  error) is `documentation_gap` with source
-  `design/engine-contract-v1.md#agent-presets`, since no probe measured how
-  the agents read them. The fetch is this call's, with `fetch_user_agent`:
+  error) is `documentation_gap` (`policy_action` `NA`, provenance
+  `documentation_gap`) with source `design/engine-profiles.md#agent-presets`
+  (section 5i), since no probe measured how the agents read them.
+  `as_legacy_robots_decisions_v1()` keeps such a row undecided
+  (`allowed = NA`, `decision_source = "policy_documentation_gap"`), so a
+  preset 404 or 410 never becomes Google's `missing_allow`. The fetch is
+  this call's, with `fetch_user_agent`:
   ChatGPT-User's verdict follows `OAI-SearchBot`'s stored copy, and nothing
   is checked before its first read, which no preset models.
 - **Body size.** Both presets read Google's 512,000-byte window, labeled as
