@@ -615,7 +615,7 @@ section as its `policy_source`.
 | Trailing `/`, no query | kept; measured only against an index.html Allow (unmeasured) | stripped on a non-root path (observed, 2026-11-26) |
 | Query `/` | kept: sent raw on the wire (observed, one case, 2026-11-26) | `%2F` (observed, 2026-11-26) |
 | Raw non-ASCII, raw space | unmeasured (AGEN-hdmtqpwx) | unmeasured (AGEN-hdmtqpwx) |
-| Control byte, backslash, another character RFC 3986 excludes, a `%` without two hex digits | unmeasured (no record) | unmeasured (no record) |
+| Control byte, backslash, another character RFC 3986 excludes, `[` or `]` outside the host, a second `#`, a `%` without two hex digits, an encoded `/` in the path | unmeasured (no record) | unmeasured (no record) |
 | Literal and percent-encoded dot segments | unmeasured (AGEN-hsvkltop) | unmeasured (AGEN-hsvkltop) |
 | `//`, userinfo | unmeasured (no record) | unmeasured (no record) |
 | Body size | unmeasured; Google's 512,000-byte window applies | whole host refused over 500,000 bytes, API and claude.ai (observed, 2026-11-12, not modeled); Google's window applies |

@@ -426,7 +426,9 @@ the Google crawler modes: a preset has no parent token.
 - **Unmeasured inputs are read as given.** A raw space or byte outside
   ASCII (AGEN-hdmtqpwx), a tab or other control byte, a backslash, a
   character RFC 3986 excludes (`"`, `<`, `>`, `^`, the backquote, `{`, `|`,
-  `}`), a `%` without two hex digits, a `.` or `..` segment and a
+  `}`), a `[` or `]` outside the host, a second `#`, a `%` without two
+  hex digits, an encoded `/` in the path (`%2f`, also in `%2e%2e%2f` and
+  `..%2f`; only its hex digits are uppercased), a `.` or `..` segment and a
   percent-encoded one (`%2e`, `.%2e`, `%2E%2E` as a whole segment;
   AGEN-hsvkltop), a `//` run, userinfo, Claude-User's trailing `/` before a
   query or fragment, and ChatGPT-User's trailing `/` (measured only against
@@ -436,7 +438,8 @@ the Google crawler modes: a preset has no parent token.
   the URL holds; the inputs are joined by `", "` and those parts by `"; "`
   (`percent-escape hex digits uppercased; trailing / removed; left as given,
   unmeasured for claude_user: raw space, backslash`). NA and empty URLs pass
-  with no note. Each class has an `unmeasured` row in `behaviors`.
+  with no note. The note names the classes listed here, each with an
+  `unmeasured` row in `behaviors`; a byte class not listed gets no note.
 - **No disagreement flag.** A decided preset row is
   `preprocessing_disagreement = NA` with `disagreement_clients`
   `not compared under an agent preset`, as under `"none"`.
@@ -486,8 +489,9 @@ rests on one verdict, `r103-esc1-lo`, the one raw miss of 37/38) and
 (`converters/openai.md`, `access-and-blocklists/claude-blocklist.md`,
 `access-and-blocklists/robots-parser-ports.md`), the agent-view probe that
 has not run, or `none` where no agent-view record measures the behavior
-(a `//` run, userinfo, the status cells, the control, backslash, excluded
-and stray-`%` classes, ChatGPT's size cap). Schema revision `2026-11-28.1` (both facades) adds the argument
+(a `//` run, userinfo, the status cells, the control, backslash, excluded,
+bracket, second-`#`, stray-`%` and encoded-`/` classes, ChatGPT's size
+cap). Schema revision `2026-11-28.1` (both facades) adds the argument
 and the publication; no policy revision moves.
 
 RFC 9309 matcher requests return `matcher_status = "capability_unavailable"`

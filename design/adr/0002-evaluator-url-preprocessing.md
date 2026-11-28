@@ -231,8 +231,9 @@ surface. Unlike `"rfc3986"`, they encode and case-fold bytes, which section 2 ke
 They are local byte operations, not `rurl`, for the reason section 2 gives: its `"normalized"`
 form also decodes `%2E`, which neither agent was seen to do. Nothing is decoded, a `%` without two
 hex digits is kept, and no other byte changes. A raw space or byte outside ASCII, a control byte,
-a backslash, another character RFC 3986 excludes, a `%` without two hex digits, a literal or
-percent-encoded dot segment, a `//` run and userinfo were not measured (AGEN-hdmtqpwx and
+a backslash, another character RFC 3986 excludes, a `[` or `]` outside the host, a second `#`, a
+`%` without two hex digits, an encoded `/` in the path, a literal or percent-encoded dot segment, a
+`//` run and userinfo were not measured (AGEN-hdmtqpwx and
 AGEN-hsvkltop have not run; no probe covers the rest), so a preset reads them as given and `url_preprocessing_note` names them as unmeasured, rather than
 borrowing `"rfc3986"`'s dot removal or `"whatwg"`'s encoding. The disagreement flag of section 7
 is not computed under a preset: the row is `NA`, with `not compared under an agent preset`.

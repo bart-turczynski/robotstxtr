@@ -273,10 +273,13 @@ URL has no query or fragment, so \verb{Allow: /dir/index.html} with
 ChatGPT-User. Nothing is decoded, and a \verb{\%} without two hex digits is
 left as it is. No other byte is changed: a raw space or byte outside
 ASCII, a tab or other control byte, a backslash, a character RFC 3986
-excludes (\verb{"<>^\{|\}} and the backquote), a \verb{\%} without two hex digits, a
+excludes (\verb{"<>^\{|\}} and the backquote), a \code{[} or \verb{]} outside the host, a
+second \verb{#}, a \verb{\%} without two hex digits, an encoded \code{/} in the path
+(\verb{\%2f}, \verb{\%2e\%2e\%2f}, \verb{..\%2f}; only its hex digits change case), a
 literal or percent-encoded dot segment, a \verb{//} run, userinfo, and the
 trailing-slash cases not listed are unmeasured, so they are read as
-given and \code{url_preprocessing_note} names them
+given and \code{url_preprocessing_note} names them; it names these classes
+only, and a byte class not listed here gets no note
 (\verb{left as given, unmeasured for <preset>: ...}, the inputs joined by
 \code{", "}) after the steps that changed the URL, the parts joined by
 \code{"; "}. A preset row is not compared for disagreement:

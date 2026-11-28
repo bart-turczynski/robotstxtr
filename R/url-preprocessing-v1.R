@@ -960,11 +960,15 @@ agent_encoded_dot_segment_v1 <- function(segments) {
 
 # The inputs a preset leaves as given because no probe measured how its
 # surface reads them (AGEN-hdmtqpwx, AGEN-hsvkltop), named for the note.
-# Every byte class the preset steps do not touch is named here, so a row
-# that holds one never reads as fully measured.
+# It names the classes listed below, each with an unmeasured row in
+# agent_preset_behaviors_v1(); a byte class not listed gets no note.
 agent_unmeasured_v1 <- function(bytes, preset) {
   target <- url_target_parts_v1(bytes)
   path <- target$path
+  hash <- match(as.raw(0x23), bytes)
+  fragment <- if (is.na(hash)) raw(0) else byte_tail_v1(bytes, hash + 1L)
+  # Path, query and fragment: a bracketed IPv6 host is not counted.
+  after_host <- c(path, target$query, fragment)
   segments <- strsplit(
     rawToChar(path), "/", fixed = TRUE, useBytes = TRUE
   )[[1L]]
@@ -978,7 +982,11 @@ agent_unmeasured_v1 <- function(bytes, preset) {
     backslash = any(bytes == as.raw(0x5c)),
     "character RFC 3986 excludes (\"<>^`{|})" =
       any(bytes %in% charToRaw("\"<>^`{|}")),
+    "[ or ] outside the host" = any(after_host %in% charToRaw("[]")),
+    "a second #" = any(fragment == as.raw(0x23)),
     "% without two hex digits" = agent_stray_percent_v1(bytes),
+    "encoded / (%2F) in the path" =
+      grepl("%2[fF]", rawToChar(path), useBytes = TRUE),
     "dot segment" = any(segments %in% c(".", "..")),
     "percent-encoded dot segment" = agent_encoded_dot_segment_v1(segments),
     "empty path segment (//)" = length(path) > 1L &&

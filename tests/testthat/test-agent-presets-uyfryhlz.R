@@ -274,6 +274,39 @@ test_that("unmeasured inputs pass as given, and the note names them", {
       paste0("left as given, unmeasured for ", preset, ": dot segment")
     )
   }
+  # Brackets outside the host, a second `#` and an encoded `/` in the path
+  # (review round 2, M2), with review-2's four probe inputs first.
+  more <- list(
+    list(url = "https://e.com/a[1]/x", unmeasured = "[ or ] outside the host"),
+    list(url = "https://e.com/x#a#b", unmeasured = "a second #"),
+    list(url = "https://e.com/x/%2e%2e%2fy",
+         unmeasured = "encoded / (%2F) in the path"),
+    list(url = "https://e.com/x/..%2f",
+         unmeasured = "encoded / (%2F) in the path"),
+    list(url = "https://e.com/p?a[]=1", unmeasured = "[ or ] outside the host"),
+    list(url = "https://e.com/p#x]", unmeasured = "[ or ] outside the host"),
+    list(url = "/a%2Fb", unmeasured = "encoded / (%2F) in the path")
+  )
+  for (preset in c("chatgpt_user", "claude_user")) {
+    for (case in more) {
+      row <- ap_preset("User-agent: *\n", case$url, preset)
+      note <- row$url_preprocessing_note
+      expect_match(note, paste0("unmeasured for ", preset, ": "),
+                   fixed = TRUE, info = paste(preset, case$url))
+      expect_match(note, case$unmeasured, fixed = TRUE,
+                   info = paste(preset, case$url))
+    }
+    # Controls: a bracketed IPv6 host, one `#`, and `%2f` only in the query.
+    controls <- c(
+      "https://[::1]/x", "https://e.com/x#a", "https://e.com/x?q=%2F"
+    )
+    for (url in controls) {
+      expect_identical(
+        ap_preset("User-agent: *\n", url, preset)$url_preprocessing_note,
+        NA_character_, info = paste(preset, url)
+      )
+    }
+  }
   # ChatGPT-User's trailing slash is unmeasured too; its query `/` is
   # observed kept (converters/openai.md), so it is not named.
   row <- ap_preset("User-agent: *\n", "/d/?q=/", "chatgpt_user")
@@ -520,13 +553,18 @@ test_that("every preset behavior carries a tier and a source", {
     "raw_non_ascii", "raw_space", "control_bytes", "backslash",
     "rfc3986_excluded", "stray_percent", "dot_segments",
     "encoded_dot_segments", "empty_path_segments", "userinfo",
-    "status_policy"
+    "status_policy", "brackets_outside_host", "second_hash",
+    "encoded_slash_in_path"
   )
   for (preset in contract$presets$preset) {
     rows <- behaviors[behaviors$preset == preset &
                         behaviors$behavior %in% classes, ]
     expect_setequal(rows$behavior, classes)
     expect_true(all(rows$evidence_tier == "unmeasured"), info = preset)
+    # No agent-view record measures the round-2 classes.
+    added <- rows[rows$behavior %in% c("brackets_outside_host", "second_hash",
+                                       "encoded_slash_in_path"), ]
+    expect_identical(added$source, rep("none", 3L), info = preset)
   }
 })
 
