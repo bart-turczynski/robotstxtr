@@ -1,7 +1,7 @@
 # Engine-aware robots evaluation contract v1
 
 - Contract ID: `robotstxtr.engine-aware/v1`
-- Schema revision: `2026-11-22.1`
+- Schema revision: `2026-11-28.1`
 - First package release: `robotstxtr 0.2.0`
 - Normative policy source: [`engine-profiles.md`](engine-profiles.md)
 
@@ -14,9 +14,10 @@ changing the four legacy functions or their result schemas.
 `robots_evaluate_text_v1()` evaluates a caller-supplied body.
 `robots_evaluate_url_v1()` acquires `/robots.txt` and evaluates it. Both require
 an explicit `robots_policy_ruleset` and an explicit `matcher_backend`; neither
-axis defaults to Google or to the other axis. `robots_product_token` controls
-robots group selection. `fetch_user_agent` controls only the HTTP request and is
-recorded separately.
+axis defaults to Google or to the other axis, except that a `preset` fixes both
+to `google` (see "Agent presets"). `robots_product_token` controls robots group
+selection. `fetch_user_agent` controls only the HTTP request and is recorded
+separately.
 
 `robots_engine_contract_v1()` publishes the contract/schema revisions, policy
 and matcher revisions, capability states, complete status-policy table, and
@@ -355,6 +356,100 @@ input URL's origin in every mode. Schema revision `2026-11-21.1` (both
 facades) adds the argument and the first two columns, and `2026-11-21.2`
 the `"whatwg"` mode, `url_normalizations` and the flag columns; no policy
 revision moves.
+
+### Agent presets (ROBO-uyfryhlz)
+
+Both facades take `preset = NULL | "chatgpt_user" | "claude_user"`. `NULL`,
+the default, changes nothing. A preset reads a file as one measured AI user
+agent does, on the one surface agent-view measured it on (2026-11-26):
+`chatgpt_user` is ChatGPT-User behind the OpenAI Responses API `web_search`
+tool, and `claude_user` is Claude-User behind the Claude API `web_fetch` tool
+(`web_fetch_20260309`). Neither covers ChatGPT Chat or claude.ai, which have
+no complete probe matrix, and `claude_user` is not the ClaudeBot crawler:
+agent-view-research's `access-and-blocklists/robots-parser-ports.md` keeps
+ClaudeBot as a separate, passive watch with no matched port matrix. No
+preset is named for ClaudeBot, GPTBot or OAI-SearchBot as crawlers.
+
+A preset fixes the `google` ruleset and backend, the token the matcher
+selects a group with, the group selection and the URL steps. A caller may
+leave `robots_product_token`, `robots_policy_ruleset` and `matcher_backend`
+out; one given must agree (`"google"`, and the preset's robots token
+compared ASCII case-insensitively), and `url_normalization` must be left out.
+Anything else aborts with `robotstxtr_preset_conflict`; an unknown id with
+`robotstxtr_invalid_preset`. The `robots_product_token` column keeps the
+caller's token, or the preset's when it was left out.
+
+| Preset | Robots token | Matcher token | Group selection | URL steps |
+| --- | --- | --- | --- | --- |
+| `chatgpt_user` | `ChatGPT-User` | `OAI-SearchBot` | `exact_only` | uppercase `%HH` |
+| `claude_user` | `Claude-User` | `Claude-User` | own group, else `*` | uppercase `%HH`, strip a trailing `/`, query `/` to `%2F` |
+
+- **ChatGPT-User's group.** It obeys a group naming `OAI-SearchBot` (35/35,
+  also a group naming both), never a `User-agent: ChatGPT-User` group
+  (26/26), `*` (31/31) or a GPTBot group (5/5) (AGEN-anxylhbt). The preset
+  matches with `OAI-SearchBot` and `*` ignored, so a file with no
+  `OAI-SearchBot` group gives `default_allow` with `group_token` `NA`. The
+  agents are not added to the Google crawler-token table, which is read
+  from Google's documentation, and ChatGPT-User's own group never binds,
+  which no parent fallback expresses.
+- **The URL steps** are byte operations on the URL as given (the
+  `"none"` reading), never through rurl, whose normalized form also decodes
+  `%2E` (ADR 0002 section 8). Uppercasing changes only the hex digits of a
+  `%` followed by two hex digits: `%3cb` becomes `%3Cb`, `%2f` becomes
+  `%2F` (never `/` or `%252F`), and `%zz`, `%3` and a trailing `%` are kept.
+  Claude-User's strip removes one trailing `/` from a path other than `/`
+  when the URL has no query and no fragment, and its query step encodes
+  each `/` between the first `?` and any `#` as `%2F`. So
+  `Allow: /dir/index.html` with `Disallow: /` allows `/dir/` for
+  ChatGPT-User (Google's index.html shortcut) and disallows it for
+  Claude-User, which reads `/dir`.
+- **Unmeasured inputs are read as given.** A raw space or byte outside
+  ASCII (AGEN-hdmtqpwx), a `.` or `..` segment (AGEN-hsvkltop), a `//` run,
+  userinfo, Claude-User's trailing `/` before a query or fragment, and
+  ChatGPT-User's trailing `/` (measured only against an index.html Allow)
+  and query `/` are left as they are. `url_preprocessing_note` names the
+  steps that changed the URL, then
+  `left as given, unmeasured for <preset>: ...` with each unmeasured input
+  the URL holds, joined by `"; "`; NA and empty URLs pass with no note.
+- **No disagreement flag.** A decided preset row is
+  `preprocessing_disagreement = NA` with `disagreement_clients`
+  `not compared under an agent preset`, as under `"none"`.
+- **Status policy.** A supplied body reads as `supplied_body_use_rules`. A
+  fetched 2xx body (`status_200`, `status_other_2xx`) reads Google's
+  `use_rules` cell. Every other google cell (206, 4xx, 429, 5xx,
+  transport, `unreachable_local`, a redirect over the budget, a protocol
+  error) is `documentation_gap` with source
+  `design/engine-contract-v1.md#agent-presets`, since no probe measured how
+  the agents read them. The fetch is this call's, with `fetch_user_agent`:
+  ChatGPT-User's verdict follows `OAI-SearchBot`'s stored copy, and nothing
+  is checked before its first read, which no preset models.
+- **Body size.** Both presets read Google's 512,000-byte window, labeled as
+  Google's. ChatGPT's cap is unmeasured. The Claude API refuses the whole
+  host when its robots.txt is over 500,000 bytes, an allow-all file too
+  (500,000 bytes fetched, 500,001 refused; AGEN-yrhoneml in
+  `access-and-blocklists/claude-blocklist.md`). The preset does not model
+  that refusal yet: it would add a policy action outside the stable outcome
+  set, which is the owner's decision. Untested there: an HTML robots.txt at
+  the line, and whether the count is taken before or after content decoding.
+- **The matcher.** Both agents match Google's `robots.cc` fingerprints,
+  index.htm shortcut included: 68/68 for ChatGPT-User and 74/74 for
+  Claude-User on the normalized URL, 67/68 and 64/74 raw
+  (`access-and-blocklists/robots-parser-ports.md`). That is
+  Google-compatible lineage, not proof of the implementation.
+
+`robots_engine_contract_v1()$agent_presets` (and the v2 accessor's) publishes
+`presets`, the table above with the window and the measured surface;
+`behaviors`, one row per preset behavior with `modeled`, `evidence_tier`,
+`source` and `note`; and `evidence_tiers`. The tiers follow the owner's rule
+on ROBO-kgqlcpjn that each behavior is labeled with the evidence it rests on:
+`observed` (the request bytes in edge logs, or the agent's verdicts across a
+probe matrix), `inferred` (deduced from verdicts; ChatGPT-User's uppercasing
+rests on one verdict, `r103-esc1-lo`, the one raw miss of 37/38) and
+`unmeasured` (never modeled). A `source` is a path in agent-view-research
+(`converters/openai.md`, `access-and-blocklists/claude-blocklist.md`,
+`access-and-blocklists/robots-parser-ports.md`) or the agent-view probe that
+has not run. Schema revision `2026-11-28.1` (both facades) adds the argument
+and the publication; no policy revision moves.
 
 RFC 9309 matcher requests return `matcher_status = "capability_unavailable"`
 (reason `matcher_capability_unavailable`; the rfc9309 revision is

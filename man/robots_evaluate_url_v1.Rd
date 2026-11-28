@@ -15,7 +15,8 @@ robots_evaluate_url_v1(
   ssrf_guard = TRUE,
   safety_level = "strict",
   fetch_allow_ranges = character(),
-  url_normalization = "rfc3986"
+  url_normalization = "rfc3986",
+  preset = NULL
 )
 }
 \arguments{
@@ -96,7 +97,12 @@ section 5.2.4), leaves userinfo out and drops the fragment, and never
 encodes, decodes or case-folds a byte, so \verb{\%2e} is kept; \code{"whatwg"}
 reads it as the WHATWG URL Standard serializes it, so \verb{\%2e} segments
 are removed and the encoding may change; \code{"none"} hands the URL to the
-matcher as given. See Details.}
+matcher as given. See Details. Leave it out under a \code{preset}.}
+
+\item{preset}{\code{NULL} (the default) for none, or one AI user agent preset:
+\code{"chatgpt_user"} (ChatGPT-User, OpenAI Responses API \code{web_search}) or
+\code{"claude_user"} (Claude-User, Claude API \code{web_fetch}). It fixes the
+ruleset, backend, group selection and URL steps; see Details.}
 }
 \value{
 A \code{robots_engine_decisions_v1} object with \code{results}, neutral
@@ -145,6 +151,14 @@ as \code{design/engine-profiles.md} section 7 sets out.
 \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}; the \verb{/robots.txt} to fetch is built from the
 input URL, so the mode never changes what is fetched. Every row carries
 \code{preprocessing_disagreement} and \code{disagreement_clients}, as there.
+
+\code{preset} reads the fetched file as in \code{\link[=robots_evaluate_text_v1]{robots_evaluate_text_v1()}}, and
+fetches with \code{fetch_user_agent}, never as the agent. How the agents read
+a response other than 2xx, a redirect past the budget or a transport
+failure was not measured, so under a preset those rows are
+\code{policy_status = "documentation_gap"} (\code{policy_reason = "policy_documentation_gap"}), not Google's cells; a 2xx body is read
+with the rules. The live agents do not read the file this call fetches:
+ChatGPT-User follows \code{OAI-SearchBot}'s stored copy.
 }
 \examples{
 # A refused origin is decided before any request, so this runs offline. The

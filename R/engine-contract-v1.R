@@ -1062,7 +1062,15 @@ engine_policy_table_v1 <- function() {
 #' or matching. The value sets include `safety_levels` and, since schema
 #' revision `2026-11-21.2`, `url_normalizations`, the values
 #' [robots_evaluate_text_v1()] and [robots_evaluate_url_v1()] accept for
-#' `url_normalization`, default first.
+#' `url_normalization`, default first. Since schema revision `2026-11-28.1`,
+#' `agent_presets` publishes the values those facades accept for `preset`:
+#' `presets`, one row per preset (its robots token, the token the matcher
+#' selects a group with, the group selection, ruleset, backend, URL steps,
+#' body window and measured surface); `behaviors`, one row per preset
+#' behavior with whether the preset models it, its `evidence_tier` and the
+#' agent-view-research record it rests on; and `evidence_tiers`, the tier
+#' set: `observed` (seen in edge logs or across a probe matrix), `inferred`
+#' (deduced from verdicts) and `unmeasured` (not modeled, never guessed).
 #'
 #' @return A named list of contract metadata with class
 #'   `robots_engine_contract_v1`.
@@ -1088,6 +1096,12 @@ engine_policy_table_v1 <- function() {
 #' contract$matcher_capability$google$crawler_tokens[
 #'   c("crawler_token", "parent_token", "group_selection")
 #' ]
+#'
+#' # The AI user agent presets, and the evidence each behavior rests on.
+#' contract$agent_presets$presets[c("preset", "matcher_token", "url_steps")]
+#' behaviors <- contract$agent_presets$behaviors
+#' behaviors[behaviors$preset == "claude_user",
+#'           c("behavior", "modeled", "evidence_tier")]
 #'
 #' # Status policy is a lookup keyed by acquisition category and ruleset:
 #' # how each ruleset treats a 4xx response to the robots.txt request.
@@ -2616,6 +2630,45 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' `not compared: URL longer than 2048 bytes`. Under `"whatwg"` every length
 #' is compared.
 #'
+#' Since schema revision `2026-11-28.1`, `preset` reads the file as one
+#' measured AI user agent does, on the one surface it was measured on: the
+#' agent-view live probes of 2026-11-26, published with an evidence tier and
+#' a source per behavior as `robots_engine_contract_v1()$agent_presets`.
+#' A preset fixes the `"google"` ruleset and backend, the group the matcher
+#' selects and the URL steps; `robots_product_token`,
+#' `robots_policy_ruleset` and `matcher_backend` may be left out, and one
+#' given must agree with the preset (the token compared ASCII
+#' case-insensitively), while `url_normalization` must be left out. A
+#' conflicting argument raises an error of class
+#' `robotstxtr_preset_conflict`. `"chatgpt_user"` is ChatGPT-User behind the
+#' OpenAI Responses API `web_search` tool: it obeys only a group naming
+#' `OAI-SearchBot` (`group_token` `"OAI-SearchBot"`), never a
+#' `User-agent: ChatGPT-User` group or `*`, so a file with no
+#' `OAI-SearchBot` group allows it, with `group_token` `NA`; and it puts
+#' the hex digits of every `%HH` escape in the URL in upper case, which is
+#' inferred from one verdict rather than seen. `"claude_user"` is Claude-User
+#' behind the Claude API `web_fetch` tool (`web_fetch_20260309`), not the
+#' ClaudeBot crawler: it selects its own group, else `*`, and, as edge logs
+#' show, puts `%HH` hex digits in upper case, encodes each `/` in the query as
+#' `%2F`, and strips one trailing `/` from a path other than `/` when the
+#' URL has no query or fragment, so `Allow: /dir/index.html` with
+#' `Disallow: /` disallows `/dir/` for Claude-User and allows it for
+#' ChatGPT-User. Nothing is decoded, and a `%` without two hex digits is
+#' left as it is. No other byte is changed: a raw space or byte outside
+#' ASCII, a `.` or `..` segment, a `//` run, userinfo, and the trailing-slash
+#' and query-slash cases not listed are unmeasured, so they are read as
+#' given and `url_preprocessing_note` names them
+#' (`left as given, unmeasured for <preset>: ...`) after the steps that
+#' changed the URL. A preset row is not compared for disagreement:
+#' `preprocessing_disagreement` is `NA` with `disagreement_clients`
+#' `not compared under an agent preset`. Both presets read Google's
+#' 512,000-byte window, which is Google's: the ChatGPT cap is unmeasured, and
+#' the Claude API refuses the whole host for a robots.txt over 500,000 bytes,
+#' which the preset does not model yet. The agents' cached copies (ChatGPT
+#' follows `OAI-SearchBot`'s stored copy) are not modeled either: a preset
+#' reads the body it is given. ChatGPT Chat and `claude.ai` were not
+#' measured.
+#'
 #' @param robots_txt A single, non-missing character value containing the
 #'   robots.txt body. A body marked UTF-8 is used as written. An unmarked body
 #'   (as `rawToChar()` gives) is taken as UTF-8 bytes as written when the
@@ -2651,7 +2704,11 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #'   encodes, decodes or case-folds a byte, so `%2e` is kept; `"whatwg"`
 #'   reads it as the WHATWG URL Standard serializes it, so `%2e` segments
 #'   are removed and the encoding may change; `"none"` hands the URL to the
-#'   matcher as given. See Details.
+#'   matcher as given. See Details. Leave it out under a `preset`.
+#' @param preset `NULL` (the default) for none, or one AI user agent preset:
+#'   `"chatgpt_user"` (ChatGPT-User, OpenAI Responses API `web_search`) or
+#'   `"claude_user"` (Claude-User, Claude API `web_fetch`). It fixes the
+#'   ruleset, backend, group selection and URL steps; see Details.
 #'
 #' @return A `robots_engine_decisions_v1` object with `results`, neutral
 #'   `evidence`, and `contract` components.
@@ -2668,6 +2725,21 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' )
 #' decisions$results$matcher_backend  # "google" -- Google semantics, not Yandex
 #' decisions$results$url_decision     # "disallow"
+#'
+#' # The same file read as two measured AI user agents: Claude-User strips
+#' # the trailing slash, so the index.html shortcut no longer allows /dir/.
+#' body <- paste0(
+#'   "user-agent: *\nuser-agent: OAI-SearchBot\n",
+#'   "allow: /dir/index.html\ndisallow: /"
+#' )
+#' claude <- robots_evaluate_text_v1(
+#'   body, "https://example.com/dir/", preset = "claude_user"
+#' )
+#' claude$results[c("url_decision", "matcher_url", "url_preprocessing_note")]
+#' chatgpt <- robots_evaluate_text_v1(
+#'   body, "https://example.com/dir/", preset = "chatgpt_user"
+#' )
+#' chatgpt$results[c("url_decision", "group_token")]
 #' @export
 robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
                                     robots_policy_ruleset, matcher_backend,
@@ -2758,6 +2830,15 @@ robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
 #' [robots_evaluate_text_v1()]; the `/robots.txt` to fetch is built from the
 #' input URL, so the mode never changes what is fetched. Every row carries
 #' `preprocessing_disagreement` and `disagreement_clients`, as there.
+#'
+#' `preset` reads the fetched file as in [robots_evaluate_text_v1()], and
+#' fetches with `fetch_user_agent`, never as the agent. How the agents read
+#' a response other than 2xx, a redirect past the budget or a transport
+#' failure was not measured, so under a preset those rows are
+#' `policy_status = "documentation_gap"` (`policy_reason =
+#' "policy_documentation_gap"`), not Google's cells; a 2xx body is read
+#' with the rules. The live agents do not read the file this call fetches:
+#' ChatGPT-User follows `OAI-SearchBot`'s stored copy.
 #'
 #' @inheritParams robots_evaluate_text_v1
 #' @inheritParams robots_fetch

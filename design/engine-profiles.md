@@ -593,6 +593,32 @@ Disallow, ten at most, and those Disallows leave the group's `wildcard_rules_not
 A crawler whose value Google's matcher cuts gets the §5g sentence pointing to its
 `user_agent_cut` row (ROBO-zqyqbudf).
 
+### 5i. ChatGPT-User and Claude-User presets (ROBO-uyfryhlz; probes of 2026-11-26)
+
+The v1 facades' `preset` argument reads a file as ChatGPT-User (OpenAI Responses API
+`web_search`) or Claude-User (Claude API `web_fetch_20260309`) did in agent-view's live probes,
+on those API surfaces only; ChatGPT Chat and claude.ai have no complete matrix. Each behavior is
+published with its evidence tier and its agent-view-research record as
+`robots_engine_contract_v1()$agent_presets$behaviors`; the contract text is
+`engine-contract-v1.md`, "Agent presets".
+
+| Behavior | ChatGPT-User | Claude-User |
+| --- | --- | --- |
+| Matcher | Google's (68/68 normalized, 67/68 raw) | Google's (74/74 normalized, 64/74 raw) |
+| Group | `OAI-SearchBot` only; own group, `*` and GPTBot never bind (observed) | own group, else `*` (observed) |
+| `%HH` hex case | uppercased (inferred, one verdict) | uppercased (observed) |
+| Trailing `/`, no query | kept; measured only against an index.html Allow (unmeasured) | stripped on a non-root path (observed) |
+| Query `/` | kept (unmeasured) | `%2F` (observed) |
+| Raw non-ASCII, raw space | unmeasured (AGEN-hdmtqpwx) | unmeasured (AGEN-hdmtqpwx) |
+| Dot segments, `//`, userinfo | unmeasured (AGEN-hsvkltop for dots) | unmeasured (AGEN-hsvkltop for dots) |
+| Body size | unmeasured; Google's 512,000-byte window applies | whole host refused over 500,000 bytes (observed, not modeled); Google's window applies |
+| Non-2xx, redirect, transport | unmeasured: `documentation_gap` | unmeasured: `documentation_gap` |
+| Which copy is read | `OAI-SearchBot`'s stored copy (observed, not modeled) | not recorded |
+
+An unmeasured cell is never guessed: a preset reads that input as given, or leaves the status cell
+a `documentation_gap`, and the result says so. The lineage counts are Google-compatible behavior,
+not proof of the implementation.
+
 ## 6. Matcher capability availability
 
 `robots_policy_ruleset` (§4) is pure data and always available. `matcher_backend` is separate:
