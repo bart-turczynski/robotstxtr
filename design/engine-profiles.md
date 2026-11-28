@@ -595,27 +595,32 @@ A crawler whose value Google's matcher cuts gets the §5g sentence pointing to i
 
 <a id="agent-presets"></a>
 
-### 5i. ChatGPT-User and Claude-User presets (ROBO-uyfryhlz; probes of 2026-11-26)
+### 5i. ChatGPT-User and Claude-User presets (ROBO-uyfryhlz; probes of 2026-11-12 to 2026-11-26)
 
 The v1 facades' `preset` argument reads a file as ChatGPT-User (OpenAI Responses API
-`web_search`) or Claude-User (Claude API `web_fetch_20260309`) did in agent-view's live probes,
-on those API surfaces only; ChatGPT Chat and claude.ai have no complete matrix. Each behavior is
-published with its evidence tier and its agent-view-research record as
+`web_search`) or Claude-User (Claude API `web_fetch_20260309`) did in agent-view's live probes.
+The complete probe matrix ran on those API surfaces (2026-11-26); ChatGPT Chat and claude.ai have
+earlier observations (the ChatGPT binding counts include Chat-mode asks, the Claude size refusal
+was seen on claude.ai too) but no complete matrix. Each behavior is published with its evidence
+tier, its agent-view-research record and the record's dates as
 `robots_engine_contract_v1()$agent_presets$behaviors`; the contract text is
-`engine-contract-v1.md`, "Agent presets".
+`engine-contract-v1.md`, "Agent presets". A status cell a preset leaves unmeasured names this
+section as its `policy_source`.
 
 | Behavior | ChatGPT-User | Claude-User |
 | --- | --- | --- |
-| Matcher | Google's (68/68 normalized, 67/68 raw) | Google's (74/74 normalized, 64/74 raw) |
-| Group | `OAI-SearchBot` only; own group, `*` and GPTBot never bind (observed) | own group, else `*` (observed) |
-| `%HH` hex case | uppercased (inferred, one verdict) | uppercased (observed) |
-| Trailing `/`, no query | kept; measured only against an index.html Allow (unmeasured) | stripped on a non-root path (observed) |
-| Query `/` | kept (unmeasured) | `%2F` (observed) |
+| Matcher | Google's (68/68 normalized, 67/68 raw; 2026-11-26) | Google's (74/74 normalized, 64/74 raw; 2026-11-26) |
+| Group | `OAI-SearchBot` only; own group, `*` and GPTBot never bind (observed, 2026-11-13 to 16) | own group, else `*` (observed, 2026-11-12 to 13) |
+| `%HH` hex case | uppercased (inferred, one verdict, 2026-11-26) | uppercased (observed, 2026-11-26) |
+| Trailing `/`, no query | kept; measured only against an index.html Allow (unmeasured) | stripped on a non-root path (observed, 2026-11-26) |
+| Query `/` | kept: sent raw on the wire (observed, one case, 2026-11-26) | `%2F` (observed, 2026-11-26) |
 | Raw non-ASCII, raw space | unmeasured (AGEN-hdmtqpwx) | unmeasured (AGEN-hdmtqpwx) |
-| Dot segments, `//`, userinfo | unmeasured (AGEN-hsvkltop for dots) | unmeasured (AGEN-hsvkltop for dots) |
-| Body size | unmeasured; Google's 512,000-byte window applies | whole host refused over 500,000 bytes (observed, not modeled); Google's window applies |
-| Non-2xx, redirect, transport | unmeasured: `documentation_gap` | unmeasured: `documentation_gap` |
-| Which copy is read | `OAI-SearchBot`'s stored copy (observed, not modeled) | not recorded |
+| Control byte, backslash, another character RFC 3986 excludes, a `%` without two hex digits | unmeasured (no record) | unmeasured (no record) |
+| Literal and percent-encoded dot segments | unmeasured (AGEN-hsvkltop) | unmeasured (AGEN-hsvkltop) |
+| `//`, userinfo | unmeasured (no record) | unmeasured (no record) |
+| Body size | unmeasured; Google's 512,000-byte window applies | whole host refused over 500,000 bytes, API and claude.ai (observed, 2026-11-12, not modeled); Google's window applies |
+| Non-2xx, 206, redirect, transport | unmeasured: `documentation_gap` | unmeasured: `documentation_gap` |
+| Which copy is read | `OAI-SearchBot`'s stored copy; nothing checked before its first read (observed, 2026-11-15 to 16, not modeled) | one read reused for a few minutes, a refusal cached 8 to 65 minutes (observed, 2026-11-12, not modeled); shared between the API and claude.ai (inferred) |
 
 An unmeasured cell is never guessed: a preset reads that input as given, or leaves the status cell
 a `documentation_gap`, and the result says so. The lineage counts are Google-compatible behavior,

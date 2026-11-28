@@ -342,9 +342,13 @@ agent_preset_ids_v1 <- function() {
 
 # One row per preset, as the contract publishes it. `matcher_token` is the
 # token the google matcher selects a group with; `group_selection` uses the
-# google crawler modes: `exact_only` never reads `*`, and
-# `exact_else_wildcard` is the plain matcher's own group, else `*`.
+# contract's profile selection modes (supported_profile_selection_modes_v1(),
+# design/engine-contract-v1.md's selection-mode table), not the Google
+# crawler modes, since a preset has no parent token: `exact_only` never
+# reads `*`, and `exact_else_wildcard` is the token's own group, else `*`.
 # `url_steps` lists agent_preset_url_steps_v1() in the order they run.
+# `surface` is the API surface the complete probe matrix ran on; each
+# behavior's own dates are in agent_preset_behaviors_v1()'s `measured`.
 agent_presets_v1 <- function() {
   steps <- vapply(
     agent_preset_ids_v1(),
@@ -362,8 +366,8 @@ agent_presets_v1 <- function() {
     body_limit_bytes = 512000L,
     body_limit_source = "google",
     surface = c(
-      "OpenAI Responses API web_search tool, measured 2026-11-26",
-      "Claude API web_fetch tool (web_fetch_20260309), measured 2026-11-26"
+      "OpenAI Responses API web_search tool",
+      "Claude API web_fetch tool (web_fetch_20260309)"
     ),
     stringsAsFactors = FALSE
   )
@@ -393,49 +397,58 @@ agent_preset_evidence_tiers_v1 <- function() {
 }
 
 # One row per preset behavior: whether the preset models it (`modeled`),
-# the evidence tier, and the record it rests on. `source` is a path in the
-# agent-view-research repository, or an agent-view probe id for a behavior
-# no probe has settled yet.
+# the evidence tier, the record it rests on and when that record was
+# measured. `source` is a path in the agent-view-research repository, an
+# agent-view probe id for a behavior a planned probe has not settled yet,
+# or "none" where no agent-view record measures the behavior at all.
+# `measured` is the date or date range the cited record gives for its live
+# observations, NA where the row cites none. Every byte class
+# agent_unmeasured_v1() names in a note has an unmeasured row here.
 agent_preset_behaviors_v1 <- function() {
   openai <- "agent-view-research:converters/openai.md"
   claude <- "agent-view-research:access-and-blocklists/claude-blocklist.md"
   ports <- "agent-view-research:access-and-blocklists/robots-parser-ports.md"
   encoding <- "agent-view:AGEN-hdmtqpwx (not run)"
   dots <- "agent-view:AGEN-hsvkltop (not run)"
-  row <- function(preset, behavior, modeled, tier, source, note) {
+  row <- function(preset, behavior, modeled, tier, source, measured, note) {
     data.frame(
       preset = preset, behavior = behavior, modeled = modeled,
-      evidence_tier = tier, source = source, note = note,
-      stringsAsFactors = FALSE
+      evidence_tier = tier, source = source, measured = measured,
+      note = note, stringsAsFactors = FALSE
     )
   }
-  unmeasured <- function(preset, behavior, source, note) {
-    row(preset, behavior, FALSE, "unmeasured", source, note)
+  unmeasured <- function(preset, behavior, source, note,
+                         measured = NA_character_) {
+    row(preset, behavior, FALSE, "unmeasured", source, measured, note)
   }
+  as_given <- function(what) paste(what, "is left as given")
   common <- function(preset) {
     rbind(
+      unmeasured(preset, "raw_non_ascii", encoding,
+                 as_given("a raw byte outside ASCII in the URL")),
+      unmeasured(preset, "raw_space", encoding,
+                 as_given("a raw space in the URL")),
+      unmeasured(preset, "control_bytes", "none",
+                 as_given("a tab or another control byte in the URL")),
+      unmeasured(preset, "backslash", "none",
+                 as_given("a backslash in the URL")),
+      unmeasured(preset, "rfc3986_excluded", "none",
+                 as_given("a character RFC 3986 excludes (\"<>^`{|})")),
+      unmeasured(preset, "stray_percent", "none",
+                 as_given("a `%` without two hex digits after it")),
+      unmeasured(preset, "dot_segments", dots,
+                 "`.` and `..` segments are left as given"),
       unmeasured(
-        preset, "raw_non_ascii", encoding,
-        "a raw byte outside ASCII in the URL is left as given"
+        preset, "encoded_dot_segments", dots,
+        "a `%2e` dot segment (`%2e`, `.%2e`, `%2E%2E`) is left as given"
       ),
+      unmeasured(preset, "empty_path_segments", "none",
+                 as_given("a `//` run in the path")),
+      unmeasured(preset, "userinfo", "none", as_given("userinfo in the URL")),
       unmeasured(
-        preset, "raw_space", encoding,
-        "a raw space in the URL is left as given"
-      ),
-      unmeasured(
-        preset, "dot_segments", dots,
-        "`.` and `..` segments are left as given"
-      ),
-      unmeasured(
-        preset, "empty_path_segments", ports,
-        "a `//` run in the path is left as given"
-      ),
-      unmeasured(
-        preset, "userinfo", ports, "userinfo in the URL is left as given"
-      ),
-      unmeasured(
-        preset, "status_policy", ports,
+        preset, "status_policy", "none",
         paste(
+          "no record measures how the agent reads a robots.txt status:",
           "only a 200 or another 2xx other than 206 is read (use_rules);",
           "206, every other status, redirect and transport cell is",
           "documentation_gap"
@@ -446,14 +459,16 @@ agent_preset_behaviors_v1 <- function() {
   rbind(
     row(
       "chatgpt_user", "group_binding", TRUE, "observed", openai,
+      "2026-11-13 to 2026-11-16",
       paste(
         "an OAI-SearchBot group binds (35/35), also one naming both; a",
         "ChatGPT-User group (26/26), `*` (31/31) and a GPTBot group (5/5)",
-        "never do (AGEN-anxylhbt)"
+        "never do (AGEN-anxylhbt); asked in Chat mode on chatgpt.com and",
+        "through the Responses API"
       )
     ),
     row(
-      "chatgpt_user", "matcher", TRUE, "observed", ports,
+      "chatgpt_user", "matcher", TRUE, "observed", ports, "2026-11-26",
       paste(
         "Google's robots.cc fingerprints and index.htm shortcut match, 68/68",
         "on the normalized URL, 67/68 raw (AGEN-nweunrii, AGEN-qiymugzt,",
@@ -463,17 +478,27 @@ agent_preset_behaviors_v1 <- function() {
     ),
     row(
       "chatgpt_user", "uppercase_escapes", TRUE, "inferred", openai,
+      "2026-11-26",
       paste(
         "inferred from one verdict (r103-esc1-lo, the one raw miss of",
         "37/38); the request was not seen"
       )
     ),
+    row(
+      "chatgpt_user", "query_slash", TRUE, "observed", openai, "2026-11-26",
+      paste(
+        "a `/` in the query is kept: `/c13?q=/` was sent raw on the wire",
+        "and allowed under `Allow: /c13?q=/index.html` (AGEN-nweunrii, one",
+        "case)"
+      )
+    ),
     unmeasured(
-      "chatgpt_user", "body_limit", openai,
+      "chatgpt_user", "body_limit", "none",
       "ChatGPT's own cap is unmeasured; Google's 512,000-byte window applies"
     ),
     row(
       "chatgpt_user", "stored_copy", FALSE, "observed", openai,
+      "2026-11-15 to 2026-11-16",
       paste(
         "the verdict follows OAI-SearchBot's stored copy and nothing is",
         "checked before its first read: not modeled, the preset reads the",
@@ -485,23 +510,24 @@ agent_preset_behaviors_v1 <- function() {
       paste(
         "a trailing `/` is kept; measured only against an index.html",
         "Allow, where `/dir/` is allowed"
+      ),
+      measured = "2026-11-26"
+    ),
+    unmeasured(
+      "chatgpt_user", "other_access_paths", ports,
+      paste(
+        "ChatGPT Chat has earlier group-binding and nonstandard-field",
+        "observations but no complete probe matrix; Work mode, agent mode",
+        "and Codex are not covered (ROBO-ldulplqs)"
       )
-    ),
-    unmeasured(
-      "chatgpt_user", "query_slash", openai,
-      "a `/` in the query is kept as sent; how ChatGPT reads it is unprobed"
-    ),
-    unmeasured(
-      "chatgpt_user", "other_access_paths", openai,
-      "ChatGPT Chat and OpenAI's other readers are unprobed (ROBO-ldulplqs)"
     ),
     common("chatgpt_user"),
     row(
       "claude_user", "group_selection", TRUE, "observed", claude,
-      "its own group, else `*`"
+      "2026-11-12 to 2026-11-13", "its own group, else `*`"
     ),
     row(
-      "claude_user", "matcher", TRUE, "observed", ports,
+      "claude_user", "matcher", TRUE, "observed", ports, "2026-11-26",
       paste(
         "Google's robots.cc fingerprints and index.htm shortcut match, 74/74",
         "on the normalized URL, 64/74 raw: Google-compatible lineage, not",
@@ -510,29 +536,53 @@ agent_preset_behaviors_v1 <- function() {
     ),
     row(
       "claude_user", "uppercase_escapes", TRUE, "observed", claude,
-      "edge logs: `%3cb` arrives as `%3Cb` (diag-pctcase)"
+      "2026-11-26", "edge logs: `%3cb` arrives as `%3Cb` (diag-pctcase)"
     ),
     row(
       "claude_user", "strip_trailing_slash", TRUE, "observed", claude,
-      "edge logs: `/ok/claudeok/` arrives as `GET /ok/claudeok`"
+      "2026-11-26", "edge logs: `/ok/claudeok/` arrives as `GET /ok/claudeok`"
     ),
     row(
       "claude_user", "encode_query_slash", TRUE, "observed", claude,
-      "edge logs: `?q=/` arrives as `?q=%2F` (diag-qslash)"
+      "2026-11-26", "edge logs: `?q=/` arrives as `?q=%2F` (diag-qslash)"
     ),
     row(
-      "claude_user", "body_limit", FALSE, "observed", claude,
+      "claude_user", "body_limit", FALSE, "observed", claude, "2026-11-12",
       paste(
         "a robots.txt over 500,000 bytes refuses the whole host, an",
-        "allow-all one too (AGEN-yrhoneml): not modeled yet, the preset",
-        "reads Google's 512,000-byte window; untested: an HTML robots.txt",
-        "at the line, and whether the count is before or after content",
-        "decoding"
+        "allow-all one too, through the API and on claude.ai (AGEN-yrhoneml):",
+        "not modeled yet, the preset reads Google's 512,000-byte window;",
+        "untested: an HTML robots.txt at the line, and whether the count is",
+        "before or after content decoding"
+      )
+    ),
+    row(
+      "claude_user", "stored_copy", FALSE, "observed", claude, "2026-11-12",
+      paste(
+        "the API reused one robots.txt read for the next few minutes, and a",
+        "refused host got no request for at least 8 minutes and was read",
+        "again by 65: not modeled, the preset reads the body it is given"
+      )
+    ),
+    row(
+      "claude_user", "shared_copy", FALSE, "inferred", claude,
+      "2026-11-12 to 2026-11-13",
+      paste(
+        "the API and claude.ai seem to share a cached refusal both ways, and",
+        "claude.ai's parser cells reused the API's reads: not modeled"
       )
     ),
     unmeasured(
       "claude_user", "trailing_slash_before_query", claude,
       "a trailing `/` before a query or fragment is kept"
+    ),
+    unmeasured(
+      "claude_user", "other_access_paths", ports,
+      paste(
+        "claude.ai has earlier observations (the 500,000-byte refusal,",
+        "parser cells that reused the API's reads) but no complete probe",
+        "matrix"
+      )
     ),
     common("claude_user")
   )
@@ -1074,11 +1124,14 @@ engine_policy_table_v1 <- function() {
 #' `agent_presets` publishes the values those facades accept for `preset`:
 #' `presets`, one row per preset (its robots token, the token the matcher
 #' selects a group with, the group selection, ruleset, backend, URL steps,
-#' body window and measured surface); `behaviors`, one row per preset
-#' behavior with whether the preset models it, its `evidence_tier` and the
-#' agent-view-research record it rests on; and `evidence_tiers`, the tier
-#' set: `observed` (seen in edge logs or across a probe matrix), `inferred`
-#' (deduced from verdicts) and `unmeasured` (not modeled, never guessed).
+#' body window and the API surface its complete probe matrix ran on);
+#' `behaviors`, one row per preset behavior with whether the preset models
+#' it, its `evidence_tier`, the agent-view-research record it rests on
+#' (`source`; `"none"` where no record measures it) and the dates that
+#' record gives (`measured`, `NA` where it cites none); and
+#' `evidence_tiers`, the tier set: `observed` (seen in edge logs or across
+#' a probe matrix), `inferred` (deduced from verdicts) and `unmeasured`
+#' (not modeled, never guessed).
 #'
 #' @return A named list of contract metadata with class
 #'   `robots_engine_contract_v1`.
@@ -2519,8 +2572,11 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' decided a Google row: the token as given, its parent token, `"*"` when no
 #' group names it (the `*` rules, if any), or `NA` for a `*`-ignoring
 #' crawler with no group of its own, a row of another backend, or a row no
-#' matcher decided. [allowed_by_robots_text()] and [allowed_by_robots_url()]
-#' apply none of this layer.
+#' matcher decided. Under a `preset` it is the matcher token of the preset
+#' as the contract spells it (`"OAI-SearchBot"`, or `"Claude-User"` for a
+#' caller's `"claude-user"`), `"*"`, or `NA`; see below.
+#' [allowed_by_robots_text()] and [allowed_by_robots_url()] apply none of
+#' this layer.
 #'
 #' The Yandex backend is active (since schema revision `2026-07-18.2`). An
 #' evaluated Yandex row publishes `reason` as one of `default_allow`,
@@ -2639,9 +2695,10 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' is compared.
 #'
 #' Since schema revision `2026-11-28.1`, `preset` reads the file as one
-#' measured AI user agent does, on the one surface it was measured on: the
-#' agent-view live probes of 2026-11-26, published with an evidence tier and
-#' a source per behavior as `robots_engine_contract_v1()$agent_presets`.
+#' measured AI user agent does, on the API surface its complete probe
+#' matrix ran on: agent-view's live probes of 2026-11-12 to 2026-11-26,
+#' published with an evidence tier, a source and the dates per behavior as
+#' `robots_engine_contract_v1()$agent_presets`.
 #' A preset fixes the `"google"` ruleset and backend, the group the matcher
 #' selects and the URL steps; `robots_product_token`,
 #' `robots_policy_ruleset` and `matcher_backend` may be left out, and one
@@ -2652,9 +2709,10 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' OpenAI Responses API `web_search` tool: it obeys only a group naming
 #' `OAI-SearchBot` (`group_token` `"OAI-SearchBot"`), never a
 #' `User-agent: ChatGPT-User` group or `*`, so a file with no
-#' `OAI-SearchBot` group allows it, with `group_token` `NA`; and it puts
-#' the hex digits of every `%HH` escape in the URL in upper case, which is
-#' inferred from one verdict rather than seen. `"claude_user"` is Claude-User
+#' `OAI-SearchBot` group allows it, with `group_token` `NA`; it puts the
+#' hex digits of every `%HH` escape in the URL in upper case, which is
+#' inferred from one verdict rather than seen; and it keeps a `/` in the
+#' query, which one case saw sent raw. `"claude_user"` is Claude-User
 #' behind the Claude API `web_fetch` tool (`web_fetch_20260309`), not the
 #' ClaudeBot crawler: it selects its own group, else `*`, and, as edge logs
 #' show, puts `%HH` hex digits in upper case, encodes each `/` in the query as
@@ -2663,19 +2721,25 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' `Disallow: /` disallows `/dir/` for Claude-User and allows it for
 #' ChatGPT-User. Nothing is decoded, and a `%` without two hex digits is
 #' left as it is. No other byte is changed: a raw space or byte outside
-#' ASCII, a `.` or `..` segment, a `//` run, userinfo, and the trailing-slash
-#' and query-slash cases not listed are unmeasured, so they are read as
+#' ASCII, a tab or other control byte, a backslash, a character RFC 3986
+#' excludes (`"<>^{|}` and the backquote), a `%` without two hex digits, a
+#' literal or percent-encoded dot segment, a `//` run, userinfo, and the
+#' trailing-slash cases not listed are unmeasured, so they are read as
 #' given and `url_preprocessing_note` names them
-#' (`left as given, unmeasured for <preset>: ...`) after the steps that
-#' changed the URL. A preset row is not compared for disagreement:
+#' (`left as given, unmeasured for <preset>: ...`, the inputs joined by
+#' `", "`) after the steps that changed the URL, the parts joined by
+#' `"; "`. A preset row is not compared for disagreement:
 #' `preprocessing_disagreement` is `NA` with `disagreement_clients`
 #' `not compared under an agent preset`. Both presets read Google's
 #' 512,000-byte window, which is Google's: the ChatGPT cap is unmeasured, and
 #' the Claude API refuses the whole host for a robots.txt over 500,000 bytes,
 #' which the preset does not model yet. The agents' cached copies (ChatGPT
-#' follows `OAI-SearchBot`'s stored copy) are not modeled either: a preset
-#' reads the body it is given. ChatGPT Chat and `claude.ai` were not
-#' measured.
+#' follows `OAI-SearchBot`'s stored copy; the Claude API reuses a recent
+#' read and caches a refusal) are not modeled either: a preset reads the
+#' body it is given. ChatGPT Chat and `claude.ai` have earlier observations
+#' (the ChatGPT group binding was counted in Chat mode too, and the Claude
+#' size refusal on `claude.ai`) but no complete probe matrix, so the
+#' presets are scoped to the two APIs.
 #'
 #' @param robots_txt A single, non-missing character value containing the
 #'   robots.txt body. A body marked UTF-8 is used as written. An unmarked body

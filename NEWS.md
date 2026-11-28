@@ -1,6 +1,6 @@
 # robotstxtr (development version)
 
-* `robots_evaluate_text_v1()` and `robots_evaluate_url_v1()` take `preset = "chatgpt_user"` or `"claude_user"`: that agent's measured group selection and URL steps on the google backend; unmeasured behavior is not guessed (ROBO-uyfryhlz).
+* `robots_evaluate_text_v1()` and `robots_evaluate_url_v1()` take `preset = "chatgpt_user"` or `"claude_user"`: that agent's recorded group selection and URL steps, each labeled observed or inferred, on the google backend; unmeasured behavior is not guessed (ROBO-uyfryhlz).
 * Validator: new `rule_trailing_invisible_character` warning for a rule ending in an invisible or non-ASCII space character; User-agent rows name Unicode format and separator characters too (ROBO-uphlyomt).
 * Validator: `rule_prefix_sibling` no longer advises `P$` together with `P/`; it says only what `P` matches (ROBO-dkkbwzur).
 * Validator: new `rule_star_led_pattern` info, once per file, for Allow or Disallow patterns led by `*`, outside RFC 9309's path-pattern grammar (RFC 9309 §2.2) (ROBO-ktmnbirm).

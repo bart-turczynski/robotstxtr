@@ -31,11 +31,14 @@ revision \code{2026-11-21.2}, \code{url_normalizations}, the values
 \code{agent_presets} publishes the values those facades accept for \code{preset}:
 \code{presets}, one row per preset (its robots token, the token the matcher
 selects a group with, the group selection, ruleset, backend, URL steps,
-body window and measured surface); \code{behaviors}, one row per preset
-behavior with whether the preset models it, its \code{evidence_tier} and the
-agent-view-research record it rests on; and \code{evidence_tiers}, the tier
-set: \code{observed} (seen in edge logs or across a probe matrix), \code{inferred}
-(deduced from verdicts) and \code{unmeasured} (not modeled, never guessed).
+body window and the API surface its complete probe matrix ran on);
+\code{behaviors}, one row per preset behavior with whether the preset models
+it, its \code{evidence_tier}, the agent-view-research record it rests on
+(\code{source}; \code{"none"} where no record measures it) and the dates that
+record gives (\code{measured}, \code{NA} where it cites none); and
+\code{evidence_tiers}, the tier set: \code{observed} (seen in edge logs or across
+a probe matrix), \code{inferred} (deduced from verdicts) and \code{unmeasured}
+(not modeled, never guessed).
 }
 \examples{
 # A plain offline accessor: it opens no socket and matches nothing.

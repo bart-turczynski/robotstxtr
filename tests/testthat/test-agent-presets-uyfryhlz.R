@@ -151,6 +151,7 @@ test_that("claude_user encodes a query `/`, chatgpt_user keeps it", {
   claude <- ap_preset(paste0("User-agent: *\n", rules), url, "claude_user")
   expect_identical(chatgpt$url_decision, "allow")
   expect_identical(chatgpt$matcher_url, url)
+  expect_identical(chatgpt$url_preprocessing_note, NA_character_)
   expect_identical(claude$url_decision, "disallow")
   expect_identical(claude$matcher_url, "https://example.com/c13?q=%2F")
   expect_identical(claude$url_preprocessing_note,
@@ -273,11 +274,21 @@ test_that("unmeasured inputs pass as given, and the note names them", {
       paste0("left as given, unmeasured for ", preset, ": dot segment")
     )
   }
-  # ChatGPT-User's trailing slash and query slash are unmeasured too.
+  # ChatGPT-User's trailing slash is unmeasured too; its query `/` is
+  # observed kept (converters/openai.md), so it is not named.
   row <- ap_preset("User-agent: *\n", "/d/?q=/", "chatgpt_user")
   expect_identical(row$matcher_url, "/d/?q=/")
-  expect_match(row$url_preprocessing_note,
-               "trailing / on a non-root path, / in the query", fixed = TRUE)
+  expect_identical(
+    row$url_preprocessing_note,
+    "left as given, unmeasured for chatgpt_user: trailing / on a non-root path"
+  )
+  # Several unmeasured inputs are joined by ", ", the parts by "; ".
+  both <- ap_preset("User-agent: *\n", "/a b/%3c\\x/", "claude_user")
+  expect_identical(
+    both$url_preprocessing_note,
+    paste0("percent-escape hex digits uppercased; trailing / removed; ",
+           "left as given, unmeasured for claude_user: raw space, backslash")
+  )
 })
 
 test_that("a latin1-marked URL keeps its bytes and its mark", {
@@ -321,6 +332,13 @@ test_that("a preset fixes the google ruleset and backend", {
   )
   expect_identical(agree$robots_product_token, "claude-user")
   expect_identical(agree$url_decision, "allow")
+  # `group_token` is the preset's matcher token as the contract spells it.
+  own <- ap_text(
+    "User-agent: claude-user\nDisallow: /x\n", "/x",
+    robots_product_token = "claude-user", preset = "claude_user"
+  )
+  expect_identical(own$url_decision, "disallow")
+  expect_identical(own$group_token, "Claude-User")
 })
 
 test_that("a preset aborts on a conflicting argument or an unknown id", {
@@ -401,6 +419,10 @@ test_that("the contract publishes the presets at the moved revision", {
   expect_identical(presets$matcher_token, c("OAI-SearchBot", "Claude-User"))
   expect_identical(presets$group_selection,
                    c("exact_only", "exact_else_wildcard"))
+  # The contract's profile selection modes, not the Google crawler modes.
+  expect_true(all(
+    presets$group_selection %in% supported_profile_selection_modes_v1()
+  ))
   expect_identical(presets$robots_policy_ruleset, c("google", "google"))
   expect_identical(presets$matcher_backend, c("google", "google"))
   expect_identical(
@@ -410,7 +432,12 @@ test_that("the contract publishes the presets at the moved revision", {
   )
   expect_identical(presets$body_limit_bytes, c(512000L, 512000L))
   expect_identical(presets$body_limit_source, c("google", "google"))
-  expect_match(presets$surface, "measured 2026-11-26", fixed = TRUE)
+  # The surface names no date: each behavior carries its own.
+  expect_identical(
+    presets$surface,
+    c("OpenAI Responses API web_search tool",
+      "Claude API web_fetch tool (web_fetch_20260309)")
+  )
 })
 
 test_that("every preset behavior carries a tier and a source", {
@@ -423,9 +450,40 @@ test_that("every preset behavior carries a tier and a source", {
   expect_true(all(nzchar(behaviors$source)))
   expect_true(all(nzchar(behaviors$note)))
   expect_false(anyDuplicated(behaviors[c("preset", "behavior")]) > 0L)
-  expect_true(all(grepl("^agent-view(-research)?:", behaviors$source)))
+  # A source is an agent-view record, or "none" for an unmeasured row
+  # that no record measures.
+  none <- behaviors$source == "none"
+  expect_true(all(grepl("^agent-view(-research)?:", behaviors$source[!none])))
+  expect_true(all(behaviors$evidence_tier[none] == "unmeasured"))
+  # An observed or inferred row carries the dates its record gives.
+  dated <- behaviors$evidence_tier != "unmeasured"
+  expect_true(all(grepl(
+    "^2026-11-[0-9]{2}( to 2026-11-[0-9]{2})?$", behaviors$measured[dated]
+  )))
+  expect_true(all(is.na(behaviors$measured[none])))
   # An unmeasured behavior is never modeled.
   expect_false(any(behaviors$modeled & behaviors$evidence_tier == "unmeasured"))
+  # The record-keeping rows (review round 1): ChatGPT's query `/` is
+  # observed kept, Claude's stored copies are recorded, and the other
+  # access paths say what the record has, not "unprobed".
+  pick <- function(preset, behavior) {
+    behaviors[behaviors$preset == preset & behaviors$behavior == behavior, ]
+  }
+  query <- pick("chatgpt_user", "query_slash")
+  expect_identical(query$evidence_tier, "observed")
+  expect_true(query$modeled)
+  expect_identical(pick("claude_user", "stored_copy")$evidence_tier,
+                   "observed")
+  expect_identical(pick("claude_user", "shared_copy")$evidence_tier,
+                   "inferred")
+  expect_identical(pick("chatgpt_user", "group_binding")$measured,
+                   "2026-11-13 to 2026-11-16")
+  expect_identical(pick("claude_user", "body_limit")$measured, "2026-11-12")
+  for (preset in contract$presets$preset) {
+    other <- pick(preset, "other_access_paths")
+    expect_match(other$note, "no complete probe matrix", fixed = TRUE)
+    expect_false(grepl("unprobed|not measured", other$note))
+  }
   # Each URL step a preset applies is a modeled behavior with its tier.
   tier <- function(preset, behavior) {
     behaviors$evidence_tier[
@@ -447,10 +505,18 @@ test_that("every preset behavior carries a tier and a source", {
                      behaviors$behavior == "body_limit", ]
   expect_false(cap$modeled)
   expect_match(cap$note, "500,000 bytes refuses the whole host", fixed = TRUE)
+  # Each byte class a note can name has an unmeasured row on both presets.
+  classes <- c(
+    "raw_non_ascii", "raw_space", "control_bytes", "backslash",
+    "rfc3986_excluded", "stray_percent", "dot_segments",
+    "encoded_dot_segments", "empty_path_segments", "userinfo",
+    "status_policy"
+  )
   for (preset in contract$presets$preset) {
-    expect_true(all(c("raw_non_ascii", "raw_space", "dot_segments",
-                      "status_policy") %in%
-                      behaviors$behavior[behaviors$preset == preset]))
+    rows <- behaviors[behaviors$preset == preset &
+                        behaviors$behavior %in% classes, ]
+    expect_setequal(rows$behavior, classes)
+    expect_true(all(rows$evidence_tier == "unmeasured"), info = preset)
   }
 })
 

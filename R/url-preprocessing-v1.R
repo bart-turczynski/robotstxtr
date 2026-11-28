@@ -989,8 +989,9 @@ agent_unmeasured_v1 <- function(bytes, preset) {
     found[["trailing / before a query or fragment"]] <- trailing &&
       (length(target$query) > 0L || target$fragment)
   } else {
+    # ChatGPT-User's query `/` is observed kept (converters/openai.md,
+    # AGEN-nweunrii), so it is not named here.
     found[["trailing / on a non-root path"]] <- trailing
-    found[["/ in the query"]] <- any(target$query == as.raw(0x2f))
   }
   names(found)[found]
 }
