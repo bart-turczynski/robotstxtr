@@ -187,6 +187,31 @@ test_that("escape uppercasing never decodes or double-encodes", {
       expect_identical(pre(edge), edge, info = paste(preset, edge))
     }
     expect_identical(pre("/a%%3c"), "/a%%3C", info = preset)
+    note <- function(u) {
+      ap_preset("User-agent: *\n", u, preset)$url_preprocessing_note
+    }
+    # The uppercased `%2e%2e` segment is still named as unmeasured.
+    expect_identical(
+      note("/%2e%2e/x"),
+      paste0("percent-escape hex digits uppercased; left as given, ",
+             "unmeasured for ", preset, ": percent-encoded dot segment"),
+      info = preset
+    )
+    # A valid escape and an encoded dot inside a longer segment are measured.
+    expect_identical(note("/a%41b/x%2Ey"), NA_character_, info = preset)
+  }
+  expect_identical(
+    ap_preset("User-agent: *\n", "https://example.com/a\\b/",
+              "claude_user")$url_preprocessing_note,
+    "trailing / removed; left as given, unmeasured for claude_user: backslash"
+  )
+})
+
+test_that("a query step leaves a URL ending in `?` as given", {
+  for (url in c("/a?", "/a?#f/g", "/a?x=1")) {
+    row <- ap_preset("User-agent: *\n", url, "claude_user")
+    expect_identical(row$matcher_url, url, info = url)
+    expect_identical(row$url_preprocessing_note, NA_character_, info = url)
   }
 })
 
@@ -212,8 +237,24 @@ test_that("unmeasured inputs pass as given, and the note names them", {
     list(url = "/a/./b", unmeasured = "dot segment"),
     list(url = "/a//b", unmeasured = "empty path segment (//)"),
     list(url = "https://u:p@example.com/x", unmeasured = "userinfo"),
-    list(url = invalid, unmeasured = "raw byte outside ASCII")
+    list(url = invalid, unmeasured = "raw byte outside ASCII"),
+    list(url = "/a\\b", unmeasured = "backslash"),
+    list(url = "/a\tb", unmeasured = "control byte"),
+    list(url = "/a\001b", unmeasured = "control byte"),
+    list(url = "/a\177b", unmeasured = "control byte"),
+    list(url = "/a%zz", unmeasured = "% without two hex digits"),
+    list(url = "/a%", unmeasured = "% without two hex digits"),
+    list(url = "/a%3", unmeasured = "% without two hex digits"),
+    list(url = "/a/%2E/b", unmeasured = "percent-encoded dot segment"),
+    list(url = "/a/.%2E/b", unmeasured = "percent-encoded dot segment"),
+    list(url = "/%2E%2E/x", unmeasured = "percent-encoded dot segment")
   )
+  for (char in strsplit("\"<>^`{|}", "", fixed = TRUE)[[1L]]) {
+    cases[[length(cases) + 1L]] <- list(
+      url = paste0("/a", char, "b"),
+      unmeasured = "character RFC 3986 excludes (\"<>^`{|})"
+    )
+  }
   for (preset in c("chatgpt_user", "claude_user")) {
     for (case in cases) {
       row <- ap_preset("User-agent: *\n", case$url, preset)
@@ -226,6 +267,11 @@ test_that("unmeasured inputs pass as given, and the note names them", {
       expect_match(row$url_preprocessing_note, case$unmeasured,
                    fixed = TRUE, info = case$url)
     }
+    # A literal dot segment is not named as an encoded one.
+    expect_identical(
+      ap_preset("User-agent: *\n", "/a/../b", preset)$url_preprocessing_note,
+      paste0("left as given, unmeasured for ", preset, ": dot segment")
+    )
   }
   # ChatGPT-User's trailing slash and query slash are unmeasured too.
   row <- ap_preset("User-agent: *\n", "/d/?q=/", "chatgpt_user")

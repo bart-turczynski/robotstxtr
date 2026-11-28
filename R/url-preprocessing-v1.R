@@ -915,9 +915,6 @@ agent_encode_query_slash_v1 <- function(bytes) {
     return(bytes)
   }
   query <- bytes[(question + 1L):end]
-  if (!any(query == as.raw(0x2f))) {
-    return(bytes)
-  }
   encoded <- unlist(lapply(query, function(b) {
     if (b == as.raw(0x2f)) charToRaw("%2F") else b
   }))
@@ -942,8 +939,29 @@ agent_strip_trailing_slash_v1 <- function(bytes) {
   bytes[-length(bytes)]
 }
 
+# Whether a `%` in `bytes` is not followed by two hex digits.
+agent_stray_percent_v1 <- function(bytes) {
+  pct <- which(bytes == as.raw(0x25))
+  if (length(pct) == 0L) {
+    return(FALSE)
+  }
+  hex <- c(
+    bytes %in% as.raw(c(0x30:0x39, 0x41:0x46, 0x61:0x66)), FALSE, FALSE
+  )
+  !all(hex[pct + 1L] & hex[pct + 2L])
+}
+
+# Whether a path segment is `.` or `..` once `%2e`/`%2E` is read as `.`,
+# though not written so (`%2e`, `.%2e`, `%2E%2E`, ...).
+agent_encoded_dot_segment_v1 <- function(segments) {
+  decoded <- gsub("%2[eE]", ".", segments, useBytes = TRUE)
+  any(decoded %in% c(".", "..") & decoded != segments)
+}
+
 # The inputs a preset leaves as given because no probe measured how its
 # surface reads them (AGEN-hdmtqpwx, AGEN-hsvkltop), named for the note.
+# Every byte class the preset steps do not touch is named here, so a row
+# that holds one never reads as fully measured.
 agent_unmeasured_v1 <- function(bytes, preset) {
   target <- url_target_parts_v1(bytes)
   path <- target$path
@@ -952,11 +970,18 @@ agent_unmeasured_v1 <- function(bytes, preset) {
   )[[1L]]
   slashes <- path == as.raw(0x2f)
   trailing <- agent_nonroot_trailing_slash_v1(path)
+  code <- as.integer(bytes)
   found <- c(
-    `raw byte outside ASCII` = any(as.integer(bytes) >= 0x80L),
-    `raw space` = any(bytes == as.raw(0x20)),
-    `dot segment` = any(segments %in% c(".", "..")),
-    `empty path segment (//)` = length(path) > 1L &&
+    "raw byte outside ASCII" = any(code >= 0x80L),
+    "raw space" = any(bytes == as.raw(0x20)),
+    "control byte" = any(code < 0x20L | code == 0x7fL),
+    backslash = any(bytes == as.raw(0x5c)),
+    "character RFC 3986 excludes (\"<>^`{|})" =
+      any(bytes %in% charToRaw("\"<>^`{|}")),
+    "% without two hex digits" = agent_stray_percent_v1(bytes),
+    "dot segment" = any(segments %in% c(".", "..")),
+    "percent-encoded dot segment" = agent_encoded_dot_segment_v1(segments),
+    "empty path segment (//)" = length(path) > 1L &&
       any(slashes[-1L] & slashes[-length(path)]),
     userinfo = target$userinfo
   )
@@ -1017,10 +1042,5 @@ agent_matcher_url_v1 <- function(url, preset, steps) {
   } else {
     paste(parts, collapse = "; ")
   }
-  out <- if (length(changed) == 0L) {
-    url
-  } else {
-    string_with_mark_v1(bytes, input$encoding)
-  }
-  list(url = out, note = note)
+  list(url = string_with_mark_v1(bytes, input$encoding), note = note)
 }
