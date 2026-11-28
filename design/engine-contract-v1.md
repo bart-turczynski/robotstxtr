@@ -376,7 +376,11 @@ ChatGPT Chat or claude.ai: both have earlier observations (the ChatGPT
 binding counts include Chat-mode asks on chatgpt.com, and the Claude size
 refusal was also seen on claude.ai) but no complete probe matrix
 (`access-and-blocklists/robots-parser-ports.md`, "Surface and acquisition
-gaps"). `claude_user` is not the ClaudeBot crawler:
+gaps"). Work mode, agent mode and Codex are not covered either
+(`converters/openai.md`, the "Not covered" list, lines 1915-1917 at
+agent-view-research 63ea6b2). The claude.ai size refusal and its parser
+cells that reused the API's reads are in
+`access-and-blocklists/claude-blocklist.md` (lines 109-117 and 142-144). `claude_user` is not the ClaudeBot crawler:
 agent-view-research's `access-and-blocklists/robots-parser-ports.md` keeps
 ClaudeBot as a separate, passive watch with no matched port matrix. No
 preset is named for ClaudeBot, GPTBot or OAI-SearchBot as crawlers.
@@ -479,7 +483,12 @@ the Google crawler modes: a preset has no parent token.
 `presets`, the table above with the window and the API surface of the
 complete matrix; `behaviors`, one row per preset behavior with `modeled`,
 `evidence_tier`, `source`, `measured` (the date or range the cited record
-gives, `NA` where the row cites none) and `note`; and `evidence_tiers`.
+gives for live observations of the row's own behavior: every observed or
+inferred row has one, and so does ChatGPT's unmeasured `trailing_slash`,
+seen only against an index.html Allow; `NA` where the record dates none,
+which is a `none` source, a probe that has not run, Claude's trailing `/`
+before a query or fragment and both `other_access_paths` rows) and `note`;
+and `evidence_tiers`.
 The tiers follow the owner's rule
 on ROBO-kgqlcpjn that each behavior is labeled with the evidence it rests on:
 `observed` (the request bytes in edge logs, or the agent's verdicts across a

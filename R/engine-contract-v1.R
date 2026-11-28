@@ -401,8 +401,13 @@ agent_preset_evidence_tiers_v1 <- function() {
 # measured. `source` is a path in the agent-view-research repository, an
 # agent-view probe id for a behavior a planned probe has not settled yet,
 # or "none" where no agent-view record measures the behavior at all.
-# `measured` is the date or date range the cited record gives for its live
-# observations, NA where the row cites none. Every byte class
+# `measured` is the date or date range the cited record gives for live
+# observations of the row's own behavior. Every observed or inferred row
+# has one, and so does ChatGPT's unmeasured `trailing_slash`, seen only
+# against an index.html Allow. It is NA where the record dates none: a
+# source of "none", a probe that has not run, Claude's trailing `/` before
+# a query or fragment, which the record does not show, and the other access
+# paths, whose earlier observations the record does not date. Each byte class
 # agent_unmeasured_v1() names in a note has an unmeasured row here.
 agent_preset_behaviors_v1 <- function() {
   openai <- "agent-view-research:converters/openai.md"
@@ -524,12 +529,16 @@ agent_preset_behaviors_v1 <- function() {
       ),
       measured = "2026-11-26"
     ),
+    # The matrix gap is ports.md's "Surface and acquisition gaps"; the
+    # uncovered modes are converters/openai.md's "Not covered" list
+    # (origin/main 63ea6b2, lines 1915-1917).
     unmeasured(
       "chatgpt_user", "other_access_paths", ports,
       paste(
         "ChatGPT Chat has earlier group-binding and nonstandard-field",
         "observations but no complete probe matrix; Work mode, agent mode",
-        "and Codex are not covered (ROBO-ldulplqs)"
+        "and Codex are not covered (converters/openai.md, \"Not covered\";",
+        "ROBO-ldulplqs)"
       )
     ),
     common("chatgpt_user"),
@@ -587,11 +596,16 @@ agent_preset_behaviors_v1 <- function() {
       "claude_user", "trailing_slash_before_query", claude,
       "a trailing `/` before a query or fragment is kept"
     ),
+    # The matrix gap is ports.md's "Surface and acquisition gaps"; the
+    # claude.ai observations are access-and-blocklists/claude-blocklist.md's
+    # (origin/main 63ea6b2: the refusal at lines 109-117, the reused reads
+    # at 142-144).
     unmeasured(
       "claude_user", "other_access_paths", ports,
       paste(
         "claude.ai has earlier observations (the 500,000-byte refusal,",
-        "parser cells that reused the API's reads) but no complete probe",
+        "parser cells that reused the API's reads; both in",
+        "access-and-blocklists/claude-blocklist.md) but no complete probe",
         "matrix"
       )
     ),
@@ -1140,7 +1154,10 @@ engine_policy_table_v1 <- function() {
 #' `behaviors`, one row per preset behavior with whether the preset models
 #' it, its `evidence_tier`, the agent-view-research record it rests on
 #' (`source`; `"none"` where no record measures it) and the dates that
-#' record gives (`measured`, `NA` where it cites none); and
+#' record gives for live observations of that behavior (`measured`: every
+#' observed or inferred row has one; an unmeasured row has one only when it
+#' was seen in part, and is `NA` where the record dates no observation of
+#' it); and
 #' `evidence_tiers`, the tier set: `observed` (seen in edge logs or across
 #' a probe matrix), `inferred` (deduced from verdicts) and `unmeasured`
 #' (not modeled, never guessed).

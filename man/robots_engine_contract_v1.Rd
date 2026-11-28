@@ -35,7 +35,10 @@ body window and the API surface its complete probe matrix ran on);
 \code{behaviors}, one row per preset behavior with whether the preset models
 it, its \code{evidence_tier}, the agent-view-research record it rests on
 (\code{source}; \code{"none"} where no record measures it) and the dates that
-record gives (\code{measured}, \code{NA} where it cites none); and
+record gives for live observations of that behavior (\code{measured}: every
+observed or inferred row has one; an unmeasured row has one only when it
+was seen in part, and is \code{NA} where the record dates no observation of
+it); and
 \code{evidence_tiers}, the tier set: \code{observed} (seen in edge logs or across
 a probe matrix), \code{inferred} (deduced from verdicts) and \code{unmeasured}
 (not modeled, never guessed).

@@ -566,6 +566,26 @@ test_that("every preset behavior carries a tier and a source", {
                                        "encoded_slash_in_path"), ]
     expect_identical(added$source, rep("none", 3L), info = preset)
   }
+  # `measured` (review round 2, m2): dated for every observed or inferred
+  # row and for ChatGPT's partly seen trailing slash; NA exactly where the
+  # record dates no observation of the row's behavior.
+  undated <- c(
+    paste0(behaviors$preset, ":", behaviors$behavior)[
+      behaviors$source == "none" | grepl("(not run)", behaviors$source,
+                                         fixed = TRUE)
+    ],
+    "claude_user:trailing_slash_before_query",
+    "chatgpt_user:other_access_paths", "claude_user:other_access_paths"
+  )
+  key <- paste0(behaviors$preset, ":", behaviors$behavior)
+  expect_setequal(key[is.na(behaviors$measured)], undated)
+  expect_identical(pick("chatgpt_user", "trailing_slash")$measured,
+                   "2026-11-26")
+  # The other access paths name the record each claim lives in (m1).
+  expect_match(pick("chatgpt_user", "other_access_paths")$note,
+               "Codex are not covered (converters/openai.md", fixed = TRUE)
+  expect_match(pick("claude_user", "other_access_paths")$note,
+               "access-and-blocklists/claude-blocklist.md", fixed = TRUE)
 })
 
 test_that("a named preset value reads as the plain one (review round 2, M1)", {
