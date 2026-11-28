@@ -11,7 +11,8 @@ robots_evaluate_text_v1(
   robots_policy_ruleset,
   matcher_backend,
   source_id = "supplied",
-  url_normalization = "rfc3986"
+  url_normalization = "rfc3986",
+  preset = NULL
 )
 }
 \arguments{
@@ -56,7 +57,12 @@ section 5.2.4), leaves userinfo out and drops the fragment, and never
 encodes, decodes or case-folds a byte, so \verb{\%2e} is kept; \code{"whatwg"}
 reads it as the WHATWG URL Standard serializes it, so \verb{\%2e} segments
 are removed and the encoding may change; \code{"none"} hands the URL to the
-matcher as given. See Details.}
+matcher as given. See Details. Leave it out under a \code{preset}.}
+
+\item{preset}{\code{NULL} (the default) for none, or one AI user agent preset:
+\code{"chatgpt_user"} (ChatGPT-User, OpenAI Responses API \code{web_search}) or
+\code{"claude_user"} (Claude-User, Claude API \code{web_fetch}). It fixes the
+ruleset, backend, group selection and URL steps; see Details.}
 }
 \value{
 A \code{robots_engine_decisions_v1} object with \code{results}, neutral
@@ -118,8 +124,11 @@ crawler the token names. The \code{group_token} column says whose group
 decided a Google row: the token as given, its parent token, \code{"*"} when no
 group names it (the \code{*} rules, if any), or \code{NA} for a \code{*}-ignoring
 crawler with no group of its own, a row of another backend, or a row no
-matcher decided. \code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}} and \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}}
-apply none of this layer.
+matcher decided. Under a \code{preset} it is the matcher token of the preset
+as the contract spells it (\code{"OAI-SearchBot"}, or \code{"Claude-User"} for a
+caller's \code{"claude-user"}), \code{"*"}, or \code{NA}; see below.
+\code{\link[=allowed_by_robots_text]{allowed_by_robots_text()}} and \code{\link[=allowed_by_robots_url]{allowed_by_robots_url()}} apply none of
+this layer.
 
 The Yandex backend is active (since schema revision \code{2026-07-18.2}). An
 evaluated Yandex row publishes \code{reason} as one of \code{default_allow},
@@ -235,6 +244,56 @@ is not computed, no second match runs, \code{preprocessing_disagreement} is
 \code{NA} and \code{disagreement_clients} is
 \verb{not compared: URL longer than 2048 bytes}. Under \code{"whatwg"} every length
 is compared.
+
+Since schema revision \code{2026-11-28.1}, \code{preset} reads the file as one
+measured AI user agent does, on the API surface its complete probe
+matrix ran on: agent-view's live probes of 2026-11-12 to 2026-11-26,
+published with an evidence tier, a source and the dates per behavior as
+\code{robots_engine_contract_v1()$agent_presets}.
+A preset fixes the \code{"google"} ruleset and backend, the group the matcher
+selects and the URL steps; \code{robots_product_token},
+\code{robots_policy_ruleset} and \code{matcher_backend} may be left out, and one
+given must agree with the preset (the token compared ASCII
+case-insensitively), while \code{url_normalization} must be left out. A
+conflicting argument raises an error of class
+\code{robotstxtr_preset_conflict}. \code{"chatgpt_user"} is ChatGPT-User behind the
+OpenAI Responses API \code{web_search} tool: it obeys only a group naming
+\code{OAI-SearchBot} (\code{group_token} \code{"OAI-SearchBot"}), never a
+\code{User-agent: ChatGPT-User} group or \code{*}, so a file with no
+\code{OAI-SearchBot} group allows it, with \code{group_token} \code{NA}; it puts the
+hex digits of every \verb{\%HH} escape in the URL in upper case, which is
+inferred from one verdict rather than seen; and it keeps a \code{/} in the
+query, which one case saw sent raw. \code{"claude_user"} is Claude-User
+behind the Claude API \code{web_fetch} tool (\code{web_fetch_20260309}), not the
+ClaudeBot crawler: it selects its own group, else \code{*}, and, as edge logs
+show, puts \verb{\%HH} hex digits in upper case, encodes each \code{/} in the query as
+\verb{\%2F}, and strips one trailing \code{/} from a path other than \code{/} when the
+URL has no query or fragment, so \verb{Allow: /dir/index.html} with
+\verb{Disallow: /} disallows \verb{/dir/} for Claude-User and allows it for
+ChatGPT-User. Nothing is decoded, and a \verb{\%} without two hex digits is
+left as it is. No other byte is changed: a raw space or byte outside
+ASCII, a tab or other control byte, a backslash, a character RFC 3986
+excludes (\verb{"<>^\{|\}} and the backquote), a \code{[} or \verb{]} outside the host, a
+second \verb{#}, a \verb{\%} without two hex digits, an encoded \code{/} in the path
+(\verb{\%2f}, \verb{\%2e\%2e\%2f}, \verb{..\%2f}; only its hex digits change case), a
+literal or percent-encoded dot segment, a \verb{//} run, userinfo, and the
+trailing-slash cases not listed are unmeasured, so they are read as
+given and \code{url_preprocessing_note} names them; it names these classes
+only, and a byte class not listed here gets no note
+(\verb{left as given, unmeasured for <preset>: ...}, the inputs joined by
+\code{", "}) after the steps that changed the URL, the parts joined by
+\code{"; "}. A preset row is not compared for disagreement:
+\code{preprocessing_disagreement} is \code{NA} with \code{disagreement_clients}
+\verb{not compared under an agent preset}. Both presets read Google's
+512,000-byte window, which is Google's: the ChatGPT cap is unmeasured, and
+the Claude API refuses the whole host for a robots.txt over 500,000 bytes,
+which the preset does not model yet. The agents' cached copies (ChatGPT
+follows \code{OAI-SearchBot}'s stored copy; the Claude API reuses a recent
+read and caches a refusal) are not modeled either: a preset reads the
+body it is given. ChatGPT Chat and \code{claude.ai} have earlier observations
+(the ChatGPT group binding was counted in Chat mode too, and the Claude
+size refusal on \code{claude.ai}) but no complete probe matrix, so the
+presets are scoped to the two APIs.
 }
 \examples{
 # A non-Google-named token evaluated through the default Google backend
@@ -249,4 +308,19 @@ decisions <- robots_evaluate_text_v1(
 )
 decisions$results$matcher_backend  # "google" -- Google semantics, not Yandex
 decisions$results$url_decision     # "disallow"
+
+# The same file read as two measured AI user agents: Claude-User strips
+# the trailing slash, so the index.html shortcut no longer allows /dir/.
+body <- paste0(
+  "user-agent: *\nuser-agent: OAI-SearchBot\n",
+  "allow: /dir/index.html\ndisallow: /"
+)
+claude <- robots_evaluate_text_v1(
+  body, "https://example.com/dir/", preset = "claude_user"
+)
+claude$results[c("url_decision", "matcher_url", "url_preprocessing_note")]
+chatgpt <- robots_evaluate_text_v1(
+  body, "https://example.com/dir/", preset = "chatgpt_user"
+)
+chatgpt$results[c("url_decision", "group_token")]
 }

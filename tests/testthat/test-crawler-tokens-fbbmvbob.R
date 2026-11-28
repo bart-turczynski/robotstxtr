@@ -83,7 +83,7 @@ test_that("the contract publishes the table and the moved revisions", {
     cap <- contract$matcher_capability
     expect_identical(cap$google$crawler_tokens, google_crawler_tokens_v1())
     expect_identical(cap$google$token_policy, "arbitrary_valid")
-    expect_identical(contract$schema_revision, "2026-11-22.1")
+    expect_identical(contract$schema_revision, "2026-11-28.1")
     expect_identical(
       contract$policy_revisions[["google"]], "google-robots-policy-2026-11-12"
     )

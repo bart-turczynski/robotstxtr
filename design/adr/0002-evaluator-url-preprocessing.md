@@ -208,3 +208,32 @@ The schema revision of both facades moves to `2026-11-21.2`. No policy revision 
 `as_legacy_robots_decisions_v1()` drops both columns.
 
 Per-crawler defaults wait for live evidence (ROBO-oxfpgdrx).
+
+### 8. Per-surface steps under an agent preset (ROBO-uyfryhlz)
+
+The first live evidence for a URL reader's own steps is agent-view's probes of ChatGPT-User and
+Claude-User on their API surfaces (the URL steps 2026-11-26). The facades' `preset` argument
+applies them (design/engine-contract-v1.md, "Agent presets"). They are opt-in, reached only
+through `preset`:
+`url_normalization` keeps its three public values and its `"rfc3986"` default, and a preset with
+an explicit `url_normalization` is refused.
+
+Each preset starts from `"none"`, the URL as given, and applies only the steps measured for its
+surface. Unlike `"rfc3986"`, they encode and case-fold bytes, which section 2 keeps out of
+`"rfc3986"` (`"whatwg"` re-encodes by design, through `rurl`):
+
+- `claude_user`: uppercase the hex digits of every `%` followed by two hex digits, strip one
+  trailing `/` from a path other than `/` when the URL has no query or fragment, and encode each
+  `/` in the query as `%2F`. All three are seen in edge logs.
+- `chatgpt_user`: uppercase the hex digits only, inferred from one verdict. It keeps a `/` in the
+  query, which one case saw sent raw on the wire.
+
+They are local byte operations, not `rurl`, for the reason section 2 gives: its `"normalized"`
+form also decodes `%2E`, which neither agent was seen to do. Nothing is decoded, a `%` without two
+hex digits is kept, and no other byte changes. A raw space or byte outside ASCII, a control byte,
+a backslash, another character RFC 3986 excludes, a `[` or `]` outside the host, a second `#`, a
+`%` without two hex digits, an encoded `/` in the path, a literal or percent-encoded dot segment, a
+`//` run and userinfo were not measured (AGEN-hdmtqpwx and
+AGEN-hsvkltop have not run; no probe covers the rest), so a preset reads them as given and `url_preprocessing_note` names them as unmeasured, rather than
+borrowing `"rfc3986"`'s dot removal or `"whatwg"`'s encoding. The disagreement flag of section 7
+is not computed under a preset: the row is `NA`, with `not compared under an agent preset`.

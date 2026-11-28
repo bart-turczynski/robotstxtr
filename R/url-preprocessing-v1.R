@@ -19,11 +19,28 @@
 #              evaluated as given, with a note.
 #   "none"     The URL as given, byte for byte.
 #
+# The agent presets (ROBO-uyfryhlz) add one internal mode each, named after
+# the preset and reached only through the facades' `preset` argument, never
+# through `url_normalization` (engine_url_normalizations_v1() stays the
+# public set). Each starts from "none", the URL as given, and applies only
+# the byte steps measured for that surface (agent_preset_url_steps_v1()):
+#
+#   "claude_user"   uppercase the hex digits of every valid `%HH`, encode
+#                   each `/` in the query as `%2F`, and strip one trailing
+#                   `/` from a non-root path with no query or fragment.
+#   "chatgpt_user"  uppercase the hex digits of every valid `%HH`.
+#
+# Unlike "rfc3986", these encode and case-fold bytes; unlike "whatwg", they
+# never go through rurl, whose normalized form also decodes `%2E` (ADR 0002).
+# Nothing else is changed: a raw space or byte outside ASCII, a dot segment,
+# a `//` run or userinfo is left as given, and the note names it unmeasured.
+#
 # Whatever the mode, every row also carries `preprocessing_disagreement`:
 # whether the rfc3986 and whatwg targets decide differently, or whatwg
 # cannot parse the URL, on the rows a matcher decided (url_disagreement_v1());
 # NA under "rfc3986" for a URL over url_disagreement_max_bytes_v1(), and NA
-# on every decided row under "none", which computes nothing extra.
+# on every decided row under "none" and under a preset, which compute
+# nothing extra.
 
 # The `url_normalization` value set, default first. Adding a mode means an
 # entry here, a branch in preprocess_matcher_url_v1(), and a decision in
@@ -70,14 +87,30 @@ url_disagreement_not_compared_none_v1 <- function() {
   "not compared under url_normalization = \"none\""
 }
 
+# The clients note of a decided row under a preset, where the flag is never
+# computed either: a preset reads the URL as its surface was measured to,
+# not as an rfc3986 or whatwg client would.
+url_disagreement_not_compared_preset_v1 <- function() {
+  "not compared under an agent preset"
+}
+
 # One matcher URL and one note per row, under the selected mode, and the
 # rfc3986 target the disagreement flag compares. The whatwg form is
 # computed here only under "whatwg", for every row; under "rfc3986"
 # url_disagreement_v1() computes it for the rows it compares (`whatwg_url`
 # and `whatwg_failed` are then NULL). Under "none" nothing is computed: the
-# URL is read as given and the flag is not compared. NA and empty URLs pass
-# as they are, with no note, in every mode.
+# URL is read as given and the flag is not compared. Under a preset mode
+# only that preset's byte steps run, and the flag is not compared either.
+# NA and empty URLs pass as they are, with no note, in every mode.
 preprocess_matcher_url_v1 <- function(url, url_normalization) {
+  if (url_normalization %in% agent_preset_ids_v1()) {
+    selected <- agent_matcher_urls_v1(url, url_normalization)
+    return(list(
+      url = url, url_normalization = url_normalization,
+      matcher_url = selected$url, note = selected$note,
+      rfc3986_url = NULL, whatwg_url = NULL, whatwg_failed = NULL
+    ))
+  }
   none <- identical(url_normalization, "none")
   rfc3986 <- if (!none) rfc3986_matcher_urls_v1(url)
   whatwg <- if (identical(url_normalization, "whatwg")) {
@@ -513,6 +546,11 @@ url_disagreement_v1 <- function(preprocessed, matcher_rows, url_decision,
     clients[rows] <- url_disagreement_not_compared_none_v1()
     return(list(flag = flag, clients = clients))
   }
+  if (preprocessed$url_normalization %in% agent_preset_ids_v1()) {
+    flag[rows] <- NA
+    clients[rows] <- url_disagreement_not_compared_preset_v1()
+    return(list(flag = flag, clients = clients))
+  }
   if (identical(preprocessed$url_normalization, "rfc3986")) {
     over <- rows[
       nchar(preprocessed$url[rows], type = "bytes") >
@@ -831,4 +869,187 @@ rfc3986_matcher_url_v1 <- function(url) {
   # The rebuilt bytes take the input's mark, so an unchanged URL comes back
   # with its bytes and its mark.
   list(url = string_with_mark_v1(rebuilt, input$encoding), note = note)
+}
+
+# ---- agent presets (ROBO-uyfryhlz) ------------------------------------------
+
+# One matcher URL and one note per row under a preset mode. NA and empty
+# URLs pass as they are, with no note, as in every mode.
+agent_matcher_urls_v1 <- function(url, preset) {
+  out <- url
+  note <- rep(NA_character_, length(url))
+  steps <- agent_preset_url_steps_v1(preset)
+  for (i in which(!is.na(url) & nzchar(url))) {
+    row <- agent_matcher_url_v1(url[[i]], preset, steps)
+    out[[i]] <- row$url
+    note[[i]] <- row$note
+  }
+  list(url = out, note = note)
+}
+
+# The hex digits of every `%` followed by two hex digits, in upper case,
+# byte by byte: no locale reads them. A `%` without two hex digits after it
+# (`%zz`, `%3`, a trailing `%`) is left as it is, and nothing is decoded,
+# so `%2f` becomes `%2F`, never `/` or `%252F`.
+agent_upper_escapes_v1 <- function(bytes) {
+  n <- length(bytes)
+  if (n < 3L) {
+    return(bytes)
+  }
+  hex <- bytes %in% as.raw(c(0x30:0x39, 0x41:0x46, 0x61:0x66))
+  pct <- which(bytes[seq_len(n - 2L)] == as.raw(0x25))
+  pct <- pct[hex[pct + 1L] & hex[pct + 2L]]
+  digits <- c(pct + 1L, pct + 2L)
+  lower <- digits[bytes[digits] %in% as.raw(0x61:0x66)]
+  bytes[lower] <- as.raw(as.integer(bytes[lower]) - 32L)
+  bytes
+}
+
+# Each `/` in the query (after the first `?`, before any `#`) as `%2F`. The
+# fragment is left as given.
+agent_encode_query_slash_v1 <- function(bytes) {
+  hash <- match(as.raw(0x23), bytes)
+  end <- if (is.na(hash)) length(bytes) else hash - 1L
+  question <- match(as.raw(0x3f), bytes[seq_len(end)])
+  if (is.na(question) || question >= end) {
+    return(bytes)
+  }
+  query <- bytes[(question + 1L):end]
+  encoded <- unlist(lapply(query, function(b) {
+    if (b == as.raw(0x2f)) charToRaw("%2F") else b
+  }))
+  c(bytes[seq_len(question)], encoded, byte_tail_v1(bytes, end + 1L))
+}
+
+# Whether `path` (the path the backend reads) is longer than "/" and ends
+# in "/".
+agent_nonroot_trailing_slash_v1 <- function(path) {
+  length(path) > 1L && path[[length(path)]] == as.raw(0x2f)
+}
+
+# One trailing `/` stripped from a non-root path, only when the URL has no
+# query and no fragment, so the path's last byte is the URL's. A trailing
+# `/` before a query or fragment was not measured and is kept.
+agent_strip_trailing_slash_v1 <- function(bytes) {
+  target <- url_target_parts_v1(bytes)
+  if (length(target$query) > 0L || target$fragment ||
+        !agent_nonroot_trailing_slash_v1(target$path)) {
+    return(bytes)
+  }
+  bytes[-length(bytes)]
+}
+
+# Whether a `%` in `bytes` is not followed by two hex digits.
+agent_stray_percent_v1 <- function(bytes) {
+  pct <- which(bytes == as.raw(0x25))
+  if (length(pct) == 0L) {
+    return(FALSE)
+  }
+  hex <- c(
+    bytes %in% as.raw(c(0x30:0x39, 0x41:0x46, 0x61:0x66)), FALSE, FALSE
+  )
+  !all(hex[pct + 1L] & hex[pct + 2L])
+}
+
+# Whether a path segment is `.` or `..` once `%2e`/`%2E` is read as `.`,
+# though not written so (`%2e`, `.%2e`, `%2E%2E`, ...).
+agent_encoded_dot_segment_v1 <- function(segments) {
+  decoded <- gsub("%2[eE]", ".", segments, useBytes = TRUE)
+  any(decoded %in% c(".", "..") & decoded != segments)
+}
+
+# The inputs a preset leaves as given because no probe measured how its
+# surface reads them (AGEN-hdmtqpwx, AGEN-hsvkltop), named for the note.
+# It names the classes listed below, each with an unmeasured row in
+# agent_preset_behaviors_v1(); a byte class not listed gets no note.
+agent_unmeasured_v1 <- function(bytes, preset) {
+  target <- url_target_parts_v1(bytes)
+  path <- target$path
+  hash <- match(as.raw(0x23), bytes)
+  fragment <- if (is.na(hash)) raw(0) else byte_tail_v1(bytes, hash + 1L)
+  # Path, query and fragment: a bracketed IPv6 host is not counted.
+  after_host <- c(path, target$query, fragment)
+  segments <- strsplit(
+    rawToChar(path), "/", fixed = TRUE, useBytes = TRUE
+  )[[1L]]
+  slashes <- path == as.raw(0x2f)
+  trailing <- agent_nonroot_trailing_slash_v1(path)
+  code <- as.integer(bytes)
+  found <- c(
+    "raw byte outside ASCII" = any(code >= 0x80L),
+    "raw space" = any(bytes == as.raw(0x20)),
+    "control byte" = any(code < 0x20L | code == 0x7fL),
+    backslash = any(bytes == as.raw(0x5c)),
+    "character RFC 3986 excludes (\"<>^`{|})" =
+      any(bytes %in% charToRaw("\"<>^`{|}")),
+    "[ or ] outside the host" = any(after_host %in% charToRaw("[]")),
+    "a second #" = any(fragment == as.raw(0x23)),
+    "% without two hex digits" = agent_stray_percent_v1(bytes),
+    "encoded / (%2F) in the path" =
+      grepl("%2[fF]", rawToChar(path), useBytes = TRUE),
+    "dot segment" = any(segments %in% c(".", "..")),
+    "percent-encoded dot segment" = agent_encoded_dot_segment_v1(segments),
+    "empty path segment (//)" = length(path) > 1L &&
+      any(slashes[-1L] & slashes[-length(path)]),
+    userinfo = target$userinfo
+  )
+  if (identical(preset, "claude_user")) {
+    found[["trailing / before a query or fragment"]] <- trailing &&
+      (length(target$query) > 0L || target$fragment)
+  } else {
+    # ChatGPT-User's query `/` is observed kept (converters/openai.md,
+    # AGEN-nweunrii), so it is not named here.
+    found[["trailing / on a non-root path"]] <- trailing
+  }
+  names(found)[found]
+}
+
+# Every preset URL step, in the order they run, with the note label of a
+# step that changed the URL.
+agent_url_steps_v1 <- function() {
+  list(
+    uppercase_escapes = list(
+      apply = agent_upper_escapes_v1,
+      label = "percent-escape hex digits uppercased"
+    ),
+    strip_trailing_slash = list(
+      apply = agent_strip_trailing_slash_v1, label = "trailing / removed"
+    ),
+    encode_query_slash = list(
+      apply = agent_encode_query_slash_v1,
+      label = "/ in the query encoded as %2F"
+    )
+  )
+}
+
+# One URL under a preset: the URL with `steps` applied, in a fixed order,
+# and the note naming each step that changed it, then the unmeasured inputs
+# it holds.
+agent_matcher_url_v1 <- function(url, preset, steps) {
+  input <- url_bytes_v1(url)
+  bytes <- input$bytes
+  changed <- character()
+  for (step in intersect(names(agent_url_steps_v1()), steps)) {
+    entry <- agent_url_steps_v1()[[step]]
+    after <- entry$apply(bytes)
+    if (!identical(after, bytes)) {
+      changed <- c(changed, entry$label)
+      bytes <- after
+    }
+  }
+  unmeasured <- agent_unmeasured_v1(input$bytes, preset)
+  parts <- c(
+    changed,
+    if (length(unmeasured) > 0L) {
+      sprintf(
+        "left as given, unmeasured for %s: %s", preset, toString(unmeasured)
+      )
+    }
+  )
+  note <- if (length(parts) == 0L) {
+    NA_character_
+  } else {
+    paste(parts, collapse = "; ")
+  }
+  list(url = string_with_mark_v1(bytes, input$encoding), note = note)
 }
