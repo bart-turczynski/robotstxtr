@@ -603,6 +603,29 @@ test_that("a named preset value reads as the plain one (review round 2, M1)", {
                "trailing / before a query or fragment", fixed = TRUE)
 })
 
+test_that("a disagreement pass would select with the preset's token (n1)", {
+  # url_disagreement_v1() returns before `decide` under a preset; this stub
+  # calls it anyway, to show which token a second pass would select with.
+  seen <- new.env()
+  real_decide <- decide_urls_v1
+  real_disagreement <- url_disagreement_v1
+  local_mocked_bindings(
+    decide_urls_v1 = function(registry, backends, bodies, urls,
+                              product_tokens, ...) {
+      seen$tokens <- product_tokens
+      real_decide(registry, backends, bodies, urls, product_tokens, ...)
+    },
+    url_disagreement_v1 = function(preprocessed, matcher_rows, url_decision,
+                                   decide) {
+      decide(matcher_rows, preprocessed$matcher_url[matcher_rows])
+      real_disagreement(preprocessed, matcher_rows, url_decision, decide)
+    }
+  )
+  ap_preset("User-agent: OAI-SearchBot\nDisallow: /x\n", "https://e.com/x",
+            "chatgpt_user")
+  expect_identical(seen$tokens, "OAI-SearchBot")
+})
+
 # ---- Through the URL facade -------------------------------------------------
 
 test_that("a 2xx body is read under a preset (fake ssrfr)", {
@@ -652,6 +675,11 @@ test_that("a non-2xx cell is documentation_gap under a preset (fake ssrfr)", {
       expect_identical(legacy$allowed, NA, info = info)
       expect_identical(legacy$decision_source, "policy_documentation_gap",
                        info = info)
+      # Its fetch evidence is kept as fetched (round 2, n2).
+      expect_identical(legacy$http_status, status, info = info)
+      if (status %in% c(404L, 410L)) {
+        expect_identical(legacy$fetch_outcome, "missing", info = info)
+      }
     }
   }
   # Google's own cells, which the presets do not inherit.

@@ -59,7 +59,10 @@ A row built under a \code{preset} whose status cell the preset leaves
 unmeasured (\code{policy_status = "documentation_gap"}, such as a 404 or 410
 robots.txt) converts to \code{allowed = NA} with
 \code{decision_source = "policy_documentation_gap"}, not to the
-\code{missing_allow} that Google's 404 and 410 cells give.
+\code{missing_allow} that Google's 404 and 410 cells give. Its fetch evidence
+is kept as fetched (\code{fetch_outcome = "missing"} and \code{http_status = 404}
+for a 404), so read \code{allowed} and \code{decision_source}, not \code{fetch_outcome},
+for the decision.
 }
 \examples{
 # Build a v1 engine result offline, then adapt it for a legacy consumer.

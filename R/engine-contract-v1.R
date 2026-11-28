@@ -2471,7 +2471,7 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
       decide_urls_v1(
         matcher_registry, matcher_backend[rows],
         bodies = readable_bodies[source_of[rows]], urls = urls,
-        product_tokens = product_token[rows],
+        product_tokens = matcher_token[rows],
         crawler_profiles = crawler_profiles[
           match(rows, matcher_rows), , drop = FALSE
         ]
@@ -3091,7 +3091,10 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
 #' unmeasured (`policy_status = "documentation_gap"`, such as a 404 or 410
 #' robots.txt) converts to `allowed = NA` with
 #' `decision_source = "policy_documentation_gap"`, not to the
-#' `missing_allow` that Google's 404 and 410 cells give.
+#' `missing_allow` that Google's 404 and 410 cells give. Its fetch evidence
+#' is kept as fetched (`fetch_outcome = "missing"` and `http_status = 404`
+#' for a 404), so read `allowed` and `decision_source`, not `fetch_outcome`,
+#' for the decision.
 #'
 #' @param x A `robots_engine_decisions_v1` object using the Google policy and
 #'   Google matcher backend for every row.
