@@ -311,6 +311,331 @@ google_crawler_profiles_v1 <- function(product_tokens, layered) {
   out
 }
 
+# ---- Agent presets (ROBO-uyfryhlz) ------------------------------------------
+#
+# A preset names one measured AI user agent on one measured surface and fixes
+# everything the facades would otherwise take from the caller: the google
+# ruleset and backend, the token the matcher selects a group with and how,
+# and the URL steps. The evidence is agent-view's live probes, recorded in
+# agent-view-research (converters/openai.md,
+# access-and-blocklists/claude-blocklist.md and
+# access-and-blocklists/robots-parser-ports.md); every count there is for the
+# API surfaces named in `surface` only, not ChatGPT Chat or claude.ai. The
+# agents are not added to google_crawler_tokens_v1(): that table is read
+# from Google's documentation, and ChatGPT-User's own group never binds it,
+# which no parent fallback expresses. `claude_user` is the Claude API's
+# user-initiated fetcher, not the ClaudeBot crawler.
+
+agent_preset_ids_v1 <- function() {
+  c("chatgpt_user", "claude_user")
+}
+
+# One row per preset, as the contract publishes it. `matcher_token` is the
+# token the google matcher selects a group with; `group_selection` uses the
+# google crawler modes: `exact_only` never reads `*`, and
+# `exact_else_wildcard` is the plain matcher's own group, else `*`.
+# `url_steps` lists agent_preset_url_steps_v1() in the order they run.
+agent_presets_v1 <- function() {
+  steps <- vapply(
+    agent_preset_ids_v1(),
+    function(id) toString(agent_preset_url_steps_v1(id)),
+    character(1L), USE.NAMES = FALSE
+  )
+  data.frame(
+    preset = agent_preset_ids_v1(),
+    robots_product_token = c("ChatGPT-User", "Claude-User"),
+    matcher_token = c("OAI-SearchBot", "Claude-User"),
+    group_selection = c("exact_only", "exact_else_wildcard"),
+    robots_policy_ruleset = "google",
+    matcher_backend = "google",
+    url_steps = steps,
+    body_limit_bytes = 512000L,
+    body_limit_source = "google",
+    surface = c(
+      "OpenAI Responses API web_search tool, measured 2026-11-26",
+      "Claude API web_fetch tool (web_fetch_20260309), measured 2026-11-26"
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+# The URL steps each preset applies, in the order agent_matcher_url_v1()
+# runs them (R/url-preprocessing-v1.R).
+agent_preset_url_steps_v1 <- function(preset) {
+  switch(
+    preset,
+    chatgpt_user = "uppercase_escapes",
+    claude_user = c(
+      "uppercase_escapes", "strip_trailing_slash", "encode_query_slash"
+    )
+  )
+}
+
+# The evidence tiers of agent_preset_behaviors_v1() (the owner's rule on
+# ROBO-kgqlcpjn: each behavior is labeled with the evidence it rests on).
+#
+#   observed    measured directly: the request bytes in edge logs, or the
+#               agent's own allow or refuse answer across a probe matrix.
+#   inferred    deduced from verdicts, not seen directly.
+#   unmeasured  no probe has settled it; the preset does not guess it.
+agent_preset_evidence_tiers_v1 <- function() {
+  c("observed", "inferred", "unmeasured")
+}
+
+# One row per preset behavior: whether the preset models it (`modeled`),
+# the evidence tier, and the record it rests on. `source` is a path in the
+# agent-view-research repository, or an agent-view probe id for a behavior
+# no probe has settled yet.
+agent_preset_behaviors_v1 <- function() {
+  openai <- "agent-view-research:converters/openai.md"
+  claude <- "agent-view-research:access-and-blocklists/claude-blocklist.md"
+  ports <- "agent-view-research:access-and-blocklists/robots-parser-ports.md"
+  encoding <- "agent-view:AGEN-hdmtqpwx (not run)"
+  dots <- "agent-view:AGEN-hsvkltop (not run)"
+  row <- function(preset, behavior, modeled, tier, source, note) {
+    data.frame(
+      preset = preset, behavior = behavior, modeled = modeled,
+      evidence_tier = tier, source = source, note = note,
+      stringsAsFactors = FALSE
+    )
+  }
+  unmeasured <- function(preset, behavior, source, note) {
+    row(preset, behavior, FALSE, "unmeasured", source, note)
+  }
+  common <- function(preset) {
+    rbind(
+      unmeasured(
+        preset, "raw_non_ascii", encoding,
+        "a raw byte outside ASCII in the URL is left as given"
+      ),
+      unmeasured(
+        preset, "raw_space", encoding,
+        "a raw space in the URL is left as given"
+      ),
+      unmeasured(
+        preset, "dot_segments", dots,
+        "`.` and `..` segments are left as given"
+      ),
+      unmeasured(
+        preset, "empty_path_segments", ports,
+        "a `//` run in the path is left as given"
+      ),
+      unmeasured(
+        preset, "userinfo", ports, "userinfo in the URL is left as given"
+      ),
+      unmeasured(
+        preset, "status_policy", ports,
+        paste(
+          "only a 2xx response is read (use_rules); every other status,",
+          "redirect and transport cell is documentation_gap"
+        )
+      )
+    )
+  }
+  rbind(
+    row(
+      "chatgpt_user", "group_binding", TRUE, "observed", openai,
+      paste(
+        "an OAI-SearchBot group binds (35/35), also one naming both; a",
+        "ChatGPT-User group (26/26), `*` (31/31) and a GPTBot group (5/5)",
+        "never do (AGEN-anxylhbt)"
+      )
+    ),
+    row(
+      "chatgpt_user", "matcher", TRUE, "observed", ports,
+      paste(
+        "Google's robots.cc fingerprints and index.htm shortcut match, 68/68",
+        "on the normalized URL, 67/68 raw (AGEN-nweunrii, AGEN-qiymugzt,",
+        "AGEN-rklwcfkj): Google-compatible lineage, not proof of the",
+        "implementation"
+      )
+    ),
+    row(
+      "chatgpt_user", "uppercase_escapes", TRUE, "inferred", openai,
+      paste(
+        "inferred from one verdict (r103-esc1-lo, the one raw miss of",
+        "37/38); the request was not seen"
+      )
+    ),
+    unmeasured(
+      "chatgpt_user", "body_limit", openai,
+      "ChatGPT's own cap is unmeasured; Google's 512,000-byte window applies"
+    ),
+    row(
+      "chatgpt_user", "stored_copy", FALSE, "observed", openai,
+      paste(
+        "the verdict follows OAI-SearchBot's stored copy and nothing is",
+        "checked before its first read: not modeled, the preset reads the",
+        "body it is given"
+      )
+    ),
+    unmeasured(
+      "chatgpt_user", "trailing_slash", openai,
+      paste(
+        "a trailing `/` is kept; measured only against an index.html",
+        "Allow, where `/dir/` is allowed"
+      )
+    ),
+    unmeasured(
+      "chatgpt_user", "query_slash", openai,
+      "a `/` in the query is kept as sent; how ChatGPT reads it is unprobed"
+    ),
+    unmeasured(
+      "chatgpt_user", "other_access_paths", openai,
+      "ChatGPT Chat and OpenAI's other readers are unprobed (ROBO-ldulplqs)"
+    ),
+    common("chatgpt_user"),
+    row(
+      "claude_user", "group_selection", TRUE, "observed", claude,
+      "its own group, else `*`"
+    ),
+    row(
+      "claude_user", "matcher", TRUE, "observed", ports,
+      paste(
+        "Google's robots.cc fingerprints and index.htm shortcut match, 74/74",
+        "on the normalized URL, 64/74 raw: Google-compatible lineage, not",
+        "proof of the implementation"
+      )
+    ),
+    row(
+      "claude_user", "uppercase_escapes", TRUE, "observed", claude,
+      "edge logs: `%3cb` arrives as `%3Cb` (diag-pctcase)"
+    ),
+    row(
+      "claude_user", "strip_trailing_slash", TRUE, "observed", claude,
+      "edge logs: `/ok/claudeok/` arrives as `GET /ok/claudeok`"
+    ),
+    row(
+      "claude_user", "encode_query_slash", TRUE, "observed", claude,
+      "edge logs: `?q=/` arrives as `?q=%2F` (diag-qslash)"
+    ),
+    row(
+      "claude_user", "body_limit", FALSE, "observed", claude,
+      paste(
+        "a robots.txt over 500,000 bytes refuses the whole host, an",
+        "allow-all one too (AGEN-yrhoneml): not modeled yet, the preset",
+        "reads Google's 512,000-byte window; untested: an HTML robots.txt",
+        "at the line, and whether the count is before or after content",
+        "decoding"
+      )
+    ),
+    unmeasured(
+      "claude_user", "trailing_slash_before_query", claude,
+      "a trailing `/` before a query or fragment is kept"
+    ),
+    common("claude_user")
+  )
+}
+
+# The contract publication of the presets: the preset table, the behavior
+# table and the evidence tiers.
+engine_agent_presets_v1 <- function() {
+  list(
+    presets = agent_presets_v1(),
+    behaviors = agent_preset_behaviors_v1(),
+    evidence_tiers = agent_preset_evidence_tiers_v1()
+  )
+}
+
+validate_agent_preset_v1 <- function(preset) {
+  if (is.null(preset)) {
+    return(NULL)
+  }
+  ids <- agent_preset_ids_v1()
+  if (!is.character(preset) || length(preset) != 1L || is.na(preset) ||
+        !preset %in% ids) {
+    robots_abort(
+      sprintf(
+        "`preset` must be NULL or one of %s.",
+        paste0("\"", ids, "\"", collapse = ", ")
+      ),
+      "robotstxtr_invalid_preset"
+    )
+  }
+  unname(preset)
+}
+
+agent_preset_conflict_v1 <- function(preset, detail) {
+  robots_abort(
+    sprintf("`preset = \"%s\"` %s", preset, detail),
+    "robotstxtr_preset_conflict"
+  )
+}
+
+# The facade arguments a preset fixes. An argument the caller left out takes
+# the preset's value. One the caller gave must agree with it: the ruleset
+# and backend "google", the token the preset's `robots_product_token`
+# (ASCII case-insensitive), and `url_normalization` not given at all, since
+# the preset's URL steps replace it. Anything else aborts, so a preset is
+# never silently combined with a reading it does not model.
+agent_preset_arguments_v1 <- function(preset, n, token, ruleset, backend,
+                                      normalization_given) {
+  row <- agent_presets_v1()[agent_presets_v1()$preset == preset, ]
+  if (normalization_given) {
+    agent_preset_conflict_v1(
+      preset,
+      "fixes the URL steps; leave `url_normalization` out."
+    )
+  }
+  same <- function(x, value) {
+    is.character(x) && length(x) %in% c(1L, n) && !anyNA(x) &&
+      !any(grepl("[^\\x01-\\x7F]", x, perl = TRUE, useBytes = TRUE)) &&
+      all(ascii_lower(x) == ascii_lower(value))
+  }
+  if (!is.null(ruleset) && !same(ruleset, "google")) {
+    agent_preset_conflict_v1(
+      preset, "reads the \"google\" robots_policy_ruleset only."
+    )
+  }
+  if (!is.null(backend) && !same(backend, "google")) {
+    agent_preset_conflict_v1(
+      preset, "reads the \"google\" matcher_backend only."
+    )
+  }
+  if (!is.null(token) && !same(token, row$robots_product_token)) {
+    agent_preset_conflict_v1(
+      preset,
+      sprintf(
+        "is the `%s` robots_product_token; leave it out or pass that.",
+        row$robots_product_token
+      )
+    )
+  }
+  list(
+    token = if (is.null(token)) row$robots_product_token else token,
+    ruleset = "google", backend = "google"
+  )
+}
+
+# The matcher token and crawler profile of every row under a preset: the
+# preset's `matcher_token`, no parent, and `*` ignored under `exact_only`.
+agent_preset_matcher_v1 <- function(preset, n) {
+  row <- agent_presets_v1()[agent_presets_v1()$preset == preset, ]
+  list(
+    tokens = rep(row$matcher_token, n),
+    profiles = data.frame(
+      parent_token = rep(NA_character_, n),
+      ignore_global = rep(row$group_selection == "exact_only", n),
+      stringsAsFactors = FALSE
+    )
+  )
+}
+
+# The status policy under a preset: Google's 2xx cells (use_rules), and
+# documentation_gap for every other google cell, since no probe measured how
+# the agents read them. A supplied body is not read from this table.
+agent_preset_policy_table_v1 <- function(policy_table) {
+  gap <- policy_table$ruleset == "google" &
+    !policy_table$category %in% c("status_200", "status_other_2xx")
+  policy_table$policy_status[gap] <- "documentation_gap"
+  policy_table$policy_action[gap] <- NA_character_
+  policy_table$policy_reason[gap] <- "policy_documentation_gap"
+  policy_table$policy_provenance[gap] <- "documentation_gap"
+  policy_table$policy_source[gap] <-
+    "design/engine-contract-v1.md#agent-presets"
+  policy_table
+}
+
 # Build-time invariant over the published capability object. Keeps the two
 # axes from drifting apart: a bounded backend must publish a profile table and
 # an unbounded one must not, and every published selection mode must be one the
@@ -1852,10 +2177,15 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
                              source_id, evidence, url_valid, token_valid,
                              fetch_ua, timeout, max_bytes, ssrf_guard,
                              safety_level, url_normalization = "none",
-                             matcher_registry = engine_matcher_registry_v1()) {
+                             matcher_registry = engine_matcher_registry_v1(),
+                             preset = NULL) {
   n <- length(url)
   # The URL each backend reads (ROBO-bnvdmdjr, ADR 0002); `url` stays the
-  # input. Internal callers that pass no mode read the URL as given.
+  # input. Internal callers that pass no mode read the URL as given. A
+  # preset reads it through its own URL steps (ROBO-uyfryhlz).
+  if (!is.null(preset)) {
+    url_normalization <- preset
+  }
   preprocessed <- preprocess_matcher_url_v1(url, url_normalization)
   policy_revisions <- engine_policy_revisions_v1()
   matcher_registry <- validate_matcher_registry_v1(matcher_registry)
@@ -1866,6 +2196,16 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
     matcher_registry, "availability"
   )
   policy_table <- engine_policy_table_v1()
+  # Under a preset the matcher selects its group with the preset's token
+  # and crawler profile, not the caller's token, which the results keep,
+  # and only the 2xx cells of the google policy are read.
+  matcher_token <- product_token
+  preset_matcher <- NULL
+  if (!is.null(preset)) {
+    preset_matcher <- agent_preset_matcher_v1(preset, n)
+    matcher_token <- preset_matcher$tokens
+    policy_table <- agent_preset_policy_table_v1(policy_table)
+  }
 
   evidence_status <- rep("not_applicable", n)
   policy_status <- rep("not_evaluated", n)
@@ -1967,10 +2307,14 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
   # with the google backend follows Google's crawler tokens
   # (google_crawler_tokens_v1()); every other row gets no profile. The
   # profiles reach an adapter only through its formals (dispatch_matcher_v1()).
-  crawler_profiles <- google_crawler_profiles_v1(
-    product_token[matcher_rows],
-    google_crawler_layered_v1(ruleset[matcher_rows], row_backends)
-  )
+  crawler_profiles <- if (is.null(preset_matcher)) {
+    google_crawler_profiles_v1(
+      product_token[matcher_rows],
+      google_crawler_layered_v1(ruleset[matcher_rows], row_backends)
+    )
+  } else {
+    preset_matcher$profiles[matcher_rows, , drop = FALSE]
+  }
   for (backend in unique(row_backends)) {
     picked <- row_backends == backend
     rows <- matcher_rows[picked]
@@ -1978,7 +2322,7 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
       matcher_registry, backend,
       bodies = readable_bodies[matcher_sources[picked]],
       urls = preprocessed$matcher_url[rows],
-      product_tokens = product_token[rows],
+      product_tokens = matcher_token[rows],
       crawler_profiles = crawler_profiles[picked, , drop = FALSE]
     )
     # Adapters that do not report a group leave `group_token` NA.
@@ -2011,7 +2355,7 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
       decide_urls_v1(
         matcher_registry, matcher_backend[rows],
         bodies = readable_bodies[source_of[rows]], urls = urls,
-        product_tokens = product_token[rows],
+        product_tokens = matcher_token[rows],
         crawler_profiles = crawler_profiles[
           match(rows, matcher_rows), , drop = FALSE
         ]
@@ -2316,10 +2660,25 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
                                     robots_policy_ruleset, matcher_backend,
                                     source_id = "supplied",
-                                    url_normalization = "rfc3986") {
+                                    url_normalization = "rfc3986",
+                                    preset = NULL) {
   validate_robots_txt(robots_txt)
   validate_source_id(source_id)
-  url_normalization <- validate_url_normalization_v1(url_normalization)
+  preset <- validate_agent_preset_v1(preset)
+  if (is.null(preset)) {
+    url_normalization <- validate_url_normalization_v1(url_normalization)
+  } else {
+    fixed <- agent_preset_arguments_v1(
+      preset, length(url),
+      token = if (!missing(robots_product_token)) robots_product_token,
+      ruleset = if (!missing(robots_policy_ruleset)) robots_policy_ruleset,
+      backend = if (!missing(matcher_backend)) matcher_backend,
+      normalization_given = !missing(url_normalization)
+    )
+    robots_product_token <- fixed$token
+    robots_policy_ruleset <- fixed$ruleset
+    matcher_backend <- fixed$backend
+  }
   validate_url_type(url)
   n <- length(url)
   token <- expand_product_token_v1(robots_product_token, n)
@@ -2337,7 +2696,7 @@ robots_evaluate_text_v1 <- function(robots_txt, url, robots_product_token,
   results <- evaluate_rows_v1(
     url, token, ruleset, backend, mapped_source, evidence, url_valid,
     token_valid, NA_character_, NA_real_, NA_integer_, NA, NA_character_,
-    url_normalization = url_normalization
+    url_normalization = url_normalization, preset = preset
   )
   new_engine_decisions_v1(results, evidence)
 }
@@ -2428,7 +2787,8 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
                                    ssrf_guard = TRUE,
                                    safety_level = "strict",
                                    fetch_allow_ranges = character(),
-                                   url_normalization = "rfc3986") {
+                                   url_normalization = "rfc3986",
+                                   preset = NULL) {
   validate_url_type(url)
   timeout <- validate_timeout(timeout)
   max_bytes <- validate_max_bytes(max_bytes)
@@ -2439,7 +2799,21 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
     fetch_allow_ranges, ssrf_guard
   )
   warn_ssrf_guard_deprecated(ssrf_guard, safety_level)
-  url_normalization <- validate_url_normalization_v1(url_normalization)
+  preset <- validate_agent_preset_v1(preset)
+  if (is.null(preset)) {
+    url_normalization <- validate_url_normalization_v1(url_normalization)
+  } else {
+    fixed <- agent_preset_arguments_v1(
+      preset, length(url),
+      token = if (!missing(robots_product_token)) robots_product_token,
+      ruleset = if (!missing(robots_policy_ruleset)) robots_policy_ruleset,
+      backend = if (!missing(matcher_backend)) matcher_backend,
+      normalization_given = !missing(url_normalization)
+    )
+    robots_product_token <- fixed$token
+    robots_policy_ruleset <- fixed$ruleset
+    matcher_backend <- fixed$backend
+  }
   n <- length(url)
   token <- expand_product_token_v1(robots_product_token, n)
   ruleset <- expand_engine_argument_v1(
@@ -2467,7 +2841,7 @@ robots_evaluate_url_v1 <- function(url, robots_product_token,
   results <- evaluate_rows_v1(
     url, token, ruleset, backend, fetched$source_id, fetched$evidence,
     url_valid, token_valid, fetch_ua, timeout, max_bytes, ssrf_guard,
-    safety_level, url_normalization = url_normalization
+    safety_level, url_normalization = url_normalization, preset = preset
   )
   new_engine_decisions_v1(results, fetched$evidence)
 }
