@@ -10,6 +10,16 @@ engine_contract_id_v1 <- function() {
   "robotstxtr.engine-aware/v1"
 }
 
+# 2026-11-28.1: both facades take `preset` ("chatgpt_user" or
+# "claude_user"; NULL, the default, changes nothing), and the contract
+# publishes `agent_presets`: the preset table, each preset behavior with
+# its evidence tier and source, and the tier set (ROBO-uyfryhlz). A preset
+# row reads its URL through the preset's steps, notes the unmeasured
+# inputs in `url_preprocessing_note`, is not compared for disagreement and
+# reads only the google 2xx status cells. No policy revision moved: the
+# google ruleset's own cells are unchanged. Both facades share the results
+# schema, so both moved.
+#
 # 2026-11-22.1: on the google and rfc9309 backends a `robots_product_token`
 # outside the RFC 9309 identifier rule (section 2.2.1: ASCII letters,
 # `_` and `-`) is refused as input, `not_evaluated` / `input_invalid` with
@@ -57,7 +67,7 @@ engine_contract_id_v1 <- function() {
 # (ROBO-jbralthm; design/engine-profiles.md section 2). Both facades share the
 # evidence schema, so both revisions moved.
 engine_schema_revision_v1 <- function() {
-  "2026-11-22.1"
+  "2026-11-28.1"
 }
 
 # The engine-aware/v2 facade identity (BI-V2-SCHEMA, spec SS15). Introduced by
@@ -72,7 +82,7 @@ engine_contract_id_v2 <- function() {
 }
 
 engine_schema_revision_v2 <- function() {
-  "2026-11-22.1"
+  "2026-11-28.1"
 }
 
 engine_rulesets_v1 <- function() {
@@ -1109,6 +1119,7 @@ robots_engine_contract_v1 <- function() {
       matcher_backends = engine_matchers_v1(),
       safety_levels = engine_safety_levels_v1(),
       url_normalizations = engine_url_normalizations_v1(),
+      agent_presets = engine_agent_presets_v1(),
       policy_table = engine_policy_table_v1(),
       sibling_versions = c(
         sitemapr = ">= 0.0.0.9000, < 0.1.0",
@@ -1176,6 +1187,7 @@ robots_engine_contract_v2 <- function() {
       matcher_backends = engine_matchers_v1(),
       safety_levels = engine_safety_levels_v1(),
       url_normalizations = engine_url_normalizations_v1(),
+      agent_presets = engine_agent_presets_v1(),
       policy_table = engine_policy_table_v1(),
       sibling_versions = c(
         sitemapr = ">= 0.0.0.9000, < 0.1.0",

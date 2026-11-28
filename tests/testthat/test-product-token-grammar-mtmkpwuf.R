@@ -302,7 +302,7 @@ test_that("google and rfc9309 publish the grammar; bounded backends do not", {
     expect_identical(cap$rfc9309$product_token_grammar, "rfc9309_identifier")
     expect_null(cap$yandex$product_token_grammar)
     expect_null(cap$bing$product_token_grammar)
-    expect_identical(contract$schema_revision, "2026-11-22.1")
+    expect_identical(contract$schema_revision, "2026-11-28.1")
   }
   expect_identical(product_token_grammar_backends_v1(), c("google", "rfc9309"))
 })

@@ -339,6 +339,75 @@ test_that("the batch path equals the row path under a preset", {
   }
 })
 
+# ---- The contract -----------------------------------------------------------
+
+test_that("the contract publishes the presets at the moved revision", {
+  v1 <- robots_engine_contract_v1()
+  v2 <- robots_engine_contract_v2()
+  expect_identical(v1$schema_revision, "2026-11-28.1")
+  expect_identical(v2$schema_revision, "2026-11-28.1")
+  expect_identical(v1$agent_presets, v2$agent_presets)
+  expect_identical(setdiff(names(v2), names(v1)), "matcher_status_set")
+  presets <- v1$agent_presets$presets
+  expect_identical(presets$preset, c("chatgpt_user", "claude_user"))
+  expect_identical(presets$robots_product_token,
+                   c("ChatGPT-User", "Claude-User"))
+  expect_identical(presets$matcher_token, c("OAI-SearchBot", "Claude-User"))
+  expect_identical(presets$group_selection,
+                   c("exact_only", "exact_else_wildcard"))
+  expect_identical(presets$robots_policy_ruleset, c("google", "google"))
+  expect_identical(presets$matcher_backend, c("google", "google"))
+  expect_identical(
+    presets$url_steps,
+    c("uppercase_escapes",
+      "uppercase_escapes, strip_trailing_slash, encode_query_slash")
+  )
+  expect_identical(presets$body_limit_bytes, c(512000L, 512000L))
+  expect_identical(presets$body_limit_source, c("google", "google"))
+  expect_match(presets$surface, "measured 2026-11-26", fixed = TRUE)
+})
+
+test_that("every preset behavior carries a tier and a source", {
+  contract <- robots_engine_contract_v1()$agent_presets
+  behaviors <- contract$behaviors
+  expect_identical(contract$evidence_tiers,
+                   c("observed", "inferred", "unmeasured"))
+  expect_true(all(behaviors$evidence_tier %in% contract$evidence_tiers))
+  expect_true(all(behaviors$preset %in% contract$presets$preset))
+  expect_true(all(nzchar(behaviors$source)))
+  expect_true(all(nzchar(behaviors$note)))
+  expect_false(anyDuplicated(behaviors[c("preset", "behavior")]) > 0L)
+  expect_true(all(grepl("^agent-view(-research)?:", behaviors$source)))
+  # An unmeasured behavior is never modeled.
+  expect_false(any(behaviors$modeled & behaviors$evidence_tier == "unmeasured"))
+  # Each URL step a preset applies is a modeled behavior with its tier.
+  tier <- function(preset, behavior) {
+    behaviors$evidence_tier[
+      behaviors$preset == preset & behaviors$behavior == behavior &
+        behaviors$modeled
+    ]
+  }
+  for (preset in contract$presets$preset) {
+    for (step in agent_preset_url_steps_v1(preset)) {
+      expect_length(tier(preset, step), 1L)
+    }
+  }
+  expect_identical(tier("chatgpt_user", "uppercase_escapes"), "inferred")
+  expect_identical(tier("claude_user", "uppercase_escapes"), "observed")
+  expect_identical(tier("claude_user", "strip_trailing_slash"), "observed")
+  expect_identical(tier("claude_user", "encode_query_slash"), "observed")
+  # Claude's 500,000-byte refusal is recorded, not modeled.
+  cap <- behaviors[behaviors$preset == "claude_user" &
+                     behaviors$behavior == "body_limit", ]
+  expect_false(cap$modeled)
+  expect_match(cap$note, "500,000 bytes refuses the whole host", fixed = TRUE)
+  for (preset in contract$presets$preset) {
+    expect_true(all(c("raw_non_ascii", "raw_space", "dot_segments",
+                      "status_policy") %in%
+                      behaviors$behavior[behaviors$preset == preset]))
+  }
+})
+
 # ---- Through the URL facade -------------------------------------------------
 
 test_that("a 2xx body is read under a preset (fake ssrfr)", {
