@@ -352,6 +352,16 @@ test_that("a preset aborts on a conflicting argument or an unknown id", {
   conflict(robots_product_token = "OAI-SearchBot")
   conflict(robots_product_token = "Googlebot")
   conflict(robots_product_token = NA_character_)
+  # A token of the wrong length, or one that is not ASCII (invalid UTF-8
+  # included), is a conflict too, never another error class.
+  expect_error(
+    robots_evaluate_text_v1(body, c("/x", "/y", "/z"),
+                            c("ChatGPT-User", "ChatGPT-User"),
+                            preset = "chatgpt_user"),
+    class = "robotstxtr_preset_conflict"
+  )
+  conflict(robots_product_token = "ChatGPT-Usér")
+  conflict(robots_product_token = rawToChar(as.raw(c(0x43, 0xff))))
   conflict(robots_policy_ruleset = "bing")
   conflict(matcher_backend = "rfc9309")
   conflict(url_normalization = "rfc3986")

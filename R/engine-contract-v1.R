@@ -613,7 +613,7 @@ validate_agent_preset_v1 <- function(preset) {
       "robotstxtr_invalid_preset"
     )
   }
-  unname(preset)
+  preset
 }
 
 agent_preset_conflict_v1 <- function(preset, detail) {
@@ -2442,7 +2442,7 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
       decide_urls_v1(
         matcher_registry, matcher_backend[rows],
         bodies = readable_bodies[source_of[rows]], urls = urls,
-        product_tokens = matcher_token[rows],
+        product_tokens = product_token[rows],
         crawler_profiles = crawler_profiles[
           match(rows, matcher_rows), , drop = FALSE
         ]
