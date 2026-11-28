@@ -613,7 +613,8 @@ validate_agent_preset_v1 <- function(preset) {
       "robotstxtr_invalid_preset"
     )
   }
-  preset
+  # Names dropped: agent_unmeasured_v1() and others compare with identical().
+  unname(preset)
 }
 
 agent_preset_conflict_v1 <- function(preset, detail) {

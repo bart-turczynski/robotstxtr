@@ -530,6 +530,21 @@ test_that("every preset behavior carries a tier and a source", {
   }
 })
 
+test_that("a named preset value reads as the plain one (review round 2, M1)", {
+  body <- "User-agent: Claude-User\nDisallow: /x\n"
+  for (url in c("https://e.com/a/?q=1", "https://e.com/d/")) {
+    for (preset in c("claude_user", "chatgpt_user")) {
+      plain <- ap_preset(body, url, preset)
+      named <- ap_preset(body, url, stats::setNames(preset, "p"))
+      expect_identical(named, plain, info = paste(preset, url))
+    }
+  }
+  # The case review-2 probed: Claude's own class, not ChatGPT's.
+  named <- ap_preset(body, "https://e.com/a/?q=1", c(p = "claude_user"))
+  expect_match(named$url_preprocessing_note,
+               "trailing / before a query or fragment", fixed = TRUE)
+})
+
 # ---- Through the URL facade -------------------------------------------------
 
 test_that("a 2xx body is read under a preset (fake ssrfr)", {
