@@ -626,7 +626,6 @@ validate_agent_preset_v1 <- function(preset) {
   }
   # Names dropped: agent_unmeasured_v1() and others compare with identical().
   unname(preset)
-  unname(preset)
 }
 
 agent_preset_conflict_v1 <- function(preset, detail) {
@@ -2734,14 +2733,14 @@ evaluate_rows_v1 <- function(url, product_token, ruleset, matcher_backend,
 #' `Disallow: /` disallows `/dir/` for Claude-User and allows it for
 #' ChatGPT-User. Nothing is decoded, and a `%` without two hex digits is
 #' left as it is. No other byte is changed: a raw space or byte outside
+#' ASCII, a tab or other control byte, a backslash, a character RFC 3986
 #' excludes (`"<>^{|}` and the backquote), a `[` or `]` outside the host, a
 #' second `#`, a `%` without two hex digits, an encoded `/` in the path
 #' (`%2f`, `%2e%2e%2f`, `..%2f`; only its hex digits change case), a
-#' excludes (`"<>^{|}` and the backquote), a `%` without two hex digits, a
 #' literal or percent-encoded dot segment, a `//` run, userinfo, and the
+#' trailing-slash cases not listed are unmeasured, so they are read as
 #' given and `url_preprocessing_note` names them; it names these classes
 #' only, and a byte class not listed here gets no note
-#' given and `url_preprocessing_note` names them
 #' (`left as given, unmeasured for <preset>: ...`, the inputs joined by
 #' `", "`) after the steps that changed the URL, the parts joined by
 #' `"; "`. A preset row is not compared for disagreement:
